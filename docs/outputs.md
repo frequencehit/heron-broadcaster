@@ -67,6 +67,16 @@ services:
 
 and set `HERON_FFMPEG=/opt/ffmpeg-fdk/ffmpeg` in `.env`. Such a binary is built with `--enable-libfdk-aac --enable-nonfree`, which makes it non-redistributable: build it for the station's own use.
 
+**The simplest way** is to let Docker build it on the station's machine, inside the engine's image: `docker/engine-fdk.Dockerfile` adds to the published `heron-engine` image a minimal, static `ffmpeg` with `libfdk_aac` (`docker/build-ffmpeg-fdk.sh`: AAC, HE-AAC and HE-AAC v2 from a pipe, ADTS out, nothing else) and sets `HERON_FFMPEG`. Copy `docker-compose.fdk.yml` next to `docker-compose.yml` as `docker-compose.override.yml` (or merge it into yours), then:
+
+```sh
+docker compose pull --ignore-pull-failures   # the other services
+docker compose build --pull heron-engine     # a few minutes the first time
+scripts/upgrade.sh --no-pull                 # hands over without a gap
+```
+
+The image is named `heron-engine-fdk:local`: `docker compose pull` cannot replace it with the published engine, and nothing pushes it to a registry. Heron's CI never builds it. To upgrade, run the same three commands: `--pull` rebuilds it on the latest `heron-engine` of `HERON_VERSION`, and the `ffmpeg` layer comes from Docker's cache.
+
 **Profile fields**: `bitrate_kbps` (8 to 512, unless `vbr`), `sample_rate` (8 to 96 kHz; ffmpeg resamples the 48 kHz master bus), `channels` (1 or 2; HE-AAC v2 needs 2). Options (`encoder_profiles.options`), and nothing else: no free command-line arguments, so a profile cannot make the engine run anything but the configured binary with these values.
 
 | Option | Values | Default |
