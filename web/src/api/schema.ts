@@ -1118,8 +1118,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * What was played, most recent first, the FX player left out. No sign-in
-         *     needed; any website may read it.
+         * What was played, most recent first, the FX player and tracks that send no
+         *     metadata (jingles) left out. No sign-in needed; any website may read it.
          */
         get: operations["public_history"];
         put?: never;
@@ -1137,7 +1137,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The track on air. No sign-in needed; any website may read it. */
+        /**
+         * The track on air; while a track that sends no metadata (a jingle) is on
+         *     air, the last one that does. No sign-in needed; any website may read it.
+         */
         get: operations["now_playing"];
         put?: never;
         post?: never;
@@ -2458,11 +2461,19 @@ export interface components {
              *     calling it over right after one.
              */
             no_two_in_a_row: boolean;
+            /**
+             * @description Its tracks send metadata to the stream servers. Off (jingles, ads):
+             *     the stream and the public now-playing keep the last song's, and
+             *     webhooks send them only when they include the FX player.
+             */
+            sends_metadata: boolean;
         };
         CategoryTypeInput: {
             name: string;
             /** @description Kept as it is when missing (off for a new type). */
             no_two_in_a_row?: boolean | null;
+            /** @description Kept as it is when missing (on for a new type). */
+            sends_metadata?: boolean | null;
         };
         /** @description dBFS, −120 for silence. */
         ChannelLevels: {
@@ -3964,6 +3975,8 @@ export interface components {
             cue_out_ms: number;
             /** Format: int32 */
             duration_ms: number;
+            /** @description Sends no metadata (a jingle): the stream keeps the last track's. */
+            no_metadata: boolean;
             /** @description Relative to the library root. */
             path: string;
             source: components["schemas"]["PlaySource"];

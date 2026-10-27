@@ -3268,6 +3268,118 @@ async fn webhooks_report_track_changes_and_public_endpoints_answer_anyone() {
         .request(Method::DELETE, &format!("/webhooks/{webhook}"), None)
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Jingles send no metadata: tracks 1 and 2 go in a Jingle category; while
+    // one is on air, the public now-playing keeps the song before, and the
+    // public history and webhooks leave it out.
+    let jingle_type = admin.get("/category-types").await[1].clone();
+    assert_eq!(
+        (&jingle_type["name"], &jingle_type["sends_metadata"]),
+        (&json!("Jingle"), &json!(false))
+    );
+    let (status, jingles) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Jingles", "type_id": jingle_type["id"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{jingles}");
+    for track in &station.tracks[..2] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": jingles["id"]}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let jingle_titles = ["Track 1", "Track 2"];
+    // Queued again, with what the tracks are now.
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let mut texts = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let on_air = loop {
+        assert!(Instant::now() < deadline, "no jingle went on air");
+        while let Ok(Some((_, name, _, body))) =
+            tokio::time::timeout(Duration::from_millis(10), received.recv()).await
+        {
+            if name == "text" {
+                texts.push(body);
+            }
+        }
+        let player = admin.get("/player").await;
+        let jingle = player["decks"].as_array().unwrap().iter().find_map(|deck| {
+            let track = &deck["entry"]["track"];
+            (deck["on_air"] == true && track["no_metadata"] == true).then(|| track["title"].clone())
+        });
+        if let Some(title) = jingle {
+            break title;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert!(
+        jingle_titles.contains(&on_air.as_str().unwrap()),
+        "{on_air}"
+    );
+    let now: Value = anyone
+        .get(format!("{base}/now-playing"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let shown = now["now"]["title"].as_str().unwrap_or_default();
+    assert!(
+        shown.starts_with("Track ") && !jingle_titles.contains(&shown),
+        "the jingle's title shown: {now}"
+    );
+    let history: Value = anyone
+        .get(format!("{base}/history?limit=50"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let in_history: Vec<&str> = history
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|play| play["title"].as_str().unwrap_or_default())
+        .collect();
+    assert!(!in_history.is_empty());
+    let played_jingle: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM play_history h JOIN track_categories tc ON tc.track_id = h.track_id
+         WHERE tc.category_id = ?",
+    )
+    .bind(jingles["id"].as_u64())
+    .fetch_one(&station.db.pool)
+    .await
+    .unwrap();
+    assert!(played_jingle > 0);
+    assert!(
+        !in_history.iter().any(|title| jingle_titles.contains(title)),
+        "{in_history:?}"
+    );
+    // Display (no FX player) is never told about the jingle.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    while let Ok(Some((_, name, _, body))) =
+        tokio::time::timeout(Duration::from_millis(10), received.recv()).await
+    {
+        if name == "text" {
+            texts.push(body);
+        }
+    }
+    assert!(
+        !texts
+            .iter()
+            .any(|text| jingle_titles.iter().any(|title| text.ends_with(title))),
+        "{texts:?}"
+    );
     station.stop().await;
 }
 

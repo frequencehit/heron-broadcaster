@@ -369,6 +369,7 @@ fn prepare(library_dir: &Path, file: &Path) -> anyhow::Result<pb::Track> {
         true_peak_db: analysis.true_peak_db,
         crossfade_overrides_json: String::new(),
         source: pb::PlaySource::Manual.into(),
+        no_metadata: false,
     })
 }
 

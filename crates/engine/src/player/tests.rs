@@ -98,6 +98,7 @@ impl Station {
             album: None,
             playout: TrackPlayout::unanalyzed(duration_ms),
             source: PlaySource::Manual,
+            no_metadata: false,
         }
     }
 }
@@ -214,6 +215,37 @@ fn plays_the_queue_in_order_on_alternating_decks() {
     assert_eq!(
         station.now_playing.borrow().title.as_deref(),
         Some("three.wav")
+    );
+}
+
+#[test]
+fn a_jingle_leaves_the_stream_on_the_song_before() {
+    let mut station = Station::new();
+    let mut jingle = station.file("jingle.wav", 1.0);
+    jingle.no_metadata = true;
+    let tracks = vec![
+        station.file("song.wav", 1.0),
+        jingle,
+        station.file("next.wav", 1.0),
+    ];
+    station.player.enqueue(tracks, None).unwrap();
+    station.play(1.5);
+    // The jingle is on air; the stream still says the song.
+    assert_eq!(
+        station.player.snapshot().decks[1]
+            .entry
+            .as_ref()
+            .map(|e| e.track.path.as_str()),
+        Some("jingle.wav")
+    );
+    assert_eq!(
+        station.now_playing.borrow().title.as_deref(),
+        Some("song.wav")
+    );
+    station.play(1.0);
+    assert_eq!(
+        station.now_playing.borrow().title.as_deref(),
+        Some("next.wav")
     );
 }
 

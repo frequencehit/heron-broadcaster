@@ -29,6 +29,10 @@ pub struct CategoryType {
     /// Never two tracks of this type in a row: rotation passes a slot
     /// calling it over right after one.
     pub no_two_in_a_row: bool,
+    /// Its tracks send metadata to the stream servers. Off (jingles, ads):
+    /// the stream and the public now-playing keep the last song's, and
+    /// webhooks send them only when they include the FX player.
+    pub sends_metadata: bool,
     /// Categories of this type.
     pub categories: i64,
 }
@@ -40,6 +44,9 @@ pub struct CategoryTypeInput {
     /// Kept as it is when missing (off for a new type).
     #[serde(default)]
     pub no_two_in_a_row: Option<bool>,
+    /// Kept as it is when missing (on for a new type).
+    #[serde(default)]
+    pub sends_metadata: Option<bool>,
 }
 
 impl CategoryTypeInput {
@@ -52,7 +59,7 @@ impl CategoryTypeInput {
     }
 }
 
-const SELECT: &str = "SELECT t.id, t.name, t.no_two_in_a_row,
+const SELECT: &str = "SELECT t.id, t.name, t.no_two_in_a_row, t.sends_metadata,
            (SELECT COUNT(*) FROM categories c WHERE c.type_id = t.id) AS categories
     FROM category_types t";
 
@@ -95,13 +102,16 @@ async fn create_type(
     Json(input): Json<CategoryTypeInput>,
 ) -> ApiResult<(StatusCode, Json<CategoryType>)> {
     user.require(Role::Operator)?;
-    let id = sqlx::query("INSERT INTO category_types (name, no_two_in_a_row) VALUES (?, ?)")
-        .bind(input.name()?)
-        .bind(input.no_two_in_a_row.unwrap_or(false))
-        .execute(&state.pool)
-        .await
-        .map_err(conflict)?
-        .last_insert_id();
+    let id = sqlx::query(
+        "INSERT INTO category_types (name, no_two_in_a_row, sends_metadata) VALUES (?, ?, ?)",
+    )
+    .bind(input.name()?)
+    .bind(input.no_two_in_a_row.unwrap_or(false))
+    .bind(input.sends_metadata.unwrap_or(true))
+    .execute(&state.pool)
+    .await
+    .map_err(conflict)?
+    .last_insert_id();
     Ok((StatusCode::CREATED, Json(find(&state, id).await?)))
 }
 
@@ -119,11 +129,13 @@ async fn update_type(
     let name = input.name()?;
     find(&state, id).await?;
     sqlx::query(
-        "UPDATE category_types SET name = ?, no_two_in_a_row = COALESCE(?, no_two_in_a_row)
+        "UPDATE category_types SET name = ?, no_two_in_a_row = COALESCE(?, no_two_in_a_row),
+             sends_metadata = COALESCE(?, sends_metadata)
          WHERE id = ?",
     )
     .bind(name)
     .bind(input.no_two_in_a_row)
+    .bind(input.sends_metadata)
     .bind(id)
     .execute(&state.pool)
     .await

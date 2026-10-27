@@ -106,6 +106,10 @@ Listener statistics read the server's status page, and its listener list with th
 
 TLS is not supported yet.
 
+### Metadata
+
+Every output with metadata on gets the artist and title of the track on air when it starts, from decks A and B (the FX player never sends any). A track whose category's **type** sends no metadata (*Categories › Category types › Sends metadata*, off for Jingle and Ad from the start, see [Rotation – Category types](rotation.md#category-types)) **sends none**: while it plays, listeners' players keep showing the song before it. The public now-playing shows that song too, the public history leaves such tracks out, and webhooks report them only when they include the FX player ([API](api.md#webhooks)).
+
 ## Isolation and reliability
 
 - Encoders and outputs run **outside the audio thread**. The mixer writes to a lock-free ring buffer per encoder; a slow or failed encoder or output never blocks the mixer or other outputs.

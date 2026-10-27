@@ -68,6 +68,9 @@ message Track {
   // Per-track crossfade overrides (`track_overrides.crossfade`), JSON. Empty for none.
   string crossfade_overrides_json = 12;
   PlaySource source = 13;
+  // Sends no metadata to the stream servers (a jingle): they keep the last
+  // track's while it plays.
+  bool no_metadata = 14;
 }
 
 message QueueEntry {

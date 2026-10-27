@@ -375,6 +375,7 @@ mod tests {
                 cue_in_ms: 0,
                 cue_out_ms: 300_000,
                 source: PlaySource::Rotation,
+                no_metadata: false,
             },
         }
     }

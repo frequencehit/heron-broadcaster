@@ -164,6 +164,7 @@ fn track(library: &Path, name: &str, seconds: f64) -> TrackRequest {
         album: None,
         playout: TrackPlayout::unanalyzed((seconds * 1_000.0) as u32),
         source: PlaySource::Manual,
+        no_metadata: false,
     }
 }
 

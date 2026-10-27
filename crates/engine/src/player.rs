@@ -74,6 +74,9 @@ pub struct TrackRequest {
     pub playout: TrackPlayout,
     /// Carried back in the events, for the play history.
     pub source: PlaySource,
+    /// Sends no metadata (a jingle): the stream keeps the last track's.
+    #[serde(default)]
+    pub no_metadata: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -708,10 +711,13 @@ impl Player {
                     if self.fallback_entries.contains(&entry_id) {
                         metrics::counter!("heron_engine_fallback_tracks_total").increment(1);
                     }
-                    self.now_playing.send_replace(NowPlaying {
-                        artist: entry.track.artist.clone(),
-                        title: entry.track.title.clone(),
-                    });
+                    // A jingle leaves the stream on the track before.
+                    if !entry.track.no_metadata {
+                        self.now_playing.send_replace(NowPlaying {
+                            artist: entry.track.artist.clone(),
+                            title: entry.track.title.clone(),
+                        });
+                    }
                     self.retarget_cued();
                 }
                 tracing::info!(

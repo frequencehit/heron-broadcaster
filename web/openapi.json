@@ -3268,7 +3268,7 @@
         "tags": [
           "public"
         ],
-        "summary": "What was played, most recent first, the FX player left out. No sign-in\nneeded; any website may read it.",
+        "summary": "What was played, most recent first, the FX player and tracks that send no\nmetadata (jingles) left out. No sign-in needed; any website may read it.",
         "operationId": "public_history",
         "parameters": [
           {
@@ -3326,7 +3326,7 @@
         "tags": [
           "public"
         ],
-        "summary": "The track on air. No sign-in needed; any website may read it.",
+        "summary": "The track on air; while a track that sends no metadata (a jingle) is on\nair, the last one that does. No sign-in needed; any website may read it.",
         "operationId": "now_playing",
         "responses": {
           "200": {
@@ -7096,6 +7096,7 @@
           "id",
           "name",
           "no_two_in_a_row",
+          "sends_metadata",
           "categories"
         ],
         "properties": {
@@ -7115,6 +7116,10 @@
           "no_two_in_a_row": {
             "type": "boolean",
             "description": "Never two tracks of this type in a row: rotation passes a slot\ncalling it over right after one."
+          },
+          "sends_metadata": {
+            "type": "boolean",
+            "description": "Its tracks send metadata to the stream servers. Off (jingles, ads):\nthe stream and the public now-playing keep the last song's, and\nwebhooks send them only when they include the FX player."
           }
         }
       },
@@ -7133,6 +7138,13 @@
               "null"
             ],
             "description": "Kept as it is when missing (off for a new type)."
+          },
+          "sends_metadata": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Kept as it is when missing (on for a new type)."
           }
         },
         "additionalProperties": false
@@ -10778,7 +10790,8 @@
           "duration_ms",
           "cue_in_ms",
           "cue_out_ms",
-          "source"
+          "source",
+          "no_metadata"
         ],
         "properties": {
           "album": {
@@ -10808,6 +10821,10 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "no_metadata": {
+            "type": "boolean",
+            "description": "Sends no metadata (a jingle): the stream keeps the last track's."
           },
           "path": {
             "type": "string",

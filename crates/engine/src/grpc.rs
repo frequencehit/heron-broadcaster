@@ -303,6 +303,7 @@ pub fn track_from_proto(track: pb::Track) -> Result<TrackRequest, Status> {
         album: track.album,
         playout,
         source,
+        no_metadata: track.no_metadata,
     })
 }
 
@@ -326,6 +327,7 @@ fn track_to_proto(track: TrackRequest) -> pb::Track {
             serde_json::to_string(&playout.crossfade).unwrap_or_default()
         },
         source: source_to_proto(track.source).into(),
+        no_metadata: track.no_metadata,
     }
 }
 
@@ -478,6 +480,7 @@ mod tests {
             true_peak_db: Some(-1.2),
             crossfade_overrides_json: r#"{"fade_out":null,"fade_in":null,"mode":"fixed","fixed_ms":3000,"crossfade":null}"#.into(),
             source: pb::PlaySource::Rotation.into(),
+            no_metadata: false,
         };
         let back = track_to_proto(track_from_proto(original.clone()).unwrap());
         assert_eq!(back, original);

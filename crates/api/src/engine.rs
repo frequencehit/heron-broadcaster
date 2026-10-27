@@ -59,6 +59,8 @@ pub struct QueuedTrack {
     pub cue_in_ms: u32,
     pub cue_out_ms: u32,
     pub source: PlaySource,
+    /// Sends no metadata (a jingle): the stream keeps the last track's.
+    pub no_metadata: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -539,6 +541,7 @@ fn entry(entry: pb::QueueEntry) -> QueueEntry {
             duration_ms: track.duration_ms,
             cue_in_ms: track.cue_in_ms,
             cue_out_ms: track.cue_out_ms,
+            no_metadata: track.no_metadata,
         },
     }
 }

@@ -61,6 +61,8 @@ struct TrackRow {
     override_cue_out_ms: Option<u32>,
     gap_killer_enabled: Option<bool>,
     crossfade: Option<String>,
+    /// In a category whose type sends no metadata (a jingle).
+    no_metadata: bool,
 }
 
 const TRACK_COLUMNS: &str = "
@@ -69,7 +71,11 @@ const TRACK_COLUMNS: &str = "
     a.track_id IS NOT NULL AS analyzed,
     a.cue_in_ms, a.cue_out_ms, a.fade_out_start_ms, a.integrated_lufs, a.true_peak_db,
     o.cue_in_ms AS override_cue_in_ms, o.cue_out_ms AS override_cue_out_ms,
-    o.gap_killer_enabled, CAST(o.crossfade AS CHAR) AS crossfade
+    o.gap_killer_enabled, CAST(o.crossfade AS CHAR) AS crossfade,
+    EXISTS (SELECT 1 FROM track_categories tc
+            JOIN categories c ON c.id = tc.category_id
+            JOIN category_types ct ON ct.id = c.type_id
+            WHERE tc.track_id = t.id AND NOT ct.sends_metadata) AS no_metadata
     FROM tracks t
     LEFT JOIN track_analysis a ON a.track_id = t.id
     LEFT JOIN track_overrides o ON o.track_id = t.id";
@@ -154,6 +160,7 @@ impl TrackRow {
             true_peak_db: playout.true_peak_db,
             crossfade_overrides_json,
             source: source_to_proto(source).into(),
+            no_metadata: self.no_metadata,
         })
     }
 }
@@ -398,6 +405,7 @@ mod tests {
             override_cue_out_ms: None,
             gap_killer_enabled: None,
             crossfade: None,
+            no_metadata: false,
         }
     }
 
