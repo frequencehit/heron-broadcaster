@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# AAC+ (HE-AAC) outputs: runs heron-engine with an ffmpeg built with
+# libfdk_aac, built on this machine (docker/engine-fdk.Dockerfile). That
+# ffmpeg is not redistributable: the image is built here and never pushed.
+#
+# To use it, copy this file next to docker-compose.yml as
+# docker-compose.override.yml (or merge it into yours), then:
+#
+#   docker compose pull --ignore-pull-failures   # the other services
+#   docker compose build --pull heron-engine     # a few minutes, the first time
+#   scripts/upgrade.sh --no-pull                 # hands over without a gap
+#
+# See docs/outputs.md#external-ffmpeg-encoder.
+
+services:
+  heron-engine:
+    build:
+      context: .
+      dockerfile: docker/engine-fdk.Dockerfile
+      # Replaces docker-compose.yml's target (heron-engine).
+      target: engine-fdk
+      args:
+        HERON_ENGINE_IMAGE: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-engine:${HERON_VERSION:-latest}
+    # A local name: `docker compose pull` cannot replace it, and nothing
+    # pushes it anywhere.
+    image: heron-engine-fdk:local
+    pull_policy: build
+    environment:
+      # docker-compose.yml passes .env's HERON_FFMPEG, empty when unset:
+      # point it at the image's ffmpeg.
+      HERON_FFMPEG: /usr/local/bin/ffmpeg-fdk
