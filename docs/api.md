@@ -40,7 +40,7 @@ Then:
 
 ## Routes
 
-What belongs to a station (its engine and decks, queue, history, clocks, schedule, selection log and simulations, outputs, webhooks, listener statistics, live WebSocket and its own settings: `playout`, `eq`, `queue`, `rotation`, `station`) is served under **`/stations/{id}/…`**: `GET /stations/2/queue`, `PUT /stations/2/settings/playout`. The same routes without the prefix (`GET /queue`) serve the **first station**, so scripts and station websites written for one station keep working ([Several stations](stations.md#api)). Everything else is shared by the stations and has no prefix; a shared route under a station answers `404`.
+What belongs to a station (its engine and decks, queue, history, clocks, schedules, selection log and simulations, outputs, webhooks, listener statistics, live WebSocket and its own settings: `playout`, `eq`, `queue`, `rotation`, `station`) is served under **`/stations/{id}/…`**: `GET /stations/2/queue`, `PUT /stations/2/settings/playout`. The same routes without the prefix (`GET /queue`) serve the **first station**, so scripts and station websites written for one station keep working ([Several stations](stations.md#api)). Everything else is shared by the stations and has no prefix; a shared route under a station answers `404`.
 
 | Area | Routes |
 |---|---|

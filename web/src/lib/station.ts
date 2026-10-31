@@ -21,6 +21,7 @@ const PER_STATION = [
   "history",
   "clocks",
   "schedule",
+  "schedules",
   "rotation",
   "outputs",
   "webhooks",

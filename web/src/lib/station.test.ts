@@ -9,6 +9,7 @@ describe("perStation", () => {
     expect(perStation("queue")).toBe(true);
     expect(perStation("queue/12/position")).toBe(true);
     expect(perStation("settings/medleys")).toBe(true);
+    expect(perStation("schedules/3")).toBe(true);
     expect(perStation("webhook-deliveries/3/retry")).toBe(true);
     expect(perStation("listeners/days?format=csv")).toBe(true);
     expect(perStation("settings/library")).toBe(false);

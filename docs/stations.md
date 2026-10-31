@@ -135,7 +135,7 @@ An existing user keeps their role, as their shared role and their role on the fi
 
 ## API
 
-- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedule, restrictions, rotation and its simulations, selection log, playout, EQ, queue and rotation settings, outputs, webhooks, listener statistics.
+- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedules, restrictions, rotation and its simulations, selection log, playout, EQ, queue and rotation settings, outputs, webhooks, listener statistics.
 - `GET`, `POST /stations`; `GET`, `PUT`, `DELETE /stations/{id}` (admins).
 - Shared resources keep their routes: tracks, artists, categories (with `station_ids`), medleys (with `station_ids`), labels, encoder profiles, users (with their roles per station).
 - Track and artist answers carry their plays and last play per station and in total.
