@@ -45,7 +45,7 @@ Design: [Several stations](../stations.md).
 - [x] A category tagged with two stations is offered by both, one tagged with one is offered by that one only; untagging a station that uses the category is refused and lists what uses it.
 - [x] Plays are recorded per station; a track and an artist show plays and last play per station and in total.
 - [x] With an artist window across stations of 30 minutes, a week simulated on two stations never plays an artist on one within 30 minutes of the other (played or planned), unless the selection log shows that rule relaxed; the same for titles and tracks.
-- [ ] A medley tagged with two stations is in both stations' medley categories after its render; its songs come from the categories its stations can use, or from its recipe's.
+- [x] A medley tagged with two stations is in both stations' medley categories after its render; its songs come from the categories its stations can use, or from its recipe's.
 - [x] A user with `none` on a station does not see it, in the API or the web UI; a `viewer` on one station and `operator` on another can run only the second.
 - [x] The single-station API routes and public endpoints still answer for the first station.
 - [x] A Heron with one station shows no station switcher, and works as before.
