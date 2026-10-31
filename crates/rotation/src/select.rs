@@ -36,7 +36,7 @@ pub struct Explanation {
     pub schedule_id: Option<ScheduleId>,
     #[serde(default)]
     pub schedule_name: Option<String>,
-    /// Missing when no clock is scheduled: the whole library rotates.
+    /// Missing when no clock is scheduled: the station's library rotates.
     pub clock_id: Option<ClockId>,
     pub clock_name: Option<String>,
     /// Index of the slot in the clock, from 0.
@@ -44,7 +44,7 @@ pub struct Explanation {
     /// Category the slot calls.
     pub slot_category_id: Option<CategoryId>,
     /// Category the track was picked from: the fallback category from
-    /// step 9; missing for the whole library.
+    /// step 9; missing for the station's library.
     pub category_id: Option<CategoryId>,
     pub category_name: Option<String>,
     /// Applied: least recently played at step 10.
@@ -269,7 +269,7 @@ struct Call<'l> {
 }
 
 impl<'l> Call<'l> {
-    /// `None`: the whole library.
+    /// `None`: the station's library.
     fn new(
         library: &'l Library,
         category: Option<CategoryId>,
@@ -294,7 +294,12 @@ impl<'l> Call<'l> {
                 }
             }
             None => {
-                let mut pool: Vec<_> = library.tracks.values().map(|t| (t, 1.0)).collect();
+                let mut pool: Vec<_> = library
+                    .tracks
+                    .values()
+                    .filter(|track| library.in_station_library(track))
+                    .map(|t| (t, 1.0))
+                    .collect();
                 pool.sort_by_key(|(track, _)| track.id);
                 Self {
                     category_id: None,
@@ -519,7 +524,7 @@ fn fill(
 ///   order, from the first one at each new hour, and starts over when it
 ///   runs out before the hour ends. A looping clock carries on from its
 ///   last slot instead, whatever the hour.
-/// - Without a scheduled clock, the whole library rotates: least recently
+/// - Without a scheduled clock, the station's library rotates: least recently
 ///   played, rules enforced.
 /// - `None` only when restrictions forbid every track a slot, and the
 ///   fallback, could offer: the engine's fallback directory takes over.
@@ -843,7 +848,7 @@ mod tests {
         }
         let pick = next(&library, &history, 0, None, &mut rng).unwrap();
         // Track separation is never dropped in the slot's category: the
-        // fallback (the whole library) gives a track at step 9.
+        // fallback (the station's library) gives a track at step 9.
         assert_eq!(pick.explanation.step, 9);
         assert_eq!(pick.explanation.category_id, None);
         assert!(pick.track > 5);
@@ -856,6 +861,44 @@ mod tests {
         let pick = next(&library, &history, 0, None, &mut rng).unwrap();
         assert_eq!(pick.explanation.step, 8);
         assert_eq!(pick.explanation.category_id, Some(1));
+    }
+
+    #[test]
+    fn hours_without_a_clock_rotate_the_station_s_library() {
+        let mut library = library(vec![slot(1, Method::Random)]);
+        // Track 21 is in none of the station's categories; 3 is kept out,
+        // and its track 11 is in category 2 too.
+        library.tracks.insert(21, track(21));
+        library.tracks.get_mut(&11).unwrap().categories.push(2);
+        library.settings.kept_out_category_ids = vec![3];
+        let mut rng = Rng::new(7);
+        let mut history = History::default();
+        let mut picked = Vec::new();
+        // 02:00 has no clock.
+        for n in 0..15 {
+            let at = 2 * HOUR + n * 4 * MIN;
+            let pick = next(&library, &history, at, None, &mut rng).unwrap();
+            assert_eq!(pick.explanation.clock_id, None);
+            history.push(Play::of(&library.tracks[&pick.track], at));
+            picked.push(pick.track);
+        }
+        assert!(
+            picked.iter().all(|track| (1..=10).contains(track)),
+            "{picked:?}"
+        );
+        // The fallback without a category is the station's library too.
+        let mut history = History::default();
+        for id in 1..=5 {
+            history.push(Play::of(&library.tracks[&id], -(id as i64) * 10 * MIN));
+        }
+        let pick = next(&library, &history, 0, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 9);
+        assert!((6..=10).contains(&pick.track), "{}", pick.track);
+        // A station with no category yet rotates the whole library.
+        library.categories.clear();
+        let pick = next(&library, &History::default(), 2 * HOUR, None, &mut rng).unwrap();
+        assert!(library.tracks.contains_key(&pick.track));
+        assert!(library.in_station_library(&library.tracks[&21]));
     }
 
     #[test]
@@ -986,7 +1029,7 @@ mod tests {
         .unwrap();
         assert_eq!(third.position.unwrap().slot, 0);
 
-        // Without a clock (02:00), the whole library rotates: no jingle
+        // Without a clock (02:00), the station's library rotates: no jingle
         // right after a jingle there either.
         let mut history = History::default();
         history.push(Play::of(&library.tracks[&1], 2 * HOUR));

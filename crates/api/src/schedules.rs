@@ -5,7 +5,7 @@
 //!
 //! A station has a default schedule and may have others, each playing
 //! during its periods; when periods overlap, the one that started last
-//! plays. Hours a schedule leaves empty rotate the whole library.
+//! plays. Hours a schedule leaves empty rotate the station's library.
 
 use std::collections::{HashMap, HashSet};
 
@@ -534,7 +534,7 @@ async fn delete_schedule(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// The default schedule's hours; hours left out rotate the whole library.
+/// The default schedule's hours; hours left out rotate the station's library.
 #[utoipa::path(get, path = "/schedule", tag = "rotation",
     responses((status = 200, body = Vec<ScheduledHour>), (status = "4XX", body = ErrorBody)))]
 async fn get_default(

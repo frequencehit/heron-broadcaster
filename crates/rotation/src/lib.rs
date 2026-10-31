@@ -98,8 +98,13 @@ pub const MAX_WEIGHT: f64 = 10.0;
 #[serde(default, deny_unknown_fields)]
 pub struct RotationSettings {
     pub separation: Windows,
-    /// Where relaxation ends (steps 9 and 10). The whole library when unset.
+    /// Where relaxation ends (steps 9 and 10). The station's library when
+    /// unset.
     pub fallback_category_id: Option<CategoryId>,
+    /// Categories whose tracks are kept out of the station's library (hours
+    /// without a clock, the fallback without a category), even when another
+    /// of their categories is the station's: tracks set aside.
+    pub kept_out_category_ids: Vec<CategoryId>,
     pub weights: WeightSettings,
     /// Rules across stations: off by default.
     pub across: AcrossStations,
@@ -307,11 +312,25 @@ impl Library {
         a == b || self.similar.get(&a).is_some_and(|list| list.contains(&b))
     }
 
-    /// The category relaxation ends in; `None` for the whole library.
+    /// The category relaxation ends in; `None` for the station's library.
     pub fn fallback_category(&self) -> Option<&Category> {
         self.settings
             .fallback_category_id
             .and_then(|id| self.categories.get(&id))
+    }
+
+    /// Whether `track` is in the station's library: in one of its
+    /// categories and in none it keeps out. A station with no category
+    /// yet has the whole library.
+    pub fn in_station_library(&self, track: &Track) -> bool {
+        if self.categories.is_empty() {
+            return true;
+        }
+        !track.categories.is_empty()
+            && !track
+                .categories
+                .iter()
+                .any(|category| self.settings.kept_out_category_ids.contains(category))
     }
 
     /// The schedule playing at `at`: the default one, or another during
