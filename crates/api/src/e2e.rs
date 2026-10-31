@@ -5135,6 +5135,88 @@ async fn categories_restrictions_and_medleys_follow_their_stations() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(categories().await, [eighties_gold]);
 
+    // A render: once the scanner found its file, the track goes into the
+    // medleys' category of each of its stations.
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/medleys/{medley_id}"),
+            medley(json!([second, first])),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    sqlx::query("DELETE FROM track_categories WHERE track_id = ?")
+        .bind(track)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE medleys SET track_id = NULL, path = (SELECT path FROM tracks WHERE id = ?)
+         WHERE id = ?",
+    )
+    .bind(track)
+    .bind(medley_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    assert_eq!(crate::medleys::link(pool).await.unwrap(), 1);
+    assert_eq!(categories().await, [gold, eighties_gold]);
+
+    // Its songs come from every category its stations can use.
+    let (on_second, on_first) = (station.tracks[0], station.tracks[1]);
+    for (song, category) in [(on_second, eighties_gold), (on_first, gold)] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{song}/categories"),
+                json!([{"category_id": category}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{song}/hook"),
+                json!({"hook_in_ms": 500, "hook_out_ms": 2_500}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    // Hooks of 2 s: the recipe takes them.
+    let short = |stations: Value| json!({"recipe": {"category_ids": [], "hooks": 2, "hook_min_ms": 1_000}, "station_ids": stations});
+    let (status, made) = admin
+        .send(Method::POST, "/medleys", short(json!([second])))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    let songs_of = |id: u64| {
+        let admin = &admin;
+        async move {
+            let mut songs: Vec<u64> = admin
+                .get(&format!("/medleys/{id}/candidates?kind=hook"))
+                .await
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|part| part["track_id"].as_u64().unwrap())
+                .collect();
+            songs.sort_unstable();
+            songs
+        }
+    };
+    let id = made["id"].as_u64().unwrap();
+    assert_eq!(songs_of(id).await, [on_second]);
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/medleys/{id}"),
+            short(json!([second, first])),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let mut both = vec![on_second, on_first];
+    both.sort_unstable();
+    assert_eq!(songs_of(id).await, both);
+
     // Each station has its own schedules.
     let (status, body) = admin
         .send(
