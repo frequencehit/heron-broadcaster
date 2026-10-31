@@ -36,7 +36,7 @@ Viewers see every page (except users and webhooks) without the controls. Every p
 
 ## Several stations
 
-With [several stations](stations.md#web-ui), a **station switcher** at the top of the menu chooses the station the pages show, among those the user sees; the choice is kept in the browser, per user. The pages of a station (On air, Queue, History, Statistics, the programming and station pages) show that station, and their actions follow the user's role there; the library pages are shared and show each category's, medley's and restriction's stations as badges. The track and artist pages give the plays per station, and the track list can count the plays of one station. With one station, nothing changes: no switcher, no badges.
+With [several stations](stations.md#web-ui), a **station switcher** at the top of the menu chooses the station the pages show, among those the user sees; the choice is kept in the browser, per user. The pages of a station (On air, Queue, History, Statistics, the programming and station pages) show that station, and their actions follow the user's role there; the library pages are shared and show each category's, medley's and restriction's stations as badges. The track and artist pages give the plays per station, and the track list can count the plays of one station. With one station, nothing changes: no switcher, no badges. The pages call a station's routes under `/api/v1/stations/{id}/…`, typed from the OpenAPI document like every other call, so a page cannot reach another station's route by mistake.
 
 ## Painting the schedule
 
