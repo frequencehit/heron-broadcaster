@@ -6528,6 +6528,12 @@ export interface components {
             /** @description Whether that variable is set: a station without it is off the air. */
             engine_configured: boolean;
             /**
+             * @description The code of the station that already has this station's engine
+             *     address: two stations never share an engine, so this one is off
+             *     the air.
+             */
+            engine_taken_by?: string | null;
+            /**
              * @description The variable of `heron-api`'s environment that holds its engine's
              *     gRPC address: `HERON_ENGINE_URL` for the first station,
              *     `HERON_ENGINE_URL_<CODE>` for the others.

@@ -18409,6 +18409,13 @@
             "type": "boolean",
             "description": "Whether that variable is set: a station without it is off the air."
           },
+          "engine_taken_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The code of the station that already has this station's engine\naddress: two stations never share an engine, so this one is off\nthe air."
+          },
           "engine_variable": {
             "type": "string",
             "description": "The variable of `heron-api`'s environment that holds its engine's\ngRPC address: `HERON_ENGINE_URL` for the first station,\n`HERON_ENGINE_URL_<CODE>` for the others."

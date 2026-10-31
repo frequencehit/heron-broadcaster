@@ -1862,6 +1862,8 @@ const fr = {
   "stations.codeLocked": "Fixé à l'ajout de la station : il nomme la variable de son moteur.",
   "stations.engineConfigured": "définie",
   "stations.engineMissing": "non définie : hors antenne",
+  "stations.engineTaken": "déjà le moteur de {code} : hors antenne",
+  "stations.engineTakenHint": "Deux stations ne partagent jamais un moteur : donnez à celle-ci l'adresse de son propre moteur.",
   "stations.engineVariableHint": "L'adresse de son moteur est lue dans cette variable de l'environnement de heron-api, à son démarrage.",
   "stations.position": "Position dans les listes",
   "stations.enabled": "Activée",

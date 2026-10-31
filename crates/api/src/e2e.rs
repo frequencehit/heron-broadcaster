@@ -4533,6 +4533,41 @@ async fn two_stations_play_at_once() {
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
+    // Nor does one whose engine is another station's: the same address,
+    // its case and a trailing slash aside.
+    let first_url = station.state.stations.first().engine_url().to_owned();
+    station
+        .state
+        .stations
+        .set_engine("hits70", &format!("{}/", first_url.to_uppercase()));
+    let (status, sharing) = admin
+        .send(
+            Method::POST,
+            "/stations",
+            json!({"name": "Hits 70", "code": "hits70"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{sharing}");
+    assert_eq!(sharing["engine_configured"], true);
+    assert_eq!(sharing["engine_taken_by"], "main", "{sharing}");
+    let sharing = sharing["id"].as_u64().unwrap();
+    let (status, _) = admin
+        .request(Method::GET, &format!("/stations/{sharing}/player"), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        admin.get(&format!("/stations/{sharing}")).await["engine_taken_by"],
+        "main"
+    );
+    let (status, _) = admin
+        .request(Method::DELETE, &format!("/stations/{sharing}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        admin.get("/stations").await[0]["engine_taken_by"],
+        Value::Null
+    );
+
     // Admins add a station with its own engine, set in the environment.
     let request = json!({"name": "Hits 80", "code": "hits80"});
     let (status, _) = viewer
