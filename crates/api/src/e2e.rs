@@ -1091,10 +1091,29 @@ async fn library_tracks_overrides_and_categories() {
     assert_eq!(mine["categories"][0]["id"], category["id"]);
     let theirs = shown.iter().find(|t| t["track_id"] == *other).unwrap();
     assert_eq!(theirs["categories"], json!([]));
-    let (status, _) = viewer
+    let (status, body) = viewer
         .request(Method::GET, "/tracks/categories?ids=1,x", None)
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    // Requests the API cannot read are JSON errors too, with what is wrong.
+    assert_eq!(body["error"], "invalid_request", "{body}");
+    assert!(!body["message"].as_str().unwrap().is_empty(), "{body}");
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{id}/overrides"),
+            json!({"cue_in_ms": "soon"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"], "invalid", "{body}");
+    assert!(
+        body["message"].as_str().unwrap().contains("cue_in_ms"),
+        "{body}"
+    );
+    let (status, body) = viewer.request(Method::GET, "/no-such-route", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "not_found", "{body}");
 
     let (status, body) = admin
         .send(
