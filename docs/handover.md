@@ -235,7 +235,7 @@ The protocol needs the new engine started while the old one runs, on the same ho
 
 `crates/engine/tests/handover.rs` runs two real engines on one state directory against a fake Icecast server:
 
-- **hands over the queue and the connection**, directly and **through the relay**: one source connection throughout, never closed; the same track on air with the same entry ID and the same waiting tracks; audio keeps coming; the longest silence in the received stream is under 200 ms.
+- **hands over the queue and the connection**, directly and **through the relay**: one source connection throughout, never closed; the same track on air with the same entry ID and the same waiting tracks; audio keeps coming; the longest silence in the received stream, from the hand-over on, is under 200 ms (before it, the stream starts with a silence until the first track loads, longer on a busy machine).
 - `crates/outputs/src/connection.rs`: the relay carries bytes both ways, a relayed connection keeps working after being handed over and adopted, and closing it closes the server's side.
 - **plays on when the standby goes away**: the handover fails and the active engine is still on air, not held.
 - **refuses a standby of another protocol**.
