@@ -6003,10 +6003,11 @@ async fn a_backup_restores_onto_an_empty_database() {
     assert_eq!(status, StatusCode::CREATED, "{backup}");
     assert_eq!(backup["kind"], "manual");
     // The database dump goes with it.
-    assert_eq!(backup["database_error"], Value::Null, "{backup}");
+    // `::error::` makes the reason an annotation of the CI run.
+    assert_eq!(backup["database_error"], Value::Null, "\n::error::{backup}");
     assert!(
         backup["database_size"].as_u64().unwrap() > 1_000,
-        "{backup}"
+        "\n::error::{backup}"
     );
     let name = backup["name"].as_str().unwrap().to_owned();
     let mut file = admin.get(&format!("/backups/{name}/config")).await;
