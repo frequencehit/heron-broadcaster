@@ -21,6 +21,7 @@ Heron runs on Linux, amd64 and arm64, down to a Raspberry Pi.
 - **Reliability and monitoring:** the next tracks are read into memory ahead of time, a fallback folder plays when the queue runs dry, a silence watchdog skips dead tracks, and the queue resumes where it was after a restart. Every service pushes its metrics to your Prometheus or Grafana Cloud, with a dashboard and alert rules to import, and errors can go to Sentry. See [Monitoring](docs/monitoring.md).
 - **Upgrades on air:** a new engine takes over from the running one, with its queue and its connection to Icecast, so an upgrade costs listeners about 70 ms of silence instead of a disconnection; when the engine does restart, Icecast's fallback mount keeps them connected. See [Upgrading](docs/upgrading.md) and [Engine handover](docs/handover.md).
 - **Rotation:** categories, clocks of slots, weekly schedules (a default one, and others for their periods: Christmas, the summer, every year if need be), separation rules (title, artist, album) relaxed step by step when the library runs short, artists with several names, restrictions (dayparting, date ranges, sequences) that are never relaxed, and a selection log that explains every pick. A simulation checks a day or a week ahead. See [Rotation](docs/rotation.md).
+- **Backups:** every day, everything set by hand (stations, programming, outputs, users, and what is set on each track) to a configuration file, with a dump of the database, in a folder that can be a network share; a configuration file restores from the web interface on top of a library scanned again. See [Backups](docs/backups.md).
 - **Several stations:** one Heron runs several stations that share the library. Each has its own engine (one more service of the deployment), programming, queue, outputs, history and webhooks; categories and medleys belong to one station or several, rotation rules can keep the stations apart, and users get a role on each station. See [Several stations](docs/stations.md).
 - **Integrations:** webhooks on track start, end and skip, with Heron's JSON or a template of your own, signed (HMAC-SHA256), retried with backoff and logged; public now-playing and history endpoints for the station's website, readable from any origin. See [API – Webhooks](docs/api.md#webhooks).
 - **Listener statistics:** listeners per day, hour, output and track, read from your Icecast servers once a minute: peak, average, listening hours, sessions, distinct listeners, the hours of the day, the players and the tracks listeners leave, with CSV exports. No IP address is stored. See [Listener statistics](docs/statistics.md).
@@ -47,7 +48,7 @@ Requirements: Docker with Compose v2.
 
 ```sh
 cp .env.example .env              # then change the passwords
-mkdir -p data/music data/fallback data/incoming data/staging # or point HERON_MUSIC_DIR, … elsewhere
+mkdir -p data/music data/fallback data/incoming data/staging data/backups # or point HERON_MUSIC_DIR, … elsewhere
 docker compose up -d --wait       # pulls the images from ghcr.io/dehy
 docker compose exec heron-api heron-api user add admin --role admin   # asks for a password
 ```

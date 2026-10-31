@@ -42,6 +42,7 @@ export const PAGES: Page[] = [
   { path: "/webhooks", label: "nav.webhooks", icon: "bolt", admin: true, station: true },
   { path: "/stations", label: "nav.stations", icon: "air", admin: true },
   { path: "/users", label: "nav.users", icon: "users", admin: true },
+  { path: "/backups", label: "nav.backups", icon: "download", admin: true },
 ];
 
 /** Whether `pathname` is the page at `page`, or a page inside it. */

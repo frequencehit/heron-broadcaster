@@ -238,6 +238,115 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The backups, newest first. Admins only. */
+        get: operations["list_backups"];
+        put?: never;
+        /** Backs up now: the configuration file and the database dump. Admins only. */
+        post: operations["create_backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restores an uploaded configuration file (the request's body), kept as an
+         *     `uploaded` backup. Admins only.
+         */
+        post: operations["upload_and_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Deletes a backup's files. Admins only. */
+        delete: operations["delete_backup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/{name}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Downloads a backup's configuration file. Admins only: it holds secrets. */
+        get: operations["download_config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/{name}/database": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Downloads a backup's database dump. Admins only: it holds secrets. */
+        get: operations["download_database"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/{name}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restores a backup's configuration file, after backing up the current
+         *     configuration. Everyone signs in again. Admins only.
+         */
+        post: operations["restore_backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -1639,6 +1748,22 @@ export interface paths {
          *     new settings, in the background. Admins only.
          */
         put: operations["put_analysis"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_backup_settings"];
+        put: operations["put_backup_settings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3630,6 +3755,50 @@ export interface components {
             /** @description `names` or `musicbrainz`. */
             source: string;
         };
+        /** @description The `backups` settings. */
+        BackupSettings: {
+            /**
+             * @description A database dump with each backup.
+             * @default true
+             */
+            database: boolean;
+            /**
+             * @description The daily backup.
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description Daily backups kept: 1 to 90.
+             * @default 7
+             */
+            keep_days: number;
+            /**
+             * @description `HH:MM`, in the first station's time zone.
+             * @default 03:30
+             */
+            time: string;
+        };
+        /** @description A backup in the folder. */
+        BackupView: {
+            /**
+             * Format: int64
+             * @description Bytes.
+             */
+            config_size: number;
+            /** Format: int64 */
+            created_at_unix_ms: number;
+            /** @description Why the dump failed. */
+            database_error?: string | null;
+            /**
+             * Format: int64
+             * @description Bytes; missing without a dump.
+             */
+            database_size?: number | null;
+            kind: components["schemas"]["Kind"];
+            /** @description Its time and kind: `2026-11-03T03-30-00Z-daily`. */
+            name: string;
+        };
         Batch: {
             /** Format: int64 */
             created_at_unix_ms: number;
@@ -4729,6 +4898,11 @@ export interface components {
              */
             intro_ms?: number | null;
         };
+        /**
+         * @description Why a backup was taken.
+         * @enum {string}
+         */
+        Kind: "daily" | "manual" | "before_restore" | "uploaded";
         Label: {
             /** @description `#rrggbb`. */
             color?: string | null;
@@ -6005,6 +6179,28 @@ export interface components {
         };
         RenderRequest: {
             parts: components["schemas"]["Part"][];
+        };
+        /** @description What a restore did. */
+        RestoreReport: {
+            /** @description The backup taken just before. */
+            before_restore: string;
+            /**
+             * @description Rows left out, by table: they name a track or an artist the library
+             *     does not have.
+             */
+            left_out: {
+                [key: string]: number;
+            };
+            /** @description The artists that were not found (the first 100). */
+            missing_artists: string[];
+            missing_artists_total: number;
+            /** @description The library paths that were not found (the first 100). */
+            missing_tracks: string[];
+            missing_tracks_total: number;
+            /** @description Rows written, by table. */
+            restored: {
+                [key: string]: number;
+            };
         };
         RestrictionInput: {
             enabled?: boolean;
@@ -7872,6 +8068,206 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["User"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_backups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupView"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_and_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A configuration file */
+        requestBody: {
+            content: {
+                "application/json": string;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreReport"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_database: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": unknown;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    restore_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreReport"];
                 };
             };
             "4XX": {
@@ -11076,6 +11472,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalysisSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_backup_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_backup_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupSettings"];
                 };
             };
             "4XX": {

@@ -35,7 +35,7 @@ An existing Heron becomes **one station**, named after the station name setting 
 | **Outputs** | Encoder profiles | Outputs, their listener statistics |
 | **Webhooks, public endpoints** | — | Per station ([API](#api)) |
 | **Users** | Users, sign-in, API tokens | Roles ([Roles](#roles)) |
-| **Configuration backups** | One backup holds every station | — |
+| **Backups** | One backup holds every station | — |
 
 ### Settings
 

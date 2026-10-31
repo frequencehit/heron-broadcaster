@@ -57,6 +57,9 @@ export type SimulationReport = Schemas["SimulationReport"];
 export type WebhookView = Schemas["WebhookView"];
 export type WebhookEvent = Schemas["WebhookEvent"];
 export type DeliveryView = Schemas["DeliveryView"];
+export type BackupView = Schemas["BackupView"];
+export type BackupSettings = Schemas["BackupSettings"];
+export type RestoreReport = Schemas["RestoreReport"];
 
 export type TrackFilter = NonNullable<
   NonNullable<paths["/api/v1/tracks"]["get"]["parameters"]["query"]>["filter"]
