@@ -1858,6 +1858,8 @@ const en = {
   "stations.codeLocked": "Set when the station was added: it names its engine's variable.",
   "stations.engineConfigured": "set",
   "stations.engineMissing": "not set: off the air",
+  "stations.engineTaken": "already {code}'s engine: off the air",
+  "stations.engineTakenHint": "Two stations never share an engine: give this one the address of its own engine.",
   "stations.engineVariableHint": "Its engine's address is read from this variable of heron-api's environment, when heron-api starts.",
   "stations.position": "Position in lists",
   "stations.enabled": "Enabled",

@@ -44,7 +44,7 @@ What belongs to a station (its engine and decks, queue, history, clocks, schedul
 
 | Area | Routes |
 |---|---|
-| Stations | `GET`, `POST /stations`; `GET`, `PUT`, `DELETE /stations/{id}` (`{"name", "code", "enabled", "position"}`; the answers add `engine_variable` and `engine_configured`): admins change them; see [below](#stations) |
+| Stations | `GET`, `POST /stations`; `GET`, `PUT`, `DELETE /stations/{id}` (`{"name", "code", "enabled", "position"}`; the answers add `engine_variable`, `engine_configured` and `engine_taken_by`, the code of the station that already has that engine): admins change them; see [below](#stations) |
 | Account | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `PUT /auth/password`, `PUT /auth/preferences` (`{"theme", "language", "full_width"}`, each optional: the theme is system, light or dark; the language is system or a language tag such as `fr`; `full_width` drops the centred column); `GET`, `POST /tokens`, `DELETE /tokens/{id}` |
 | Users (admins) | `GET`, `POST /users`; `PATCH`, `DELETE /users/{id}` |
 | Engine and decks | `GET /engine` (reachable, configuration in sync), `GET /player` (decks, cued track, queue, outputs), `GET /player/levels`, `POST /player/skip`, `/player/pause`, `/player/resume`, `POST /player/fx` (`{"track_id"}`), `DELETE /player/fx` |

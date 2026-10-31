@@ -84,6 +84,11 @@ pub struct StationInfo {
     /// Whether that variable is set: a station without it is off the air.
     #[sqlx(skip)]
     pub engine_configured: bool,
+    /// The code of the station that already has this station's engine
+    /// address: two stations never share an engine, so this one is off
+    /// the air.
+    #[sqlx(skip)]
+    pub engine_taken_by: Option<String>,
 }
 
 const COLUMNS: &str = "id, name, code, enabled, position";
@@ -106,9 +111,19 @@ pub fn engines_from_env() -> BTreeMap<String, String> {
         .collect()
 }
 
+/// An engine address as compared between stations.
+fn same_engine(a: &str, b: &str) -> bool {
+    let normal = |url: &str| url.trim().trim_end_matches('/').to_ascii_lowercase();
+    normal(a) == normal(b)
+}
+
+type Running = BTreeMap<u64, Arc<StationRuntime>>;
+
 /// What runs for one station.
 pub struct StationRuntime {
     id: u64,
+    /// Its engine's address.
+    engine_url: String,
     info: RwLock<StationInfo>,
     pub engine: Arc<EngineLink>,
     pub queue: Arc<QueueManager>,
@@ -121,6 +136,11 @@ pub struct StationRuntime {
 impl StationRuntime {
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    #[cfg(test)]
+    pub fn engine_url(&self) -> &str {
+        &self.engine_url
     }
 
     pub fn info(&self) -> StationInfo {
@@ -199,7 +219,14 @@ impl Stations {
         // others; the first station's (HERON_ENGINE_URL) does.
         for info in all {
             let id = info.id;
-            match stations.runtime(info) {
+            let runtime = {
+                let running = stations
+                    .running
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner);
+                stations.runtime(info, &running)
+            };
+            match runtime {
                 Ok(Some(runtime)) => {
                     stations
                         .running
@@ -225,39 +252,69 @@ impl Stations {
             .insert(engine_variable(code), url.to_owned());
     }
 
-    /// `info` with its engine variable, and whether it is set.
-    pub fn describe(&self, mut info: StationInfo) -> StationInfo {
+    /// `info` with its engine variable, whether it is set, and the station
+    /// that already has its engine.
+    pub fn describe(&self, info: StationInfo) -> StationInfo {
+        let running = self.running.read().unwrap_or_else(PoisonError::into_inner);
+        self.describe_among(info, &running)
+    }
+
+    /// The engine address of a station; `None` while its variable is not set.
+    fn engine_url(&self, info: &StationInfo) -> Option<String> {
         if info.id == self.first_id {
-            info.engine_variable = FIRST_ENGINE_VARIABLE.to_owned();
-            info.engine_configured = true;
+            Some(self.default_engine_url.clone())
         } else {
-            info.engine_variable = engine_variable(&info.code);
-            info.engine_configured = self
-                .engines
+            self.engines
                 .read()
                 .unwrap_or_else(PoisonError::into_inner)
-                .contains_key(&info.engine_variable);
+                .get(&engine_variable(&info.code))
+                .cloned()
         }
+    }
+
+    fn describe_among(&self, mut info: StationInfo, running: &Running) -> StationInfo {
+        info.engine_variable = if info.id == self.first_id {
+            FIRST_ENGINE_VARIABLE.to_owned()
+        } else {
+            engine_variable(&info.code)
+        };
+        let url = self.engine_url(&info);
+        info.engine_configured = url.is_some();
+        info.engine_taken_by = url.and_then(|url| {
+            running
+                .values()
+                .find(|other| other.id != info.id && same_engine(&other.engine_url, &url))
+                .map(|other| other.code())
+        });
         info
     }
 
-    /// What runs for a station; none while its engine variable is not set.
-    fn runtime(&self, info: StationInfo) -> ApiResult<Option<Arc<StationRuntime>>> {
-        let info = self.describe(info);
-        let url = if info.id == self.first_id {
-            self.default_engine_url.clone()
-        } else {
-            let engines = self.engines.read().unwrap_or_else(PoisonError::into_inner);
-            let Some(url) = engines.get(&info.engine_variable) else {
-                tracing::warn!(
-                    station = %info.code,
-                    variable = %info.engine_variable,
-                    "the station is off the air: its engine variable is not set"
-                );
-                return Ok(None);
-            };
-            url.clone()
+    /// What runs for a station; none while its engine variable is not set,
+    /// or while another station has its engine.
+    fn runtime(
+        &self,
+        info: StationInfo,
+        running: &Running,
+    ) -> ApiResult<Option<Arc<StationRuntime>>> {
+        let info = self.describe_among(info, running);
+        let Some(url) = self.engine_url(&info) else {
+            tracing::warn!(
+                station = %info.code,
+                variable = %info.engine_variable,
+                "the station is off the air: its engine variable is not set"
+            );
+            return Ok(None);
         };
+        if let Some(other) = &info.engine_taken_by {
+            tracing::error!(
+                station = %info.code,
+                variable = %info.engine_variable,
+                engine = %url,
+                taken_by = %other,
+                "the station is off the air: its engine is another station's"
+            );
+            return Ok(None);
+        }
         let engine = EngineLink::new(&url).map_err(|error| {
             ApiError::Invalid(format!(
                 "{}: invalid engine address {url}: {error}",
@@ -288,6 +345,7 @@ impl Stations {
         tracing::info!(station = %info.code, engine = %url, enabled = info.enabled, "station started");
         Ok(Some(Arc::new(StationRuntime {
             id: info.id,
+            engine_url: url,
             info: RwLock::new(info),
             engine,
             queue,
@@ -318,12 +376,13 @@ impl Stations {
             // A rename, the first station's new code or a position keeps
             // what runs.
             if current.info().enabled == info.enabled {
-                *current.info.write().unwrap_or_else(PoisonError::into_inner) = self.describe(info);
+                *current.info.write().unwrap_or_else(PoisonError::into_inner) =
+                    self.describe_among(info, &running);
                 return Ok(());
             }
         }
         let code = info.code.clone();
-        let runtime = match self.runtime(info) {
+        let runtime = match self.runtime(info, &running) {
             Ok(runtime) => runtime,
             Err(error) => {
                 tracing::error!(station = %code, %error, "cannot start the station");
