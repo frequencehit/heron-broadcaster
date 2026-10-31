@@ -22,7 +22,7 @@ The configuration file is what a station restores after a bad change or a lost d
 | Clocks and their slots, every station's schedules, their periods and hours | Webhook deliveries |
 | Restrictions and their stations | Sessions (everyone signs in again after a restore) |
 | Labels | Rendered medley files: they are in the library, under `medleys/` |
-| Artists curated by hand: names moved, merged, marked similar | |
+| Artists curated by hand: marked similar, suggestions accepted or dismissed | Artist names moved or merged by hand: to do again after a restore onto a rebuilt library, or restore the database dump |
 | Medleys: recipes, stations and parts | |
 | Webhooks, with their secrets | |
 | Users (password hashes, shared roles, roles per station, preferences) and API tokens (hashes) | |
@@ -54,7 +54,7 @@ The configuration file is what a station restores after a bad change or a lost d
 
 ## Where and when
 
-- **Folder:** `HERON_BACKUP_DIR` in `heron-api` (`/var/lib/heron/backups` in the image). `docker-compose.yml` mounts a folder of the host there, `./data/backups` unless `HERON_BACKUP_HOST_DIR` says another: **to keep copies off the machine, point it at a folder that is**, a network share or a folder another tool synchronizes. Only `heron-api` writes there, as `HERON_LIBRARIAN_USER`.
+- **Folder:** `HERON_BACKUP_DIR` in `heron-api` (`/var/lib/heron/backups` in the image). `docker-compose.yml` mounts a folder of the host there, `./data/backups` unless `HERON_BACKUP_FOLDER` says another: **to keep copies off the machine, point it at a folder that is**, a network share or a folder another tool synchronizes. Only `heron-api` writes there, as `HERON_LIBRARIAN_USER`: create the folder before starting Heron (`mkdir -p data/backups`), owned by that user, as for the buffer zone.
 - **Daily backup:** at 03:30 in the first station's time zone (`backups.time`). A day the API is down is caught up when it starts, if the last daily backup is more than a day old.
 - **Kept:** the last 7 daily backups (`backups.keep_days`, 1 to 90), the backups taken before the last 7 restores, and every manual and uploaded backup until it is deleted. Older daily backups are deleted after a successful one, never before. A backup's two files go together.
 - **Manual backup:** *Back up now* on the Backups page, `POST /backups`, or `heron-api backup create`.
@@ -68,6 +68,7 @@ Admins only. From the **Backups** page (pick a backup, or upload a configuration
 ```sh
 docker compose exec heron-api heron-api backup list
 docker compose exec heron-api heron-api backup restore 2026-11-03T03-30-00Z-daily
+docker compose restart heron-api    # the engines get the restored configuration
 ```
 
 1. The file is checked first: its format, its schema, every part of it. A file that does not pass changes nothing.
