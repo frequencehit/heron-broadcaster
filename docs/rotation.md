@@ -86,7 +86,7 @@ How a clock runs:
 - Each station hour starts its clock at the **first slot**; slots run in order. A clock shorter than the hour **starts over**; slots expected after the end of the hour do not play (the next hour starts its own clock). The track playing at the top of the hour finishes: there is no hard sync yet.
 - A clock can instead **loop across hours**, like SAM Broadcaster's clockwheel: it carries on from its last slot whatever the hour, so it can be longer than an hour (a 27-line wheel of two hours plays every line). Scheduled again after another clock, it resumes where it stopped.
 - A slot that has nothing it may play, even relaxed, is skipped for the next one, and the pick says so.
-- Hours without a clock rotate the **whole library**: least recently played, rules enforced.
+- Hours without a clock rotate the **station's library**: least recently played, rules enforced. The station's library is the tracks of the categories tagged with the station, except those also in a category it **keeps out** (`kept_out_category_ids` in the `rotation` settings: a category of tracks set aside, say). A track kept out does not play there even if another of its categories is the station's, and a track in none of the station's categories does not play there without a clock. A station with no category yet rotates the whole library, so a new Heron plays as soon as its music is imported.
 
 Clockwheels are data stored in the database and edited in the UI. There is no scripting language (see [Locked decisions](decisions.md)).
 
@@ -118,7 +118,7 @@ The rule listeners notice least is relaxed first, and each rule is **halved befo
 - Track separation is never dropped inside the slot's own category: playing the exact same recording again is the most audible repeat.
 - Step 10 cannot fail while the fallback category has a track; picking the least recently played one still avoids an immediate repeat. If the fallback category is empty, the engine's fallback directory takes over.
 - Slots with **enforce rules** off skip the separation rules entirely (step 0 without rules, then steps 9 and 10 only if restrictions leave nothing). Restrictions still apply.
-- Windows are those of the station (`rotation` settings), overridden by the slot's category, then by the slot; steps 1 to 8 relax those. Steps 9 and 10 use the fallback category's windows; without a fallback category set, the whole library is the fallback.
+- Windows are those of the station (`rotation` settings), overridden by the slot's category, then by the slot; steps 1 to 8 relax those. Steps 9 and 10 use the fallback category's windows; without a fallback category set, the station's library is the fallback.
 - Every relaxed pick records its step in `play_history.relaxation_applied` and in the selection log.
 
 **Why artist before title** (the handoff proposed title first): repeating an artist within two hours is common and accepted on radio, while hearing the same song again, even in another version, is a clear repeat to listeners.
@@ -138,7 +138,7 @@ A station has **several schedules** ([M14](roadmap/m14-schedules.md)), each a we
 - The **default schedule** plays unless another one's period says otherwise. It cannot be deleted and has no periods. An existing station's schedule became its default schedule; a new station starts with an empty one.
 - Another schedule plays during its **periods**: from a date and hour to a date and hour, in station time, the end excluded (1 December 00:00 to 1 January 00:00 is the whole of December). Periods start and end on the hour. A period can come back **every year**: the years are ignored, and the range may run over the new year.
 - When periods overlap, the one that **started last** plays: a New Year's Eve evening from 31 December 20:00 inside the Christmas period plays its own schedule, then Christmas comes back until its end.
-- An hour the playing schedule leaves empty rotates the whole library, as an hour without a clock: it does **not** fall back on the default schedule. A new schedule can start as a copy of another, so that only the hours that change need painting.
+- An hour the playing schedule leaves empty rotates the station's library, as an hour without a clock: it does **not** fall back on the default schedule. A new schedule can start as a copy of another, so that only the hours that change need painting.
 - Each pick in the selection log names the schedule it came from (`schedule_id`, `schedule_name` in its explanation), and simulations follow the periods.
 - A track picked ahead for the next hour is picked from the schedule playing at its planned start: the change happens at the hour, like a change of clock.
 
