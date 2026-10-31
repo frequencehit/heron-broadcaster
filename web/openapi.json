@@ -18565,6 +18565,13 @@
             "type": "string",
             "description": "`ok` or `unavailable`."
           },
+          "revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The commit the published image was built from (`HERON_REVISION`);\nmissing in a local build."
+          },
           "server_time_unix_ms": {
             "type": "integer",
             "format": "int64",

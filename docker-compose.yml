@@ -59,6 +59,8 @@ services:
       context: .
       dockerfile: docker/rust.Dockerfile
       target: heron-api
+      args:
+        HERON_REVISION: ${HERON_REVISION:-}
     image: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-api:${HERON_VERSION:-latest}
     restart: unless-stopped
     user: ${HERON_LIBRARIAN_USER:-10001:10001}
@@ -230,6 +232,8 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
       target: heron-web
+      args:
+        HERON_REVISION: ${HERON_REVISION:-}
     image: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-web:${HERON_VERSION:-latest}
     restart: unless-stopped
     cpu_shares: 1024

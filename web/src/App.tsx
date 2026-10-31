@@ -17,6 +17,7 @@ import {
   useStation,
 } from "./lib/station";
 import { applyFullWidth, applyTheme, storedFullWidth, storedTheme } from "./lib/theme";
+import { buildLabel, differentBuilds, webBuild } from "./lib/version";
 import { Account } from "./pages/Account";
 import { Artists } from "./pages/Artists";
 import { Buffer } from "./pages/Buffer";
@@ -386,6 +387,11 @@ function Warnings() {
         error: engine.data.config.error,
         link: <Link to="/outputs">{t("app.checkOutputs")}</Link>,
       }),
+    );
+  }
+  if (status.data && differentBuilds(webBuild(), status.data)) {
+    warnings.push(
+      t("app.versionMismatch", { web: buildLabel(webBuild()), api: buildLabel(status.data) }),
     );
   }
   const clock = status.data?.clock.warning;

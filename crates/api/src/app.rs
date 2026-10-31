@@ -226,6 +226,9 @@ pub fn router(state: AppState) -> Router {
 pub struct Status {
     pub service: &'static str,
     pub version: &'static str,
+    /// The commit the published image was built from (`HERON_REVISION`);
+    /// missing in a local build.
+    pub revision: Option<String>,
     /// `ok` or `unavailable`.
     pub database: &'static str,
     /// `ok` or `unavailable`.
@@ -248,6 +251,9 @@ async fn status(State(state): State<AppState>) -> Json<Status> {
     Json(Status {
         service: SERVICE,
         version: env!("CARGO_PKG_VERSION"),
+        revision: std::env::var("HERON_REVISION")
+            .ok()
+            .filter(|revision| !revision.trim().is_empty()),
         database,
         engine: if state.stations.first().engine.is_connected() {
             "ok"

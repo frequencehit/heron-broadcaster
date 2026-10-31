@@ -6600,6 +6600,11 @@ export interface components {
             /** @description `ok` or `unavailable`. */
             engine: string;
             /**
+             * @description The commit the published image was built from (`HERON_REVISION`);
+             *     missing in a local build.
+             */
+            revision?: string | null;
+            /**
              * Format: int64
              * @description The server's time, to compare with the browser's.
              */
