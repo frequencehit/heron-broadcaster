@@ -10,6 +10,7 @@ import { rich, t } from "../i18n";
 import { ago, clockTime, dateTime } from "../lib/format";
 import { useAction, useCan } from "../lib/session";
 import { DEFAULT_TEMPLATE, EVENTS, PLACEHOLDERS, eventLabel, toggleEvent, webhookBody } from "../lib/webhooks";
+import { here } from "../lib/station";
 
 function StatusBadge({
   delivery,
@@ -32,7 +33,7 @@ export function Webhooks() {
   const isAdmin = useCan("admin");
   const webhooks = useQuery({
     queryKey: ["webhooks"],
-    queryFn: () => unwrap(api.GET("/api/v1/webhooks")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/webhooks", { params: { path: here() } })),
     enabled: isAdmin,
     refetchInterval: 10_000,
   });
@@ -40,16 +41,16 @@ export function Webhooks() {
   const [secret, setSecret] = useState<{ name: string; secret: string } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const test = useAction(
-    (id: number) => unwrap(api.POST("/api/v1/webhooks/{id}/test", { params: { path: { id } } })),
+    (id: number) => unwrap(api.POST("/api/v1/stations/{station_id}/webhooks/{id}/test", { params: { path: here({ id }) } })),
     { success: t("webhooks.pingSent"), invalidate: [["webhooks"], ["webhook-deliveries"]] },
   );
   const rotate = useAction(
     (webhook: WebhookView) =>
-      unwrap(api.POST("/api/v1/webhooks/{id}/secret", { params: { path: { id: webhook.id } } })),
+      unwrap(api.POST("/api/v1/stations/{station_id}/webhooks/{id}/secret", { params: { path: here({ id: webhook.id }) } })),
     { onSuccess: (result, webhook) => setSecret({ name: webhook.name, secret: result.secret }) },
   );
   const remove = useAction(
-    (id: number) => done(api.DELETE("/api/v1/webhooks/{id}", { params: { path: { id } } })),
+    (id: number) => done(api.DELETE("/api/v1/stations/{station_id}/webhooks/{id}", { params: { path: here({ id }) } })),
     { success: t("webhooks.deleted"), invalidate: [["webhooks"]] },
   );
 
@@ -179,14 +180,14 @@ function Deliveries({ webhook, onRotate }: Readonly<{ webhook: WebhookView; onRo
     queryKey: ["webhook-deliveries", webhook.id],
     queryFn: () =>
       unwrap(
-        api.GET("/api/v1/webhooks/{id}/deliveries", {
-          params: { path: { id: webhook.id }, query: { limit: 100 } },
+        api.GET("/api/v1/stations/{station_id}/webhooks/{id}/deliveries", {
+          params: { path: here({ id: webhook.id }), query: { limit: 100 } },
         }),
       ),
     refetchInterval: 5_000,
   });
   const retry = useAction(
-    (id: number) => unwrap(api.POST("/api/v1/webhook-deliveries/{id}/retry", { params: { path: { id } } })),
+    (id: number) => unwrap(api.POST("/api/v1/stations/{station_id}/webhook-deliveries/{id}/retry", { params: { path: here({ id }) } })),
     { success: t("webhooks.retrying"), invalidate: [["webhook-deliveries"], ["webhooks"]] },
   );
   return (
@@ -342,8 +343,8 @@ function WebhookDialog({
   const save = useAction(
     () =>
       webhook
-        ? unwrap(api.PUT("/api/v1/webhooks/{id}", { params: { path: { id: webhook.id } }, body })).then(() => null)
-        : unwrap(api.POST("/api/v1/webhooks", { body })).then((created) => created.secret),
+        ? unwrap(api.PUT("/api/v1/stations/{station_id}/webhooks/{id}", { params: { path: here({ id: webhook.id }) }, body })).then(() => null)
+        : unwrap(api.POST("/api/v1/stations/{station_id}/webhooks", { params: { path: here() }, body })).then((created) => created.secret),
     {
       success: t("webhooks.saved"),
       invalidate: [["webhooks"]],

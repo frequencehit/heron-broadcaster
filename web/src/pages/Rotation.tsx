@@ -4,7 +4,7 @@
 // of the programming to come, checked rule by rule.
 
 import { useStations } from "../components/Stations";
-import { codes } from "../lib/station";
+import { codes, here } from "../lib/station";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { type Explanation, type RotationPick, type SimulationReport, api, query, unwrap } from "../api";
@@ -162,7 +162,7 @@ function PicksCard() {
   const picks = useQuery({
     queryKey: ["rotation-picks", cursor],
     queryFn: () =>
-      unwrap(api.GET("/api/v1/rotation/picks", { params: { query: query({ before: cursor, limit: 50 }) } })),
+      unwrap(api.GET("/api/v1/stations/{station_id}/rotation/picks", { params: { path: here(), query: query({ before: cursor, limit: 50 }) } })),
     placeholderData: keepPreviousData,
     refetchInterval: cursor === undefined ? 15_000 : false,
   });
@@ -251,7 +251,7 @@ function SimulationCard() {
   const [hours, setHours] = useState<Span>("168");
   const [report, setReport] = useState<SimulationReport | null>(null);
   const simulate = useAction(
-    () => unwrap(api.POST("/api/v1/rotation/simulate", { body: { hours: Number(hours) } })),
+    () => unwrap(api.POST("/api/v1/stations/{station_id}/rotation/simulate", { params: { path: here() }, body: { hours: Number(hours) } })),
     { onSuccess: setReport },
   );
   return (

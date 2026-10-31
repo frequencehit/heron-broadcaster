@@ -36,6 +36,7 @@ import { Link, setSearch, useLocation } from "../lib/router";
 import { type RangeSelection, useRangeSelection } from "../lib/rangeSelection";
 import { useAction, useCan } from "../lib/session";
 import { type Preview, usePreview } from "../lib/preview";
+import { here } from "../lib/station";
 
 const PAGE = 50;
 /** Files in one tag edit, at most (the API's limit). */
@@ -240,7 +241,7 @@ export function Library() {
   const enqueue = useAction(
     ({ ids, next }: { ids: number[]; next: boolean }) =>
       unwrap(
-        api.POST("/api/v1/queue", { body: next ? { track_ids: ids, position: 0 } : { track_ids: ids } }),
+        api.POST("/api/v1/stations/{station_id}/queue", { params: { path: here() }, body: next ? { track_ids: ids, position: 0 } : { track_ids: ids } }),
       ),
     {
       success: (result) =>

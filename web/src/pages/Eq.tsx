@@ -37,6 +37,7 @@ import {
   withGain,
 } from "../lib/eq";
 import { useAction, useCan } from "../lib/session";
+import { here } from "../lib/station";
 
 const PRESETS_KEY = ["eq-presets"];
 
@@ -65,7 +66,7 @@ function EqEditor({ saved }: Readonly<{ saved: EqSettings }>) {
   const sender = useMemo(
     () =>
       latestSender((eq: EqSettings) =>
-        unwrap(api.PUT("/api/v1/settings/eq", { body: eq })).then((result) =>
+        unwrap(api.PUT("/api/v1/stations/{station_id}/settings/eq", { params: { path: here() }, body: eq })).then((result) =>
           client.setQueriesData({ queryKey: EQ_KEY }, result),
         ),
       ),

@@ -24,6 +24,7 @@ import { statisticsInput, useListenersNow } from "../lib/listeners";
 import { useLive } from "../lib/live";
 import { useAction, useCan } from "../lib/session";
 import { ListenLink, OutputState } from "./Dashboard";
+import { here } from "../lib/station";
 
 type Encoder = Schemas["EncoderKind"];
 type Kind = Schemas["OutputKind"];
@@ -80,7 +81,7 @@ function ListenerCount({ now, sessions }: Readonly<{ now: Schemas["OutputListene
 
 export function Outputs() {
   const isAdmin = useCan("admin");
-  const outputs = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/outputs")) });
+  const outputs = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/outputs", { params: { path: here() } })) });
   const profiles = useQuery({
     queryKey: ["encoder-profiles"],
     queryFn: () => unwrap(api.GET("/api/v1/encoder-profiles")),
@@ -90,7 +91,7 @@ export function Outputs() {
   const [editingOutput, setEditingOutput] = useState<OutputView | "new" | null>(null);
   const [editingProfile, setEditingProfile] = useState<EncoderProfileView | "new" | null>(null);
   const removeOutput = useAction(
-    (id: number) => done(api.DELETE("/api/v1/outputs/{id}", { params: { path: { id } } })),
+    (id: number) => done(api.DELETE("/api/v1/stations/{station_id}/outputs/{id}", { params: { path: here({ id }) } })),
     { success: t("outputs.deleted"), invalidate: [["outputs"], ["encoder-profiles"]] },
   );
   const removeProfile = useAction(
@@ -100,8 +101,8 @@ export function Outputs() {
   const toggle = useAction(
     (output: OutputView) =>
       unwrap(
-        api.PUT("/api/v1/outputs/{id}", {
-          params: { path: { id: output.id } },
+        api.PUT("/api/v1/stations/{station_id}/outputs/{id}", {
+          params: { path: here({ id: output.id }) },
           body: {
             name: output.name,
             kind: output.kind,
@@ -400,8 +401,8 @@ function OutputDialog({
         statistics: kind === "icecast" ? statisticsInput(adminUser, adminPassword, removeAdmin) : null,
       };
       return output
-        ? unwrap(api.PUT("/api/v1/outputs/{id}", { params: { path: { id: output.id } }, body: input }))
-        : unwrap(api.POST("/api/v1/outputs", { body: input }));
+        ? unwrap(api.PUT("/api/v1/stations/{station_id}/outputs/{id}", { params: { path: here({ id: output.id }) }, body: input }))
+        : unwrap(api.POST("/api/v1/stations/{station_id}/outputs", { params: { path: here() }, body: input }));
     },
     {
       success: t("outputs.saved"),

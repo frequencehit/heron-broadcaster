@@ -2,33 +2,24 @@
 
 import { describe, expect, it } from "vitest";
 import type { User } from "../api";
-import { codes, firstStation, onStation, perStation, stationRole, toStation } from "./station";
+import { chooseStation, codes, firstStation, here, stationRole, stationUrl } from "./station";
 
-describe("perStation", () => {
-  it("knows a station's routes, as the API does", () => {
-    expect(perStation("queue")).toBe(true);
-    expect(perStation("queue/12/position")).toBe(true);
-    expect(perStation("settings/medleys")).toBe(true);
-    expect(perStation("schedules/3")).toBe(true);
-    expect(perStation("webhook-deliveries/3/retry")).toBe(true);
-    expect(perStation("listeners/days?format=csv")).toBe(true);
-    expect(perStation("settings/library")).toBe(false);
-    expect(perStation("tracks/1")).toBe(false);
-    expect(perStation("stations")).toBe(false);
+describe("here", () => {
+  it("adds the station the pages show to a route's path parameters", () => {
+    chooseStation(null);
+    expect(() => here()).toThrow();
+    chooseStation(2);
+    expect(here()).toEqual({ station_id: 2 });
+    expect(here({ id: 5 })).toEqual({ id: 5, station_id: 2 });
   });
 });
 
-describe("onStation", () => {
-  it("sends a station's routes to the chosen station", () => {
-    expect(onStation("http://h/api/v1/queue", 2)).toBe("http://h/api/v1/stations/2/queue");
-    expect(onStation("/api/v1/listeners/days?format=csv", 3)).toBe("/api/v1/stations/3/listeners/days?format=csv");
-    expect(onStation("ws://h/api/v1/live", 2)).toBe("ws://h/api/v1/stations/2/live");
-  });
-
-  it("leaves shared routes, and routes already on a station, alone", () => {
-    expect(onStation("http://h/api/v1/tracks", 2)).toBe("http://h/api/v1/tracks");
-    expect(onStation("http://h/api/v1/stations/1/queue", 2)).toBe("http://h/api/v1/stations/1/queue");
-    expect(onStation("http://h/api/v1/queue", null)).toBe("http://h/api/v1/queue");
+describe("stationUrl", () => {
+  it("is a route under the station, or the first station's without one", () => {
+    chooseStation(3);
+    expect(stationUrl("live")).toBe("/api/v1/stations/3/live");
+    expect(stationUrl("listeners/days?format=csv")).toBe("/api/v1/stations/3/listeners/days?format=csv");
+    expect(stationUrl("live", null)).toBe("/api/v1/live");
   });
 });
 
@@ -57,25 +48,5 @@ describe("stations", () => {
     expect(stationRole(user, 1)).toBeUndefined();
     expect(stationRole(user, null)).toBe("viewer");
     expect(stationRole({ ...user, role: "admin" }, 1)).toBe("admin");
-  });
-});
-
-describe("toStation", () => {
-  it("keeps the method, headers and body of what it sends to a station", async () => {
-    const request = new Request("http://heron/api/v1/outputs/3", {
-      method: "PUT",
-      headers: { "X-Requested-With": "heron-web", "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: false }),
-    });
-    const sent = await toStation(request, 2);
-    expect(sent?.url).toBe("http://heron/api/v1/stations/2/outputs/3");
-    expect(sent?.method).toBe("PUT");
-    expect(sent?.headers.get("x-requested-with")).toBe("heron-web");
-    expect(await sent?.json()).toEqual({ enabled: false });
-  });
-
-  it("leaves the shared routes alone", async () => {
-    const request = new Request("http://heron/api/v1/tracks", { method: "POST", body: "{}" });
-    expect(await toStation(request, 2)).toBeUndefined();
   });
 });

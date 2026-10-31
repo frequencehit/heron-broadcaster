@@ -28,6 +28,7 @@ import {
   useListenersNow,
 } from "../lib/listeners";
 import { Link } from "../lib/router";
+import { here } from "../lib/station";
 
 type PeriodTotals = Schemas["PeriodTotals"];
 
@@ -85,9 +86,9 @@ function Csv({ href }: Readonly<{ href: string }>) {
 export function Statistics() {
   const station = useQuery({
     queryKey: ["settings", "station"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/station")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/station", { params: { path: here() } })),
   });
-  const outputs = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/outputs")) });
+  const outputs = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/outputs", { params: { path: here() } })) });
   const [output, setOutput] = useState<number | undefined>(undefined);
   const zone = station.data?.timezone;
   return (
@@ -145,8 +146,8 @@ function Today({ zone, output }: Readonly<{ zone: string | undefined; output: nu
     queryKey: ["listeners", "samples", from, output],
     queryFn: () =>
       unwrap(
-        api.GET("/api/v1/listeners/samples", {
-          params: { query: { from_unix_ms: from, to_unix_ms: to, ...query({ output_id: output }) } },
+        api.GET("/api/v1/stations/{station_id}/listeners/samples", {
+          params: { path: here(), query: { from_unix_ms: from, to_unix_ms: to, ...query({ output_id: output }) } },
         }),
       ),
     refetchInterval: 60_000,
@@ -155,7 +156,7 @@ function Today({ zone, output }: Readonly<{ zone: string | undefined; output: nu
     queryKey: ["listeners", "days", today, today, output, "day"],
     queryFn: () =>
       unwrap(
-        api.GET("/api/v1/listeners/days", { params: { query: { from: today, to: today, ...query({ output_id: output }) } } }),
+        api.GET("/api/v1/stations/{station_id}/listeners/days", { params: { path: here(), query: { from: today, to: today, ...query({ output_id: output }) } } }),
       ),
     refetchInterval: 60_000,
   });
@@ -229,8 +230,8 @@ function OverTime({ zone, output }: Readonly<{ zone: string | undefined; output:
     queryKey: ["listeners", "days", from, to, output, grouping],
     queryFn: () =>
       unwrap(
-        api.GET("/api/v1/listeners/days", {
-          params: { query: { from, to, ...query({ output_id: output, group: grouping }) } },
+        api.GET("/api/v1/stations/{station_id}/listeners/days", {
+          params: { path: here(), query: { from, to, ...query({ output_id: output, group: grouping }) } },
         }),
       ),
   });
@@ -323,7 +324,7 @@ function HoursOfDay({ zone, output }: Readonly<{ zone: string | undefined; outpu
   const byHour = useQuery({
     queryKey: ["listeners", "hours", from, to, output],
     queryFn: () =>
-      unwrap(api.GET("/api/v1/listeners/hours-of-day", { params: { query: { from, to, ...query({ output_id: output }) } } })),
+      unwrap(api.GET("/api/v1/stations/{station_id}/listeners/hours-of-day", { params: { path: here(), query: { from, to, ...query({ output_id: output }) } } })),
   });
   const bars: Bar[] = Array.from({ length: 24 }, (_, hour) => {
     const row = byHour.data?.find((h) => h.hour === hour);
@@ -367,7 +368,7 @@ function Departures({ zone }: Readonly<{ zone: string | undefined }>) {
   const from = addDays(to, 1 - range);
   const tracks = useQuery({
     queryKey: ["listeners", "tracks", from, to],
-    queryFn: () => unwrap(api.GET("/api/v1/listeners/tracks", { params: { query: { from, to, limit: 20 } } })),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/listeners/tracks", { params: { path: here(), query: { from, to, limit: 20 } } })),
   });
   return (
     <Card
@@ -429,7 +430,7 @@ function Players({ zone, output }: Readonly<{ zone: string | undefined; output: 
   const players = useQuery({
     queryKey: ["listeners", "players", from, to, output],
     queryFn: () =>
-      unwrap(api.GET("/api/v1/listeners/players", { params: { query: { from, to, ...query({ output_id: output }) } } })),
+      unwrap(api.GET("/api/v1/stations/{station_id}/listeners/players", { params: { path: here(), query: { from, to, ...query({ output_id: output }) } } })),
   });
   return (
     <Card title={t("statistics.players")} actions={<RangeSelect value={range} onChange={setRange} />} flush>
