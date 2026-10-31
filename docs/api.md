@@ -8,7 +8,7 @@ The engine never depends on it: when the API is down, the engine plays what it h
 
 - Every route is under `/api/v1`. `heron-web` proxies `/api` to `heron-api`, so the API is at `http://<host>:8000/api/v1`.
 - Requests and responses are JSON. Times are Unix time in milliseconds (`*_unix_ms`), durations in milliseconds (`*_ms`).
-- Errors are `{"error": "<code>", "message": "…"}`: `invalid_request` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid` (422), `too_many_requests` (429), `engine_unavailable` (503), `internal` (500).
+- Errors are `{"error": "<code>", "message": "…"}`: `invalid_request` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid` (422), `too_many_requests` (429), `engine_unavailable` (503), `internal` (500). Requests the API cannot read are answered the same way, with a message that says what is wrong: a body that is not JSON or not of the expected shape (`invalid` for a field of the wrong type or an unknown value, `invalid_request` otherwise), a path or query parameter of the wrong type, an unknown route (`not_found`) or method (`invalid_request`).
 - **OpenAPI:** the document is generated from the code and served at `/api/v1/openapi.json`; `heron-api openapi` prints it. It is the reference for every route and type below.
 
 ## Authentication

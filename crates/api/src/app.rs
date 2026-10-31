@@ -214,7 +214,10 @@ pub fn router(state: AppState) -> Router {
                 async move { Json(document.as_ref().clone()) }
             }),
         )
-        .with_state(state);
+        .with_state(state)
+        .layer(axum::middleware::map_response(
+            crate::error::json_client_errors,
+        ));
     // Routing happens after the station's prefix is taken off the path.
     let rewritten = tower::ServiceExt::map_request(router, move |request| {
         stations::rewrite(&stations, request)
