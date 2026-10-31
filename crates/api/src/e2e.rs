@@ -5027,6 +5027,33 @@ async fn categories_restrictions_and_medleys_follow_their_stations() {
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(categories().await, [eighties_gold]);
+
+    // Each station has its own schedules.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            &format!("/stations/{second}/schedules"),
+            json!({"name": "Christmas"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let names = |list: Value| -> Vec<String> {
+        list["schedules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|schedule| schedule["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert!(
+        names(admin.get(&format!("/stations/{second}/schedules")).await)
+            .contains(&"Christmas".to_owned())
+    );
+    assert!(
+        !names(admin.get(&format!("/stations/{first}/schedules")).await)
+            .contains(&"Christmas".to_owned())
+    );
+    assert!(!names(admin.get("/schedules").await).contains(&"Christmas".to_owned()));
     station.stop().await;
 }
 
