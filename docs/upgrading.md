@@ -59,12 +59,12 @@ scripts/upgrade.sh 0.2.0    # or without a version, to pull the tag already set
 It sets `HERON_VERSION=0.2.0` in `.env`, then:
 
 1. pulls every image;
-2. upgrades every service except the engine (`docker compose up -d --no-deps --wait`);
-3. starts a second `heron-engine` container from the new image, next to the running one: it becomes the standby;
-4. waits for the standby to be healthy, then stops the old engine: the old engine hands over to the new one (its connections to `heron-relay`) and exits;
-5. removes the old container, and checks that one engine is on air.
+2. upgrades every service except the engines and the relays (`docker compose up -d --no-deps --wait`);
+3. then, for each station's engine in turn (`heron-engine`, then the [other stations'](#several-stations) `heron-engine-<code>`), starts a second container from the new image, next to the running one: it becomes the standby;
+4. waits for the standby to be healthy, then stops the old engine: the old engine hands over to the new one (its connections to its relay) and exits;
+5. removes the old container, and checks that one engine is on air, before going on to the next station's.
 
-If the standby does not become healthy within 2 min, the script removes it, leaves the running engine alone, and fails: the station stays on air on the old version.
+If a standby does not become healthy within 2 min, the script removes it, leaves that running engine alone, and fails: that station stays on air on the old version, and the engines after it are not upgraded (run the script again once fixed). An engine that is not running is started.
 
 With images built locally (`docker compose build`), add `--no-pull`. The handover happens even when the engine's image did not change: it is harmless, and a way to try it.
 
@@ -105,7 +105,7 @@ Each station has its own engine ([Several stations](stations.md#engines)). To ad
 
 The code names the variable, so it cannot be changed once the station exists. The first station keeps `HERON_ENGINE_URL`.
 
-`scripts/upgrade.sh` hands over `heron-engine` only: the other stations' engines restart with `docker compose up -d --no-deps heron-engine-hits80` (a cold restart of a few seconds, which the fallback mount covers), until the script hands each of them over too.
+`scripts/upgrade.sh` hands over each station's engine in turn, and leaves each relay running: it finds them by their names, `heron-engine-<code>` and `heron-relay-<code>`, so keep those names. A handover of one station's engine does not touch the others'.
 
 ## Docker Swarm
 
@@ -210,7 +210,7 @@ Upgrade with the script, giving the stack's name:
 scripts/upgrade.sh --swarm heron 0.2.0
 ```
 
-It pulls the images on the node first, so the update does not wait for the download, then runs `docker service update --image …` for each Heron service but the relay, the engine last, with `start-first`, a rollback on failure and a 30 s stop grace period (set even if the stack file lacks them). The engine is always updated (`--force`), even when its image did not change. Swarm starts the new engine, waits for it to be healthy (the standby), then stops the old one, which hands over.
+It pulls the images on the node first, so the update does not wait for the download, then runs `docker service update --image …` for each Heron service but the relays, the engines last (`heron-engine`, then `heron-engine-<code>`, one at a time), with `start-first`, a rollback on failure and a 30 s stop grace period (set even if the stack file lacks them). The engines are always updated (`--force`), even when their image did not change. Swarm starts the new engine, waits for it to be healthy (the standby), then stops the old one, which hands over.
 
 Deploying the stack again (`docker stack deploy`, after changing `HERON_VERSION` in `.env`) upgrades it the same way, `start-first`, with one difference: `docker stack deploy` checks every image again, so it also replaces `heron-relay` whenever its image changed, a short break covered by the fallback mount. To leave the relay running, give it a version of its own in `.env` (`HERON_RELAY_VERSION`), changed only when a release says so.
 
