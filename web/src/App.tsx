@@ -15,6 +15,7 @@ import { applyFullWidth, applyTheme, storedFullWidth, storedTheme } from "./lib/
 import { buildLabel, differentBuilds, webBuild } from "./lib/version";
 import { Account } from "./pages/Account";
 import { Artists } from "./pages/Artists";
+import { Backups } from "./pages/Backups";
 import { Buffer } from "./pages/Buffer";
 import { Categories } from "./pages/Categories";
 import { ClockEditor, Clocks } from "./pages/Clocks";
@@ -141,6 +142,8 @@ function route(pathname: string): ReactNode {
       return <Webhooks />;
     case "/users":
       return <Users />;
+    case "/backups":
+      return <Backups />;
     case "/stations":
       return <Stations />;
     case "/account":

@@ -622,6 +622,245 @@
         }
       }
     },
+    "/api/v1/backups": {
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "The backups, newest first. Admins only.",
+        "operationId": "list_backups",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BackupView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Backs up now: the configuration file and the database dump. Admins only.",
+        "operationId": "create_backup",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/restore": {
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Restores an uploaded configuration file (the request's body), kept as an\n`uploaded` backup. Admins only.",
+        "operationId": "upload_and_restore",
+        "requestBody": {
+          "description": "A configuration file",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreReport"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/{name}": {
+      "delete": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Deletes a backup's files. Admins only.",
+        "operationId": "delete_backup",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/{name}/config": {
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Downloads a backup's configuration file. Admins only: it holds secrets.",
+        "operationId": "download_config",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/{name}/database": {
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Downloads a backup's database dump. Admins only: it holds secrets.",
+        "operationId": "download_database",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/gzip": {}
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/{name}/restore": {
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Restores a backup's configuration file, after backing up the current\nconfiguration. Everyone signs in again. Admins only.",
+        "operationId": "restore_backup",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreReport"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/categories": {
       "get": {
         "tags": [
@@ -5013,6 +5252,70 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalysisSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/backups": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "get_backup_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "put_backup_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupSettings"
                 }
               }
             }
@@ -11683,6 +11986,80 @@
           }
         }
       },
+      "BackupSettings": {
+        "type": "object",
+        "description": "The `backups` settings.",
+        "properties": {
+          "database": {
+            "type": "boolean",
+            "description": "A database dump with each backup.",
+            "default": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The daily backup.",
+            "default": true
+          },
+          "keep_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Daily backups kept: 1 to 90.",
+            "default": 7,
+            "minimum": 0
+          },
+          "time": {
+            "type": "string",
+            "description": "`HH:MM`, in the first station's time zone.",
+            "default": "03:30"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BackupView": {
+        "type": "object",
+        "description": "A backup in the folder.",
+        "required": [
+          "name",
+          "kind",
+          "created_at_unix_ms",
+          "config_size"
+        ],
+        "properties": {
+          "config_size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes.",
+            "minimum": 0
+          },
+          "created_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "database_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the dump failed."
+          },
+          "database_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Bytes; missing without a dump.",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/Kind"
+          },
+          "name": {
+            "type": "string",
+            "description": "Its time and kind: `2026-11-03T03-30-00Z-daily`."
+          }
+        }
+      },
       "Batch": {
         "type": "object",
         "required": [
@@ -14208,6 +14585,16 @@
           }
         },
         "additionalProperties": false
+      },
+      "Kind": {
+        "type": "string",
+        "description": "Why a backup was taken.",
+        "enum": [
+          "daily",
+          "manual",
+          "before_restore",
+          "uploaded"
+        ]
       },
       "Label": {
         "type": "object",
@@ -17112,6 +17499,69 @@
           }
         },
         "additionalProperties": false
+      },
+      "RestoreReport": {
+        "type": "object",
+        "description": "What a restore did.",
+        "required": [
+          "before_restore",
+          "restored",
+          "left_out",
+          "missing_tracks",
+          "missing_tracks_total",
+          "missing_artists",
+          "missing_artists_total"
+        ],
+        "properties": {
+          "before_restore": {
+            "type": "string",
+            "description": "The backup taken just before."
+          },
+          "left_out": {
+            "type": "object",
+            "description": "Rows left out, by table: they name a track or an artist the library\ndoes not have.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "missing_artists": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The artists that were not found (the first 100)."
+          },
+          "missing_artists_total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missing_tracks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The library paths that were not found (the first 100)."
+          },
+          "missing_tracks_total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "restored": {
+            "type": "object",
+            "description": "Rows written, by table.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
       },
       "RestrictionInput": {
         "type": "object",

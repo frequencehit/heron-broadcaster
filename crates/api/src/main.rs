@@ -9,6 +9,7 @@
 mod app;
 mod artists;
 mod auth;
+mod backups;
 mod categories;
 mod category_types;
 mod clocks;
@@ -96,6 +97,14 @@ struct Cli {
     #[arg(long, env = "HERON_STAGING_DIR", default_value = "/staging")]
     staging_dir: PathBuf,
 
+    /// Where backups are written (docs/backups.md).
+    #[arg(
+        long,
+        env = "HERON_BACKUP_DIR",
+        default_value = "/var/lib/heron/backups"
+    )]
+    backup_dir: PathBuf,
+
     /// Seconds between full library scans (file system events also trigger scans).
     #[arg(long, env = "HERON_SCAN_INTERVAL", default_value_t = 3600)]
     scan_interval: u64,
@@ -127,6 +136,21 @@ enum Command {
     /// first line of stdin when it is not a terminal.
     #[command(subcommand)]
     User(UserCommand),
+    /// Back up, list and restore backups (docs/backups.md).
+    #[command(subcommand)]
+    Backup(BackupCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum BackupCommand {
+    /// Back up now: the configuration file and the database dump.
+    Create,
+    /// List the backups, newest first.
+    List,
+    /// Restore a backup's configuration file, by its name
+    /// (`2026-11-03T03-30-00Z-daily`). Restart heron-api afterwards, so the
+    /// engines get the restored configuration; everyone signs in again.
+    Restore { name: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -157,6 +181,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Some(Command::User(command)) => manage_users(cli.database_url, command),
+        Some(Command::Backup(command)) => manage_backups(cli.database_url, cli.backup_dir, command),
         None => run(cli),
     }
 }
@@ -201,6 +226,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     .context("cannot start the stations")?;
     let listeners =
         listeners::Collector::new(pool.clone()).context("cannot set up listener statistics")?;
+    let backups = backups::Backups::new(cli.backup_dir, database_url.clone());
 
     let mut tasks = vec![
         tokio::spawn(library.clone().run(ScanOptions {
@@ -217,6 +243,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     )));
     tasks.push(tokio::spawn(medleys::run_linker(pool.clone())));
     tasks.push(tokio::spawn(users::purge_sessions(pool.clone())));
+    tasks.push(tokio::spawn(
+        Arc::clone(&backups).run_daily(pool.clone(), Arc::clone(&stations)),
+    ));
 
     let health = DatabaseHealth(pool.clone());
     let state = AppState {
@@ -228,6 +257,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         staging: Arc::new(cli.staging_dir),
         webhooks,
         listeners,
+        backups,
     };
     let router = app::router(state).merge(heron_service::ops_router(SERVICE, metrics, health));
 
@@ -313,6 +343,67 @@ async fn manage_users(database_url: Option<String>, command: UserCommand) -> any
                     if user.enabled { "" } else { "disabled" }
                 );
             }
+        }
+    }
+    pool.close().await;
+    Ok(())
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn manage_backups(
+    database_url: Option<String>,
+    backup_dir: PathBuf,
+    command: BackupCommand,
+) -> anyhow::Result<()> {
+    let database_url =
+        database_url.context("HERON_DATABASE_URL (or --database-url) is required")?;
+    let pool = db::connect(
+        &database_url,
+        db::ConnectOptions {
+            max_connections: 2,
+            max_attempts: 3,
+        },
+    )
+    .await?;
+    MIGRATOR
+        .run(&pool)
+        .await
+        .context("failed to apply database migrations")?;
+    let backups = backups::Backups::new(backup_dir, database_url);
+    let fail = |error: error::ApiError| anyhow::anyhow!("{error}");
+    match command {
+        BackupCommand::Create => {
+            let backup = backups
+                .create(&pool, backups::Kind::Manual)
+                .await
+                .map_err(fail)?;
+            println!("{}", backup.name);
+            if let Some(error) = backup.database_error {
+                eprintln!("the database dump failed: {error}");
+            }
+        }
+        BackupCommand::List => {
+            for backup in backups.list().map_err(fail)? {
+                println!(
+                    "{:<40} config {:>10} B  database {}",
+                    backup.name,
+                    backup.config_size,
+                    match (backup.database_size, &backup.database_error) {
+                        (Some(size), _) => format!("{size} B"),
+                        (None, Some(error)) => format!("failed: {error}"),
+                        (None, None) => "none".to_owned(),
+                    }
+                );
+            }
+        }
+        BackupCommand::Restore { name } => {
+            let bytes = std::fs::read(backups.dir().join(format!("heron-config-{name}.json")))
+                .with_context(|| format!("no backup {name}: see `heron-api backup list`"))?;
+            let report = backups
+                .restore(&pool, None, &bytes, false)
+                .await
+                .map_err(fail)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
     }
     pool.close().await;

@@ -40,8 +40,11 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
+# The backups' option file.
+tempfile.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+# Runs mariadb-dump for backups.
+tokio = { workspace = true, features = ["sync", "process"] }
 tokio-stream = { workspace = true, features = ["net"] }
 tonic.workspace = true
 # Track audio for previews, with range requests.
@@ -60,7 +63,6 @@ heron-engine.workspace = true
 heron-librarian.workspace = true
 heron-service = { workspace = true, features = ["test-util"] }
 hound.workspace = true
-tempfile.workspace = true
 tokio-tungstenite.workspace = true
 
 [lints]

@@ -21,6 +21,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::{Passwords, SESSION_COOKIE};
+use crate::backups::Backups;
 use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::library::{Library, LibraryStatus};
 use crate::listeners::Collector;
@@ -47,6 +48,8 @@ pub struct AppState {
     pub webhooks: Arc<Webhooks>,
     /// Listener statistics from the stream servers.
     pub listeners: Arc<Collector>,
+    /// The backup folder.
+    pub backups: Arc<Backups>,
 }
 
 #[derive(OpenApi)]
@@ -107,6 +110,7 @@ fn api() -> OpenApiRouter<AppState> {
         .routes(routes!(status))
         .routes(routes!(library_status))
         .merge(users::router())
+        .merge(crate::backups::router())
         .merge(stations::router())
         .merge(player::router())
         .merge(tracks::router())

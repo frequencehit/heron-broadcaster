@@ -33,6 +33,7 @@ struct Station {
     library: TempDir,
     _state_dir: TempDir,
     staging: TempDir,
+    _backups: TempDir,
     _engine: Arc<Engine>,
     state: AppState,
     api: SocketAddr,
@@ -132,6 +133,7 @@ impl Station {
         }
 
         let staging = tempfile::tempdir().unwrap();
+        let backups = tempfile::tempdir().unwrap();
         let (engine, state_dir, grpc_url, grpc_task) =
             start_engine(library.path(), engine_config).await;
         let mut tasks = vec![grpc_task];
@@ -162,6 +164,7 @@ impl Station {
             webhooks,
             // Driven by the tests, minute by minute.
             listeners: crate::listeners::Collector::new(pool.clone()).unwrap(),
+            backups: crate::backups::Backups::new(backups.path().to_path_buf(), db.url()),
         };
         let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api = http.local_addr().unwrap();
@@ -180,6 +183,7 @@ impl Station {
             library,
             _state_dir: state_dir,
             staging,
+            _backups: backups,
             _engine: engine,
             state,
             api,
@@ -5741,4 +5745,360 @@ async fn schedules_play_during_their_periods() {
             .len(),
         1
     );
+}
+
+/// What the API shows of the configuration, for comparisons.
+async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
+    let mut shown = serde_json::Map::new();
+    for path in [
+        "/settings/rotation",
+        "/settings/playout",
+        "/categories",
+        "/labels",
+        "/clocks",
+        "/schedules",
+        "/restrictions",
+        "/outputs",
+        "/webhooks",
+        "/users",
+        "/eq-presets",
+        "/stations",
+    ] {
+        shown.insert(path.to_owned(), admin.get(path).await);
+    }
+    let ids: Vec<String> = tracks.iter().map(u64::to_string).collect();
+    let path = format!("/tracks/categories?ids={}", ids.join(","));
+    shown.insert(path.clone(), admin.get(&path).await);
+    for track in tracks {
+        let path = format!("/tracks/{track}");
+        let mut detail = admin.get(&path).await;
+        // What the scan and the plays give, not what was set.
+        for key in ["plays", "created_at_unix_ms", "updated_at_unix_ms"] {
+            detail.as_object_mut().unwrap().remove(key);
+        }
+        shown.insert(path, detail);
+    }
+    let mut shown = Value::Object(shown);
+    // When things happened, not what was set.
+    fn forget_times(value: &mut Value) {
+        match value {
+            Value::Object(object) => {
+                object.retain(|key, _| {
+                    !matches!(
+                        key.as_str(),
+                        "added_at_unix_ms"
+                            | "analyzed_at_unix_ms"
+                            | "created_at_unix_ms"
+                            | "last_login_at_unix_ms"
+                    )
+                });
+                object.values_mut().for_each(forget_times);
+            }
+            Value::Array(values) => values.iter_mut().for_each(forget_times),
+            _ => {}
+        }
+    }
+    forget_times(&mut shown);
+    // An artist is found again by name, under the ID the scan gave it.
+    for restriction in shown["/restrictions"].as_array_mut().unwrap() {
+        if restriction["target"]["kind"] == "artist" {
+            restriction["target"].as_object_mut().unwrap().remove("id");
+        }
+    }
+    shown
+}
+
+/// The keys under which `a` and `b` differ.
+fn differences(a: &Value, b: &Value, at: &str, out: &mut Vec<String>) {
+    match (a, b) {
+        (Value::Object(a), Value::Object(b)) => {
+            for key in a
+                .keys()
+                .chain(b.keys())
+                .collect::<std::collections::BTreeSet<_>>()
+            {
+                differences(
+                    a.get(key).unwrap_or(&Value::Null),
+                    b.get(key).unwrap_or(&Value::Null),
+                    &format!("{at}/{key}"),
+                    out,
+                );
+            }
+        }
+        (Value::Array(a), Value::Array(b)) if a.len() == b.len() => {
+            for (index, (a, b)) in a.iter().zip(b).enumerate() {
+                differences(a, b, &format!("{at}[{index}]"), out);
+            }
+        }
+        (a, b) if a != b => out.push(format!("{at}: {a} != {b}")),
+        _ => {}
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_backup_restores_onto_an_empty_database() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let t = station.tracks.clone();
+
+    // Settings, shared and per station, and a second station.
+    let mut rotation = admin.get("/settings/rotation").await;
+    rotation["separation"]["artist_min"] = json!(45);
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/stations",
+            json!({"name": "Hits 80", "code": "hits80"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    // Categories and what is set on tracks.
+    let (_, gold) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Gold", "color": "#AA8800"}),
+        )
+        .await;
+    let gold = gold["id"].as_u64().unwrap();
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{}/categories", t[0]),
+            json!([{"category_id": gold, "weight": 2.5}]),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, live) = admin
+        .send(Method::POST, "/labels", json!({"name": "live"}))
+        .await;
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/tracks/labels",
+            json!({"selection": {"track_ids": [t[1]]}, "add": [live["id"]]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{}/overrides", t[0]),
+            json!({"cue_in_ms": 500, "crossfade": {"mode": "fixed", "fixed_ms": 1_500}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{}/hook", t[1]),
+            json!({"hook_in_ms": 500, "hook_out_ms": 2_500}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/tracks/programming",
+            json!({"selection": {"track_ids": [t[2]]}, "bpm": 128.0}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/tracks/enabled",
+            json!({"selection": {"track_ids": [t[3]]}, "enabled": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // Programming.
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Hour", "slots": [{"category_id": gold, "method": "random"}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    let (status, christmas) = admin
+        .send(Method::POST, "/schedules", json!({"name": "Christmas"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{christmas}");
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/schedules/{}", christmas["id"]),
+            json!({"name": "Christmas",
+                   "hours": [{"day_of_week": 1, "hour": 8, "clock_id": clock["id"]}],
+                   "periods": [{"start": "2026-12-01T00:00:00", "end": "2027-01-01T00:00:00", "every_year": true}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let artist = sqlx::query("INSERT INTO artists (name) VALUES ('Artist 5')")
+        .execute(&station.db.pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+    for target in [
+        json!({"kind": "track", "id": t[4]}),
+        json!({"kind": "artist", "id": artist}),
+    ] {
+        let (status, body) = admin
+            .send(
+                Method::POST,
+                "/restrictions",
+                json!({"target": target,
+                       "rule": {"kind": "daypart", "mode": "ban", "days": [1], "start_hour": 6, "end_hour": 9}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    // Outputs, webhooks, users and their tokens.
+    let profile = admin.get("/encoder-profiles").await[0]["id"].clone();
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile, "enabled": false,
+                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live", "password": "hackme"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Website", "url": "http://127.0.0.1:9/hook", "events": ["track.started"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/users",
+            json!({"username": "host", "password": "morning show", "role": "operator"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, token) = admin
+        .send(Method::POST, "/tokens", json!({"name": "automation"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let token = token["token"].as_str().unwrap().to_owned();
+    let configured = configuration(&admin, &t).await;
+
+    // Backed up, then restored onto another Heron's empty database with
+    // the same library.
+    let viewer = station.signed_in("viewer").await;
+    let (status, _) = viewer.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    assert_eq!(backup["kind"], "manual");
+    // The database dump goes with it.
+    assert_eq!(backup["database_error"], Value::Null, "{backup}");
+    assert!(
+        backup["database_size"].as_u64().unwrap() > 1_000,
+        "{backup}"
+    );
+    let name = backup["name"].as_str().unwrap().to_owned();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    assert_eq!(file["format"], 1);
+    assert!(
+        file["tables"]["track_categories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["track"] == "Artist 1/Track 1.wav" && row["weight"] == 2.5),
+        "{}",
+        file["tables"]["track_categories"]
+    );
+    station.stop().await;
+    // A track the new library does not have.
+    file["tables"]["track_categories"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"track": "Gone/Gone.wav", "category_id": gold, "weight": 1.0}));
+
+    let Some(other) = Station::start().await else {
+        return;
+    };
+    // The scan finds the artist again, under another ID.
+    sqlx::query("INSERT INTO artists (name) VALUES ('Someone else'), ('Artist 5')")
+        .execute(&other.db.pool)
+        .await
+        .unwrap();
+    let admin = other.signed_in("admin").await;
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(report["left_out"]["track_categories"], 1, "{report}");
+    assert_eq!(report["missing_tracks"], json!(["Gone/Gone.wav"]));
+    // Everyone signs in again.
+    let (status, _) = admin.request(Method::GET, "/auth/me", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let admin = other.signed_in("admin").await;
+    let restored = configuration(&admin, &other.tracks).await;
+    let mut different = Vec::new();
+    differences(&configured, &restored, "", &mut different);
+    assert!(different.is_empty(), "{}", different.join("\n"));
+    // The output's password and the token came back too.
+    let mut scripted = other.client();
+    scripted.bearer = Some(token);
+    assert_eq!(scripted.get("/auth/me").await["username"], "admin");
+    let host = other.client();
+    let (status, _) = host
+        .send(
+            Method::POST,
+            "/auth/login",
+            json!({"username": "host", "password": "morning show"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The restore is undone by the backup it took first.
+    let before = report["before_restore"].as_str().unwrap();
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            &format!("/backups/{before}/restore"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let admin = other.signed_in("admin").await;
+    assert_eq!(admin.get("/categories").await, json!([]));
+    let kinds: Vec<Value> = admin
+        .get("/backups")
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|backup| backup["kind"].clone())
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            json!("before_restore"),
+            json!("before_restore"),
+            json!("uploaded")
+        ]
+    );
+    // A file from a newer Heron, or not a backup at all, changes nothing.
+    let mut newer = admin.get(&format!("/backups/{before}/config")).await;
+    newer["format"] = json!(2);
+    let (status, body) = admin.send(Method::POST, "/backups/restore", newer).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, _) = admin
+        .send(Method::POST, "/backups/restore", json!({"hello": "world"}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(admin.get("/backups").await.as_array().unwrap().len(), 3);
+    other.stop().await;
 }

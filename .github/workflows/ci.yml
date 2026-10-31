@@ -157,7 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - run: |
-          cp .env.example .env && mkdir -p data/fallback data/incoming data/staging
+          cp .env.example .env && mkdir -p data/fallback data/incoming data/staging data/backups
           sed -i "s/^HERON_LIBRARIAN_USER=.*/HERON_LIBRARIAN_USER=$(id -u):$(id -g)/" .env
           # The tested images are the ones published, per architecture.
           echo "HERON_VERSION=sha-${GITHUB_SHA::7}-${{ matrix.arch }}" >> "$GITHUB_ENV"
@@ -193,6 +193,12 @@ jobs:
           scripts/wait-for-analysis.sh http://localhost:8000 64 300
           test -z "$(find data/incoming -type f)"
           ls "data/music/Artist 1/Album 1/" | grep -F "01 Track 1 (2).m4a"
+      - name: A backup holds the configuration and a database dump
+        run: |
+          name=$(docker compose exec -T heron-api heron-api backup create)
+          test -s "data/backups/heron-config-$name.json"
+          gunzip -c "data/backups/heron-database-$name.sql.gz" | grep -q 'CREATE TABLE `tracks`'
+          test "$(stat -c %a "data/backups/heron-config-$name.json")" = 600
       - name: Chaos tests (M3)
         run: scripts/chaos-test.sh
       - if: github.event_name == 'push'
