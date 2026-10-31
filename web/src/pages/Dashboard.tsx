@@ -21,6 +21,7 @@ import { useStationCategories } from "./Clocks";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { introFromCueIn, jingleStart } from "../lib/intro";
+import { here } from "../lib/station";
 
 /** Re-renders `fps` times a second while mounted. */
 export function useTicker(fps = 10): number {
@@ -54,12 +55,12 @@ export function Dashboard() {
   const canOperate = useCan("operator");
   const [fxOpen, setFxOpen] = useState(false);
 
-  const skip = useAction(() => done(api.POST("/api/v1/player/skip")), { success: t("dashboard.skipped") });
-  const pause = useAction(() => done(api.POST("/api/v1/player/pause")));
-  const resume = useAction(() => done(api.POST("/api/v1/player/resume")));
-  const stopFx = useAction(() => done(api.DELETE("/api/v1/player/fx")));
+  const skip = useAction(() => done(api.POST("/api/v1/stations/{station_id}/player/skip", { params: { path: here() } })), { success: t("dashboard.skipped") });
+  const pause = useAction(() => done(api.POST("/api/v1/stations/{station_id}/player/pause", { params: { path: here() } })));
+  const resume = useAction(() => done(api.POST("/api/v1/stations/{station_id}/player/resume", { params: { path: here() } })));
+  const stopFx = useAction(() => done(api.DELETE("/api/v1/stations/{station_id}/player/fx", { params: { path: here() } })));
   const playFx = useAction(
-    (trackId: number) => unwrap(api.POST("/api/v1/player/fx", { body: { track_id: trackId } })),
+    (trackId: number) => unwrap(api.POST("/api/v1/stations/{station_id}/player/fx", { params: { path: here() }, body: { track_id: trackId } })),
     { success: t("dashboard.fxPlaying"), onSuccess: () => setFxOpen(false) },
   );
 
@@ -473,7 +474,7 @@ export function ListenLink({ url }: { url: string }) {
 
 function OutputsCard({ outputs }: { outputs: OutputStatus[] }) {
   // The live state has no settings: the listen links come from the outputs.
-  const configured = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/outputs")) });
+  const configured = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/outputs", { params: { path: here() } })) });
   const listenUrl = (id: number) => configured.data?.find((output) => output.id === id)?.listen_url;
   const listeners = useListenersNow();
   const listenersOf = (id: number) => listeners.data?.outputs.find((o) => o.output_id === id)?.listeners;
@@ -535,7 +536,7 @@ function EngineCard() {
   const player = useLive((live) => live.player);
   const engine = useQuery({
     queryKey: ["engine"],
-    queryFn: () => unwrap(api.GET("/api/v1/engine")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/engine", { params: { path: here() } })),
     refetchInterval: 15_000,
   });
   const sync = engine.data?.config.state;

@@ -10,13 +10,9 @@ import { PAGES, isCurrent, placeOf } from "./lib/pages";
 import { startLive, stopLive, useLive } from "./lib/live";
 import { Link, match, navigate, useLocation } from "./lib/router";
 import { ME_KEY, StationScope, UserContext, useCan, useMeQuery, useUser } from "./lib/session";
-import {
-  chooseStation,
-  initialStation,
-  stationRole,
-  useStation,
-} from "./lib/station";
+import { chooseStation, here, initialStation, stationRole, useStation } from "./lib/station";
 import { applyFullWidth, applyTheme, storedFullWidth, storedTheme } from "./lib/theme";
+import { buildLabel, differentBuilds, webBuild } from "./lib/version";
 import { Account } from "./pages/Account";
 import { Artists } from "./pages/Artists";
 import { Buffer } from "./pages/Buffer";
@@ -193,7 +189,7 @@ function Shell() {
     buffer.data?.groups.reduce((sum, group) => sum + group.files.filter((f) => f.status === "ready").length, 0) ?? 0;
   const zone = useQuery({
     queryKey: ["settings", "station", station],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/station")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/station", { params: { path: here() } })),
     enabled: station !== null,
   });
   // Before the pages render, so they write times in station time.
@@ -351,7 +347,7 @@ function Warnings() {
   const status = useQuery({ queryKey: ["status"], queryFn: () => fetchStatus(), refetchInterval: 15_000 });
   const engine = useQuery({
     queryKey: ["engine"],
-    queryFn: () => unwrap(api.GET("/api/v1/engine")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/engine", { params: { path: here() } })),
     refetchInterval: 15_000,
   });
   const [disconnectedSince, setDisconnectedSince] = useState<number | null>(null);
@@ -386,6 +382,11 @@ function Warnings() {
         error: engine.data.config.error,
         link: <Link to="/outputs">{t("app.checkOutputs")}</Link>,
       }),
+    );
+  }
+  if (status.data && differentBuilds(webBuild(), status.data)) {
+    warnings.push(
+      t("app.versionMismatch", { web: buildLabel(webBuild()), api: buildLabel(status.data) }),
     );
   }
   const clock = status.data?.clock.warning;

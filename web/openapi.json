@@ -1173,7 +1173,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "Deletes a clock; the hours it was scheduled at rotate the whole library\nuntil another clock is scheduled. Operators and admins.",
+        "summary": "Deletes a clock; the hours it was scheduled at rotate the station's library\nuntil another clock is scheduled. Operators and admins.",
         "operationId": "delete_clock",
         "parameters": [
           {
@@ -4707,7 +4707,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "The default schedule's hours; hours left out rotate the whole library.",
+        "summary": "The default schedule's hours; hours left out rotate the station's library.",
         "operationId": "get_default",
         "responses": {
           "200": {
@@ -6521,7 +6521,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "Deletes a clock; the hours it was scheduled at rotate the whole library\nuntil another clock is scheduled. Operators and admins.",
+        "summary": "Deletes a clock; the hours it was scheduled at rotate the station's library\nuntil another clock is scheduled. Operators and admins.",
         "operationId": "delete_clock_on_station",
         "parameters": [
           {
@@ -8218,7 +8218,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "The default schedule's hours; hours left out rotate the whole library.",
+        "summary": "The default schedule's hours; hours left out rotate the station's library.",
         "operationId": "get_default_on_station",
         "parameters": [
           {
@@ -8298,6 +8298,241 @@
               }
             }
           },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/schedules": {
+      "get": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Lists the station's schedules, the one playing now and the next change.",
+        "operationId": "list_schedules_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedules"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Adds a schedule, empty or a copy of another's hours. Operators and admins.",
+        "operationId": "create_schedule_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewSchedule"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/schedules/{id}": {
+      "get": {
+        "tags": [
+          "rotation"
+        ],
+        "operationId": "get_schedule_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Replaces a schedule's hours and periods, and renames it. Operators and\nadmins.",
+        "operationId": "update_schedule_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Deletes a schedule other than the default one. Operators and admins.",
+        "operationId": "delete_schedule_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
           "4XX": {
             "content": {
               "application/json": {
@@ -12962,7 +13197,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/u64",
-                "description": "Category the track was picked from: the fallback category from\nstep 9; missing for the whole library."
+                "description": "Category the track was picked from: the fallback category from\nstep 9; missing for the station's library."
               },
               {
                 "type": "null"
@@ -12979,7 +13214,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/u64",
-                "description": "Missing when no clock is scheduled: the whole library rotates."
+                "description": "Missing when no clock is scheduled: the station's library rotates."
               },
               {
                 "type": "null"
@@ -17163,13 +17398,21 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/u64",
-                "description": "Where relaxation ends (steps 9 and 10). The whole library when unset."
+                "description": "Where relaxation ends (steps 9 and 10). The station's library when\nunset."
               },
               {
                 "type": "null"
               }
             ],
             "default": null
+          },
+          "kept_out_category_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/u64"
+            },
+            "description": "Categories whose tracks are kept out of the station's library (hours\nwithout a clock, the fallback without a category), even when another\nof their categories is the station's: tracks set aside.",
+            "default": []
           },
           "separation": {
             "$ref": "#/components/schemas/Windows",
@@ -18409,6 +18652,13 @@
             "type": "boolean",
             "description": "Whether that variable is set: a station without it is off the air."
           },
+          "engine_taken_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The code of the station that already has this station's engine\naddress: two stations never share an engine, so this one is off\nthe air."
+          },
           "engine_variable": {
             "type": "string",
             "description": "The variable of `heron-api`'s environment that holds its engine's\ngRPC address: `HERON_ENGINE_URL` for the first station,\n`HERON_ENGINE_URL_<CODE>` for the others."
@@ -18564,6 +18814,13 @@
           "engine": {
             "type": "string",
             "description": "`ok` or `unavailable`."
+          },
+          "revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The commit the published image was built from (`HERON_REVISION`);\nmissing in a local build."
           },
           "server_time_unix_ms": {
             "type": "integer",

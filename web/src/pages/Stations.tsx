@@ -211,7 +211,11 @@ function EngineVariable({ station }: { station: StationInfo }) {
   return (
     <span>
       <code className="mono">{station.engine_variable}</code>{" "}
-      {station.engine_configured ? (
+      {station.engine_taken_by ? (
+        <span className="badge warn" title={t("stations.engineTakenHint")}>
+          {t("stations.engineTaken", { code: station.engine_taken_by })}
+        </span>
+      ) : station.engine_configured ? (
         <span className="badge good">{t("stations.engineConfigured")}</span>
       ) : (
         <span className="badge warn">{t("stations.engineMissing")}</span>

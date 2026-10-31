@@ -7,7 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { StationBadges, StationChecks, useSeveralStations } from "../components/Stations";
-import { useStation } from "../lib/station";
+import { here, useStation } from "../lib/station";
 import { type Category, type SeparationOverrides, api, done, unwrap } from "../api";
 import { useLabels } from "../components/SelectionActions";
 import { SeparationEditor } from "../components/Separation";
@@ -228,7 +228,7 @@ function CategoryDialog({ category, onClose }: { category: Category | null; onCl
   );
   const rotation = useQuery({
     queryKey: ["settings", "rotation"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/rotation")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/rotation", { params: { path: here() } })),
   });
   const save = useAction(
     () => {

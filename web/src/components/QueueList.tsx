@@ -31,6 +31,7 @@ import { useAction, useCan } from "../lib/session";
 import { jingleStart } from "../lib/intro";
 import { CategoryChips, type CategoryRef, useTrackCategories } from "./TrackCategories";
 import { Empty, Icon } from "./ui";
+import { here } from "../lib/station";
 
 /**
  * The waiting tracks in play order: the jingle over the cued track's intro,
@@ -83,14 +84,14 @@ export function QueueList({ limit }: { limit?: number }) {
   const move = useAction(
     ({ entry, position }: { entry: number; position: number }) =>
       done(
-        api.PUT("/api/v1/queue/{entry_id}/position", {
-          params: { path: { entry_id: entry } },
+        api.PUT("/api/v1/stations/{station_id}/queue/{entry_id}/position", {
+          params: { path: here({ entry_id: entry }) },
           body: { position },
         }),
       ),
   );
   const remove = useAction((entry: number) =>
-    done(api.DELETE("/api/v1/queue/{entry_id}", { params: { path: { entry_id: entry } } })),
+    done(api.DELETE("/api/v1/stations/{station_id}/queue/{entry_id}", { params: { path: here({ entry_id: entry }) } })),
   );
 
   const sensors = useSensors(

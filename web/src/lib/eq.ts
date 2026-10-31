@@ -9,6 +9,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type DeckEq, type EqSettings, api, unwrap } from "../api";
 import { useLive } from "./live";
+import { here } from "./station";
 
 /** Frequency of each band, in Hz: where the curve meets its slider. */
 export const FREQUENCIES = [60, 170, 310, 600, 1_000, 3_000, 6_000, 12_000, 14_000, 16_000];
@@ -149,7 +150,7 @@ export function useEqSettings(): { data: EqSettings | undefined; error: unknown 
   const live = useLive((live) => live.eq);
   const query = useQuery({
     queryKey: [...EQ_KEY, connected],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/eq")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/eq", { params: { path: here() } })),
   });
   return { data: live ?? query.data, error: query.error };
 }

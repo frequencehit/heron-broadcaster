@@ -14,6 +14,7 @@ import { TrackSearch, useDebounced } from "./TrackSearch";
 import { TransitionGraph } from "./TransitionGraph";
 import { useWaveform } from "./Waveform";
 import { Card, Empty, ErrorView, Icon, Loading, Modal, Segmented, useToast } from "./ui";
+import { here } from "../lib/station";
 
 type Other = { id: number; name: string };
 /** Where the other track plays: after this one, or before it. */
@@ -54,7 +55,7 @@ export function TryTransition({
     enabled: other !== null,
     queryFn: () =>
       unwrap(
-        api.POST("/api/v1/playout/transition", {
+        api.POST("/api/v1/stations/{station_id}/playout/transition", { params: { path: here() },
           body: {
             from_track_id: fromId ?? 0,
             to_track_id: toId ?? 0,

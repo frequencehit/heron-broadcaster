@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // The station the pages show (docs/stations.md#web-ui). What belongs to a
-// station is served under /api/v1/stations/{id}/…: requests the pages make
-// to the single-station routes (/api/v1/queue…) are sent there for the
-// chosen station, so the pages keep their typed routes.
+// station is served under /api/v1/stations/{station_id}/…: the pages call
+// those typed routes with `here()`, so a route the API does not serve per
+// station does not compile.
 
 import { useSyncExternalStore } from "react";
 import type { Role, Schemas, User } from "../api";
@@ -11,71 +11,23 @@ import type { Role, Schemas, User } from "../api";
 export type StationInfo = Schemas["StationInfo"];
 export type StationRoleName = Schemas["StationRoleName"];
 
-/** The first path segments, under /api/v1, of what is per station (the API's list). */
-const PER_STATION = [
-  "engine",
-  "live",
-  "playout",
-  "player",
-  "queue",
-  "history",
-  "clocks",
-  "schedule",
-  "rotation",
-  "outputs",
-  "webhooks",
-  "webhook-deliveries",
-  "listeners",
-];
-/** The settings groups each station has its own of. */
-const STATION_SETTINGS = ["playout", "eq", "queue", "rotation", "station", "medleys"];
-
-/** Whether a path under /api/v1 (`queue/12`) is one of a station's. */
-export function perStation(rest: string): boolean {
-  const [first, second] = rest.split("/");
-  if (first === "settings") {
-    return second !== undefined && STATION_SETTINGS.includes(second.split("?")[0] ?? "");
-  }
-  return PER_STATION.includes((first ?? "").split("?")[0] ?? "");
-}
-
-/** `url` for station `id` when it is one of a station's routes; unchanged otherwise. */
-export function onStation(url: string, id: number | null): string {
-  if (id === null) {
-    return url;
-  }
-  const match = /^(.*?\/api\/v1\/)(.*)$/.exec(url);
-  if (!match) {
-    return url;
-  }
-  const [, prefix, rest] = match;
-  if (rest === undefined || rest.startsWith("stations/") || !perStation(rest)) {
-    return url;
-  }
-  return `${prefix}stations/${id}/${rest}`;
-}
-
 /**
- * `request` sent to station `id`'s route, with its body; `undefined` when it
- * is not one of a station's routes. `new Request(url, request)` would lose
- * the body: browsers refuse a stream body, or send none.
+ * The path parameters of a station's route for the station the pages show:
+ * `api.GET("/api/v1/stations/{station_id}/queue", { params: { path: here() } })`.
+ * The pages only render once it is known.
  */
-export async function toStation(request: Request, id: number | null): Promise<Request | undefined> {
-  const url = onStation(request.url, id);
-  if (url === request.url) {
-    return undefined;
+export function here(): { station_id: number };
+export function here<P extends object>(path: P): P & { station_id: number };
+export function here(path: object = {}): object {
+  if (current === null) {
+    throw new Error("no station chosen yet");
   }
-  const body = request.method === "GET" || request.method === "HEAD" ? null : await request.arrayBuffer();
-  return new Request(url, {
-    method: request.method,
-    headers: request.headers,
-    body,
-    credentials: request.credentials,
-    cache: request.cache,
-    redirect: request.redirect,
-    referrer: request.referrer,
-    signal: request.signal,
-  });
+  return { ...path, station_id: current };
+}
+
+/** The URL of a station route outside the typed client (WebSocket, downloads): `rest` under it. */
+export function stationUrl(rest: string, id: number | null = current): string {
+  return id === null ? `/api/v1/${rest}` : `/api/v1/stations/${id}/${rest}`;
 }
 
 // The chosen station, kept per user in the browser.

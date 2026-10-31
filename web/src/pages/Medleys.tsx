@@ -5,7 +5,7 @@
 // See docs/medleys.md.
 
 import { StationBadges, StationChecks, useSeveralStations } from "../components/Stations";
-import { useStation } from "../lib/station";
+import { here, useStation } from "../lib/station";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
 import { type Schemas, api, done, unwrap } from "../api";
@@ -34,7 +34,7 @@ function newRecipe(settings: MedleySettings): Recipe {
 export function useMedleySettings() {
   return useQuery({
     queryKey: ["settings", "medleys"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/medleys")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/medleys", { params: { path: here() } })),
   });
 }
 

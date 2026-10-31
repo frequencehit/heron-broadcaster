@@ -6,7 +6,9 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY web/ ./
-RUN npm run build
+# The commit the image is built from: compared with the API's.
+ARG HERON_REVISION=
+RUN HERON_REVISION=$HERON_REVISION npm run build
 
 FROM nginx:1.29-alpine AS heron-web
 LABEL org.opencontainers.image.source="https://github.com/dehy/heron-broadcaster" \

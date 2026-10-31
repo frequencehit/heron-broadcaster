@@ -1091,10 +1091,29 @@ async fn library_tracks_overrides_and_categories() {
     assert_eq!(mine["categories"][0]["id"], category["id"]);
     let theirs = shown.iter().find(|t| t["track_id"] == *other).unwrap();
     assert_eq!(theirs["categories"], json!([]));
-    let (status, _) = viewer
+    let (status, body) = viewer
         .request(Method::GET, "/tracks/categories?ids=1,x", None)
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    // Requests the API cannot read are JSON errors too, with what is wrong.
+    assert_eq!(body["error"], "invalid_request", "{body}");
+    assert!(!body["message"].as_str().unwrap().is_empty(), "{body}");
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{id}/overrides"),
+            json!({"cue_in_ms": "soon"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"], "invalid", "{body}");
+    assert!(
+        body["message"].as_str().unwrap().contains("cue_in_ms"),
+        "{body}"
+    );
+    let (status, body) = viewer.request(Method::GET, "/no-such-route", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "not_found", "{body}");
 
     let (status, body) = admin
         .send(
@@ -3530,6 +3549,22 @@ async fn webhooks_report_track_changes_and_public_endpoints_answer_anyone() {
             .await;
         assert_eq!(status, StatusCode::OK);
     }
+    // Hours without a clock rotate the station's categories: the songs are
+    // in one too.
+    let (status, music) = admin
+        .send(Method::POST, "/categories", json!({"name": "Music"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{music}");
+    for track in &station.tracks[2..] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": music["id"]}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
     let jingle_titles = ["Track 1", "Track 2"];
     // Queued again, with what the tracks are now.
     let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
@@ -4533,6 +4568,41 @@ async fn two_stations_play_at_once() {
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
+    // Nor does one whose engine is another station's: the same address,
+    // its case and a trailing slash aside.
+    let first_url = station.state.stations.first().engine_url().to_owned();
+    station
+        .state
+        .stations
+        .set_engine("hits70", &format!("{}/", first_url.to_uppercase()));
+    let (status, sharing) = admin
+        .send(
+            Method::POST,
+            "/stations",
+            json!({"name": "Hits 70", "code": "hits70"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{sharing}");
+    assert_eq!(sharing["engine_configured"], true);
+    assert_eq!(sharing["engine_taken_by"], "main", "{sharing}");
+    let sharing = sharing["id"].as_u64().unwrap();
+    let (status, _) = admin
+        .request(Method::GET, &format!("/stations/{sharing}/player"), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        admin.get(&format!("/stations/{sharing}")).await["engine_taken_by"],
+        "main"
+    );
+    let (status, _) = admin
+        .request(Method::DELETE, &format!("/stations/{sharing}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        admin.get("/stations").await[0]["engine_taken_by"],
+        Value::Null
+    );
+
     // Admins add a station with its own engine, set in the environment.
     let request = json!({"name": "Hits 80", "code": "hits80"});
     let (status, _) = viewer
@@ -4846,6 +4916,43 @@ async fn categories_restrictions_and_medleys_follow_their_stations() {
         .await;
     assert_eq!(status, StatusCode::OK);
 
+    // A station only keeps its own categories out of its library, and
+    // that uses them.
+    let rotation = format!("/stations/{second}/settings/rotation");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &rotation,
+            json!({"kept_out_category_ids": [gold]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &rotation,
+            json!({"kept_out_category_ids": [eighties]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["kept_out_category_ids"], json!([eighties]));
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/categories/{eighties}"),
+            json!({"name": "80s", "color": null, "station_ids": [first]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().contains("keeps out"),
+        "{body}"
+    );
+    let (status, _) = admin
+        .send(Method::PUT, &rotation, json!({"kept_out_category_ids": []}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
     // Restrictions apply to the stations they name, all by default.
     let (status, restriction) = admin
         .send(
@@ -5109,6 +5216,33 @@ async fn categories_restrictions_and_medleys_follow_their_stations() {
     let mut both = vec![on_second, on_first];
     both.sort_unstable();
     assert_eq!(songs_of(id).await, both);
+
+    // Each station has its own schedules.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            &format!("/stations/{second}/schedules"),
+            json!({"name": "Christmas"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let names = |list: Value| -> Vec<String> {
+        list["schedules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|schedule| schedule["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert!(
+        names(admin.get(&format!("/stations/{second}/schedules")).await)
+            .contains(&"Christmas".to_owned())
+    );
+    assert!(
+        !names(admin.get(&format!("/stations/{first}/schedules")).await)
+            .contains(&"Christmas".to_owned())
+    );
+    assert!(!names(admin.get("/schedules").await).contains(&"Christmas".to_owned()));
     station.stop().await;
 }
 

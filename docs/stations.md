@@ -53,7 +53,7 @@ An existing Heron becomes **one station**, named after the station name setting 
 | `eq` (the music and FX EQs) | | ✓ |
 | `queue` (autofill, tracks waiting) | | ✓ |
 | `engine` (whether the API manages the engine's configuration) | | ✓ |
-| `rotation` (separation windows, rules across stations, fallback category, weights) | | ✓ |
+| `rotation` (separation windows, rules across stations, fallback category, categories kept out, weights) | | ✓ |
 
 The web UI's **Settings** keeps the shared groups; each station's own are under that station.
 
@@ -68,8 +68,8 @@ A category is **tagged with the stations it is used on**: one, several or all. W
 | `80s gold` | `hits80` | Only on `hits80`, until it is tagged `hits90` too, or renamed |
 
 - The stations' codes show as badges next to the category's name wherever it appears: the track page, the library's filters, clocks, restrictions, medleys.
-- A station's clocks, restrictions, fallback category and medley settings only offer the categories tagged with it.
-- **Untagging is refused while the station uses the category**, listing what uses it: its clocks' slots, its restrictions, its fallback category, its medley settings, the recipes of the medleys tagged with it. The station stops using it first.
+- A station's clocks, restrictions, fallback category, categories kept out and medley settings only offer the categories tagged with it.
+- **Untagging is refused while the station uses the category**, listing what uses it: its clocks' slots, its restrictions, its fallback category, the categories its rotation keeps out, its medley settings, the recipes of the medleys tagged with it. The station stops using it first.
 - A category is tagged with at least one station. A new category is tagged with the station being worked on; categories brought by an import from another software are tagged with the stations the import chose.
 - A track's categories and weights are the same on every station: a track in `80s` plays on the three stations above, with its one weight.
 
@@ -129,13 +129,13 @@ An existing user keeps their role, as their shared role and their role on the fi
 
 **One engine per station.** Each has its own queue, decks, outputs, state volume and relay, and is upgraded with its own [hot handover](handover.md). A station's engine plays on with what it has queued when the API stops, as today.
 
-- The API reads each station's engine address from its environment: `HERON_ENGINE_URL` for the first station, as today, and `HERON_ENGINE_URL_<CODE>` for each other one, its code in capitals (`HERON_ENGINE_URL_HITS80` for `hits80`). It runs one queue manager per enabled station. A station whose variable is not set stays off the air; the Stations page says which variable it waits for. The environment is read when `heron-api` starts: Compose starts it again when its variables change.
+- The API reads each station's engine address from its environment: `HERON_ENGINE_URL` for the first station, as today, and `HERON_ENGINE_URL_<CODE>` for each other one, its code in capitals (`HERON_ENGINE_URL_HITS80` for `hits80`). It runs one queue manager per enabled station. A station whose variable is not set stays off the air; the Stations page says which variable it waits for. Two stations never share an engine: a station whose address is already the engine of another running station (the same address, a trailing `/` and the letter case aside) stays off the air too, and the Stations page names the station that has it. The station that started first keeps it: at start, the first station, then the others by creation. The environment is read when `heron-api` starts: Compose starts it again when its variables change.
 - A new station's engine is a new service of the deployment, with its own state volume: with Docker Compose, a second `heron-engine` service in a `docker-compose.override.yml`, then `docker compose up -d`. [Upgrading](upgrading.md) upgrades each engine in turn.
 - Metrics carry the station's code as a label.
 
 ## API
 
-- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedule, restrictions, rotation and its simulations, selection log, playout, EQ, queue and rotation settings, outputs, webhooks, listener statistics.
+- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedules, restrictions, rotation and its simulations, selection log, playout, EQ, queue and rotation settings, outputs, webhooks, listener statistics.
 - `GET`, `POST /stations`; `GET`, `PUT`, `DELETE /stations/{id}` (admins).
 - Shared resources keep their routes: tracks, artists, categories (with `station_ids`), medleys (with `station_ids`), labels, encoder profiles, users (with their roles per station).
 - Track and artist answers carry their plays and last play per station and in total.

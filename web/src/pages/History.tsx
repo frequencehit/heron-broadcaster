@@ -11,6 +11,7 @@ import { clockTime, duration, fullDate } from "../lib/format";
 import { endingLabel, sourceLabel } from "../lib/labels";
 import { useLive } from "../lib/live";
 import { Link } from "../lib/router";
+import { here } from "../lib/station";
 
 const PAGE = 100;
 
@@ -23,8 +24,8 @@ export function History() {
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       unwrap(
-        api.GET("/api/v1/history", {
-          params: { query: query({ before: pageParam, exclude_fx: !withFx, limit: PAGE }) },
+        api.GET("/api/v1/stations/{station_id}/history", {
+          params: { path: here(), query: query({ before: pageParam, exclude_fx: !withFx, limit: PAGE }) },
         }),
       ),
     getNextPageParam: (last) => (last.length < PAGE ? undefined : last[last.length - 1]?.started_at_unix_ms),
@@ -32,7 +33,7 @@ export function History() {
   const rows = plays.data?.pages.flat() ?? [];
   const station = useQuery({
     queryKey: ["settings", "station"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/station")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/station", { params: { path: here() } })),
   });
 
   return (

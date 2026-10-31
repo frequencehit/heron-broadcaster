@@ -2,7 +2,7 @@
 
 //! API errors, answered as JSON: `{"error": "not_found", "message": "…"}`.
 
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -80,6 +80,52 @@ impl IntoResponse for ApiError {
         };
         (status, axum::Json(body)).into_response()
     }
+}
+
+/// Answers the client errors axum writes itself as plain text, or with no
+/// body (a body that cannot be read, a parameter of the wrong type, an
+/// unknown route or method), as [`ErrorBody`]s: clients show their message.
+pub async fn json_client_errors(response: Response) -> Response {
+    let status = response.status();
+    let is_json = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/json"));
+    if !status.is_client_error() || is_json {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    let text = axum::body::to_bytes(body, 16 * 1024)
+        .await
+        .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_owned())
+        .unwrap_or_default();
+    let code = match status {
+        StatusCode::UNAUTHORIZED => "unauthorized",
+        StatusCode::FORBIDDEN => "forbidden",
+        StatusCode::NOT_FOUND => "not_found",
+        StatusCode::CONFLICT => "conflict",
+        StatusCode::UNPROCESSABLE_ENTITY => "invalid",
+        StatusCode::TOO_MANY_REQUESTS => "too_many_requests",
+        _ => "invalid_request",
+    };
+    let message = if text.is_empty() {
+        status
+            .canonical_reason()
+            .unwrap_or("invalid request")
+            .to_lowercase()
+    } else {
+        text
+    };
+    parts.headers.remove(header::CONTENT_TYPE);
+    parts.headers.remove(header::CONTENT_LENGTH);
+    let body = ErrorBody {
+        error: code.to_owned(),
+        message,
+    };
+    let (answer_parts, answer_body) = axum::Json(body).into_response().into_parts();
+    parts.headers.extend(answer_parts.headers);
+    Response::from_parts(parts, answer_body)
 }
 
 impl From<sqlx::Error> for ApiError {

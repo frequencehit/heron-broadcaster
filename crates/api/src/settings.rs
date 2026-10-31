@@ -661,8 +661,12 @@ async fn put_rotation_settings(
             "station {id} is not another station"
         )));
     }
-    if let Some(id) = settings.fallback_category_id {
-        crate::categories::check_offered(&state.pool, station.id(), id).await?;
+    for id in settings
+        .fallback_category_id
+        .iter()
+        .chain(&settings.kept_out_category_ids)
+    {
+        crate::categories::check_offered(&state.pool, station.id(), *id).await?;
     }
     save_for(
         &state.pool,

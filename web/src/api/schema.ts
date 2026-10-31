@@ -365,7 +365,7 @@ export interface paths {
         put: operations["update_clock"];
         post?: never;
         /**
-         * Deletes a clock; the hours it was scheduled at rotate the whole library
+         * Deletes a clock; the hours it was scheduled at rotate the station's library
          *     until another clock is scheduled. Operators and admins.
          */
         delete: operations["delete_clock"];
@@ -1575,7 +1575,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The default schedule's hours; hours left out rotate the whole library. */
+        /** The default schedule's hours; hours left out rotate the station's library. */
         get: operations["get_default"];
         /** Replaces the default schedule's whole week. Operators and admins. */
         put: operations["put_default"];
@@ -2139,7 +2139,7 @@ export interface paths {
         put: operations["update_clock_on_station"];
         post?: never;
         /**
-         * Deletes a clock; the hours it was scheduled at rotate the whole library
+         * Deletes a clock; the hours it was scheduled at rotate the station's library
          *     until another clock is scheduled. Operators and admins.
          */
         delete: operations["delete_clock_on_station"];
@@ -2586,12 +2586,51 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The default schedule's hours; hours left out rotate the whole library. */
+        /** The default schedule's hours; hours left out rotate the station's library. */
         get: operations["get_default_on_station"];
         /** Replaces the default schedule's whole week. Operators and admins. */
         put: operations["put_default_on_station"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lists the station's schedules, the one playing now and the next change. */
+        get: operations["list_schedules_on_station"];
+        put?: never;
+        /** Adds a schedule, empty or a copy of another's hours. Operators and admins. */
+        post: operations["create_schedule_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_schedule_on_station"];
+        /**
+         * Replaces a schedule's hours and periods, and renames it. Operators and
+         *     admins.
+         */
+        put: operations["update_schedule_on_station"];
+        post?: never;
+        /** Deletes a schedule other than the default one. Operators and admins. */
+        delete: operations["delete_schedule_on_station"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6061,6 +6100,13 @@ export interface components {
             /** @default null */
             fallback_category_id: components["schemas"]["u64"] | null;
             /**
+             * @description Categories whose tracks are kept out of the station's library (hours
+             *     without a clock, the fallback without a category), even when another
+             *     of their categories is the station's: tracks set aside.
+             * @default []
+             */
+            kept_out_category_ids: components["schemas"]["u64"][];
+            /**
              * @default {
              *       "album_min": 60,
              *       "artist_min": 120,
@@ -6528,6 +6574,12 @@ export interface components {
             /** @description Whether that variable is set: a station without it is off the air. */
             engine_configured: boolean;
             /**
+             * @description The code of the station that already has this station's engine
+             *     address: two stations never share an engine, so this one is off
+             *     the air.
+             */
+            engine_taken_by?: string | null;
+            /**
              * @description The variable of `heron-api`'s environment that holds its engine's
              *     gRPC address: `HERON_ENGINE_URL` for the first station,
              *     `HERON_ENGINE_URL_<CODE>` for the others.
@@ -6599,6 +6651,11 @@ export interface components {
             database: string;
             /** @description `ok` or `unavailable`. */
             engine: string;
+            /**
+             * @description The commit the published image was built from (`HERON_REVISION`);
+             *     missing in a local build.
+             */
+            revision?: string | null;
             /**
              * Format: int64
              * @description The server's time, to compare with the browser's.
@@ -13345,6 +13402,165 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ScheduledHour"][];
                 };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_schedules_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedules"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_schedule_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewSchedule"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_schedule_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_schedule_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_schedule_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": {
                 headers: {

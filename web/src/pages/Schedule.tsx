@@ -31,6 +31,7 @@ import {
 } from "../lib/schedule";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
+import { here } from "../lib/station";
 
 const PALETTE = ["#2f6fd6", "#b4549a", "#1d7a3e", "#b07a00", "#0b6e66", "#6b4fbb", "#c62828", "#5f6268"];
 
@@ -64,20 +65,20 @@ function normal(period: Period): Period {
 
 export function Schedule() {
   const canEdit = useCan("operator");
-  const clocks = useQuery({ queryKey: ["clocks"], queryFn: () => unwrap(api.GET("/api/v1/clocks")) });
-  const list = useQuery({ queryKey: ["schedules"], queryFn: () => unwrap(api.GET("/api/v1/schedules")) });
+  const clocks = useQuery({ queryKey: ["clocks"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/clocks", { params: { path: here() } })) });
+  const list = useQuery({ queryKey: ["schedules"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/schedules", { params: { path: here() } })) });
   // The schedule shown; the one playing now until another is picked.
   const [chosen, setChosen] = useState<number | undefined>(undefined);
   const selectedId = chosen ?? list.data?.active_id;
   const schedule = useQuery({
     queryKey: ["schedules", selectedId],
-    queryFn: () => unwrap(api.GET("/api/v1/schedules/{id}", { params: { path: { id: selectedId ?? 0 } } })),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/schedules/{id}", { params: { path: here({ id: selectedId ?? 0 }) } })),
     enabled: selectedId !== undefined,
   });
   const [periods, setPeriods] = useState<Period[]>([]);
   const station = useQuery({
     queryKey: ["settings", "station"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/station")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/station", { params: { path: here() } })),
   });
   const [grid, setGrid] = useState<Grid>(new Map());
   // The clock painted; null paints "no clock", undefined until one is picked.
@@ -139,8 +140,8 @@ export function Schedule() {
   const save = useAction(
     () =>
       unwrap(
-        api.PUT("/api/v1/schedules/{id}", {
-          params: { path: { id: selectedId ?? 0 } },
+        api.PUT("/api/v1/stations/{station_id}/schedules/{id}", {
+          params: { path: here({ id: selectedId ?? 0 }) },
           body: { hours: fromGrid(grid), periods },
         }),
       ),
@@ -470,7 +471,7 @@ function SchedulesCard({
   const create = useAction(
     () =>
       unwrap(
-        api.POST("/api/v1/schedules", { body: { name: name.trim(), ...(copyFrom !== null ? { copy_from: copyFrom } : {}) } }),
+        api.POST("/api/v1/stations/{station_id}/schedules", { params: { path: here() }, body: { name: name.trim(), ...(copyFrom !== null ? { copy_from: copyFrom } : {}) } }),
       ),
     {
       success: t("schedules.created"),
@@ -484,15 +485,15 @@ function SchedulesCard({
   const rename = useAction(
     () =>
       unwrap(
-        api.PUT("/api/v1/schedules/{id}", {
-          params: { path: { id: selected.id } },
+        api.PUT("/api/v1/stations/{station_id}/schedules/{id}", {
+          params: { path: here({ id: selected.id }) },
           body: { name: name.trim(), hours: selected.hours, periods: selected.periods },
         }),
       ),
     { success: t("schedules.renamed"), invalidate: [["schedules"]], onSuccess: () => setRenaming(false) },
   );
   const remove = useAction(
-    () => done(api.DELETE("/api/v1/schedules/{id}", { params: { path: { id: selected.id } } })),
+    () => done(api.DELETE("/api/v1/stations/{station_id}/schedules/{id}", { params: { path: here({ id: selected.id }) } })),
     {
       success: t("schedules.deleted"),
       invalidate: [["schedules"], ["schedule"], ["clocks"]],
