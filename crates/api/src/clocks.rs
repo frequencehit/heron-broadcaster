@@ -5,7 +5,7 @@
 //! A clock is an ordered list of slots; each slot calls a category, with a
 //! selection method, an enforce-rules flag and separation overrides. The
 //! schedule says which clock runs at each hour of the week, in the
-//! station's time zone. Hours without a clock rotate the whole library.
+//! station's time zone. Hours without a clock rotate the station's library.
 //! A clock starts over at each hour, unless it loops: then it carries on
 //! from its last slot across hours, like SAM Broadcaster's clockwheel.
 
@@ -280,7 +280,7 @@ async fn update_clock(
     get_clock(user, State(state), station, Path(id)).await
 }
 
-/// Deletes a clock; the hours it was scheduled at rotate the whole library
+/// Deletes a clock; the hours it was scheduled at rotate the station's library
 /// until another clock is scheduled. Operators and admins.
 #[utoipa::path(delete, path = "/clocks/{id}", tag = "rotation",
     params(("id" = u64, Path)),

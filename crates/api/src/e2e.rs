@@ -3549,6 +3549,22 @@ async fn webhooks_report_track_changes_and_public_endpoints_answer_anyone() {
             .await;
         assert_eq!(status, StatusCode::OK);
     }
+    // Hours without a clock rotate the station's categories: the songs are
+    // in one too.
+    let (status, music) = admin
+        .send(Method::POST, "/categories", json!({"name": "Music"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{music}");
+    for track in &station.tracks[2..] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": music["id"]}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
     let jingle_titles = ["Track 1", "Track 2"];
     // Queued again, with what the tracks are now.
     let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
@@ -4862,6 +4878,43 @@ async fn categories_restrictions_and_medleys_follow_their_stations() {
             &format!("/categories/{eighties_gold}"),
             retag(json!([first, second])),
         )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A station only keeps its own categories out of its library, and
+    // that uses them.
+    let rotation = format!("/stations/{second}/settings/rotation");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &rotation,
+            json!({"kept_out_category_ids": [gold]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &rotation,
+            json!({"kept_out_category_ids": [eighties]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["kept_out_category_ids"], json!([eighties]));
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/categories/{eighties}"),
+            json!({"name": "80s", "color": null, "station_ids": [first]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().contains("keeps out"),
+        "{body}"
+    );
+    let (status, _) = admin
+        .send(Method::PUT, &rotation, json!({"kept_out_category_ids": []}))
         .await;
     assert_eq!(status, StatusCode::OK);
 

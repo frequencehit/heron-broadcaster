@@ -365,7 +365,7 @@ export interface paths {
         put: operations["update_clock"];
         post?: never;
         /**
-         * Deletes a clock; the hours it was scheduled at rotate the whole library
+         * Deletes a clock; the hours it was scheduled at rotate the station's library
          *     until another clock is scheduled. Operators and admins.
          */
         delete: operations["delete_clock"];
@@ -1575,7 +1575,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The default schedule's hours; hours left out rotate the whole library. */
+        /** The default schedule's hours; hours left out rotate the station's library. */
         get: operations["get_default"];
         /** Replaces the default schedule's whole week. Operators and admins. */
         put: operations["put_default"];
@@ -2139,7 +2139,7 @@ export interface paths {
         put: operations["update_clock_on_station"];
         post?: never;
         /**
-         * Deletes a clock; the hours it was scheduled at rotate the whole library
+         * Deletes a clock; the hours it was scheduled at rotate the station's library
          *     until another clock is scheduled. Operators and admins.
          */
         delete: operations["delete_clock_on_station"];
@@ -2586,7 +2586,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The default schedule's hours; hours left out rotate the whole library. */
+        /** The default schedule's hours; hours left out rotate the station's library. */
         get: operations["get_default_on_station"];
         /** Replaces the default schedule's whole week. Operators and admins. */
         put: operations["put_default_on_station"];
@@ -6060,6 +6060,13 @@ export interface components {
             across: components["schemas"]["AcrossStations"];
             /** @default null */
             fallback_category_id: components["schemas"]["u64"] | null;
+            /**
+             * @description Categories whose tracks are kept out of the station's library (hours
+             *     without a clock, the fallback without a category), even when another
+             *     of their categories is the station's: tracks set aside.
+             * @default []
+             */
+            kept_out_category_ids: components["schemas"]["u64"][];
             /**
              * @default {
              *       "album_min": 60,

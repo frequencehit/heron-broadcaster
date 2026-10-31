@@ -234,6 +234,27 @@ function RotationCard() {
               />
             </Field>
           </div>
+          <Field label={t("settings.keptOut")} hint={t("settings.keptOutHint")}>
+            <span className="station-checks">
+              {categories.data?.map((category) => (
+                <label key={category.id} className="check">
+                  <input
+                    type="checkbox"
+                    disabled={!canEdit}
+                    checked={draft.kept_out_category_ids.includes(category.id)}
+                    onChange={(event) =>
+                      set({
+                        kept_out_category_ids: event.target.checked
+                          ? [...draft.kept_out_category_ids, category.id]
+                          : draft.kept_out_category_ids.filter((id) => id !== category.id),
+                      })
+                    }
+                  />{" "}
+                  {category.name}
+                </label>
+              ))}
+            </span>
+          </Field>
           {others.length > 0 && (
             <fieldset>
               <legend>{t("settings.across")}</legend>

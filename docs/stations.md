@@ -53,7 +53,7 @@ An existing Heron becomes **one station**, named after the station name setting 
 | `eq` (the music and FX EQs) | | ✓ |
 | `queue` (autofill, tracks waiting) | | ✓ |
 | `engine` (whether the API manages the engine's configuration) | | ✓ |
-| `rotation` (separation windows, rules across stations, fallback category, weights) | | ✓ |
+| `rotation` (separation windows, rules across stations, fallback category, categories kept out, weights) | | ✓ |
 
 The web UI's **Settings** keeps the shared groups; each station's own are under that station.
 
@@ -68,8 +68,8 @@ A category is **tagged with the stations it is used on**: one, several or all. W
 | `80s gold` | `hits80` | Only on `hits80`, until it is tagged `hits90` too, or renamed |
 
 - The stations' codes show as badges next to the category's name wherever it appears: the track page, the library's filters, clocks, restrictions, medleys.
-- A station's clocks, restrictions, fallback category and medley settings only offer the categories tagged with it.
-- **Untagging is refused while the station uses the category**, listing what uses it: its clocks' slots, its restrictions, its fallback category, its medley settings, the recipes of the medleys tagged with it. The station stops using it first.
+- A station's clocks, restrictions, fallback category, categories kept out and medley settings only offer the categories tagged with it.
+- **Untagging is refused while the station uses the category**, listing what uses it: its clocks' slots, its restrictions, its fallback category, the categories its rotation keeps out, its medley settings, the recipes of the medleys tagged with it. The station stops using it first.
 - A category is tagged with at least one station. A new category is tagged with the station being worked on; categories brought by an import from another software are tagged with the stations the import chose.
 - A track's categories and weights are the same on every station: a track in `80s` plays on the three stations above, with its one weight.
 

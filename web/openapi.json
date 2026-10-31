@@ -1173,7 +1173,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "Deletes a clock; the hours it was scheduled at rotate the whole library\nuntil another clock is scheduled. Operators and admins.",
+        "summary": "Deletes a clock; the hours it was scheduled at rotate the station's library\nuntil another clock is scheduled. Operators and admins.",
         "operationId": "delete_clock",
         "parameters": [
           {
@@ -4707,7 +4707,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "The default schedule's hours; hours left out rotate the whole library.",
+        "summary": "The default schedule's hours; hours left out rotate the station's library.",
         "operationId": "get_default",
         "responses": {
           "200": {
@@ -6521,7 +6521,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "Deletes a clock; the hours it was scheduled at rotate the whole library\nuntil another clock is scheduled. Operators and admins.",
+        "summary": "Deletes a clock; the hours it was scheduled at rotate the station's library\nuntil another clock is scheduled. Operators and admins.",
         "operationId": "delete_clock_on_station",
         "parameters": [
           {
@@ -8218,7 +8218,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "The default schedule's hours; hours left out rotate the whole library.",
+        "summary": "The default schedule's hours; hours left out rotate the station's library.",
         "operationId": "get_default_on_station",
         "parameters": [
           {
@@ -12962,7 +12962,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/u64",
-                "description": "Category the track was picked from: the fallback category from\nstep 9; missing for the whole library."
+                "description": "Category the track was picked from: the fallback category from\nstep 9; missing for the station's library."
               },
               {
                 "type": "null"
@@ -12979,7 +12979,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/u64",
-                "description": "Missing when no clock is scheduled: the whole library rotates."
+                "description": "Missing when no clock is scheduled: the station's library rotates."
               },
               {
                 "type": "null"
@@ -17163,13 +17163,21 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/u64",
-                "description": "Where relaxation ends (steps 9 and 10). The whole library when unset."
+                "description": "Where relaxation ends (steps 9 and 10). The station's library when\nunset."
               },
               {
                 "type": "null"
               }
             ],
             "default": null
+          },
+          "kept_out_category_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/u64"
+            },
+            "description": "Categories whose tracks are kept out of the station's library (hours\nwithout a clock, the fallback without a category), even when another\nof their categories is the station's: tracks set aside.",
+            "default": []
           },
           "separation": {
             "$ref": "#/components/schemas/Windows",

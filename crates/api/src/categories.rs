@@ -414,6 +414,9 @@ pub async fn uses(pool: &MySqlPool, station_id: u64, category_id: u64) -> ApiRes
     if rotation.fallback_category_id == Some(category_id) {
         uses.push("the fallback category".to_owned());
     }
+    if rotation.kept_out_category_ids.contains(&category_id) {
+        uses.push("the categories its rotation keeps out".to_owned());
+    }
     let medleys = crate::medleys::categories_of(pool, station_id).await?;
     if medleys.ids().any(|id| id == category_id) {
         uses.push("the medley settings".to_owned());
