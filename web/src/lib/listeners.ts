@@ -6,13 +6,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { type Schemas, api, unwrap } from "../api";
 import { locale, number, t } from "../i18n";
-import { currentStation, onStation } from "./station";
+import { here, stationUrl } from "./station";
 
 /** Each output's listeners at the last minute; read again every half minute. */
 export function useListenersNow() {
   return useQuery({
     queryKey: ["listeners", "now"],
-    queryFn: () => unwrap(api.GET("/api/v1/listeners/now")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/listeners/now", { params: { path: here() } })),
     refetchInterval: 30_000,
   });
 }
@@ -137,7 +137,7 @@ export function csvUrl(path: string, params: Record<string, string | number | un
       search.set(key, String(value));
     }
   }
-  return onStation(`/api/v1/listeners/${path}?${search.toString()}`, currentStation());
+  return stationUrl(`listeners/${path}?${search.toString()}`);
 }
 
 /** The statistics settings sent with an output: a password left empty keeps the stored one. */

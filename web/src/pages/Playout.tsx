@@ -27,11 +27,12 @@ import { db, trackName } from "../lib/format";
 import { useLive } from "../lib/live";
 import { useAction, useCan } from "../lib/session";
 import { useTransitionPlayer } from "../lib/transitionPlayer";
+import { here } from "../lib/station";
 
 export function Playout() {
   const settings = useQuery({
     queryKey: ["settings", "playout"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/playout")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/playout", { params: { path: here() } })),
   });
   if (settings.isPending) {
     return <Loading />;
@@ -53,7 +54,7 @@ function PlayoutForm({ saved }: { saved: PlayoutSettings }) {
   useEffect(() => setDraft(saved), [saved]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const save = useAction(
-    (settings: PlayoutSettings) => unwrap(api.PUT("/api/v1/settings/playout", { body: settings })),
+    (settings: PlayoutSettings) => unwrap(api.PUT("/api/v1/stations/{station_id}/settings/playout", { params: { path: here() }, body: settings })),
     { success: t("playout.saved"), invalidate: [["settings", "playout"]] },
   );
   const crossfade = draft.crossfade;
@@ -291,7 +292,7 @@ function Preview({ settings }: { settings: PlayoutSettings }) {
     enabled: outgoing !== null && incoming !== null,
     queryFn: () =>
       unwrap(
-        api.POST("/api/v1/playout/transition", {
+        api.POST("/api/v1/stations/{station_id}/playout/transition", { params: { path: here() },
           body: {
             from_track_id: outgoing?.id ?? 0,
             to_track_id: incoming?.id ?? 0,

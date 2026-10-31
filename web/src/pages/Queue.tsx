@@ -10,29 +10,30 @@ import { Card, ConfirmButton, Icon, PageHead } from "../components/ui";
 import { t } from "../i18n";
 import { duration } from "../lib/format";
 import { useAction, useCan } from "../lib/session";
+import { here } from "../lib/station";
 
 export function QueuePage() {
   const waiting = useWaiting();
   const canEdit = useCan("operator");
   const settings = useQuery({
     queryKey: ["settings", "queue"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/queue")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/queue", { params: { path: here() } })),
   });
 
   const enqueue = useAction(
     ({ id, next }: { id: number; next: boolean }) =>
       unwrap(
-        api.POST("/api/v1/queue", {
+        api.POST("/api/v1/stations/{station_id}/queue", { params: { path: here() },
           body: next ? { track_ids: [id], position: 0 } : { track_ids: [id] },
         }),
       ),
     { success: t("queuePage.queued") },
   );
-  const clear = useAction(() => done(api.DELETE("/api/v1/queue")), { success: t("queuePage.cleared") });
+  const clear = useAction(() => done(api.DELETE("/api/v1/stations/{station_id}/queue", { params: { path: here() } })), { success: t("queuePage.cleared") });
   const setAutofill = useAction(
     (autofill: boolean) =>
       unwrap(
-        api.PUT("/api/v1/settings/queue", {
+        api.PUT("/api/v1/stations/{station_id}/settings/queue", { params: { path: here() },
           body: { autofill, min_queued: settings.data?.min_queued ?? 3 },
         }),
       ),

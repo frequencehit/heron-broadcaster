@@ -6,7 +6,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { DeckPosition, EqSettings, Levels, LiveMessage, PlayerState, TrackEvent } from "../api";
-import { currentStation, onStation } from "./station";
+import { stationUrl } from "./station";
 
 export interface Positions {
   decks: DeckPosition[];
@@ -76,7 +76,7 @@ function connect() {
     return;
   }
   const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(onStation(`${scheme}://${window.location.host}/api/v1/live`, currentStation()));
+  const ws = new WebSocket(`${scheme}://${window.location.host}${stationUrl("live")}`);
   socket = ws;
   // A socket closed by stopLive (another station, or signed out) may still
   // deliver a message or its close: they are not this connection's.

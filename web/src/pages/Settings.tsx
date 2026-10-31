@@ -12,7 +12,7 @@ import { WINDOW_FIELDS } from "../lib/rotation";
 import { Link } from "../lib/router";
 import { useStationCategories } from "./Clocks";
 import { useStations } from "../components/Stations";
-import { useStation } from "../lib/station";
+import { here, useStation } from "../lib/station";
 import { DuckPlaceSelect, FadeCurveSelect, useMedleySettings } from "./Medleys";
 import { useAction, useCan } from "../lib/session";
 
@@ -92,10 +92,10 @@ function QueueCard() {
   const canEdit = useCan("operator");
   const settings = useQuery({
     queryKey: ["settings", "queue"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/queue")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/queue", { params: { path: here() } })),
   });
   const save = useAction(
-    (body: Schemas["QueueSettings"]) => unwrap(api.PUT("/api/v1/settings/queue", { body })),
+    (body: Schemas["QueueSettings"]) => unwrap(api.PUT("/api/v1/stations/{station_id}/settings/queue", { params: { path: here() }, body })),
     { success: t("categories.saved"), invalidate: [["settings", "queue"]] },
   );
   if (settings.isPending) {
@@ -159,10 +159,10 @@ function RotationCard() {
   const others = stations.filter((s) => s.id !== station);
   const settings = useQuery({
     queryKey: ["settings", "rotation"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/rotation")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/rotation", { params: { path: here() } })),
   });
   const save = useAction(
-    (body: Schemas["RotationSettings"]) => unwrap(api.PUT("/api/v1/settings/rotation", { body })),
+    (body: Schemas["RotationSettings"]) => unwrap(api.PUT("/api/v1/stations/{station_id}/settings/rotation", { params: { path: here() }, body })),
     { success: t("categories.saved"), invalidate: [["settings", "rotation"]] },
   );
   if (settings.isPending) {
@@ -348,7 +348,7 @@ function MedleysCard() {
   const canEdit = useCan("operator");
   const settings = useMedleySettings();
   const save = useAction(
-    (body: Schemas["MedleySettings"]) => unwrap(api.PUT("/api/v1/settings/medleys", { body })),
+    (body: Schemas["MedleySettings"]) => unwrap(api.PUT("/api/v1/stations/{station_id}/settings/medleys", { params: { path: here() }, body })),
     { success: t("categories.saved"), invalidate: [["settings", "medleys"], ["medley-candidates"]] },
   );
   if (settings.isPending) {
@@ -613,10 +613,10 @@ function StationCard() {
   const isAdmin = useCan("admin");
   const settings = useQuery({
     queryKey: ["settings", "station"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/station")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/station", { params: { path: here() } })),
   });
   const save = useAction(
-    (body: Schemas["StationSettings"]) => unwrap(api.PUT("/api/v1/settings/station", { body })),
+    (body: Schemas["StationSettings"]) => unwrap(api.PUT("/api/v1/stations/{station_id}/settings/station", { params: { path: here() }, body })),
     { success: t("categories.saved"), invalidate: [["settings", "station"]] },
   );
   if (settings.isPending) {

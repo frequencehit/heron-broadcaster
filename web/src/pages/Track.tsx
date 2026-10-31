@@ -50,6 +50,7 @@ import { withNextStart } from "../lib/nextStart";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { DeleteQuestion, bitrate } from "./Library";
+import { here } from "../lib/station";
 
 /** Whether overrides change anything (every field unset). */
 function isDefault(overrides: TrackOverrides): boolean {
@@ -86,7 +87,7 @@ export function Track({ id }: { id: number }) {
   });
   const playout = useQuery({
     queryKey: ["settings", "playout"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/playout")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/playout", { params: { path: here() } })),
   });
   if (track.isPending) {
     return <Loading />;
@@ -212,7 +213,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
   const enqueue = useAction(
     (next: boolean) =>
       unwrap(
-        api.POST("/api/v1/queue", {
+        api.POST("/api/v1/stations/{station_id}/queue", { params: { path: here() },
           body: next ? { track_ids: [track.id], position: 0 } : { track_ids: [track.id] },
         }),
       ),
@@ -1336,7 +1337,7 @@ function PlaysCard({ track }: { track: TrackDetail }) {
   const plays = useQuery({
     queryKey: ["history", "track", trackId],
     queryFn: () =>
-      unwrap(api.GET("/api/v1/history", { params: { query: { track_id: trackId, limit: 10 } } })),
+      unwrap(api.GET("/api/v1/stations/{station_id}/history", { params: { path: here(), query: { track_id: trackId, limit: 10 } } })),
   });
   return (
     <Card

@@ -54,7 +54,7 @@ import { duration } from "../lib/format";
 import { METHODS_LIST, describeOverrides, methodLabel, stepLabel } from "../lib/rotation";
 import { Link, navigate } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
-import { useStation } from "../lib/station";
+import { here, useStation } from "../lib/station";
 import { useCategoryTypes } from "./CategoryTypes";
 
 const HOUR_MS = 3_600_000;
@@ -78,7 +78,7 @@ export function useStationCategories() {
 
 export function Clocks() {
   const canEdit = useCan("operator");
-  const clocks = useQuery({ queryKey: ["clocks"], queryFn: () => unwrap(api.GET("/api/v1/clocks")) });
+  const clocks = useQuery({ queryKey: ["clocks"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/clocks", { params: { path: here() } })) });
   const categories = useCategories();
   const byId = new Map((categories.data ?? []).map((c) => [c.id, c]));
   return (
@@ -163,7 +163,7 @@ interface Draft extends ClockSlot {
 export function ClockEditor({ id }: { id: number | null }) {
   const clock = useQuery({
     queryKey: ["clocks", id],
-    queryFn: () => unwrap(api.GET("/api/v1/clocks/{id}", { params: { path: { id: id ?? 0 } } })),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: id ?? 0 }) } })),
     enabled: id !== null,
   });
   if (id !== null && clock.isPending) {
@@ -180,7 +180,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
   const categories = useStationCategories();
   const rotation = useQuery({
     queryKey: ["settings", "rotation"],
-    queryFn: () => unwrap(api.GET("/api/v1/settings/rotation")),
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/rotation", { params: { path: here() } })),
   });
   const nextKey = useRef(1);
   const withKeys = (slots: ClockSlot[]): Draft[] => slots.map((slot) => ({ ...slot, key: nextKey.current++ }));
@@ -198,7 +198,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
   const settled = useDebounced(plain, 300);
   const preview = useQuery({
     queryKey: ["clock-preview", settled, looping],
-    queryFn: () => unwrap(api.POST("/api/v1/clocks/preview", { body: { slots: settled, looping } })),
+    queryFn: () => unwrap(api.POST("/api/v1/stations/{station_id}/clocks/preview", { params: { path: here() }, body: { slots: settled, looping } })),
     placeholderData: keepPreviousData,
   });
 
@@ -206,8 +206,8 @@ function Editor({ clock }: { clock: ClockView | null }) {
     () => {
       const body = { name, looping, slots: plain };
       return clock
-        ? unwrap(api.PUT("/api/v1/clocks/{id}", { params: { path: { id: clock.id } }, body }))
-        : unwrap(api.POST("/api/v1/clocks", { body }));
+        ? unwrap(api.PUT("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock.id }) }, body }))
+        : unwrap(api.POST("/api/v1/stations/{station_id}/clocks", { params: { path: here() }, body }));
     },
     {
       success: t("clocks.saved"),
@@ -220,7 +220,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
     },
   );
   const remove = useAction(
-    () => done(api.DELETE("/api/v1/clocks/{id}", { params: { path: { id: clock?.id ?? 0 } } })),
+    () => done(api.DELETE("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock?.id ?? 0 }) } })),
     { success: t("clocks.deleted"), invalidate: [["clocks"], ["schedule"]], onSuccess: () => navigate("/clocks") },
   );
 
@@ -671,7 +671,7 @@ function SimulateCard({ clockId, dirty }: { clockId: number; dirty: boolean }) {
   const canSimulate = useCan("operator");
   const [report, setReport] = useState<SimulationReport | null>(null);
   const simulate = useAction(
-    () => unwrap(api.POST("/api/v1/rotation/simulate", { body: { hours: 1, clock_id: clockId } })),
+    () => unwrap(api.POST("/api/v1/stations/{station_id}/rotation/simulate", { params: { path: here() }, body: { hours: 1, clock_id: clockId } })),
     { onSuccess: (result) => setReport(result) },
   );
   useEffect(() => setReport(null), [clockId]);
