@@ -20,6 +20,8 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    // The commit of a published image; empty in a local build.
+    __APP_REVISION__: JSON.stringify(process.env.HERON_REVISION ?? ""),
   },
   server: {
     proxy: {

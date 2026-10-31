@@ -161,6 +161,8 @@ jobs:
           sed -i "s/^HERON_LIBRARIAN_USER=.*/HERON_LIBRARIAN_USER=$(id -u):$(id -g)/" .env
           # The tested images are the ones published, per architecture.
           echo "HERON_VERSION=sha-${GITHUB_SHA::7}-${{ matrix.arch }}" >> "$GITHUB_ENV"
+          # Built into heron-api and heron-web, which check they match.
+          echo "HERON_REVISION=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           # Images go to the packages of the repository's owner (a fork's own).
           echo "HERON_REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
       - name: Generate a test library and fallback tracks

@@ -35,6 +35,8 @@ const fr = {
   "app.engineUnreachable": "Le moteur est injoignable. Ses sorties continuent de diffuser ce qu'il a en file.",
   "app.configRefused": "Le moteur a refusé la configuration de la station : {error}. {link}",
   "app.checkOutputs": "Vérifier les sorties",
+  "app.versionMismatch":
+    "L'interface web ({web}) et l'API ({api}) ne sont pas de la même version : certaines pages peuvent échouer. Récupérez les deux images et redémarrez-les (docker compose pull, puis docker compose up -d).",
   "app.clockWarning": "{label} {warning}. La programmation peut démarrer au mauvais moment.",
   "app.clockLabel": "Horloge :",
   "app.title": "{page} · Heron Broadcaster",

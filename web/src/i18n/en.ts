@@ -32,6 +32,8 @@ const en = {
   "app.engineUnreachable": "The engine cannot be reached. Its outputs keep streaming what it has queued.",
   "app.configRefused": "The engine refused the station's configuration: {error}. {link}",
   "app.checkOutputs": "Check the outputs",
+  "app.versionMismatch":
+    "The web interface ({web}) and the API ({api}) are not from the same version: some pages may fail. Pull both images and start them again (docker compose pull, then docker compose up -d).",
   "app.clockWarning": "{label} {warning}. Scheduled programming may start at the wrong time.",
   "app.clockLabel": "Clock:",
   "app.title": "{page} · Heron Broadcaster",

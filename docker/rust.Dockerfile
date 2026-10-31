@@ -45,6 +45,9 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
 ENTRYPOINT ["heron-engine"]
 
 FROM runtime AS heron-api
+# The commit the image is built from: the web UI checks it is its own.
+ARG HERON_REVISION=
+ENV HERON_REVISION=$HERON_REVISION
 COPY --from=builder /out/heron-api /usr/local/bin/heron-api
 ENV HERON_HTTP_ADDR=0.0.0.0:8080
 EXPOSE 8080
