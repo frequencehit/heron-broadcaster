@@ -87,7 +87,9 @@ impl Server {
 
 /// The longest silence in the stream received, leaving out its first and
 /// last 200 ms, in ms (10 ms windows below −40 dBFS).
-fn longest_silence_ms(server: &Server) -> u64 {
+/// The longest silence in the stream received from `from_ms` on (its
+/// first and last 200 ms left out).
+fn longest_silence_ms(server: &Server, from_ms: u64) -> u64 {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("stream.mp3");
     std::fs::write(&path, &*server.stream.lock().unwrap()).unwrap();
@@ -100,7 +102,10 @@ fn longest_silence_ms(server: &Server) -> u64 {
             power.sqrt() < 0.01
         })
         .collect();
-    let inner = &windows[20..windows.len().saturating_sub(20)];
+    // 10 ms windows.
+    let first = usize::try_from(from_ms / 10).unwrap_or(usize::MAX).max(20);
+    let last = windows.len().saturating_sub(20);
+    let inner = &windows[first.min(last)..last];
     let mut longest = 0;
     let mut run = 0;
     for &silent in inner {
@@ -282,6 +287,10 @@ async fn hand_over(relay: Option<&Path>) {
     let runtime = tokio::runtime::Handle::current();
     let channel = channel.unwrap();
     let started = Instant::now();
+    // What the stream had before the hand-over: the start of the station,
+    // whose silence until its first track loads depends on the machine's load.
+    // 128 kbps: 16 bytes a millisecond.
+    let before_ms = server.bytes() / 16;
     tokio::task::spawn_blocking(move || handover::hand_over(&handing, channel, &runtime))
         .await
         .unwrap()
@@ -329,7 +338,7 @@ async fn hand_over(relay: Option<&Path>) {
     assert!(position_ms > 2_000, "{position_ms}");
 
     // What listeners heard at the cut.
-    let silence = longest_silence_ms(&server);
+    let silence = longest_silence_ms(&server, before_ms);
     println!("longest silence in the stream: {silence} ms");
     assert!(silence < 200, "{silence} ms of silence");
 }
