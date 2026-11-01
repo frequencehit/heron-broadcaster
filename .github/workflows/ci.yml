@@ -143,7 +143,7 @@ jobs:
     name: Docker Compose on ${{ matrix.arch }} (build, start, import, stream)
     # Native runners for both architectures: Heron must run on a Raspberry Pi.
     runs-on: ${{ matrix.runner }}
-    needs: [rust, web]
+    # Experiment (never merged): the chaos tests, many times on amd64.
     permissions:
       contents: read
       packages: write
@@ -153,8 +153,13 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
+            run: 1
+          - arch: amd64
+            runner: ubuntu-latest
+            run: 2
+          - arch: amd64
+            runner: ubuntu-latest
+            run: 3
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - run: |
@@ -200,8 +205,15 @@ jobs:
           test -s "data/backups/heron-config-$name.json"
           gunzip -c "data/backups/heron-database-$name.sql.gz" | grep -q 'CREATE TABLE `tracks`'
           test "$(stat -c %a "data/backups/heron-config-$name.json")" = 600
-      - name: Chaos tests (M3)
-        run: scripts/chaos-test.sh
+      - name: Chaos tests (M3), three times
+        run: |
+          failed=0
+          for i in 1 2 3; do
+            echo "::group::chaos run $i"
+            scripts/chaos-test.sh || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
       - name: Two stations, upgraded, and a backup restored on air (M12, M13)
         run: scripts/check-two-stations.sh
       - if: github.event_name == 'push'
