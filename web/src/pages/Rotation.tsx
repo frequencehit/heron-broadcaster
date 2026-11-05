@@ -7,11 +7,20 @@ import { useStations } from "../components/Stations";
 import { codes, here } from "../lib/station";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { type Explanation, type RotationPick, type SimulationReport, api, query, unwrap } from "../api";
+import {
+  type Explanation,
+  type RotationPick,
+  type Schemas,
+  type SimulationReport,
+  api,
+  query,
+  unwrap,
+} from "../api";
 import { Banner, Card, Empty, ErrorView, Field, Loading, PageHead, Segmented } from "../components/ui";
 import { number, rich, t } from "../i18n";
 import { ago, clockTime, dateTime } from "../lib/format";
 import { describeWindows, methodLabel, stepLabel } from "../lib/rotation";
+import { ratioLabel } from "../lib/ratio";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { useCategories } from "./Clocks";
@@ -31,6 +40,16 @@ export function Rotation() {
 }
 
 function StepBadge({ explanation }: { explanation: Explanation }) {
+  const held = explanation.held_by_ratio?.length ?? 0;
+  return (
+    <div className="row">
+      <RulesBadge explanation={explanation} />
+      {held > 0 && <span className="badge">{t("ratio.heldBadge", { count: held })}</span>}
+    </div>
+  );
+}
+
+function RulesBadge({ explanation }: { explanation: Explanation }) {
   if (!explanation.enforce_rules) {
     return <span className="badge">{t("rotationPage.rulesOff")}</span>;
   }
@@ -41,6 +60,46 @@ function StepBadge({ explanation }: { explanation: Explanation }) {
     <span className="badge warn" title={stepLabel(explanation.step)}>
       {t("rotationPage.relaxed", { step: stepLabel(explanation.step) })}
     </span>
+  );
+}
+
+/** The tracks a pick's play ratio held back, with their counters. */
+function HeldByRatio({
+  explanation,
+  names,
+}: {
+  explanation: Explanation;
+  names: Map<number, Schemas["TrackLabel"]>;
+}) {
+  const held = explanation.held_by_ratio ?? [];
+  if (held.length === 0) {
+    return null;
+  }
+  return (
+    <div className="small">
+      <strong>{t("ratio.heldTitle")}</strong>
+      <ul className="held">
+        {held.map((entry) => {
+          const track = names.get(entry.track_id);
+          return (
+            <li key={entry.track_id}>
+              <Link to={`/library/${entry.track_id}`}>
+                {track
+                  ? `${track.artist ?? "?"} – ${track.title ?? "?"}`
+                  : t("clocks.trackNumber", { id: String(entry.track_id) })}
+              </Link>{" "}
+              ·{" "}
+              {t("ratio.heldEntry", {
+                ratio: ratioLabel(entry.ratio),
+                counter: entry.counter,
+                count: entry.counter,
+              })}
+            </li>
+          );
+        })}
+      </ul>
+      <span className="muted">{t("ratio.neverRelaxed")}</span>
+    </div>
   );
 }
 
@@ -211,7 +270,13 @@ function PicksCard() {
                   {open === pick.id && (
                     <tr>
                       <td colSpan={4}>
-                        <Details explanation={pick.explanation} />
+                        <div className="stack">
+                          <HeldByRatio
+                            explanation={pick.explanation}
+                            names={new Map(pick.held_tracks.map((track) => [track.id, track]))}
+                          />
+                          <Details explanation={pick.explanation} />
+                        </div>
                       </td>
                     </tr>
                   )}

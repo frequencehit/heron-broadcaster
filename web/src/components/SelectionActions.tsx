@@ -13,6 +13,7 @@ import { Link } from "../lib/router";
 import { useAction } from "../lib/session";
 import { Field, Modal, Segmented } from "./ui";
 import { NewCategory } from "./NewCategory";
+import { WeightOrRatio } from "./Ratio";
 
 export type Selection = Schemas["TrackSelection"];
 export type TagField = Schemas["TagField"];
@@ -285,6 +286,7 @@ export function CategoryDialog({ open, onClose, selection, files, tracks }: Targ
             />
           </Field>
         )}
+        {mode === "add" && <WeightOrRatio />}
       </div>
     </Modal>
   );

@@ -94,6 +94,24 @@ Clockwheels are data stored in the database and edited in the UI. There is no sc
 
 Each track has a weight in each of its categories (1 by default), used by weighted slots. Plays (rotation or manual) multiply the track's weights by `weights.play_factor` (0.5 to 1), requests by `weights.request_factor` (1 to 2); weights stay between 0.1 and 10. Both factors are 1 by default: weights stay as set until a station chooses otherwise.
 
+### Play ratio
+
+A weight is a chance: it does not say how often a track plays. A **play ratio** is an exact quota instead: at 0.2, a track plays 2 times out of the 10 times rotation picks it, no more, no less.
+
+- Each track has a ratio from **0.1 to 1**, in steps of 0.1 (stored in tenths, 1 to 10). It is **1 by default**, which changes nothing. A track has one ratio, the same in all its categories.
+- Each **station** keeps a **counter** per track, from 10 down to 1, then back to 10. A track never picked yet is at 10.
+- When rotation picks a track that passes the restrictions and the separation rules (as relaxed at that step), its counter goes down one step, **whether the track plays or not**. The track plays if the counter was in the first `ratio × 10` steps: at 0.2 it plays at 10 and 9, and is held back from 8 to 1. At 1 it always plays.
+- A track held back **leaves the slot to another candidate**: the slot's method picks again among the others. A track is offered at most once per pick: held back, it is not offered again for that pick, at a later relaxation step or in another slot. When every candidate of a step is held back, rotation goes on to the next relaxation step, as when a step has no candidate.
+- The ratio is a **hard rule**, like the restrictions: it is never relaxed, at any step, the fallback category included.
+- It applies in **every slot**, whatever its method, and in hours without a clock. It is **rotation only**: tracks queued by hand (and listener requests) always play and do not move the counter.
+- The rotation log lists, for each pick, the tracks held back by their ratio with their counter (`held_by_ratio`: `track_id`, `ratio`, `counter`), and the counter of the track picked (`counter`).
+
+**Weight or ratio?** They add up. The **weight** says which track rotation *offers*: a chance against the other tracks, per category, only in weighted slots (at 2, twice the chances of a track at 1). The **ratio** says whether the offered track *plays*: an exact quota out of 10, for the track itself, in every slot. Rotation picks first (rules, then weights in a weighted slot), and the ratio decides after.
+
+**A ratio of 0 disables the track**: it is the same as *Disable*. A disabled track does not play at all: rotation, clocks and medleys never pick it, it cannot be queued by hand, and the queue manager takes it out of the queue. It stays in the library and in its categories, and keeps the ratio it had. **Re-enabling** a track, however it was disabled, asks for its ratio: the one it had, or 1. The counters can be **reset to 10** (all of the track's stations), from the track's page or when re-enabling it.
+
+The counter is state, not configuration: backups keep the ratio, not the counters ([Backups](backups.md)). A simulation starts from the station's counters and moves copies of them in memory; the station's counters do not move.
+
 ### Rule relaxation
 
 When no track satisfies the rules, relax them step by step, then fall back to a safe category. Log every relaxation. **The queue must never be empty.**
@@ -144,7 +162,7 @@ A station has **several schedules** ([M14](roadmap/m14-schedules.md)), each a we
 
 ## Rotation model
 
-- Rotation is a **pure function** of (library, play history, rules, current clock, current time), in the `heron-rotation` crate.
+- Rotation is a **pure function** of (library, play history, rules, current clock, current time), in the `heron-rotation` crate. The library carries the station's ratio counters; the caller moves them after each pick (`Library::count_down`) and saves them.
 - The history is what played on the decks (on the FX player, only the jingles rotation picked to play over an intro) as far back as the longest window looks, followed by the queue at its planned times: the queue manager picks each new track for when it should start.
 - It returns the next track plus an **explanation**: which clock and slot, the windows applied, the relaxation step, how many tracks each rule held back or restrictions forbade, how many were left to choose from. Each pick is kept in the **rotation log** (`rotation_picks`); its play is linked to it and carries its step (`play_history.relaxation_applied`).
-- This makes it possible to **simulate** days of programming offline and test it without audio. A simulation is **audited** without trusting the log: each pick's windows are recomputed from its slot and step, and the pick is compared with every play before it, one by one; restrictions are checked again. Simulations run from the API (`POST /rotation/simulate`) and the web UI, and in the tests on a synthetic station over a week that crosses a daylight saving change.
+- This makes it possible to **simulate** days of programming offline and test it without audio. A simulation is **audited** without trusting the log: each pick's windows are recomputed from its slot and step, and the pick is compared with every play before it, one by one; restrictions are checked again, and so is the play ratio: the counters are replayed from the station's, and a pick whose counter was in its held-back steps is a violation (tracks held back are not picks, so they are never flagged). Simulations run from the API (`POST /rotation/simulate`) and the web UI, and in the tests on a synthetic station over a week that crosses a daylight saving change.

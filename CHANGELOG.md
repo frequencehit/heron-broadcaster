@@ -18,9 +18,11 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **History** marks where the clocks change and which pass of the repeated hour a time belongs to.
 - **Spanish and German** web interface, next to English and French.
 - **Rotation:** hours without a clock rotate the station's library.
+- **Play ratio** per track: an exact quota of plays, from 0.1 to 1 (2 times out of 10 at 0.2), with a counter per station, shown on the track's page and in the rotation log. 0 disables the track; re-enabling it asks for its ratio. A column, a filter and a bulk edit in the track list ([Rotation – Play ratio](docs/rotation.md#play-ratio)).
 
 ### Changed
 
+- **A disabled track does not play at all** any more: it cannot be queued by hand, and the queue manager takes it out of the queue. Before, it was only left out of rotation.
 - **Clearer page names**, in all four languages: *Buffer* is now **Import music**, *Import* is **Migrate**, *Review & organize* is **To organize**, *Selection log* is **Rotation log** and *AGC* is **Processing**. Their addresses changed with them (`/import-music`, `/migrate`, `/to-organize`, `/rotation-log`, `/processing`) and the old ones are not redirected: update any bookmark. The API is unchanged.
 - **Several stations** (M13) is finished: two stations never share an engine, a station's schedules are under its routes, and `scripts/upgrade.sh` hands over each station's engine, so a second station no longer restarts cold.
 - **Dependencies** are all up to date. The Docker Compose files now use MariaDB 12.3 (was 11.8), Icecast 2.5.0 (2.4.4) and ffmpeg 9.0.2 (7.1.1), and the web image Node 26 and nginx 1.31.

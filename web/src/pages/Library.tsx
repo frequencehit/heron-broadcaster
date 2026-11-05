@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // The library: search, filters, sorting, pages, the columns shown, and
-// actions on a selection (queue, labels, categories, programming, tags).
+// actions on a selection (queue, labels, categories, programming, play
+// ratio, tags, disable and enable).
 
 import { useStations } from "../components/Stations";
+import { DisableDialog, EnableDialog, RatioDialog } from "../components/Ratio";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
@@ -38,6 +40,7 @@ import { useAction, useCan } from "../lib/session";
 import { type Preview, usePreview } from "../lib/preview";
 import { here } from "../lib/station";
 import { levelText } from "../lib/level";
+import { type RatioFilter, effectiveRatio, ratioFilter, ratioLabel, ratioSummary } from "../lib/ratio";
 
 const PAGE = 50;
 /** Files in one tag edit, at most (the API's limit). */
@@ -69,6 +72,14 @@ const SORTS: { value: TrackSort; label: PlainKey }[] = [
   { value: "sound_code", label: "library.sort.soundCode" },
   { value: "level_min", label: "library.sort.levelMin" },
   { value: "level_max", label: "library.sort.levelMax" },
+  { value: "play_ratio", label: "library.sort.playRatio" },
+];
+
+const RATIO_CHOICES: { value: RatioFilter | ""; label: PlainKey }[] = [
+  { value: "", label: "library.filter.all" },
+  { value: "below", label: "ratio.filter.below" },
+  { value: "low", label: "ratio.filter.low" },
+  { value: "off", label: "ratio.filter.off" },
 ];
 
 type Column =
@@ -86,6 +97,7 @@ type Column =
   | "sound_code"
   | "level_min"
   | "level_max"
+  | "ratio"
   | "labels";
 
 const COLUMNS: { value: Column; label: PlainKey }[] = [
@@ -103,6 +115,7 @@ const COLUMNS: { value: Column; label: PlainKey }[] = [
   { value: "sound_code", label: "library.column.soundCode" },
   { value: "level_min", label: "library.column.levelMin" },
   { value: "level_max", label: "library.column.levelMax" },
+  { value: "ratio", label: "ratio.short" },
   { value: "labels", label: "library.column.labels" },
 ];
 
@@ -160,6 +173,7 @@ function filtersOf(search: URLSearchParams, q: string) {
     mood: text("mood"),
     sound_code: text("sound_code"),
     genre: text("genre"),
+    ...ratioFilter(search.get("ratio")),
   });
 }
 
@@ -179,7 +193,7 @@ const MORE_FILTERS = [
   "genre",
 ];
 
-type Dialog = "labels" | "category" | "programming" | "tags" | null;
+type Dialog = "labels" | "category" | "programming" | "ratio" | "tags" | "disable" | "enable" | null;
 
 export function Library() {
   const { search } = useLocation();
@@ -189,6 +203,7 @@ export function Library() {
   const sort = (search.get("sort") ?? "artist") as TrackSort;
   const desc = search.get("desc") === "true";
   const category = search.get("category") ?? "";
+  const ratio = search.get("ratio") ?? "";
   const page = Math.max(0, Number(search.get("page") ?? 0) || 0);
   const batch = search.get("batch");
   const [text, setText] = useState(search.get("q") ?? "");
@@ -258,10 +273,12 @@ export function Library() {
   );
 
   const setEnabled = useAction(
-    (enabled: boolean) => unwrap(api.POST("/api/v1/tracks/enabled", { body: { selection, enabled } })),
+    (change: Omit<Schemas["EnabledChange"], "selection">) =>
+      unwrap(api.POST("/api/v1/tracks/enabled", { body: { selection, ...change } })),
     {
       success: (result) => t("library.enabledChanged", { count: result.changed }),
       invalidate: [["tracks"], ["track"]],
+      onSuccess: () => setDialog(null),
     },
   );
   const backToFileTags = useAction(
@@ -390,6 +407,20 @@ export function Library() {
                 ))}
               </select>
             </label>
+            <label className="row small">
+              <span className="muted">{t("ratio.short")}</span>
+              <select
+                className="input"
+                value={ratio}
+                onChange={(event) => setSearch({ ratio: event.target.value || undefined, page: undefined })}
+              >
+                {RATIO_CHOICES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.label)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <span className="row" style={{ flexWrap: "nowrap" }}>
               <label>
                 <span className="visually-hidden">{t("library.sortBy")}</span>
@@ -490,11 +521,12 @@ export function Library() {
                     { label: t("library.labelsAction"), onSelect: () => setDialog("labels") },
                     { label: t("library.categoryAction"), onSelect: () => setDialog("category") },
                     { label: t("library.programmingAction"), onSelect: () => setDialog("programming") },
-                    { label: t("library.enable"), onSelect: () => setEnabled.mutate(true), disabled: setEnabled.isPending },
+                    { label: t("ratio.action"), onSelect: () => setDialog("ratio") },
+                    { label: t("library.enable"), onSelect: () => setDialog("enable"), disabled: setEnabled.isPending },
                     {
                       label: t("library.disable"),
                       title: t("library.disableHelp"),
-                      onSelect: () => setEnabled.mutate(false),
+                      onSelect: () => setDialog("disable"),
                       disabled: setEnabled.isPending,
                     },
                     {
@@ -627,8 +659,37 @@ export function Library() {
         selection={selection}
         tracks={selectedCount}
       />
+      <RatioDialog
+        open={dialog === "ratio"}
+        onClose={() => setDialog(null)}
+        selection={selection}
+        tracks={selectedCount}
+        known={selectedTracks}
+      />
+      <DisableDialog
+        open={dialog === "disable"}
+        onClose={() => setDialog(null)}
+        onConfirm={() => setEnabled.mutate({ enabled: false })}
+        count={selectedCount}
+        trackIds={selectedTracks.map((track) => track.id)}
+      />
+      <EnableDialog
+        open={dialog === "enable"}
+        onClose={() => setDialog(null)}
+        onConfirm={(play_ratio, reset_counters) => setEnabled.mutate({ enabled: true, play_ratio, reset_counters })}
+        count={selectedCount}
+        proposed={sameRatio(selectedTracks)}
+        pending={setEnabled.isPending}
+      />
     </>
   );
+}
+
+/** The ratio every track of `tracks` has, if they share one. */
+function sameRatio(tracks: TrackSummary[]): number | null {
+  const ratios = new Set(tracks.map((track) => track.play_ratio));
+  const [only] = ratios;
+  return ratios.size === 1 && only !== undefined ? only : null;
 }
 
 function ColumnsMenu({ columns, onToggle }: { columns: Column[]; onToggle: (column: Column, shown: boolean) => void }) {
@@ -869,6 +930,7 @@ function Row({
     sound_code: track.sound_code ?? none,
     level_min: <span className="num small">{levelText(track.level_min_db)}</span>,
     level_max: <span className="num small">{levelText(track.level_max_db)}</span>,
+    ratio: <RatioPill ratio={effectiveRatio(track)} />,
     labels: (
       <span className="chips">
         {track.labels.map((label) => (
@@ -958,6 +1020,20 @@ function Row({
         )}
       </td>
     </tr>
+  );
+}
+
+/** `0.2` and a bar a fifth full; `0` for a disabled track. */
+function RatioPill({ ratio }: { ratio: number }) {
+  return (
+    <span className={ratio === 0 ? "ratio-pill muted" : "ratio-pill"} title={ratioSummary(ratio)}>
+      <span className="num">{ratioLabel(ratio)}</span>
+      {ratio > 0 && (
+        <span className="ratio-bar" aria-hidden="true">
+          <i style={{ width: `${ratio * 10}%` }} />
+        </span>
+      )}
+    </span>
   );
 }
 

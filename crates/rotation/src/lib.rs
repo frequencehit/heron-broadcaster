@@ -15,6 +15,7 @@ use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
 pub mod names;
+pub mod ratio;
 pub mod restrict;
 mod rng;
 pub mod rules;
@@ -22,11 +23,15 @@ pub mod schedule;
 mod select;
 mod sim;
 
+pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
 pub use rules::{AcrossWindows, SeparationOverrides, Windows};
 pub use schedule::{Period, Schedule, ScheduleId};
-pub use select::{Blocked, Explanation, Pick, SeparationRule, SkipReason, SkippedSlot, next};
+pub use select::{
+    Blocked, Explanation, Outcome, Pick, SeparationRule, SkipReason, SkippedSlot, next,
+    next_outcome,
+};
 pub use sim::{SimulatedPick, Simulation, Violation, audit, simulate};
 
 pub type TrackId = u64;
@@ -164,6 +169,9 @@ pub struct Track {
     pub categories: Vec<CategoryId>,
     /// Playable length (between the cue points).
     pub length_ms: u32,
+    /// Play ratio in tenths, 1 to 10: plays this many times out of the 10
+    /// times rotation picks it ([`ratio`]).
+    pub ratio: u8,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -217,6 +225,9 @@ pub struct Library {
     /// Categories whose type never plays twice in a row, and their type
     /// (`docs/rotation.md#never-two-in-a-row`).
     pub no_two_in_a_row: HashMap<CategoryId, TypeId>,
+    /// The station's play ratio counters, 10 down to 1; a track missing
+    /// here is at 10.
+    pub counters: HashMap<TrackId, u8>,
 }
 
 /// Library pieces, before [`Library::new`] ties them together.
@@ -235,6 +246,8 @@ pub struct LibraryParts {
     pub settings: RotationSettings,
     /// Categories whose type never plays twice in a row, and their type.
     pub no_two_in_a_row: Vec<(CategoryId, TypeId)>,
+    /// The station's play ratio counters.
+    pub counters: HashMap<TrackId, u8>,
 }
 
 impl Library {
@@ -284,7 +297,30 @@ impl Library {
             settings: parts.settings,
             time_zone,
             no_two_in_a_row: parts.no_two_in_a_row.into_iter().collect(),
+            counters: parts.counters,
         }
+    }
+
+    /// The track's play ratio counter on the station, 10 down to 1.
+    pub fn counter(&self, track: TrackId) -> u8 {
+        self.counters
+            .get(&track)
+            .copied()
+            .filter(|counter| (1..=ratio::FULL).contains(counter))
+            .unwrap_or(ratio::FULL)
+    }
+
+    /// Moves the counters of the tracks rotation offered (picked, or held
+    /// back by their ratio) one step down, and returns their new values.
+    pub fn count_down(&mut self, offered: impl IntoIterator<Item = TrackId>) -> Vec<(TrackId, u8)> {
+        offered
+            .into_iter()
+            .map(|track| {
+                let counter = ratio::after(self.counter(track));
+                self.counters.insert(track, counter);
+                (track, counter)
+            })
+            .collect()
     }
 
     /// The type that would play twice in a row: one that never does, of a
@@ -545,6 +581,7 @@ mod tests {
             artists: vec![],
             categories: vec![],
             length_ms: 180_000,
+            ratio: 10,
         };
         let library = Library::new(
             LibraryParts {

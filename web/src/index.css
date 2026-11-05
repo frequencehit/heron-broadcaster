@@ -2407,3 +2407,124 @@ ul.steps .bar {
     display: none;
   }
 }
+
+/* Play ratio ---------------------------------------------------------------- */
+
+.ratio-scale {
+  flex-wrap: wrap;
+}
+
+.ratio-scale button {
+  min-width: 2.75rem;
+  min-height: 2.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ratio-counter {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.ratio-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 3rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+.ratio-cell small {
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.ratio-cell.plays {
+  background: color-mix(in srgb, var(--good) 16%, var(--surface));
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+  color: var(--good);
+}
+
+.ratio-cell.waits {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.ratio-cell.next {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  font-weight: 700;
+}
+
+.station-counter {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.ratio-dot {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.ratio-dot.plays {
+  background: color-mix(in srgb, var(--good) 16%, var(--surface));
+  border-color: var(--good);
+}
+
+.ratio-explain {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 0.6rem 0.8rem;
+}
+
+.ratio-explain .facts {
+  margin: 0.4rem 0 0;
+}
+
+.ratio-explain p {
+  margin: 0.4rem 0 0;
+}
+
+.ratio-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ratio-bar {
+  display: inline-block;
+  width: 3.5rem;
+  height: 0.4rem;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.ratio-bar i {
+  display: block;
+  height: 100%;
+  background: var(--good);
+}
+
+ul.held {
+  margin: 0.25rem 0;
+  padding-left: 1.1rem;
+}
+
+@media (max-width: 40rem) {
+  .station-counter {
+    grid-template-columns: 1fr;
+  }
+}

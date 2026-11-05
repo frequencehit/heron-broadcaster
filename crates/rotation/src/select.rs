@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
+use crate::ratio::{self, HeldByRatio};
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{AcrossWindows, FALLBACK_STEP, LAST_STEP, Windows, describe_step};
 use crate::{
@@ -77,6 +78,14 @@ pub struct Explanation {
     /// as configured, the least recently played, and what held it back.
     #[serde(default)]
     pub held_elsewhere: Option<HeldElsewhere>,
+    /// The picked track's play ratio counter when it was picked, 10 down
+    /// to 1. Missing in picks logged before play ratios.
+    #[serde(default)]
+    pub counter: Option<u8>,
+    /// Tracks offered before this one and held back by their play ratio,
+    /// in the order they were offered.
+    #[serde(default)]
+    pub held_by_ratio: Vec<HeldByRatio>,
 }
 
 /// A track another station's play or planned track held back.
@@ -393,11 +402,16 @@ struct SlotCall<'l> {
 
 /// Tries the relaxation steps in order and picks with the slot's method
 /// among the first step's candidates.
+///
+/// The play ratio decides after the method: a track it holds back is added
+/// to `held` (its counter moves, see [`Library::count_down`]) and the method
+/// picks again among the others. Tracks in `held` are never offered again.
 fn fill(
     library: &Library,
     history: &History,
     at_ms: i64,
     slot: &SlotCall<'_>,
+    held_by_ratio: &mut Vec<HeldByRatio>,
     rng: &mut Rng,
 ) -> Option<(TrackId, Explanation)> {
     let local = library.local(at_ms).datetime();
@@ -470,23 +484,42 @@ fn fill(
             let windows = call.windows.at_step(step);
             (&*call, &*pool, windows)
         };
-        let candidates: Vec<_> = pool
+        let mut candidates: Vec<_> = pool
             .iter()
             .filter(|(track, _)| {
-                recent.blocking(library, track, windows, at_ms).is_none()
+                !held_by_ratio.iter().any(|held| held.track_id == track.id)
+                    && recent.blocking(library, track, windows, at_ms).is_none()
                     && held_elsewhere(library, history, track, across, at_ms).is_none()
             })
             .copied()
             .collect();
-        if candidates.is_empty() {
-            continue;
-        }
+        let count = u32::try_from(candidates.len()).unwrap_or(u32::MAX);
         let method = if step == LAST_STEP {
             Method::LeastRecentlyPlayed
         } else {
             slot.method
         };
-        let (track, weight) = choose(method, &candidates, history, rng);
+        // The ratio is never relaxed: tracks it holds back leave the slot
+        // to the others, then to the next step.
+        let picked = loop {
+            if candidates.is_empty() {
+                break None;
+            }
+            let (track, weight) = choose(method, &candidates, history, rng);
+            let counter = library.counter(track.id);
+            if ratio::plays(track.ratio, counter) {
+                break Some((track, weight, counter));
+            }
+            held_by_ratio.push(HeldByRatio {
+                track_id: track.id,
+                ratio: track.ratio,
+                counter,
+            });
+            candidates.retain(|(other, _)| other.id != track.id);
+        };
+        let Some((track, weight, counter)) = picked else {
+            continue;
+        };
         let explanation = Explanation {
             at_unix_ms: at_ms,
             schedule_id: None,
@@ -506,11 +539,13 @@ fn fill(
             pool: u32::try_from(slot.call.pool.len()).unwrap_or(u32::MAX),
             restricted,
             blocked,
-            candidates: u32::try_from(candidates.len()).unwrap_or(u32::MAX),
+            candidates: count,
             last_played_unix_ms: history.last_played(track.id),
             weight,
             skipped_slots: Vec::new(),
             held_elsewhere: held.map(|(_, held)| held),
+            counter: Some(counter),
+            held_by_ratio: Vec::new(),
         };
         return Some((track.id, explanation));
     }
@@ -526,13 +561,67 @@ fn fill(
 ///   last slot instead, whatever the hour.
 /// - Without a scheduled clock, the station's library rotates: least recently
 ///   played, rules enforced.
-/// - `None` only when restrictions forbid every track a slot, and the
-///   fallback, could offer: the engine's fallback directory takes over.
+/// - `None` only when restrictions (or play ratios) forbid every track a
+///   slot, and the fallback, could offer: the engine's fallback directory
+///   takes over.
+///
+/// The play ratio counters do not move: see [`next_outcome`].
 pub fn next(
     library: &Library,
     history: &History,
     at_ms: i64,
     last: Option<&Position>,
+    rng: &mut Rng,
+) -> Option<Pick> {
+    next_outcome(library, history, at_ms, last, rng).pick
+}
+
+/// What a call to rotation gave: the pick, if any, and the tracks offered
+/// and held back by their play ratio (also in the pick's explanation).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Outcome {
+    pub pick: Option<Pick>,
+    pub held_by_ratio: Vec<HeldByRatio>,
+}
+
+impl Outcome {
+    /// The tracks whose play ratio counter moves: those held back, then the
+    /// one picked.
+    pub fn offered(&self) -> impl Iterator<Item = TrackId> + '_ {
+        self.held_by_ratio
+            .iter()
+            .map(|held| held.track_id)
+            .chain(self.pick.as_ref().map(|pick| pick.track))
+    }
+}
+
+/// As [`next`], with the tracks held back by their play ratio even when
+/// nothing could be picked: pass [`Outcome::offered`] to
+/// [`Library::count_down`] to move their counters.
+pub fn next_outcome(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+    rng: &mut Rng,
+) -> Outcome {
+    let mut held_by_ratio = Vec::new();
+    let pick = pick(library, history, at_ms, last, &mut held_by_ratio, rng).map(|mut pick| {
+        pick.explanation.held_by_ratio = held_by_ratio.clone();
+        pick
+    });
+    Outcome {
+        pick,
+        held_by_ratio,
+    }
+}
+
+fn pick(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+    held_by_ratio: &mut Vec<HeldByRatio>,
     rng: &mut Rng,
 ) -> Option<Pick> {
     let local = library.local(at_ms);
@@ -551,11 +640,13 @@ pub fn next(
             method: Method::LeastRecentlyPlayed,
             enforce_rules: true,
         };
-        return fill(library, history, at_ms, &slot, rng).map(|(track, explanation)| Pick {
-            track,
-            position: None,
-            explanation: named(explanation),
-        });
+        return fill(library, history, at_ms, &slot, held_by_ratio, rng).map(
+            |(track, explanation)| Pick {
+                track,
+                position: None,
+                explanation: named(explanation),
+            },
+        );
     };
     let count = clock.slots.len();
     let first = match last {
@@ -591,7 +682,7 @@ pub fn next(
             enforce_rules: slot.enforce_rules,
         };
         let index = u32::try_from(index).unwrap_or(u32::MAX);
-        match fill(library, history, at_ms, &call, rng) {
+        match fill(library, history, at_ms, &call, held_by_ratio, rng) {
             Some((track, mut explanation)) => {
                 explanation.clock_id = Some(clock.id);
                 explanation.clock_name = Some(clock.name.clone());
@@ -638,6 +729,7 @@ mod tests {
             artists: vec![100 + id],
             categories: vec![],
             length_ms: 240_000,
+            ratio: 10,
         }
     }
 
@@ -1050,5 +1142,118 @@ mod tests {
             );
             assert!(pick.explanation.restricted >= 10, "{:?}", pick.explanation);
         }
+    }
+
+    /// Track 1 at 0.2, offered first at every pick (its weight dwarfs the
+    /// others'), in a slot without separation.
+    fn ratio_library() -> Library {
+        let mut free = slot(1, Method::Weighted);
+        free.enforce_rules = false;
+        let mut library = library(vec![free]);
+        library.tracks.get_mut(&1).unwrap().ratio = 2;
+        for member in &mut library.categories.get_mut(&1).unwrap().members {
+            member.weight = if member.track == 1 { 1e9 } else { 1.0 };
+        }
+        library
+    }
+
+    #[test]
+    fn a_ratio_of_two_plays_twice_in_ten_offers() {
+        let mut library = ratio_library();
+        let mut rng = Rng::new(11);
+        let history = History::default();
+        let mut played = Vec::new();
+        for n in 0..20 {
+            let outcome = next_outcome(&library, &history, n * MIN, None, &mut rng);
+            let pick = outcome.pick.clone().unwrap();
+            if pick.track == 1 {
+                assert!(outcome.held_by_ratio.is_empty());
+                assert!(pick.explanation.held_by_ratio.is_empty());
+                played.push(pick.explanation.counter.unwrap());
+            } else {
+                // Held back: another track of the slot plays instead.
+                let counter = library.counter(1);
+                let held = [HeldByRatio {
+                    track_id: 1,
+                    ratio: 2,
+                    counter,
+                }];
+                assert_eq!(outcome.held_by_ratio, held);
+                assert_eq!(pick.explanation.held_by_ratio, held);
+                assert!((2..=5).contains(&pick.track));
+                assert_eq!(pick.explanation.step, 0);
+            }
+            library.count_down(outcome.offered());
+        }
+        // Exactly 4 plays in 20 offers, at 10 and 9 of each turn.
+        assert_eq!(played, [10, 9, 10, 9]);
+        assert_eq!(library.counter(1), 10);
+    }
+
+    #[test]
+    fn a_ratio_is_never_relaxed() {
+        // Track 1 is the only track: no other candidate, no fallback.
+        let mut library = Library::new(
+            LibraryParts {
+                tracks: vec![Track {
+                    ratio: 1,
+                    ..track(1)
+                }],
+                categories: vec![category(1, &[1])],
+                clocks: vec![Clock {
+                    id: 1,
+                    name: "Clock".into(),
+                    looping: false,
+                    slots: vec![slot(1, Method::Random)],
+                }],
+                schedule: Schedule {
+                    hours: HashMap::from_iter((0..24).map(|h| ((4, h), 1))),
+                    ..Schedule::default()
+                },
+                counters: HashMap::from([(1, 5)]),
+                ..LibraryParts::default()
+            },
+            TimeZone::UTC,
+        );
+        let mut rng = Rng::new(12);
+        let history = History::default();
+        for counter in (1..=5).rev() {
+            let outcome = next_outcome(&library, &history, 0, None, &mut rng);
+            assert_eq!(outcome.pick, None, "at {counter}");
+            // Offered once, whatever the steps and the fallback.
+            assert_eq!(
+                outcome.held_by_ratio,
+                [HeldByRatio {
+                    track_id: 1,
+                    ratio: 1,
+                    counter,
+                }]
+            );
+            assert_eq!(
+                library.count_down(outcome.offered()),
+                [(1, ratio::after(counter))]
+            );
+        }
+        let outcome = next_outcome(&library, &history, 0, None, &mut rng);
+        assert_eq!(outcome.pick.unwrap().explanation.counter, Some(10));
+        // `next` alone never moves the counters.
+        assert_eq!(library.counter(1), 10);
+        assert!(next(&library, &history, 0, None, &mut rng).is_some());
+        assert_eq!(library.counter(1), 10);
+    }
+
+    #[test]
+    fn plays_outside_rotation_do_not_move_the_counter() {
+        let library = ratio_library();
+        let mut rng = Rng::new(13);
+        let mut history = History::default();
+        // Track 1 queued by hand, or requested, twice: in the history only.
+        history.push(Play::of(&library.tracks[&1], -2 * MIN));
+        history.push(Play::of(&library.tracks[&1], -MIN));
+        assert_eq!(library.counter(1), 10);
+        // Rotation still offers it at 10: it plays.
+        let pick = next(&library, &history, 0, None, &mut rng).unwrap();
+        assert_eq!(pick.track, 1);
+        assert_eq!(pick.explanation.counter, Some(10));
     }
 }

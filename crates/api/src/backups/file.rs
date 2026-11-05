@@ -473,6 +473,7 @@ const TABLES: &[Table] = &[
             Plain("bpm"),
             Plain("mood"),
             Plain("sound_code"),
+            Plain("play_ratio"),
         ],
         Mode::Library,
         &[],

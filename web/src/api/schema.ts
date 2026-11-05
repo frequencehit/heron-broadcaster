@@ -3392,8 +3392,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Disables or enables every selected track. Tracks already waiting in the
-         *     queue stay there. Operators and admins.
+         * Disables or enables every selected track, enabled ones at the play ratio
+         *     given. Disabled tracks leave the queue. Operators and admins.
          */
         post: operations["set_enabled"];
         delete?: never;
@@ -3432,8 +3432,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Sets the mood, sound code or tempo of every selected track. Operators
-         *     and admins.
+         * Sets the mood, sound code, tempo or play ratio of every selected track.
+         *     Operators and admins.
          */
         post: operations["apply_programming"];
         delete?: never;
@@ -3523,7 +3523,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Enables or disables a track. Operators and admins. */
+        /**
+         * Enables or disables a track, sets its play ratio, resets its play
+         *     ratio counters. Operators and admins.
+         */
         patch: operations["patch_track"];
         trace?: never;
     };
@@ -5063,8 +5066,19 @@ export interface components {
             mix_point_ms?: number | null;
         };
         EnabledChange: {
-            /** @description Off: autofill, clocks and medleys never pick the tracks. */
+            /**
+             * @description Off: the tracks do not play at all (rotation, clocks, medleys,
+             *     queued by hand), and leave the queue.
+             */
             enabled: boolean;
+            /**
+             * Format: int32
+             * @description When enabling: the play ratio of every selected track, in tenths, 1
+             *     to 10. Missing: each keeps its own.
+             */
+            play_ratio?: number | null;
+            /** @description Puts their play ratio counters back to 10 on every station. */
+            reset_counters?: boolean;
             selection: components["schemas"]["TrackSelection"];
         };
         /** @enum {string} */
@@ -5222,7 +5236,18 @@ export interface components {
             category_name?: string | null;
             clock_id?: components["schemas"]["u64"] | null;
             clock_name?: string | null;
+            /**
+             * Format: int32
+             * @description The picked track's play ratio counter when it was picked, 10 down
+             *     to 1. Missing in picks logged before play ratios.
+             */
+            counter?: number | null;
             enforce_rules: boolean;
+            /**
+             * @description Tracks offered before this one and held back by their play ratio,
+             *     in the order they were offered.
+             */
+            held_by_ratio?: components["schemas"]["HeldByRatio"][];
             held_elsewhere?: components["schemas"]["HeldElsewhere"] | null;
             /**
              * Format: int64
@@ -5427,6 +5452,21 @@ export interface components {
         };
         /** @enum {string} */
         GroupSource: "upload" | "incoming";
+        /** @description A track rotation offered and its ratio held back. */
+        HeldByRatio: {
+            /**
+             * Format: int32
+             * @description Where its counter was, 10 down to 1: it plays again in this many
+             *     offers.
+             */
+            counter: number;
+            /**
+             * Format: int32
+             * @description In tenths, 1 to 9.
+             */
+            ratio: number;
+            track_id: components["schemas"]["u64"];
+        };
         /** @description A track another station's play or planned track held back. */
         HeldElsewhere: {
             /**
@@ -6834,6 +6874,12 @@ export interface components {
             bpm?: number | null;
             /** @description A value of the mood scale, or `null` to clear it. Missing: kept. */
             mood?: string | null;
+            /**
+             * Format: int32
+             * @description The play ratio, in tenths, 1 to 10; 0 disables the tracks, which keep
+             *     their ratio.
+             */
+            play_ratio?: number | null;
             selection: components["schemas"]["TrackSelection"];
             /** @description A value of the sound code scale, or `null` to clear it. */
             sound_code?: string | null;
@@ -7001,6 +7047,17 @@ export interface components {
             level: number;
             /** Format: int32 */
             start_ms: number;
+        };
+        /** @description Where a track's play ratio counter is on a station. */
+        RatioCounter: {
+            /**
+             * Format: int32
+             * @description 10 down to 1: the next time rotation picks the track, it plays if
+             *     this is in its first `play_ratio` steps.
+             */
+            counter: number;
+            /** Format: int64 */
+            station_id: number;
         };
         /** @description How a medley is built. */
         Recipe: {
@@ -7210,6 +7267,8 @@ export interface components {
         RotationPick: {
             artist?: string | null;
             explanation: components["schemas"]["Explanation"];
+            /** @description The tracks its play ratio held back (`explanation.held_by_ratio`). */
+            held_tracks: components["schemas"]["TrackLabel"][];
             /** Format: int64 */
             id: number;
             /** Format: int64 */
@@ -8108,6 +8167,8 @@ export interface components {
             playout: components["schemas"]["EffectivePlayout"];
             /** @description Plays and last play in total and per station. */
             plays: components["schemas"]["Plays"];
+            /** @description The play ratio counter on each station, in the stations' order. */
+            ratio_counters: components["schemas"]["RatioCounter"][];
             /**
              * @description Tags kept in Heron's database (library setting `write_tags` off),
              *     shown instead of the file's: `POST /tracks/tag-overrides/clear`
@@ -8287,7 +8348,18 @@ export interface components {
             total: number;
         };
         TrackPatch: {
+            /**
+             * @description Off: the track does not play at all (rotation, clocks, medleys,
+             *     queued by hand), and leaves the queue.
+             */
             enabled?: boolean | null;
+            /**
+             * Format: int32
+             * @description In tenths, 1 to 10; 0 disables the track, which keeps its ratio.
+             */
+            play_ratio?: number | null;
+            /** @description Puts its play ratio counters back to 10 on every station. */
+            reset_counters?: boolean;
         };
         /**
          * @description Which tracks: the filters of `GET /tracks`, also used to select tracks
@@ -8343,6 +8415,18 @@ export interface components {
             offset?: number | null;
             /** @description Words found in the title, artist, album, album artist, genre or path. */
             q?: string | null;
+            /**
+             * Format: int32
+             * @description Tracks whose play ratio, in tenths, is at most this (0: the disabled
+             *     tracks).
+             */
+            ratio_max?: number | null;
+            /**
+             * Format: int32
+             * @description Tracks whose play ratio, in tenths, is at least this; a disabled
+             *     track counts as 0.
+             */
+            ratio_min?: number | null;
             sort?: components["schemas"]["TrackSort"] | null;
             sound_code?: string | null;
             /**
@@ -8363,7 +8447,7 @@ export interface components {
             track_ids?: number[] | null;
         };
         /** @enum {string} */
-        TrackSort: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max";
+        TrackSort: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio";
         TrackSummary: {
             /**
              * Format: int64
@@ -8423,6 +8507,12 @@ export interface components {
             path: string;
             /** Format: int64 */
             play_count: number;
+            /**
+             * Format: int32
+             * @description Play ratio in tenths, 1 to 10: plays this many times out of the 10
+             *     times rotation picks it. Kept while the track is disabled.
+             */
+            play_ratio: number;
             silent: boolean;
             sound_code?: string | null;
             title?: string | null;
@@ -8585,6 +8675,15 @@ export interface components {
             station_id: components["schemas"]["u64"];
             /** Format: int32 */
             window_min: number;
+        } | {
+            /** Format: int32 */
+            counter: number;
+            /** @enum {string} */
+            kind: "ratio";
+            /** Format: int32 */
+            pick: number;
+            /** Format: int32 */
+            ratio: number;
         };
         Waveform: {
             /**
@@ -16451,7 +16550,17 @@ export interface operations {
                 year_max?: number;
                 bpm_min?: number;
                 bpm_max?: number;
-                sort?: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max";
+                /**
+                 * @description Tracks whose play ratio, in tenths, is at least this; a disabled
+                 *     track counts as 0.
+                 */
+                ratio_min?: number;
+                /**
+                 * @description Tracks whose play ratio, in tenths, is at most this (0: the disabled
+                 *     tracks).
+                 */
+                ratio_max?: number;
+                sort?: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio";
                 /** @description Reverses the order of `sort`. */
                 desc?: boolean;
                 /** @description 1 to 500, 50 by default. */

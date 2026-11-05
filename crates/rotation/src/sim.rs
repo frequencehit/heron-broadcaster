@@ -13,7 +13,7 @@ use crate::rules::{FALLBACK_STEP, LAST_STEP};
 use crate::select::SeparationRule;
 use crate::{
     AcrossWindows, CategoryId, Elsewhere, Explanation, History, Library, Play, Position, Rng,
-    TrackId, Windows, next,
+    TrackId, Windows, next_outcome, ratio,
 };
 
 /// Shortest length a simulated track is counted for.
@@ -61,6 +61,8 @@ pub enum Violation {
         other_unix_ms: i64,
         window_min: u32,
     },
+    /// Played while its play ratio counter was in its held-back steps.
+    Ratio { pick: u32, ratio: u8, counter: u8 },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -79,7 +81,8 @@ pub struct Simulation {
 }
 
 /// Programming from `start_ms` for `duration_ms`, after `history`; weights
-/// move with each play as configured.
+/// move with each play as configured, and the play ratio counters from the
+/// library's, in memory.
 pub fn simulate(
     library: &Library,
     mut history: History,
@@ -96,12 +99,22 @@ pub fn simulate(
     let mut gap_minutes = 0;
     let end = start_ms + duration_ms;
     let mut at = start_ms;
+    // Tracks held back by their ratio while nothing could be picked: their
+    // counters moved, and the next pick lists them for the audit.
+    let mut held_in_gaps = Vec::new();
     while at < end {
-        let Some(pick) = next(&working, &history, at, last.as_ref(), &mut rng) else {
+        let outcome = next_outcome(&working, &history, at, last.as_ref(), &mut rng);
+        working.count_down(outcome.offered());
+        let Some(mut pick) = outcome.pick else {
+            held_in_gaps.extend(outcome.held_by_ratio);
             gap_minutes += 1;
             at += GAP_MS;
             continue;
         };
+        if !held_in_gaps.is_empty() {
+            held_in_gaps.append(&mut pick.explanation.held_by_ratio);
+            pick.explanation.held_by_ratio = std::mem::take(&mut held_in_gaps);
+        }
         let Some(track) = working.tracks.get(&pick.track) else {
             break;
         };
@@ -173,9 +186,21 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
 }
 
 /// Checks each pick against the plays before it (`before`, then the
-/// earlier picks): separation as relaxed at its step, restrictions always.
+/// earlier picks): separation as relaxed at its step, restrictions always,
+/// and the play ratio always: the counters start from the library's and
+/// move with the tracks each pick lists as held back, then with the pick.
 pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec<Violation> {
     let mut violations = Vec::new();
+    // Counters moved so far; the library's before.
+    let mut counters: std::collections::HashMap<TrackId, u8> = std::collections::HashMap::new();
+    let mut count_down = |track: TrackId| {
+        let counter = counters
+            .get(&track)
+            .copied()
+            .unwrap_or_else(|| library.counter(track));
+        counters.insert(track, ratio::after(counter));
+        counter
+    };
     let mut timeline: Vec<Play> = before.to_vec();
     timeline.sort_by_key(|play| play.start_ms);
     for (index, pick) in picks.iter().enumerate() {
@@ -187,6 +212,17 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
             });
             continue;
         };
+        for held in &pick.explanation.held_by_ratio {
+            count_down(held.track_id);
+        }
+        let counter = count_down(track.id);
+        if !ratio::plays(track.ratio, counter) {
+            violations.push(Violation::Ratio {
+                pick: index,
+                ratio: track.ratio,
+                counter,
+            });
+        }
         let at = pick.start_unix_ms;
         let (windows, category) = expected(library, &pick.explanation);
         if pick.explanation.category_id != category
@@ -335,8 +371,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        Category, Clock, LibraryParts, Member, Method, Mode, Restriction, Rule, Schedule,
-        SeparationOverrides, Slot, Target, Track,
+        Category, Clock, HeldByRatio, LibraryParts, Member, Method, Mode, Restriction, Rule,
+        Schedule, SeparationOverrides, Slot, Target, Track, next,
     };
 
     const MIN: i64 = 60_000;
@@ -349,6 +385,7 @@ mod tests {
             artists: vec![artist],
             categories: vec![],
             length_ms: 200_000,
+            ratio: 10,
         };
         Library::new(
             LibraryParts {
@@ -428,6 +465,8 @@ mod tests {
                 skipped_slots: vec![],
                 across: AcrossWindows::OFF,
                 held_elsewhere: None,
+                counter: None,
+                held_by_ratio: vec![],
             },
         }
     }
@@ -504,6 +543,7 @@ mod tests {
                 artists: vec![100 + id % 60],
                 categories: vec![],
                 length_ms: 200_000,
+                ratio: 10,
             })
             .collect();
         let library = Library::new(
@@ -686,6 +726,48 @@ mod tests {
             [Violation::Category {
                 pick: 0,
                 expected: Some(1)
+            }]
+        );
+    }
+
+    #[test]
+    fn catches_a_track_played_while_its_ratio_holds_it_back() {
+        let mut library = library();
+        library.tracks.get_mut(&1).unwrap().ratio = 2;
+        library.tracks.get_mut(&2).unwrap().ratio = 1;
+        library.counters.insert(2, 3);
+        let hour = 60 * MIN;
+        // Track 1 plays at 10 and 9, then at 8 it is held back.
+        let picks = [
+            pick(&library, 1, 0, 0),
+            pick(&library, 1, 5 * hour, 10),
+            pick(&library, 1, 10 * hour, 10),
+        ];
+        assert_eq!(
+            audit(&library, &[], &picks),
+            [Violation::Ratio {
+                pick: 2,
+                ratio: 2,
+                counter: 8
+            }]
+        );
+        // Held back by its ratio, listed in the pick: never flagged, and
+        // its counter moves.
+        let mut third = pick(&library, 3, 10 * hour, 0);
+        third.explanation.held_by_ratio = vec![HeldByRatio {
+            track_id: 1,
+            ratio: 2,
+            counter: 8,
+        }];
+        let fourth = pick(&library, 2, 15 * hour, 0);
+        let picks = [picks[0].clone(), picks[1].clone(), third, fourth];
+        // Track 2 starts at 3 of 10: held back at 0.1.
+        assert_eq!(
+            audit(&library, &[], &picks),
+            [Violation::Ratio {
+                pick: 3,
+                ratio: 1,
+                counter: 3
             }]
         );
     }

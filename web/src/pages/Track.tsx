@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // One track: waveform with its cue and fade points, preview, per-track
-// overrides, categories, programming details and labels, analysis, file
-// and plays, and its tags edited.
+// overrides, play ratio, categories, programming details and labels,
+// analysis, file and plays, and its tags edited.
 
-import { PlaysByStation } from "../components/Stations";
+import { PlaysByStation, useStations } from "../components/Stations";
+import { DisableDialog, EnableDialog, RatioCounter, RatioScale, WeightOrRatio } from "../components/Ratio";
+import { effectiveRatio, nextText, ratioLabel, ratioSummary } from "../lib/ratio";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   type Fade,
   type PlayoutSettings,
+  type Schemas,
   type TrackDetail,
   type TrackOverrides,
   api,
@@ -50,7 +53,7 @@ import { withNextStart } from "../lib/nextStart";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { DeleteQuestion, bitrate } from "./Library";
-import { here } from "../lib/station";
+import { currentStation, here } from "../lib/station";
 import { levelAt, levelText } from "../lib/level";
 
 /** Whether overrides change anything (every field unset). */
@@ -206,11 +209,8 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
     () => done(api.DELETE("/api/v1/tracks/{id}/overrides", { params: { path: { id: track.id } } })),
     { success: t("track.cleared"), invalidate: [["track", track.id]] },
   );
-  const setEnabled = useAction(
-    (enabled: boolean) =>
-      unwrap(api.PATCH("/api/v1/tracks/{id}", { params: { path: { id: track.id } }, body: { enabled } })),
-    { invalidate: [["track", track.id], ["tracks"]] },
-  );
+  const setEnabled = useEnabled(track.id);
+  const [switching, setSwitching] = useState<"disable" | "enable" | null>(null);
   const enqueue = useAction(
     (next: boolean) =>
       unwrap(
@@ -427,7 +427,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
               <button
                 type="button"
                 className="btn"
-                onClick={() => setEnabled.mutate(!track.enabled)}
+                onClick={() => setSwitching(track.enabled ? "disable" : "enable")}
                 title={track.enabled ? t("track.disableHelp") : undefined}
               >
                 {track.enabled ? t("track.disable") : t("track.enable")}
@@ -680,6 +680,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
           saving={saveOverrides.isPending}
         />
         <div className="stack">
+          <RatioCard track={track} canEdit={canEdit} />
           <ProgrammingCard track={track} canEdit={canEdit} />
           <CategoriesCard track={track} canEdit={canEdit} />
           <DetailsCard track={track} />
@@ -694,7 +695,153 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
         current={currentTags(track)}
         genres={track.musicbrainz?.genres ?? []}
       />
+      <DisableDialog
+        open={switching === "disable"}
+        onClose={() => setSwitching(null)}
+        onConfirm={() => setEnabled.mutate({ play_ratio: 0 })}
+        name={track.title ?? trackName(track)}
+        count={1}
+        trackIds={[track.id]}
+        previous={track.play_ratio}
+      />
+      <EnableDialog
+        open={switching === "enable"}
+        onClose={() => setSwitching(null)}
+        onConfirm={(play_ratio, reset_counters) =>
+          setEnabled.mutate({ enabled: true, play_ratio, reset_counters }, { onSuccess: () => setSwitching(null) })
+        }
+        name={track.title ?? trackName(track)}
+        count={1}
+        proposed={track.play_ratio}
+        pending={setEnabled.isPending}
+      />
     </>
+  );
+}
+
+/** Changes the track's `enabled`, play ratio or counters. */
+function useEnabled(id: number) {
+  return useAction(
+    (body: Schemas["TrackPatch"]) => unwrap(api.PATCH("/api/v1/tracks/{id}", { params: { path: { id } }, body })),
+    { invalidate: [["track", id], ["tracks"]] },
+  );
+}
+
+/** The play ratio: set, each station's counter, reset to 10. */
+function RatioCard({ track, canEdit }: { track: TrackDetail; canEdit: boolean }) {
+  const saved = effectiveRatio(track);
+  const [draft, setDraft] = useState(saved);
+  useEffect(() => setDraft(saved), [saved]);
+  const [asking, setAsking] = useState<"disable" | "enable" | null>(null);
+  const patch = useEnabled(track.id);
+  const stations = useStations();
+  const name = track.title ?? trackName(track);
+  // The counters drawn with the ratio being chosen; the saved one at 0.
+  const shown = draft > 0 ? draft : track.play_ratio;
+  const stationId = currentStation();
+  const counterHere = track.ratio_counters.find((c) => c.station_id === stationId) ?? track.ratio_counters[0];
+  const stationHere = stations.find((station) => station.id === counterHere?.station_id);
+  const save = () => {
+    if (draft === 0) {
+      setAsking("disable");
+    } else if (!track.enabled) {
+      setAsking("enable");
+    } else {
+      patch.mutate({ play_ratio: draft });
+    }
+  };
+  return (
+    <Card
+      title={t("ratio.title")}
+      actions={
+        canEdit &&
+        draft !== saved && (
+          <button type="button" className="btn small primary" disabled={patch.isPending} onClick={save}>
+            {t("common.save")}
+          </button>
+        )
+      }
+    >
+      <div className="stack">
+        <p className="small" style={{ margin: 0 }}>
+          {rich("ratio.intro", { strong: <strong>{t("ratio.introStrong")}</strong> })}
+        </p>
+        <p className="muted small" style={{ margin: 0 }}>
+          {t("ratio.introNote")}
+        </p>
+        <div className="field">
+          <span>{t("ratio.short")}</span>
+          <RatioScale value={draft} onChange={setDraft} withZero disabled={!canEdit} />
+          <span className="hint">{ratioSummary(draft)}</span>
+        </div>
+        {track.ratio_counters.length > 0 && (
+          <div className="field">
+            <span>{t("ratio.counters")}</span>
+            <div className="stack" style={{ gap: "0.6rem" }}>
+              {track.ratio_counters.map((counter) => {
+                const station = stations.find((s) => s.id === counter.station_id);
+                return (
+                  <div key={counter.station_id} className="station-counter">
+                    <span className="row">
+                      <span className="badge">{station?.code ?? `#${counter.station_id}`}</span>
+                      {station && <span className="small muted">{station.name}</span>}
+                    </span>
+                    <RatioCounter ratio={shown} counter={counter.counter} />
+                  </div>
+                );
+              })}
+            </div>
+            <span className="hint">{t("ratio.countersHelp")}</span>
+          </div>
+        )}
+        <div className="legend small muted">
+          <span>
+            <i className="ratio-dot plays" /> {t("ratio.plays")}
+          </span>
+          <span>
+            <i className="ratio-dot" /> {t("ratio.heldNext")}
+          </span>
+        </div>
+        <div className="row between">
+          <span className="muted small">
+            {t("ratio.current", { ratio: saved === 0 ? t("ratio.offLabel") : ratioLabel(saved) })}
+            {counterHere &&
+              ` · ${stationHere ? `${stationHere.code}: ` : ""}${nextText(saved, counterHere.counter)}`}
+          </span>
+          {canEdit && (
+            <button
+              type="button"
+              className="btn small"
+              disabled={patch.isPending || track.ratio_counters.every((c) => c.counter === 10)}
+              onClick={() => patch.mutate({ reset_counters: true })}
+            >
+              {t("ratio.reset")}
+            </button>
+          )}
+        </div>
+        <WeightOrRatio />
+      </div>
+      <DisableDialog
+        open={asking === "disable"}
+        onClose={() => setAsking(null)}
+        onConfirm={() => patch.mutate({ play_ratio: 0 })}
+        name={name}
+        count={1}
+        trackIds={[track.id]}
+        previous={track.play_ratio}
+      />
+      <EnableDialog
+        open={asking === "enable"}
+        onClose={() => setAsking(null)}
+        onConfirm={(play_ratio, reset_counters) =>
+          patch.mutate({ enabled: true, play_ratio, reset_counters }, { onSuccess: () => setAsking(null) })
+        }
+        name={name}
+        count={1}
+        proposed={draft}
+        pending={patch.isPending}
+      />
+    </Card>
   );
 }
 
@@ -735,6 +882,11 @@ function ProgrammingCard({ track, canEdit }: { track: TrackDetail; canEdit: bool
       }
     >
       <dl className="facts small">
+        <dt>{t("ratio.short")}</dt>
+        <dd>
+          {effectiveRatio(track) === 0 ? t("ratio.offLabel") : ratioLabel(track.play_ratio)}{" "}
+          <span className="muted">{t("ratio.outOfTen", { plays: effectiveRatio(track) })}</span>
+        </dd>
         <dt>{t("library.column.labels")}</dt>
         <dd>
           {track.labels.length === 0 ? (
@@ -1251,6 +1403,11 @@ function CategoriesCard({ track, canEdit }: { track: TrackDetail; canEdit: boole
             </li>
           ))}
         </ul>
+        {track.categories.length > 0 && (
+          <p className="small" style={{ margin: 0 }}>
+            {rich("track.weightExplained", { strong: <strong>{t("track.weightExplainedStrong")}</strong> })}
+          </p>
+        )}
         {canEdit && available.length > 0 && (
           <label>
             <span className="visually-hidden">{t("track.addCategory")}</span>

@@ -53,6 +53,8 @@ struct TrackRow {
     artist: Option<String>,
     album: Option<String>,
     duration_ms: Option<u32>,
+    /// Disabled (or at a play ratio of 0): does not play at all.
+    enabled: bool,
     missing: bool,
     analyzed: bool,
     cue_in_ms: Option<u32>,
@@ -73,7 +75,7 @@ struct TrackRow {
 }
 
 const TRACK_COLUMNS: &str = "
-    t.id, t.path, t.title, t.artist, t.album, t.duration_ms,
+    t.id, t.path, t.title, t.artist, t.album, t.duration_ms, t.enabled,
     t.missing_since IS NOT NULL AS missing,
     a.track_id IS NOT NULL AS analyzed,
     a.cue_in_ms, a.cue_out_ms, a.fade_out_start_ms, a.integrated_lufs, a.true_peak_db,
@@ -149,6 +151,9 @@ impl TrackRow {
     fn unplayable(&self) -> Option<String> {
         if self.missing {
             return Some(format!("track {}: its file is missing", self.id));
+        }
+        if !self.enabled {
+            return Some(format!("track {}: it is disabled", self.id));
         }
         let playout = self.playout();
         if self.analyzed && playout.playable_ms() < SILENT_MS {
@@ -307,7 +312,7 @@ impl QueueManager {
         if !settings.autofill || missing == 0 || self.idle() {
             return Ok(());
         }
-        let library = rotation::load_library(&self.pool, self.station_id).await?;
+        let mut library = rotation::load_library(&self.pool, self.station_id).await?;
         let now = rotation::now_ms();
         let history = rotation::load_history(&self.pool, self.station_id, &library, now).await?;
         let history = match self.stations.upgrade() {
@@ -324,9 +329,13 @@ impl QueueManager {
         let mut last = rotation::last_position(&self.pool, self.station_id).await?;
         let mut rng = Rng::new(rotation::seed());
         let mut picks = Vec::new();
+        // Play ratio counters moved by these picks, saved once queued.
+        let mut counters = Vec::new();
         for _ in 0..missing {
-            let Some(pick) = heron_rotation::next(&library, &history, at, last.as_ref(), &mut rng)
-            else {
+            let outcome =
+                heron_rotation::next_outcome(&library, &history, at, last.as_ref(), &mut rng);
+            counters.extend(library.count_down(outcome.offered()));
+            let Some(pick) = outcome.pick else {
                 break;
             };
             let Some(track) = library.tracks.get(&pick.track) else {
@@ -340,6 +349,8 @@ impl QueueManager {
             picks.push(pick);
         }
         if picks.is_empty() {
+            // Tracks held back by their ratio moved: they play sooner.
+            rotation::save_counters(&self.pool, self.station_id, &counters).await?;
             if library.tracks.is_empty() {
                 tracing::debug!("autofill: no playable track in the library");
             } else {
@@ -358,6 +369,7 @@ impl QueueManager {
             let entry = (state.engine_started_at_unix_ms, *entry_id);
             rotation::record_pick(&self.pool, self.station_id, pick, Some(entry)).await?;
         }
+        rotation::save_counters(&self.pool, self.station_id, &counters).await?;
         tracing::info!(
             tracks = ids.len(),
             "autofill: queued the tracks rotation picked"
@@ -396,8 +408,8 @@ impl QueueManager {
                             && playout.cue_out_ms == entry.track.cue_out_ms))
             };
             match row {
-                Some(row) if !row.missing && unchanged(row) => {}
-                Some(row) if !row.missing => {
+                Some(row) if row.enabled && !row.missing && unchanged(row) => {}
+                Some(row) if row.enabled && !row.missing => {
                     let track = row.to_proto(entry.track.source)?;
                     match self.engine.replace(entry.entry_id, track).await {
                         Ok(()) => tracing::info!(
@@ -415,7 +427,7 @@ impl QueueManager {
                     Ok(()) => tracing::warn!(
                         entry = entry.entry_id,
                         path = %entry.track.path,
-                        "queued track left the library: removed from the queue"
+                        "queued track left the library or was disabled: removed from the queue"
                     ),
                     Err(ApiError::Invalid(_) | ApiError::NotFound(_)) => {}
                     Err(error) => return Err(error),
@@ -438,6 +450,7 @@ mod tests {
             artist: Some("A".to_owned()),
             album: Some("B".to_owned()),
             duration_ms: Some(200_000),
+            enabled: true,
             missing: false,
             analyzed: true,
             cue_in_ms: Some(150),
@@ -493,10 +506,17 @@ mod tests {
     }
 
     #[test]
-    fn missing_and_silent_tracks_are_refused() {
+    fn missing_silent_and_disabled_tracks_are_refused() {
         let mut missing = row();
         missing.missing = true;
         assert!(missing.unplayable().is_some());
+        let mut disabled = row();
+        disabled.enabled = false;
+        assert!(
+            disabled
+                .unplayable()
+                .is_some_and(|reason| reason.contains("disabled"))
+        );
         let mut silent = row();
         silent.cue_out_ms = Some(150);
         assert!(silent.unplayable().is_some());

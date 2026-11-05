@@ -86,6 +86,8 @@ pub enum TrackSort {
     LevelMin,
     /// Quietest first: the highest level between the cue points.
     LevelMax,
+    /// Lowest play ratio first, disabled tracks (0) before all.
+    PlayRatio,
 }
 
 /// Which tracks: the filters of `GET /tracks`, also used to select tracks
@@ -127,6 +129,12 @@ pub struct TrackQuery {
     pub year_max: Option<u16>,
     pub bpm_min: Option<f64>,
     pub bpm_max: Option<f64>,
+    /// Tracks whose play ratio, in tenths, is at least this; a disabled
+    /// track counts as 0.
+    pub ratio_min: Option<u8>,
+    /// Tracks whose play ratio, in tenths, is at most this (0: the disabled
+    /// tracks).
+    pub ratio_max: Option<u8>,
     #[param(inline)]
     pub sort: Option<TrackSort>,
     /// Reverses the order of `sort`.
@@ -186,9 +194,16 @@ pub struct TrackSummary {
     /// that or below); none until computed from the waveform.
     pub level_min_db: Option<f64>,
     pub level_max_db: Option<f64>,
+    /// Play ratio in tenths, 1 to 10: plays this many times out of the 10
+    /// times rotation picks it. Kept while the track is disabled.
+    #[sqlx(try_from = "u64")]
+    pub play_ratio: u8,
     #[sqlx(skip)]
     pub labels: Vec<LabelRef>,
 }
+
+/// A track's play ratio as rotation sees it: 0 when disabled.
+const EFFECTIVE_RATIO: &str = "IF(t.enabled, COALESCE(p.play_ratio, 10), 0)";
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TrackPage {
@@ -242,7 +257,8 @@ impl ListContext {
         self.push_era(query);
         query.push(
             " AS era, CAST(COALESCE(p.bpm, a.bpm) AS DOUBLE) AS bpm, p.mood, p.sound_code,
-              CAST(l.min_db AS DOUBLE) AS level_min_db, CAST(l.max_db AS DOUBLE) AS level_max_db ",
+              CAST(l.min_db AS DOUBLE) AS level_min_db, CAST(l.max_db AS DOUBLE) AS level_max_db,
+              CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED) AS play_ratio ",
         );
         self.push_from(query);
     }
@@ -423,6 +439,16 @@ impl ListContext {
         if let Some(bpm) = params.bpm_max {
             query.push(" AND COALESCE(p.bpm, a.bpm) <= ").push_bind(bpm);
         }
+        if let Some(ratio) = params.ratio_min {
+            query
+                .push(format!(" AND {EFFECTIVE_RATIO} >= "))
+                .push_bind(ratio);
+        }
+        if let Some(ratio) = params.ratio_max {
+            query
+                .push(format!(" AND {EFFECTIVE_RATIO} <= "))
+                .push_bind(ratio);
+        }
         Ok(())
     }
 
@@ -482,6 +508,10 @@ impl ListContext {
             )),
             TrackSort::LevelMax => query.push(format!(
                 " ORDER BY l.max_db IS NULL, l.max_db{0}, t.artist, t.title",
+                direction(true)
+            )),
+            TrackSort::PlayRatio => query.push(format!(
+                " ORDER BY {EFFECTIVE_RATIO}{0}, t.artist, t.title",
                 direction(true)
             )),
             TrackSort::Duration => query.push(format!(
@@ -745,6 +775,18 @@ pub struct TrackDetail {
     pub identification: Option<TrackIdentification>,
     /// Plays and last play in total and per station.
     pub plays: crate::history::Plays,
+    /// The play ratio counter on each station, in the stations' order.
+    pub ratio_counters: Vec<RatioCounter>,
+}
+
+/// Where a track's play ratio counter is on a station.
+#[derive(Clone, Debug, Serialize, ToSchema, FromRow)]
+pub struct RatioCounter {
+    pub station_id: u64,
+    /// 10 down to 1: the next time rotation picks the track, it plays if
+    /// this is in its first `play_ratio` steps.
+    #[sqlx(try_from = "u64")]
+    pub counter: u8,
 }
 
 /// A track with its details, analysis, overrides, categories and
@@ -838,6 +880,15 @@ async fn get_track(
         categories,
         identification,
         plays: crate::history::plays(&state.pool, crate::history::PlaysOf::Track(id)).await?,
+        ratio_counters: sqlx::query_as(
+            "SELECT s.id AS station_id, CAST(COALESCE(c.counter, 10) AS UNSIGNED) AS counter
+             FROM stations s
+             LEFT JOIN track_ratio_counters c ON c.station_id = s.id AND c.track_id = ?
+             ORDER BY s.position, s.id",
+        )
+        .bind(id)
+        .fetch_all(&state.pool)
+        .await?,
     }))
 }
 
@@ -887,10 +938,18 @@ async fn load_overrides(state: &AppState, id: u64) -> ApiResult<TrackOverrides> 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TrackPatch {
+    /// Off: the track does not play at all (rotation, clocks, medleys,
+    /// queued by hand), and leaves the queue.
     pub enabled: Option<bool>,
+    /// In tenths, 1 to 10; 0 disables the track, which keeps its ratio.
+    pub play_ratio: Option<u8>,
+    /// Puts its play ratio counters back to 10 on every station.
+    #[serde(default)]
+    pub reset_counters: bool,
 }
 
-/// Enables or disables a track. Operators and admins.
+/// Enables or disables a track, sets its play ratio, resets its play
+/// ratio counters. Operators and admins.
 #[utoipa::path(patch, path = "/tracks/{id}", tag = "library",
     params(("id" = u64, Path)), request_body = TrackPatch,
     responses((status = 200, body = TrackDetail), (status = "4XX", body = ErrorBody)))]
@@ -902,13 +961,29 @@ async fn patch_track(
     Json(patch): Json<TrackPatch>,
 ) -> ApiResult<Json<TrackDetail>> {
     user.require(Role::Operator)?;
-    if let Some(enabled) = patch.enabled {
+    let enabled = crate::selection::check_ratio(patch.enabled, patch.play_ratio)?;
+    let mut tx = state.pool.begin().await?;
+    let exists: Option<u64> = sqlx::query_scalar("SELECT id FROM tracks WHERE id = ? FOR UPDATE")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if exists.is_none() {
+        return Err(ApiError::not_found("track"));
+    }
+    if let Some(enabled) = enabled {
         sqlx::query("UPDATE tracks SET enabled = ? WHERE id = ?")
             .bind(enabled)
             .bind(id)
-            .execute(&state.pool)
+            .execute(&mut *tx)
             .await?;
     }
+    if let Some(ratio) = patch.play_ratio.filter(|ratio| *ratio > 0) {
+        crate::selection::set_play_ratio(&mut tx, &[id], ratio).await?;
+    }
+    if patch.reset_counters {
+        crate::selection::reset_counters(&mut tx, &[id]).await?;
+    }
+    tx.commit().await?;
     get_track(user, State(state), station, Path(id)).await
 }
 

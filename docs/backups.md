@@ -28,7 +28,7 @@ The configuration file is what a station restores after a bad change or a lost d
 | Medleys: recipes, stations and parts | |
 | Webhooks, with their secrets | |
 | Users (password hashes, shared roles, roles per station, preferences) and API tokens (hashes) | |
-| **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood and sound code, tags kept in Heron | |
+| **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code and play ratio, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
 
 **Secrets are in both files.** Output and stream server passwords, webhook secrets, the AcoustID key, password and token hashes: a restore gives back a working station, with nothing to type again. The files are written readable by the API's user only (`0600`). In clear, treat them like the database: do not mail them, and keep copies off the machine somewhere private. [Encrypted](#encryption), they can go anywhere: without the key they are unreadable.
 
