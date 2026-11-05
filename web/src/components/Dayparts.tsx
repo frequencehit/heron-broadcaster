@@ -2,7 +2,8 @@
 
 // Daypart separation (docs/rotation.md#daypart-separation): the station's
 // division of the day with an example over several days, a category's
-// separation, and a pick's daypart in the rotation log.
+// separation and same daypart on the following days, and a pick's daypart
+// in the rotation log.
 
 import { useState } from "react";
 import type { Explanation } from "../api";
@@ -54,7 +55,8 @@ export function DaypartSettings({
         {t("dayparts.help")}
       </p>
       <p className="small">
-        {rich("dayparts.perCategory", { link: <Link to="/categories">{t("nav.categories")}</Link> })}
+        {rich("dayparts.perCategory", { link: <Link to="/categories">{t("nav.categories")}</Link> })}{" "}
+        {t("dayparts.followingDays")}
       </p>
       <div className="form-grid">
         <div className="field">
@@ -193,6 +195,40 @@ export function CategoryDayparts({
   );
 }
 
+/** The longest the same daypart is kept out on the following days. */
+export const MAX_DAYS = 7;
+
+/**
+ * A category's same daypart on the following days, 0 (off) to 7 days,
+ * with or without its daypart separation.
+ */
+export function CategoryDaypartDays({
+  value,
+  disabled,
+  onChange,
+}: Readonly<{
+  value: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}>) {
+  return (
+    <Field label={t("dayparts.days")} hint={t("dayparts.daysHint")}>
+      <select
+        className="input"
+        value={String(value)}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+      >
+        {Array.from({ length: MAX_DAYS + 1 }, (_, n) => (
+          <option key={n} value={n}>
+            {n === 0 ? t("dayparts.offOption") : t("dayparts.daysOption", { count: n })}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
 /** A pick's daypart: `C`, its hours in the title. */
 export function DaypartBadge({ explanation }: Readonly<{ explanation: Explanation }>) {
   const daypart = explanation.daypart;
@@ -211,18 +247,20 @@ export function DaypartBadge({ explanation }: Readonly<{ explanation: Explanatio
 }
 
 /**
- * What daypart separation did for a pick: where the track last played,
- * how far it was relaxed, how many tracks it held back. Nothing when off.
+ * What daypart separation and the same daypart on the following days did
+ * for a pick: where the track last played, how far they were relaxed, how
+ * many tracks they held back. Nothing when both are off.
  */
 export function daypartNote(explanation: Explanation): string | null {
   const daypart = explanation.daypart;
-  if (!daypart || !explanation.enforce_rules || daypart.separation === 0) {
+  const days = daypart?.days ?? 0;
+  if (!daypart || !explanation.enforce_rules || (daypart.separation === 0 && days === 0)) {
     return null;
   }
   const parts: string[] = [];
   const last = daypart.last_daypart;
   const step = explanation.step;
-  if (step === 3 && last !== null && last !== undefined) {
+  if (step === 3 && daypart.separation > 0 && last !== null && last !== undefined) {
     parts.push(
       t("dayparts.halved", {
         from: daypart.separation,
@@ -236,9 +274,16 @@ export function daypartNote(explanation: Explanation): string | null {
       t("dayparts.lastIn", { part: daypartLetter(last), time: dateTime(explanation.last_played_unix_ms) }),
     );
   }
+  if (step === 3 && days > 0) {
+    parts.push(t("dayparts.daysHalved", { from: days, to: explanation.windows.daypart_days }));
+  }
   const held = explanation.blocked.daypart ?? 0;
   if (held > 0 && step >= 3) {
     parts.push(t("rotationPage.blockedDaypart", { count: held }));
+  }
+  const heldDays = explanation.blocked.daypart_days ?? 0;
+  if (heldDays > 0 && step >= 3) {
+    parts.push(t("rotationPage.blockedDaypartDays", { count: heldDays }));
   }
   return parts.length > 0 ? parts.join("; ") : null;
 }

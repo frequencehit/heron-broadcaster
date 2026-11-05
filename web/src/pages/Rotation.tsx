@@ -160,6 +160,7 @@ function Details({ explanation }: { explanation: Explanation }) {
     blocked.artist && t("rotationPage.blockedArtist", { count: blocked.artist }),
     blocked.album && t("rotationPage.blockedAlbum", { count: blocked.album }),
     blocked.daypart && t("rotationPage.blockedDaypart", { count: blocked.daypart }),
+    blocked.daypart_days && t("rotationPage.blockedDaypartDays", { count: blocked.daypart_days }),
     blocked.across && t("rotationPage.blockedAcross", { count: blocked.across }),
   ].filter(Boolean);
   const elsewhere = explanation.held_elsewhere;

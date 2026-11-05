@@ -2371,6 +2371,14 @@ const en = {
   "dayparts.lastIn": "last in {part}, {time}",
   "dayparts.halved": "{from} → {to}: played in {played}, allowed in {part}",
   "dayparts.pickPart": "Daypart {part}",
+  "dayparts.days": "Same daypart, the following days",
+  "dayparts.daysHint": "Played in B on Monday, not in B on Tuesday (1 day); Wednesday's B is fine. With or without dayparts kept out.",
+  "dayparts.daysOption": { one: "{count} day", other: "{count} days" },
+  "dayparts.daysHalved": "same daypart {from} → {to} d",
+  "dayparts.followingDays": "A category can also keep a track out of the same daypart on the following days: played in B on Monday, not in B on Tuesday.",
+  "rotation.window.daypartDays": "same daypart",
+  "rotationPage.blockedDaypartDays": { one: "{count} track held back by the same daypart on the days before", other: "{count} tracks held back by the same daypart on the days before" },
+  "categories.daypartDaysHint": "Same daypart kept out on the following days",
 } as const;
 
 export default en;

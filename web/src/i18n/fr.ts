@@ -2380,6 +2380,14 @@ const fr = {
   "dayparts.lastIn": "dernière en {part}, {time}",
   "dayparts.halved": "{from} → {to} : jouée en {played}, permise en {part}",
   "dayparts.pickPart": "Tranche {part}",
+  "dayparts.days": "Même tranche les jours suivants",
+  "dayparts.daysHint": "Joué en B lundi, pas en B mardi (1 jour) ; le B de mercredi est permis. Avec ou sans tranches écartées.",
+  "dayparts.daysOption": { one: "{count} jour", other: "{count} jours" },
+  "dayparts.daysHalved": "même tranche {from} → {to} j",
+  "dayparts.followingDays": "Une catégorie peut aussi écarter une piste de la même tranche les jours suivants : jouée en B lundi, pas en B mardi.",
+  "rotation.window.daypartDays": "même tranche",
+  "rotationPage.blockedDaypartDays": { one: "{count} piste écartée par la même tranche les jours précédents", other: "{count} pistes écartées par la même tranche les jours précédents" },
+  "categories.daypartDaysHint": "Même tranche écartée les jours suivants",
 } satisfies Catalog;
 
 export default fr;

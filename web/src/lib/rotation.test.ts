@@ -55,15 +55,20 @@ describe("windows", () => {
     // The daypart separation has its own column.
     expect(describeOverrides({ track_min: 90, dayparts: 2 })).toBe("track 90 min");
     expect(describeOverrides({ dayparts: 0 })).toBe("");
+    expect(describeOverrides({ dayparts: 1, daypart_days: 2 })).toBe("");
   });
 
   it("lists every applied one", () => {
-    expect(describeWindows({ album_min: 60, artist_min: 120, title_min: 0, track_min: 240, dayparts: 0 })).toBe(
+    expect(describeWindows({ album_min: 60, artist_min: 120, title_min: 0, track_min: 240, dayparts: 0, daypart_days: 0 })).toBe(
       "album 1 h · artist 2 h · title off · track 4 h",
     );
-    expect(describeWindows({ album_min: 0, artist_min: 120, title_min: 0, track_min: 240, dayparts: 1 })).toBe(
-      "album off · artist 2 h · title off · track 4 h · dayparts 1",
-    );
+    expect(
+      describeWindows({ album_min: 0, artist_min: 120, title_min: 0, track_min: 240, dayparts: 1, daypart_days: 0 }),
+    ).toBe("album off · artist 2 h · title off · track 4 h · dayparts 1");
+    // The same daypart on the following days, with or without dayparts.
+    expect(
+      describeWindows({ album_min: 0, artist_min: 0, title_min: 0, track_min: 240, dayparts: 0, daypart_days: 2 }),
+    ).toBe("album off · artist off · title off · track 4 h · same daypart 2 d");
   });
 
   it("names every relaxation step", () => {

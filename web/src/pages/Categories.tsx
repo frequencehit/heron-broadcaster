@@ -10,7 +10,7 @@ import { StationBadges, StationChecks, useSeveralStations } from "../components/
 import { here, useStation } from "../lib/station";
 import { type Category, type SeparationOverrides, api, done, unwrap } from "../api";
 import { useLabels } from "../components/SelectionActions";
-import { CategoryDayparts } from "../components/Dayparts";
+import { CategoryDaypartDays, CategoryDayparts } from "../components/Dayparts";
 import { SeparationEditor } from "../components/Separation";
 import { Card, ConfirmButton, Empty, ErrorView, Field, Icon, Loading, Modal, PageHead } from "../components/ui";
 import { number, rich, t } from "../i18n";
@@ -171,6 +171,12 @@ export function Categories() {
                     ) : (
                       <span className="muted">{t("rotation.off")}</span>
                     )}
+                    {category.separation.daypart_days ? (
+                      <span className="muted small" title={t("categories.daypartDaysHint")}>
+                        {" · "}
+                        {t("format.days", { count: category.separation.daypart_days })}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="actions">
                     {canEdit && (
@@ -329,6 +335,10 @@ function CategoryDialog({ category, onClose }: { category: Category | null; onCl
             value={separation.dayparts ?? 0}
             count={rotation.data?.daypart_count ?? 4}
             onChange={(dayparts) => setSeparation({ ...separation, dayparts })}
+          />
+          <CategoryDaypartDays
+            value={separation.daypart_days ?? 0}
+            onChange={(daypart_days) => setSeparation({ ...separation, daypart_days })}
           />
         </fieldset>
       </form>
