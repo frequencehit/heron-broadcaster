@@ -190,7 +190,7 @@ async fn write_slots(
         .execute(&mut *tx)
         .await?;
     for (position, slot) in slots.iter().enumerate() {
-        if slot.separation.dayparts.is_some() {
+        if slot.separation.dayparts.is_some() || slot.separation.daypart_days.is_some() {
             return Err(ApiError::Invalid(
                 "daypart separation is set for a category, not a clock slot".to_owned(),
             ));

@@ -431,8 +431,9 @@ impl Library {
     }
 
     /// The station's windows, overridden by a category, then by a clock
-    /// slot. The daypart separation is the category's only (none without
-    /// one), cut to the longest the station's division allows.
+    /// slot. The daypart separation and the same daypart on the following
+    /// days are the category's only (none without one), the separation cut
+    /// to the longest the station's division allows.
     pub fn windows(
         &self,
         category: Option<&SeparationOverrides>,
@@ -445,24 +446,28 @@ impl Library {
         if let Some(slot) = slot {
             windows = windows.with(&SeparationOverrides {
                 dayparts: None,
+                daypart_days: None,
                 ..*slot
             });
         }
         windows.dayparts = windows
             .dayparts
             .min(dayparts::max_separation(self.daypart_count()));
+        windows.daypart_days = windows.daypart_days.min(dayparts::MAX_DAYS);
         windows
     }
 
     /// How far back separation can look, in ms: the longest window the
     /// settings, a category or a slot uses (an hour at least), or the
-    /// dayparts the longest daypart separation covers.
+    /// dayparts the longest daypart separation covers, or the days the
+    /// same daypart is kept out on.
     pub fn horizon_ms(&self) -> i64 {
         let count = self.daypart_count();
         let reach = |windows: Windows| {
             windows
                 .longest_min()
                 .max(dayparts::lookback_min(count, windows.dayparts))
+                .max(dayparts::days_lookback_min(count, windows.daypart_days))
         };
         let mut longest = reach(self.windows(None, None));
         for category in self.categories.values() {

@@ -18,6 +18,9 @@ pub const COUNTS: [u8; 2] = [4, 6];
 /// The longest daypart separation of any division.
 pub const MAX_SEPARATION: u8 = 10;
 
+/// The most days the same daypart is kept out on after a play.
+pub const MAX_DAYS: u8 = 7;
+
 /// `count` as rotation uses it: 6, or 4 for anything else.
 pub fn count(count: u8) -> u8 {
     if count == 6 { 6 } else { DEFAULT_COUNT }
@@ -81,6 +84,28 @@ pub fn holds(count: u8, separation: u8, last: DateTime, at: DateTime) -> bool {
     (1..=i64::from(separation)).contains(&after)
 }
 
+/// The station day of a station time: days since 1970-01-01.
+pub fn day(at: DateTime) -> i64 {
+    days(at.date())
+}
+
+/// Whether a play at `played` keeps a track out at `at` (station times)
+/// with the same daypart kept out on the `days` following days: `at` is
+/// in the daypart of `played` (the same letter), 1 to `days` days later.
+pub fn holds_days(count: u8, days: u8, played: DateTime, at: DateTime) -> bool {
+    of(count, played) == of(count, at) && (1..=i64::from(days)).contains(&(day(at) - day(played)))
+}
+
+/// How far back a play can still hold a track back with the same daypart
+/// kept out on `days` following days, in minutes: the days and the
+/// daypart, and an hour for the clocks going back. 0 when off.
+pub fn days_lookback_min(count: u8, days: u8) -> u32 {
+    if days == 0 {
+        return 0;
+    }
+    u32::from(days) * 24 * 60 + u32::from(hours(count)) * 60 + 60
+}
+
 /// How far back a play can still hold a track back with `separation`, in
 /// minutes: the dayparts it covers and the one played in, and an hour for
 /// the clocks going back. 0 when off.
@@ -102,6 +127,11 @@ pub struct DaypartLog {
     /// The daypart separation of the slot's category, before relaxation;
     /// `windows.dayparts` is the one applied.
     pub separation: u8,
+    /// The days the same daypart is kept out on after a play, from the
+    /// slot's category, before relaxation; `windows.daypart_days` is the
+    /// one applied. Missing in picks logged before it.
+    #[serde(default)]
+    pub days: u8,
     /// The daypart the picked track last played in, from 0; missing if
     /// never.
     pub last_daypart: Option<u8>,
@@ -199,6 +229,41 @@ mod tests {
         // Played at the very start of A, held until the end of D: 24 h.
         assert_eq!(lookback_min(4, 3), 24 * 60 + 60);
         assert_eq!(lookback_min(6, 10), 44 * 60 + 60);
+    }
+
+    #[test]
+    fn the_same_daypart_is_kept_out_on_the_following_days() {
+        // Played in B on Thursday 5 November, one day: Friday's B is kept
+        // out, Saturday's is not.
+        let played = at(5, 8, 0);
+        assert!(holds_days(4, 1, played, at(6, 6, 0)));
+        assert!(holds_days(4, 1, played, at(6, 11, 59)));
+        assert!(!holds_days(4, 1, played, at(7, 6, 0)));
+        // Only that daypart: Friday's A and C are free, and so is the same
+        // day's B (the track separation decides).
+        assert!(!holds_days(4, 1, played, at(6, 5, 59)));
+        assert!(!holds_days(4, 1, played, at(6, 12, 0)));
+        assert!(!holds_days(4, 1, played, at(5, 11, 0)));
+        assert!(!holds_days(4, 0, played, at(6, 8, 0)), "0 is off");
+        // Seven days: the B of the next seven days, not the eighth's.
+        assert!(holds_days(4, 7, played, at(12, 7, 0)));
+        assert!(!holds_days(4, 7, played, at(13, 7, 0)));
+        // Across midnight and a month: played in D at 23:50, the next
+        // day's D is kept out, its A is not.
+        let late = date(2026, 11, 30).at(23, 50, 0, 0);
+        assert!(!holds_days(4, 1, late, date(2026, 12, 1).at(0, 10, 0, 0)));
+        assert!(holds_days(4, 1, late, date(2026, 12, 1).at(18, 0, 0, 0)));
+        // With 6 dayparts, the letters are of 4 hours: 08:00 is C.
+        assert!(holds_days(6, 2, at(5, 9, 0), at(7, 11, 0)));
+        assert!(!holds_days(6, 2, at(5, 9, 0), at(7, 12, 0)));
+    }
+
+    #[test]
+    fn the_days_lookback_reaches_the_start_of_the_daypart() {
+        assert_eq!(days_lookback_min(4, 0), 0);
+        // Played at the start of B, held until the end of B X days later.
+        assert_eq!(days_lookback_min(4, 1), 24 * 60 + 6 * 60 + 60);
+        assert_eq!(days_lookback_min(6, 7), 7 * 24 * 60 + 4 * 60 + 60);
     }
 
     /// Station times of the instants from `start`, every `step` minutes.

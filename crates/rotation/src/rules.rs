@@ -20,6 +20,10 @@ pub struct Windows {
     /// Daypart separation: a track played in a daypart does not play in
     /// this many dayparts after it ([`crate::dayparts`]); 0: off.
     pub dayparts: u8,
+    /// The same daypart on the following days: a track played in a
+    /// daypart does not play in that daypart on this many days after
+    /// ([`crate::dayparts::holds_days`]), 0 to 7; 0: off.
+    pub daypart_days: u8,
 }
 
 impl Default for Windows {
@@ -30,6 +34,7 @@ impl Default for Windows {
             title_min: 240,
             track_min: 240,
             dayparts: 0,
+            daypart_days: 0,
         }
     }
 }
@@ -77,6 +82,7 @@ impl From<StationWindows> for Windows {
             title_min: windows.title_min,
             track_min: windows.track_min,
             dayparts: 0,
+            daypart_days: 0,
         }
     }
 }
@@ -99,6 +105,10 @@ pub struct SeparationOverrides {
     /// clock slot's.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dayparts: Option<u8>,
+    /// The same daypart on the following days: a category's own (none or
+    /// 0: off), never a clock slot's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daypart_days: Option<u8>,
 }
 
 impl SeparationOverrides {
@@ -124,6 +134,7 @@ impl Windows {
         title_min: 0,
         track_min: 0,
         dayparts: 0,
+        daypart_days: 0,
     };
 
     pub fn with(self, overrides: &SeparationOverrides) -> Self {
@@ -133,6 +144,7 @@ impl Windows {
             title_min: overrides.title_min.unwrap_or(self.title_min),
             track_min: overrides.track_min.unwrap_or(self.track_min),
             dayparts: overrides.dayparts.unwrap_or(self.dayparts),
+            daypart_days: overrides.daypart_days.unwrap_or(self.daypart_days),
         }
     }
 
@@ -146,11 +158,15 @@ impl Windows {
         if step >= 2 {
             windows.album_min = 0;
         }
+        // The same daypart on the following days goes with daypart
+        // separation.
         if step >= 3 {
             windows.dayparts /= 2;
+            windows.daypart_days /= 2;
         }
         if step >= 4 {
             windows.dayparts = 0;
+            windows.daypart_days = 0;
         }
         if step >= 5 {
             windows.artist_min /= 2;
@@ -184,8 +200,9 @@ impl Windows {
             .max(self.track_min)
     }
 
-    /// Checks the windows are within a week, and the daypart separation
-    /// within the longest any division allows.
+    /// Checks the windows are within a week, the daypart separation
+    /// within the longest any division allows, and the same daypart kept
+    /// out at most a week.
     pub fn check(&self) -> Result<(), String> {
         if self.longest_min() > MAX_WINDOW_MIN {
             return Err(format!(
@@ -196,6 +213,12 @@ impl Windows {
             return Err(format!(
                 "daypart separation is at most {} dayparts",
                 crate::dayparts::MAX_SEPARATION
+            ));
+        }
+        if self.daypart_days > crate::dayparts::MAX_DAYS {
+            return Err(format!(
+                "the same daypart is kept out at most {} days",
+                crate::dayparts::MAX_DAYS
             ));
         }
         Ok(())
@@ -339,6 +362,39 @@ mod tests {
     }
 
     #[test]
+    fn the_same_daypart_on_the_following_days_relaxes_with_daypart_separation() {
+        // On its own (daypart separation off) or with it: halved rounded
+        // down at step 3, dropped at step 4, as daypart separation.
+        for dayparts in [0, 2] {
+            let windows = Windows {
+                dayparts,
+                daypart_days: 7,
+                ..Windows::default()
+            };
+            let days: Vec<u8> = (0..=12)
+                .map(|step| windows.at_step(step).daypart_days)
+                .collect();
+            assert_eq!(days, [7, 7, 7, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        }
+        for (days, halved) in [(1, 0), (2, 1), (3, 1), (7, 3)] {
+            let windows = Windows {
+                daypart_days: days,
+                ..Windows::OFF
+            };
+            assert_eq!(windows.at_step(3).daypart_days, halved);
+        }
+        let days = |daypart_days| {
+            Windows {
+                daypart_days,
+                ..Windows::OFF
+            }
+            .check()
+        };
+        assert!(days(7).is_ok());
+        assert!(days(8).is_err());
+    }
+
+    #[test]
     fn windows_across_stations_relax_with_the_station_s_own() {
         let across = AcrossWindows {
             artist_min: 30,
@@ -376,8 +432,12 @@ mod tests {
                 title_min: 240,
                 track_min: 90,
                 dayparts: 2,
+                daypart_days: 0,
             }
         );
+        let parsed: SeparationOverrides = serde_json::from_str(r#"{"daypart_days": 2}"#).unwrap();
+        assert_eq!(Windows::OFF.with(&parsed).daypart_days, 2);
+        assert!(serde_json::from_str::<StationWindows>(r#"{"daypart_days": 1}"#).is_err());
         // The station's windows have no daypart separation: it is each
         // category's.
         assert!(serde_json::from_str::<StationWindows>(r#"{"dayparts": 1}"#).is_err());
