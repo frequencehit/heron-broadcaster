@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { api, can, done, errorMessage, fetchStatus, unwrap } from "./api";
 import { BackupWarnings } from "./components/BackupKey";
 import { StatusBar } from "./components/StatusBar";
+import { Enrolment, RecoveryCodesHost } from "./components/TwoFactor";
 import { Banner, Icon, Loading, Logo } from "./components/ui";
 import { type PlainKey, rich, setLanguage, t, toSetting, useLanguage } from "./i18n";
 import { setTimeZone } from "./lib/format";
@@ -14,6 +15,7 @@ import { Link, match, navigate, useLocation } from "./lib/router";
 import { ME_KEY, StationScope, UserContext, useCan, useMeQuery, useUser } from "./lib/session";
 import { chooseStation, here, initialStation, stationRole, useStation } from "./lib/station";
 import { applyFullWidth, applyTheme, storedFullWidth, storedTheme } from "./lib/theme";
+import { mustEnrol } from "./lib/twoFactor";
 import { buildLabel, differentBuilds, webBuild } from "./lib/version";
 import { About } from "./pages/About";
 import { Account } from "./pages/Account";
@@ -50,6 +52,7 @@ applyTheme(storedTheme());
 applyFullWidth(storedFullWidth());
 
 export function App() {
+  const client = useQueryClient();
   const me = useMeQuery();
   const user = me.data;
   // Every page re-renders in the new language at once.
@@ -81,9 +84,20 @@ export function App() {
   }
   return (
     <UserContext.Provider value={user}>
-      <Shell />
+      <RecoveryCodesHost username={user.username}>
+        {mustEnrol(user) ? <Enrolment onSignOut={() => void signOut(client)} /> : <Shell />}
+      </RecoveryCodesHost>
     </UserContext.Provider>
   );
+}
+
+/** Ends the session and forgets what the user saw. */
+async function signOut(client: QueryClient) {
+  await done(api.POST("/api/v1/auth/logout")).catch(() => {});
+  stopLive();
+  client.setQueryData(ME_KEY, null);
+  client.removeQueries({ predicate: (query) => query.queryKey[0] !== ME_KEY[0] });
+  navigate("/");
 }
 
 function route(pathname: string): ReactNode {
@@ -229,13 +243,6 @@ function Shell() {
     setNavOpen(false);
   }, [pathname]);
 
-  const signOut = async () => {
-    await done(api.POST("/api/v1/auth/logout")).catch(() => {});
-    stopLive();
-    client.setQueryData(ME_KEY, null);
-    client.removeQueries({ predicate: (query) => query.queryKey[0] !== ME_KEY[0] });
-    navigate("/");
-  };
 
   let section: PlainKey | undefined;
   return (
@@ -304,7 +311,7 @@ function Shell() {
               href="/"
               onClick={(event) => {
                 event.preventDefault();
-                void signOut();
+                void signOut(client);
               }}
             >
               <Icon name="logout" /> {t("nav.signOut")}

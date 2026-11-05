@@ -34,7 +34,7 @@ export class Failure {
 /** What a request is answered with: data, a `Failure`, or either from its options. */
 type Answer = unknown;
 
-type Method = "GET" | "POST" | "PUT" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** A request the component sent. */
 export interface Call {
@@ -67,7 +67,7 @@ export function answer(answers: Record<string, Answer>): void {
     }
     return { data: result, response: new Response(null, { status: result === undefined ? 204 : 200 }) };
   };
-  for (const method of ["GET", "POST", "PUT", "DELETE"] as const) {
+  for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"] as const) {
     vi.spyOn(api, method).mockImplementation(reply(method) as never);
   }
 }
@@ -94,6 +94,7 @@ export function user(role: Role = "admin"): User {
     full_width: false,
     created_at_unix_ms: 0,
     station_roles: [],
+    two_factor: { totp: false, passkeys: 0, required: false },
   };
 }
 

@@ -3,13 +3,14 @@
 // Users and their roles (admins).
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type Role, type User, api, done, unwrap } from "../api";
 import { Banner, Card, ConfirmButton, ErrorView, Field, Icon, Loading, Modal, PageHead } from "../components/ui";
 import { type PlainKey, t } from "../i18n";
 import { ago } from "../lib/format";
 import { useAction, useCan, useUser } from "../lib/session";
 import { useStations } from "../components/Stations";
+import { twoFactorState } from "../lib/twoFactor";
 import type { StationRoleName } from "../lib/station";
 
 const STATION_ROLES: { value: StationRoleName; label: PlainKey }[] = [
@@ -68,7 +69,8 @@ export function Users() {
           </button>
         }
       />
-      <Card flush>
+      <TwoFactorRequirement />
+      <Card title={t("nav.users")} flush>
         {users.isPending && <Loading />}
         {users.isError && <ErrorView error={users.error} />}
         {users.data && (
@@ -84,6 +86,7 @@ export function Users() {
                         {station.code}
                       </th>
                     ))}
+                  <th>{t("twoFactor.title")}</th>
                   <th className="hide-narrow">{t("users.lastSignIn")}</th>
                   <th>
                     <span className="visually-hidden">{t("library.actions")}</span>
@@ -144,6 +147,9 @@ export function Users() {
                           </td>
                         );
                       })}
+                    <td>
+                      <TwoFactorState user={user} />
+                    </td>
                     <td className="hide-narrow muted">{ago(user.last_login_at_unix_ms)}</td>
                     <td className="actions">
                       <button type="button" className="btn small" onClick={() => setResetting(user)}>
@@ -189,6 +195,83 @@ export function Users() {
       {creating && <NewUserDialog onClose={() => setCreating(false)} />}
       {resetting && <PasswordDialog user={resetting} onClose={() => setResetting(null)} />}
     </>
+  );
+}
+
+/** A user's second factors: on (the app, how many passkeys), to set up, or off. */
+function TwoFactorState({ user }: { user: User }) {
+  const status = user.two_factor;
+  const state = twoFactorState(status);
+  let detail = "—";
+  if (status.totp) {
+    detail = status.passkeys > 0 ? t("twoFactor.appAndKeys", { count: status.passkeys }) : t("twoFactor.appOnly");
+  } else if (status.passkeys > 0) {
+    detail = t("twoFactor.keys", { count: status.passkeys });
+  }
+  const badge = { on: "badge good", toSetUp: "badge warn", off: "badge" }[state];
+  return (
+    <>
+      <span className={badge}>{t(`twoFactor.${state}`)}</span> <span className="muted small">{detail}</span>
+    </>
+  );
+}
+
+/** Which roles must have a second factor. */
+function TwoFactorRequirement() {
+  const settings = useQuery({
+    queryKey: ["settings", "two-factor"],
+    queryFn: () => unwrap(api.GET("/api/v1/settings/two-factor")),
+  });
+  const [draft, setDraft] = useState({ admin: false, operator: false, viewer: false });
+  useEffect(() => {
+    if (settings.data) {
+      setDraft(settings.data);
+    }
+  }, [settings.data]);
+  const save = useAction(() => unwrap(api.PUT("/api/v1/settings/two-factor", { body: draft })), {
+    success: t("twoFactor.requirementSaved"),
+    invalidate: [["settings", "two-factor"], ["users"]],
+  });
+  const boxes: { role: Role; label: PlainKey }[] = [
+    { role: "admin", label: "twoFactor.requireAdmins" },
+    { role: "operator", label: "twoFactor.requireOperators" },
+    { role: "viewer", label: "twoFactor.requireViewers" },
+  ];
+  return (
+    <Card
+      title={t("twoFactor.title")}
+      actions={
+        <button
+          type="button"
+          className="btn small primary"
+          disabled={!settings.data || save.isPending}
+          onClick={() => save.mutate(undefined)}
+        >
+          {t("common.save")}
+        </button>
+      }
+    >
+      <div className="stack">
+        <p className="muted small" style={{ margin: 0 }}>
+          {t("twoFactor.usersHelp")}
+        </p>
+        {settings.isError && <ErrorView error={settings.error} />}
+        <div className="row" style={{ gap: "1.5rem" }}>
+          {boxes.map(({ role, label }) => (
+            <label key={role} className="check">
+              <input
+                type="checkbox"
+                checked={draft[role]}
+                disabled={!settings.data}
+                onChange={(event) => setDraft({ ...draft, [role]: event.target.checked })}
+              />
+              {t(label)}
+            </label>
+          ))}
+        </div>
+        <span className="hint">{t("twoFactor.passkeysNeedHttps")}</span>
+      </div>
+    </Card>
   );
 }
 

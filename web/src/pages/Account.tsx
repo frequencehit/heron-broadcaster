@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Your account: theme, language, width, password and API tokens.
+// Your account: theme, language, width, password, second factors and API tokens.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { type Theme, api, done, unwrap } from "../api";
+import { TwoFactorCard } from "../components/TwoFactor";
 import { Banner, Card, ConfirmButton, Empty, Field, Icon, NumberInput, PageHead, Segmented } from "../components/ui";
 import { LANGUAGES, type LanguageSetting, resolve, rich, setLanguage, t, toSetting } from "../i18n";
 import { ago, dateTime } from "../lib/format";
@@ -23,6 +24,7 @@ export function Account() {
         <DisplayCard theme={user.theme} language={toSetting(user.language)} fullWidth={user.full_width} />
         <PasswordCard />
       </div>
+      <TwoFactorCard />
       <TokensCard />
     </>
   );

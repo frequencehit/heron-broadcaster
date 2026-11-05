@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorBody {
     /// Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,
-    /// `not_found`, `conflict`, `invalid`, `too_many_requests`,
+    /// `two_factor_required`, `not_found`, `conflict`, `invalid`, `too_many_requests`,
     /// `engine_unavailable` or `internal`.
     pub error: String,
     /// For people.
@@ -26,6 +26,10 @@ pub enum ApiError {
     Unauthorized,
     #[error("your role does not allow this")]
     Forbidden,
+    /// Signed in, but the user's role requires a second factor and they
+    /// have none: only setting one up is allowed.
+    #[error("set up two-factor authentication first")]
+    TwoFactorRequired,
     #[error("{0}")]
     NotFound(String),
     #[error("{0}")]
@@ -54,6 +58,7 @@ impl ApiError {
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
+            Self::TwoFactorRequired => (StatusCode::FORBIDDEN, "two_factor_required"),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             Self::Invalid(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid"),

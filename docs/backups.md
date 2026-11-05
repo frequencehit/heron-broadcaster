@@ -27,7 +27,7 @@ The configuration file is what a station restores after a bad change or a lost d
 | Artists curated by hand: marked similar, suggestions accepted or dismissed | Artist names moved or merged by hand: to do again after a restore onto a rebuilt library, or restore the database dump |
 | Medleys: recipes, stations and parts | |
 | Webhooks, with their secrets | |
-| Users (password hashes, shared roles, roles per station, preferences) and API tokens (hashes) | |
+| Users (password hashes, shared roles, roles per station, preferences), their second factors (the authenticator app's secret, passkeys, hashes of recovery codes) and API tokens (hashes) | |
 | **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code and play ratio, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
 
 **Secrets are in both files.** Output and stream server passwords, webhook secrets, the AcoustID key, password and token hashes: a restore gives back a working station, with nothing to type again. The files are written readable by the API's user only (`0600`). In clear, treat them like the database: do not mail them, and keep copies off the machine somewhere private. [Encrypted](#encryption), they can go anywhere: without the key they are unreadable.
@@ -84,7 +84,7 @@ docker compose exec -T heron-api heron-api backup restore 2026-11-03T03-30-00Z-d
 1. The file is checked first: its format, its schema, every part of it. A file that does not pass changes nothing.
 2. The current configuration is backed up (`before_restore`), so a restore can itself be undone.
 3. Everything the file holds replaces what the database has, in one transaction: a restore applies whole or not at all. Rows are matched by ID: what the database has and the file does not (a category made since) is deleted, except stations, which are left as they are with their history. What is set on tracks is replaced for every track: a track the file does not name (added since) loses its categories and settings. What the file does not hold (the tracks themselves, history…) is not touched.
-4. Every session is closed: sign in again, with the users of the backup. When no admin can sign in afterwards, `heron-api user passwd` sets a password from the command line.
+4. Every session is closed: sign in again, with the users of the backup. When no admin can sign in afterwards, `heron-api user passwd` sets a password from the command line, and `heron-api user reset-2fa` removes their second factors. A backup made before two-factor authentication existed restores no second factor and no requirement: everyone signs in with their password alone.
 5. Each engine gets its station's restored playout settings, deck EQ, AGC chain and outputs at once, as after any change ([API – Engine configuration](api.md#engine-configuration)); outputs whose settings did not change keep streaming.
 
 The restore's report lists what it replaced, counted by kind, and what it left out: the tracks it did not find by path, with how many settings each had, and the restrictions and medley parts whose track or artist is gone.

@@ -54,6 +54,8 @@ pub struct AppState {
     pub system: crate::system::SystemWatch,
     /// The API's start and configuration, for the About page.
     pub about: Arc<crate::about::Own>,
+    /// Sign-ins waiting for a second factor, factors being set up.
+    pub two_factor: Arc<crate::two_factor::TwoFactor>,
 }
 
 #[derive(OpenApi)]
@@ -115,6 +117,7 @@ fn api() -> OpenApiRouter<AppState> {
         .routes(routes!(library_status))
         .merge(about::router())
         .merge(users::router())
+        .merge(crate::two_factor::router())
         .merge(crate::backups::router())
         .merge(stations::router())
         .merge(player::router())

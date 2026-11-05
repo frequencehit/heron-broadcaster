@@ -44,6 +44,7 @@ mod stations;
 mod sync;
 mod system;
 mod tracks;
+mod two_factor;
 mod users;
 mod webhooks;
 
@@ -176,6 +177,10 @@ enum UserCommand {
     },
     /// Set a user's password (and sign them out everywhere).
     Passwd { username: String },
+    /// Remove a user's second factors (authenticator app, passkeys and
+    /// recovery codes), for someone who lost them all.
+    #[command(name = "reset-2fa")]
+    Reset2fa { username: String },
     /// List users.
     List,
 }
@@ -294,6 +299,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         backups,
         system,
         about: Arc::new(about),
+        two_factor: Default::default(),
     };
     let router = app::router(state).merge(heron_service::ops_router(SERVICE, metrics, health));
 
@@ -379,15 +385,37 @@ async fn manage_users(database_url: Option<String>, command: UserCommand) -> any
                 .map_err(|error| anyhow::anyhow!("{error}"))?;
             println!("password of {username} changed");
         }
+        UserCommand::Reset2fa { username } => {
+            let id = users::user_id(&pool, &username)
+                .await
+                .map_err(|error| anyhow::anyhow!("{error}"))?;
+            let removed = two_factor::reset(&pool, id)
+                .await
+                .map_err(|error| anyhow::anyhow!("{error}"))?;
+            if removed {
+                println!("second factors of {username} removed: they sign in with their password");
+            } else {
+                println!("{username} had no second factor");
+            }
+        }
         UserCommand::List => {
             let users = users::all_users(&pool)
                 .await
                 .map_err(|error| anyhow::anyhow!("{error}"))?;
             for user in users {
+                let two_factor = &user.two_factor;
+                let state = if two_factor.totp || two_factor.passkeys > 0 {
+                    "2fa"
+                } else if two_factor.required {
+                    "2fa to set up"
+                } else {
+                    ""
+                };
                 println!(
-                    "{:<24} {:<9} {}",
+                    "{:<24} {:<9} {:<13} {}",
                     user.username,
                     user.role.as_str(),
+                    state,
                     if user.enabled { "" } else { "disabled" }
                 );
             }
@@ -524,7 +552,10 @@ mod tests {
             "track_categories",
             "track_overrides",
             "tracks",
+            "user_recovery_codes",
             "user_station_roles",
+            "user_totp",
+            "user_webauthn",
             "users",
             "webhook_deliveries",
             "webhooks",

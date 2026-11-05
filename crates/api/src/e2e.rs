@@ -178,6 +178,7 @@ impl Station {
                 heron_service::about::ConfigItem::secret("HERON_DATABASE_URL", Some(&db.url())),
                 heron_service::about::ConfigItem::flag("HERON_LIBRARY_WATCH", true),
             ])),
+            two_factor: Default::default(),
         };
         let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api = http.local_addr().unwrap();
@@ -7457,6 +7458,419 @@ async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories(
             json!({}),
             json!({}),
         ]
+    );
+    station.stop().await;
+}
+
+/// A base32 secret (RFC 4648, no padding) as apps read it.
+fn from_base32(text: &str) -> Vec<u8> {
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut out = Vec::new();
+    let (mut buffer, mut bits) = (0u32, 0);
+    for byte in text.bytes() {
+        let value = alphabet.iter().position(|c| *c == byte).unwrap() as u32;
+        buffer = (buffer << 5) | value;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    out
+}
+
+/// The app's code for a step, as typed.
+fn totp_code(secret: &[u8], step: u64) -> String {
+    format!("{:06}", crate::two_factor::totp::code(secret, step))
+}
+
+impl Station {
+    /// Signs in with the password: the answer and the pending cookie.
+    async fn password_step(&self, username: &str) -> (StatusCode, Value, Client) {
+        let mut client = self.client();
+        let response = client
+            .http
+            .post(format!("{}/auth/login", client.base))
+            .json(&json!({"username": username, "password": "correct horse"}))
+            .send()
+            .await
+            .unwrap();
+        let status = response.status();
+        let cookie = response
+            .headers()
+            .get("set-cookie")
+            .map(|value| value.to_str().unwrap().to_owned());
+        let body = response.json().await.unwrap_or(Value::Null);
+        client.cookie = cookie.map(|cookie| cookie.split(';').next().unwrap().to_owned());
+        (status, body, client)
+    }
+
+    /// Finishes a sign-in with a second factor: the signed-in client.
+    async fn second_step(
+        &self,
+        pending: &Client,
+        path: &str,
+        code: &str,
+    ) -> Result<Client, (StatusCode, Value)> {
+        let mut request = pending
+            .http
+            .post(format!("{}{path}", pending.base))
+            .json(&json!({"code": code}));
+        if let Some(cookie) = &pending.cookie {
+            request = request.header("cookie", cookie);
+        }
+        let response = request.send().await.unwrap();
+        let status = response.status();
+        if status != StatusCode::OK {
+            return Err((status, response.json().await.unwrap_or(Value::Null)));
+        }
+        let cookies: Vec<String> = response
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|value| value.to_str().unwrap().to_owned())
+            .collect();
+        assert!(
+            cookies.iter().any(|c| c.starts_with("heron_pending=;")),
+            "{cookies:?}"
+        );
+        let session = cookies
+            .iter()
+            .find(|c| c.starts_with("heron_session="))
+            .unwrap();
+        let mut client = self.client();
+        client.cookie = Some(session.split(';').next().unwrap().to_owned());
+        Ok(client)
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_factor_authentication() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let pool = station.db.pool.clone();
+    let admin = station.signed_in("admin").await;
+    let elsewhere = station.signed_in("admin").await;
+    let view = admin.get("/auth/two-factor").await;
+    assert_eq!(view["totp"], Value::Null);
+    assert_eq!(view["recovery_codes_left"], 0);
+    // Nothing to regenerate without a factor.
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/auth/two-factor/recovery-codes",
+            json!({"password": "correct horse"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Setting up the app asks for the password, then a code.
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/auth/two-factor/totp",
+            json!({"password": "wrong"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, setup) = admin
+        .send(
+            Method::POST,
+            "/auth/two-factor/totp",
+            json!({"password": "correct horse"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{setup}");
+    assert!(
+        setup["uri"]
+            .as_str()
+            .unwrap()
+            .starts_with("otpauth://totp/Heron:admin?secret=")
+    );
+    assert!(setup["qr_svg"].as_str().unwrap().contains("<svg"));
+    let secret = from_base32(setup["secret"].as_str().unwrap());
+    assert_eq!(secret.len(), 20);
+    let now = crate::two_factor::now_step();
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/auth/two-factor/totp/confirm",
+            json!({"code": "000000"}),
+        )
+        .await;
+    // (Unless 000000 happens to be the code.)
+    if totp_code(&secret, now) != "000000" {
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    let (status, added) = admin
+        .send(
+            Method::POST,
+            "/auth/two-factor/totp/confirm",
+            json!({"code": totp_code(&secret, now)}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{added}");
+    let codes: Vec<String> = serde_json::from_value(added["recovery_codes"].clone()).unwrap();
+    assert_eq!(codes.len(), 10);
+    // The other session is signed out, this one stays.
+    let (status, _) = elsewhere.request(Method::GET, "/auth/me", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let me = admin.get("/auth/me").await;
+    assert_eq!(
+        me["two_factor"],
+        json!({"totp": true, "passkeys": 0, "required": false})
+    );
+    assert_eq!(
+        admin.get("/auth/two-factor").await["recovery_codes_left"],
+        10
+    );
+
+    // Signing in now asks for the second factor.
+    let (status, body, pending) = station.password_step("admin").await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    assert_eq!(body, json!({"second_factor": ["totp", "recovery"]}));
+    let cookie = pending.cookie.clone().unwrap();
+    assert!(cookie.starts_with("heron_pending="));
+    // The pending cookie is not a session.
+    let (status, _) = pending.request(Method::GET, "/auth/me", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // Without it, the second step does not start.
+    let (status, _) = station
+        .second_step(
+            &station.client(),
+            "/auth/login/totp",
+            &totp_code(&secret, now + 1),
+        )
+        .await
+        .map(|_| ())
+        .unwrap_err();
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // The code used to set the app up cannot be used again.
+    let (status, body) = station
+        .second_step(&pending, "/auth/login/totp", &totp_code(&secret, now))
+        .await
+        .map(|_| ())
+        .unwrap_err();
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let signed_in = station
+        .second_step(&pending, "/auth/login/totp", &totp_code(&secret, now + 1))
+        .await
+        .unwrap();
+    assert_eq!(signed_in.get("/auth/me").await["username"], "admin");
+    // The pending sign-in is used up; so is the code.
+    let (status, _) = station
+        .second_step(&pending, "/auth/login/totp", &totp_code(&secret, now + 1))
+        .await
+        .map(|_| ())
+        .unwrap_err();
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (_, _, pending) = station.password_step("admin").await;
+    let (status, _) = station
+        .second_step(&pending, "/auth/login/totp", &totp_code(&secret, now + 1))
+        .await
+        .map(|_| ())
+        .unwrap_err();
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // A recovery code works once, typed in any case.
+    let admin = station
+        .second_step(&pending, "/auth/login/recovery", &codes[0].to_lowercase())
+        .await
+        .unwrap();
+    assert_eq!(
+        admin.get("/auth/two-factor").await["recovery_codes_left"],
+        9
+    );
+    let (_, _, pending) = station.password_step("admin").await;
+    let (status, _) = station
+        .second_step(&pending, "/auth/login/recovery", &codes[0])
+        .await
+        .map(|_| ())
+        .unwrap_err();
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // New codes void the old ones.
+    let (status, fresh) = admin
+        .send(
+            Method::POST,
+            "/auth/two-factor/recovery-codes",
+            json!({"password": "correct horse"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{fresh}");
+    let (status, _) = station
+        .second_step(&pending, "/auth/login/recovery", &codes[1])
+        .await
+        .map(|_| ())
+        .unwrap_err();
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let admin = station
+        .second_step(
+            &pending,
+            "/auth/login/recovery",
+            fresh["recovery_codes"][3].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Passkeys: the browser's address is the relying party; none to use yet.
+    let response = admin
+        .http
+        .post(format!("{}/auth/two-factor/passkeys", admin.base))
+        .header("cookie", admin.cookie.as_deref().unwrap())
+        .header("x-requested-with", "test")
+        .header("origin", "http://localhost:8000")
+        .json(&json!({"password": "correct horse", "name": "Laptop"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let options: Value = response.json().await.unwrap();
+    assert_eq!(options["publicKey"]["rp"]["id"], "localhost", "{options}");
+    assert!(options["publicKey"]["challenge"].is_string());
+    let (_, _, pending) = station.password_step("admin").await;
+    let response = pending
+        .http
+        .post(format!("{}/auth/login/webauthn/start", pending.base))
+        .header("cookie", pending.cookie.as_deref().unwrap())
+        .header("origin", "http://localhost:8000")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    // Required for viewers: a viewer without a factor can only set one up.
+    let viewer = station.signed_in("viewer").await;
+    let (status, token) = viewer
+        .send(Method::POST, "/tokens", json!({"name": "display"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, body) = viewer
+        .send(Method::PUT, "/settings/two-factor", json!({"viewer": true}))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/two-factor", json!({"viewer": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = viewer.request(Method::GET, "/queue", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"], "two_factor_required");
+    assert_eq!(viewer.get("/auth/me").await["two_factor"]["required"], true);
+    assert_eq!(
+        viewer.get("/auth/two-factor").await["required_by"],
+        "viewer"
+    );
+    // API tokens are not concerned.
+    let mut scripted = station.client();
+    scripted.bearer = Some(token["token"].as_str().unwrap().to_owned());
+    scripted.get("/queue").await;
+    let users = admin.get("/users").await;
+    let state: Vec<(String, Value)> = users
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|user| {
+            (
+                user["username"].as_str().unwrap().to_owned(),
+                user["two_factor"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        state,
+        [
+            (
+                "admin".to_owned(),
+                json!({"totp": true, "passkeys": 0, "required": false})
+            ),
+            (
+                "viewer".to_owned(),
+                json!({"totp": false, "passkeys": 0, "required": true})
+            ),
+        ]
+    );
+    // The viewer sets up an app: then everything is open again.
+    let (_, setup) = viewer
+        .send(
+            Method::POST,
+            "/auth/two-factor/totp",
+            json!({"password": "correct horse"}),
+        )
+        .await;
+    let viewer_secret = from_base32(setup["secret"].as_str().unwrap());
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            "/auth/two-factor/totp/confirm",
+            json!({"code": totp_code(&viewer_secret, crate::two_factor::now_step())}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    viewer.get("/queue").await;
+    // The last factor of a role that requires one cannot be removed.
+    let (status, _) = viewer
+        .send(
+            Method::DELETE,
+            "/auth/two-factor/totp",
+            json!({"password": "correct horse"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // A backup keeps second factors and the requirement.
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap().to_owned();
+    let file = admin.get(&format!("/backups/{name}/config")).await;
+    assert_eq!(file["tables"]["user_totp"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        file["tables"]["user_recovery_codes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        20
+    );
+    let (status, _) = admin
+        .send(
+            Method::DELETE,
+            "/auth/two-factor/totp",
+            json!({"password": "correct horse"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    // The last factor gone, the codes go too.
+    assert_eq!(
+        admin.get("/auth/two-factor").await["recovery_codes_left"],
+        0
+    );
+    let (status, body) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body, pending) = station.password_step("admin").await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let admin = station
+        .second_step(
+            &pending,
+            "/auth/login/recovery",
+            fresh["recovery_codes"][5].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        admin.get("/settings/two-factor").await,
+        json!({"admin": false, "operator": false, "viewer": true})
+    );
+
+    // The command line's reset removes everything: the password is enough.
+    let viewer_id = users::user_id(&pool, "viewer").await.unwrap();
+    assert!(crate::two_factor::reset(&pool, viewer_id).await.unwrap());
+    assert!(!crate::two_factor::reset(&pool, viewer_id).await.unwrap());
+    let (status, _, viewer) = station.password_step("viewer").await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = viewer.request(Method::GET, "/queue", None).await;
+    assert_eq!(
+        (status, &body["error"]),
+        (StatusCode::FORBIDDEN, &json!("two_factor_required"))
     );
     station.stop().await;
 }
