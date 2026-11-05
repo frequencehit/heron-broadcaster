@@ -19,6 +19,8 @@ import {
 import { Banner, Card, Empty, ErrorView, Field, Loading, PageHead, Segmented } from "../components/ui";
 import { number, rich, t } from "../i18n";
 import { ago, clockTime, dateTime } from "../lib/format";
+import { DaypartBadge, daypartNote } from "../components/Dayparts";
+import { daypartsList } from "../lib/dayparts";
 import { describeWindows, methodLabel, stepLabel } from "../lib/rotation";
 import { ratioLabel } from "../lib/ratio";
 import { Link } from "../lib/router";
@@ -41,11 +43,25 @@ export function Rotation() {
 
 function StepBadge({ explanation }: { explanation: Explanation }) {
   const held = explanation.held_by_ratio?.length ?? 0;
+  const dayparts = daypartNote(explanation);
   return (
-    <div className="row">
-      <RulesBadge explanation={explanation} />
-      {held > 0 && <span className="badge">{t("ratio.heldBadge", { count: held })}</span>}
+    <div>
+      <div className="row">
+        <RulesBadge explanation={explanation} />
+        {held > 0 && <span className="badge">{t("ratio.heldBadge", { count: held })}</span>}
+      </div>
+      {dayparts && <div className="muted small">{dayparts}</div>}
     </div>
+  );
+}
+
+/** When a track is planned, with its daypart. */
+function Planned({ explanation, at }: { explanation: Explanation; at: number }) {
+  return (
+    <span className="row daypart-planned">
+      <DaypartBadge explanation={explanation} />
+      {dateTime(at)}
+    </span>
   );
 }
 
@@ -127,7 +143,7 @@ function Where({ explanation }: { explanation: Explanation }) {
         slot: (explanation.slot ?? 0) + 1,
         category: slotCategory,
       })}
-      {explanation.step >= 9 && (
+      {explanation.step >= 11 && (
         <span className="muted"> → {explanation.category_name ?? t("rotationPage.wholeLibrary")}</span>
       )}
       {schedule}
@@ -143,6 +159,7 @@ function Details({ explanation }: { explanation: Explanation }) {
     blocked.title && t("rotationPage.blockedTitle", { count: blocked.title }),
     blocked.artist && t("rotationPage.blockedArtist", { count: blocked.artist }),
     blocked.album && t("rotationPage.blockedAlbum", { count: blocked.album }),
+    blocked.daypart && t("rotationPage.blockedDaypart", { count: blocked.daypart }),
     blocked.across && t("rotationPage.blockedAcross", { count: blocked.across }),
   ].filter(Boolean);
   const elsewhere = explanation.held_elsewhere;
@@ -225,10 +242,24 @@ function PicksCard() {
     placeholderData: keepPreviousData,
     refetchInterval: cursor === undefined ? 15_000 : false,
   });
+  const rotation = useQuery({
+    queryKey: ["settings", "rotation"],
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/rotation", { params: { path: here() } })),
+  });
   const rows: RotationPick[] = picks.data ?? [];
   const last = rows[rows.length - 1];
   return (
-    <Card title={t("rotationPage.picks")} flush>
+    <Card
+      title={t("rotationPage.picks")}
+      flush
+      actions={
+        rotation.data && (
+          <span className="muted small">
+            {t("dayparts.list", { list: daypartsList(rotation.data.daypart_count) })}
+          </span>
+        )
+      }
+    >
       {picks.isPending && <Loading />}
       {picks.isError && <ErrorView error={picks.error} />}
       {picks.data?.length === 0 && <Empty>{t("rotationPage.nothingPicked")}</Empty>}
@@ -248,7 +279,7 @@ function PicksCard() {
                 <Fragment key={pick.id}>
                   <tr onClick={() => setOpen(open === pick.id ? null : pick.id)} style={{ cursor: "pointer" }}>
                     <td className="num small">
-                      {dateTime(pick.planned_at_unix_ms)}
+                      <Planned explanation={pick.explanation} at={pick.planned_at_unix_ms} />
                       {!pick.played_at_unix_ms && <div className="muted">{t("rotationPage.notPlayed")}</div>}
                     </td>
                     <td className="title-cell">
@@ -423,7 +454,9 @@ function SimulationSummary({ report }: { report: SimulationReport }) {
               const track = names.get(pick.track_id);
               return (
                 <tr key={index}>
-                  <td className="num small">{dateTime(pick.start_unix_ms)}</td>
+                  <td className="num small">
+                    <Planned explanation={pick.explanation} at={pick.start_unix_ms} />
+                  </td>
                   <td className="title-cell">
                     <Link to={`/library/${pick.track_id}`}>
                       {track ? `${track.artist ?? "?"} – ${track.title ?? "?"}` : t("clocks.trackNumber", { id: String(pick.track_id) })}

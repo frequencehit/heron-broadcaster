@@ -6,9 +6,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { type Schemas, api, unwrap } from "../api";
+import { DaypartSettings } from "../components/Dayparts";
 import { Card, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
 import { type PlainKey, number, rich, t } from "../i18n";
-import { WINDOW_FIELDS } from "../lib/rotation";
+import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
 import { Link } from "../lib/router";
 import { useStationCategories } from "./Clocks";
 import { useStations } from "../components/Stations";
@@ -144,7 +145,7 @@ function QueueCard() {
   );
 }
 
-const WINDOW_LABELS: Record<string, PlainKey> = {
+const WINDOW_LABELS: Record<MinuteWindow, PlainKey> = {
   album_min: "separation.album",
   artist_min: "separation.artist",
   title_min: "separation.title",
@@ -184,7 +185,7 @@ function RotationCard() {
         <>
           <div className="form-grid">
             {WINDOW_FIELDS.map(([key]) => (
-              <Field key={key} label={t(WINDOW_LABELS[key] ?? "separation.track")}>
+              <Field key={key} label={t(WINDOW_LABELS[key])}>
                 <NumberInput
                   value={draft.separation[key]}
                   min={0}
@@ -197,6 +198,14 @@ function RotationCard() {
               </Field>
             ))}
           </div>
+          <DaypartSettings
+            count={draft.daypart_count}
+            separation={draft.separation.dayparts}
+            disabled={!canEdit}
+            onChange={(daypart_count, dayparts) =>
+              set({ daypart_count, separation: { ...draft.separation, dayparts } })
+            }
+          />
           <div className="form-grid">
             <Field label={t("settings.fallback")} hint={t("settings.fallbackHint")}>
               <select

@@ -13444,6 +13444,12 @@
             "format": "int32",
             "minimum": 0
           },
+          "daypart": {
+            "type": "integer",
+            "format": "int32",
+            "description": "By daypart separation. Missing in picks logged before it.",
+            "minimum": 0
+          },
           "title": {
             "type": "integer",
             "format": "int32",
@@ -14302,6 +14308,44 @@
           }
         }
       },
+      "DaypartLog": {
+        "type": "object",
+        "description": "The dayparts at a pick, for the rotation log.",
+        "required": [
+          "count",
+          "daypart",
+          "separation"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The station's division of the day: 4 or 6 dayparts.",
+            "minimum": 0
+          },
+          "daypart": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The pick's daypart, from 0 (A).",
+            "minimum": 0
+          },
+          "last_daypart": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The daypart the picked track last played in, from 0; missing if\nnever.",
+            "minimum": 0
+          },
+          "separation": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The daypart separation of the slot's category, before relaxation;\n`windows.dayparts` is the one applied.",
+            "minimum": 0
+          }
+        }
+      },
       "DeckEq": {
         "type": "object",
         "description": "One deck EQ. Flat and bypassed by default.",
@@ -15133,6 +15177,17 @@
             "description": "The picked track's play ratio counter when it was picked, 10 down\nto 1. Missing in picks logged before play ratios.",
             "minimum": 0
           },
+          "daypart": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DaypartLog",
+                "description": "The pick's daypart, and the one the track last played in. Missing\nin picks logged before daypart separation."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "enforce_rules": {
             "type": "boolean"
           },
@@ -15225,7 +15280,7 @@
           "step": {
             "type": "integer",
             "format": "int32",
-            "description": "Relaxation step, 0 (none) to 10.",
+            "description": "Relaxation step, 0 (none) to 12.",
             "minimum": 0
           },
           "step_description": {
@@ -19800,6 +19855,13 @@
               "track_min": 0
             }
           },
+          "daypart_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The station's division of the day for daypart separation: 4\ndayparts of 6 hours, or 6 of 4 hours.",
+            "default": 4,
+            "minimum": 0
+          },
           "fallback_category_id": {
             "oneOf": [
               {
@@ -19825,6 +19887,7 @@
             "default": {
               "album_min": 60,
               "artist_min": 120,
+              "dayparts": 0,
               "title_min": 240,
               "track_min": 240
             }
@@ -20277,6 +20340,15 @@
             "format": "int32",
             "minimum": 0
           },
+          "dayparts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Daypart separation; categories only, never clock slots.",
+            "minimum": 0
+          },
           "title_min": {
             "type": [
               "integer",
@@ -20303,7 +20375,8 @@
           "track",
           "title",
           "artist",
-          "album"
+          "album",
+          "daypart"
         ]
       },
       "ServiceConfig": {
@@ -20504,7 +20577,7 @@
               "format": "int32",
               "minimum": 0
             },
-            "description": "Picks per relaxation step, 0 to 10: every pick past step 0 is a\nlogged relaxation."
+            "description": "Picks per relaxation step, 0 to 12: every pick past step 0 is a\nlogged relaxation."
           },
           "violations": {
             "type": "array",
@@ -23764,6 +23837,39 @@
                 "minimum": 0
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Played in a daypart its last play keeps it out of, with the daypart\nseparation at its step.",
+            "required": [
+              "pick",
+              "earlier_unix_ms",
+              "dayparts",
+              "kind"
+            ],
+            "properties": {
+              "dayparts": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "earlier_unix_ms": {
+                "type": "integer",
+                "format": "int64",
+                "description": "The track's last play before it."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "daypart"
+                ]
+              },
+              "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
           }
         ]
       },
@@ -23960,6 +24066,13 @@
             "format": "int32",
             "description": "Do not play the same artist (or a similar one) within.",
             "default": 120,
+            "minimum": 0
+          },
+          "dayparts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Daypart separation: a track played in a daypart does not play in\nthis many dayparts after it ([`crate::dayparts`]); 0: off.",
+            "default": 0,
             "minimum": 0
           },
           "title_min": {

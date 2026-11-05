@@ -5,10 +5,10 @@
 
 import type { SeparationOverrides, Windows } from "../api";
 import { type PlainKey, number, t } from "../i18n";
-import { WINDOW_FIELDS } from "../lib/rotation";
+import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
 import { NumberInput } from "./ui";
 
-const LABELS: Record<keyof Windows, PlainKey> = {
+const LABELS: Record<MinuteWindow, PlainKey> = {
   album_min: "separation.album",
   artist_min: "separation.artist",
   title_min: "separation.title",
@@ -91,5 +91,7 @@ export function applyOverrides(base: Windows, overrides: SeparationOverrides | u
     artist_min: overrides?.artist_min ?? base.artist_min,
     title_min: overrides?.title_min ?? base.title_min,
     track_min: overrides?.track_min ?? base.track_min,
+    // Clock slots never override it: only the category's counts.
+    dayparts: overrides?.dayparts ?? base.dayparts,
   };
 }

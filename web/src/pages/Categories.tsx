@@ -10,6 +10,7 @@ import { StationBadges, StationChecks, useSeveralStations } from "../components/
 import { here, useStation } from "../lib/station";
 import { type Category, type SeparationOverrides, api, done, unwrap } from "../api";
 import { useLabels } from "../components/SelectionActions";
+import { CategoryDayparts } from "../components/Dayparts";
 import { SeparationEditor } from "../components/Separation";
 import { Card, ConfirmButton, Empty, ErrorView, Field, Icon, Loading, Modal, PageHead } from "../components/ui";
 import { number, rich, t } from "../i18n";
@@ -314,6 +315,20 @@ function CategoryDialog({ category, onClose }: { category: Category | null; onCl
         <fieldset>
           <legend>{t("categories.separation")}</legend>
           <SeparationEditor value={separation} inherited={rotation.data?.separation} onChange={setSeparation} />
+          <CategoryDayparts
+            value={separation.dayparts ?? undefined}
+            station={rotation.data?.separation.dayparts}
+            count={rotation.data?.daypart_count ?? 4}
+            onChange={(dayparts) => {
+              const next = { ...separation };
+              if (dayparts === undefined) {
+                delete next.dayparts;
+              } else {
+                next.dayparts = dayparts;
+              }
+              setSeparation(next);
+            }}
+          />
         </fieldset>
       </form>
     </Modal>
