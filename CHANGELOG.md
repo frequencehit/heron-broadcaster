@@ -34,6 +34,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 
 ### Fixed
 
+- Backups have their database dump again after MariaDB moves to a new version: the Compose file has MariaDB upgrade its own tables when it starts (`MARIADB_AUTO_UPGRADE`). `mariadb-dump` failed on them before (*Column count of mysql.proc is wrong*).
 - A track resumed by a restarted engine, or by one taking over during an upgrade, is no longer reported as a new play: no second `track.started` webhook and no second row in the history.
 - A hot handover retried with a longer lead waits for its stop, instead of giving up after 2 s with the track still on air. An engine that handed over no longer removes its successor's socket.
 - `scripts/upgrade.sh --swarm` updates each service by the digest it pulled, so a moving tag like `edge` is upgraded for the API, web, analyzer and librarian too (only the engines were).

@@ -236,6 +236,13 @@ What each release asks of an upgrade, on top of the steps above. What it brings 
 The engines, the API and the web interface are upgraded as usual. A few things to know:
 
 - **MariaDB 12.3, Icecast 2.5.0 and ffmpeg 9.0.2** are the images of the Compose files now (MariaDB 11.8, Icecast 2.4.4 and ffmpeg 7.1.1 before). A deployment that keeps its own versions of these is not touched; to follow, back up first ([Backups](backups.md)) and read MariaDB's notes on upgrading from 11.8.
+- **MariaDB's own tables are upgraded when its version changes.** The `mariadb` service of `docker-compose.yml` now sets `MARIADB_AUTO_UPGRADE`, so the image runs `mariadb-upgrade` when it starts on data of an older version. Without it, the database works but `mariadb-dump` fails, and backups have no database dump: *Column count of mysql.proc is wrong … Please use mariadb-upgrade*. A database already moved to 12.3 without it is fixed with:
+
+  ```sh
+  docker compose exec mariadb sh -c 'mariadb-upgrade -uroot -p"$MARIADB_ROOT_PASSWORD"'
+  ```
+
+  In Swarm, or with a Compose file of your own, set `MARIADB_AUTO_UPGRADE: "1"` on the MariaDB service, or run the same command in its container.
 - **Backups** have a folder: `HERON_BACKUP_FOLDER` in `.env` (`./data/backups` by default), mounted in the API's container. A banner in the web interface says if it cannot be written.
 - **The engine image contains libavcodec** (for the AAC-LC encoder) and is larger. A migration adds the `AAC 96k` encoder profile, which no output uses until you pick it.
 - **Processing, track levels and the backup key checks** come with migrations, applied when the API starts. A track shows its levels once it is analyzed again.
