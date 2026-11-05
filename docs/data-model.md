@@ -24,7 +24,7 @@ See [M5b](roadmap/m5b-track-details-tags.md). The date a track was added is `tra
 | `tracks` (added) | album_artist, genre, year, track_number, disc_number (tags); musicbrainz_recording_id, musicbrainz_release_id (tags); codec, bitrate_kbps, bitrate_mode (cbr, vbr, lossless), sample_rate, channels; details_version (what the scanner read: older tracks are read again) |
 | `track_analysis` (added) | bpm (measured) |
 | `track_musicbrainz` | track_id, release_id and recording_id (looked up for), album, record_label, catalog_number, isrc, first_release_year, genres (JSON), fetched_at |
-| `track_programming` | track_id, bpm (set by hand, replaces the measured one), mood, sound_code (values of the scales in the `programming` settings), updated_at |
+| `track_programming` | track_id, bpm (set by hand, replaces the measured one), mood, sound_code (values of the scales in the `programming` settings), play_ratio (tenths, 1 to 10; NULL is 10: see [Rotation – Play ratio](rotation.md#play-ratio)), updated_at |
 | `labels` | id, name (unique ignoring case), color |
 | `track_labels` | track_id, label_id, created_at |
 
@@ -117,6 +117,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 | `schedule_periods` | id, schedule_id (not the default one), starts_at, ends_at (station time, on the hour, the end excluded), every_year (the years are ignored; the range may run over the new year) |
 | `clock_schedule` | schedule_id, day_of_week (ISO: 1 = Monday), hour (station time), clock_id |
 | `rotation_picks` | id, track_id, planned_at, clock_id, slot, hour_start, category_id, step, explanation (JSON, see [Rotation](rotation.md#rotation-model)), engine_started_at and entry_id (the engine's queue entry), play_id — the rotation log |
+| `track_ratio_counters` | station_id, track_id, counter (10 down to 1; no row is 10) — each station's play ratio counters, state rather than configuration ([Rotation – Play ratio](rotation.md#play-ratio)) |
 
 ## History
 
