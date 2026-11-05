@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Encoders and output sinks: the `OutputSink` trait, the MP3 encoder, the
-//! external FFmpeg encoder and the Icecast sink, and the pipeline feeding
+//! Encoders and output sinks: the `OutputSink` trait, the MP3 and AAC-LC
+//! encoders, the external FFmpeg encoder and the Icecast sink, and the pipeline feeding
 //! several outputs at once. Shoutcast, HLS, file recording, pipes and more
 //! built-in encoders arrive in M11.
 //!
 //! See `docs/outputs.md`.
 
+pub mod aac;
 pub mod connection;
 pub mod encoder;
 pub mod external;

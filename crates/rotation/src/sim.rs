@@ -2,7 +2,7 @@
 
 //! Simulation: days of programming generated offline, then audited.
 //!
-//! The audit does not trust the selection log: it recomputes each pick's
+//! The audit does not trust the rotation log: it recomputes each pick's
 //! windows from its slot and relaxation step, and compares every pick with
 //! the plays before it, one by one.
 

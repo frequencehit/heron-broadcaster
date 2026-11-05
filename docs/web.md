@@ -10,7 +10,7 @@
 | **Queue** | The waiting tracks, the cued one first, with their categories (color and name) and expected start times; drag to reorder (or use the keyboard: focus the handle, space, arrows, space), play next, remove, clear; add tracks from the library; autofill on or off | operator |
 | **History** | Every play by day, with how it ended (played, skipped…) and for how long | |
 | **Tracks** | The library: search, filters (playable, not analyzed, silent, missing, disabled, needs review), category, labels (any, all, none of), never played, not played for N days, added in the last N days, bitrate below, era, mood, sound code, the tracks of one import (from the Buffer page); sort by any column, either way; choose the columns (added, last played, plays, bitrate, year, era, BPM, mood, sound code, genre, labels, lowest and highest level); select tracks, a page or every matching track, then queue them, label them, put them in a category (or a new one, created on the spot), set their mood, sound code or BPM, edit their tags, go back to the files' tags, disable or enable them; delete a selection (to the trash, after a confirmation that lists what goes). The most used actions are buttons (play next, add to queue, edit tags, clear), the others in a **…** menu (keyboard: Enter or Space opens it, the arrows move, Escape closes); preview a track in the browser, from its cue-in to its cue-out, one at a time (every role; files the browser cannot play show a warning; `usePreview` in `web/src/lib/preview.ts` serves other lists too) | operator |
-| **Buffer** | Upload files or folders (dragged, several at once, in resumable chunks, with each file's progress); the new files waiting to be imported, by group: tags as read and as they will be written, cover, planned path, identification and candidate releases, flags (duplicates, unreadable, too short); listen; pick a release or keep the file's tags; edit the tags of a file or a selection (title, artist, album, album artist, year, track, disc; edited fields are marked and can be undone); prepare a selection or a group for its tracks (categories, labels, mood, sound code, shown on each file and summed up by group; a missing category or label can be created on the spot); import or discard a selection, then follow the link to the tracks just imported. Clean files are selected already | operator |
+| **Import music** | Upload files or folders (dragged, several at once, in resumable chunks, with each file's progress); the new files waiting to be imported, by group: tags as read and as they will be written, cover, planned path, identification and candidate releases, flags (duplicates, unreadable, too short); listen; pick a release or keep the file's tags; edit the tags of a file or a selection (title, artist, album, album artist, year, track, disc; edited fields are marked and can be undone); prepare a selection or a group for its tracks (categories, labels, mood, sound code, shown on each file and summed up by group; a missing category or label can be created on the spot); import or discard a selection, then follow the link to the tracks just imported. Clean files are selected already | operator |
 | **Trash** | Deleted tracks, when they are removed for good; restore a deletion; empty the trash | operator (restore), admin (empty) |
 | **Track** | Waveform with the level in dBFS under the pointer and at the playhead, the lowest and highest level between the cue points, the cue-in, cue-out, where the next track starts (always shown: on the cue-out when the next track follows back to back; dragged or typed like the cue points) and the fades; a transition tried with another track, before or after this one, with the changes not saved yet; listen from anywhere, from the cue-in or the ending; drag the points or type them; Gap Killer and crossfade overrides; categories and weights, in a new category created on the spot if needed; labels, era, BPM, mood, sound code and the MusicBrainz details; analysis, file (codec, bitrate, sample rate, channels) and identification; plays; edit its tags; delete it | operator |
 | **Artists** | Artists and their names (search any name); rename, move a name to another artist or split it off, merge artists, mark artists similar, restrict an artist; the suggestions to review, and the MusicBrainz relationships lookup | operator |
@@ -19,21 +19,23 @@
 | **Labels** | Create, rename, recolor, merge and delete labels, with their tracks | operator |
 | **Categories** | Create, rename, recolor and delete categories; the stations they are used on; their type (Song, Jingle, Ad, or the station's own, managed on the same page); the separation windows they override; whether the FX player offers them (liners, power intros, voice tracks); fill a category from a label | operator |
 | **Restrictions** | Dayparting, date ranges and sequences on tracks, artists and categories, on every station or some; turn them on and off | operator |
-| **Selection log** | Each track rotation picked: clock and slot, rules held or relaxed, and the details (windows, tracks held back, candidates); a simulation of the next day or week, checked rule by rule | operator (simulations) |
-| **Import** | Import another software's export: categories and problems named in Heron, conflicts settled, applied as one import; past imports, with undo ([Importing from another software](import.md)) | admin |
-| **Review & organize** | Identifications waiting for review (apply a candidate release, or keep the file's tags); organize the library after a dry run; every batch of file changes (tag edits included), with undo | operator (review), admin (organize, undo) |
+| **Rotation log** | Each track rotation picked: clock and slot, rules held or relaxed, and the details (windows, tracks held back, candidates); a simulation of the next day or week, checked rule by rule | operator (simulations) |
+| **Migrate** | Bring in another software's export: categories and problems named in Heron, conflicts settled, applied as one import; past imports, with undo ([Importing from another software](import.md)) | admin |
+| **To organize** | Identifications waiting for review (apply a candidate release, or keep the file's tags); organize the library after a dry run; every batch of file changes (tag edits included), with undo | operator (review), admin (organize, undo) |
 | **Crossfade & loudness** | Station crossfade, loudness and silence watchdog settings, with a live preview of the transition between two tracks (the one on air and the next by default) as you change them, which can be listened to | admin |
 | **Deck EQ** | The music EQ (Decks A and B) and the FX EQ: ten vertical sliders each (±12 dB, double-click for 0 dB, arrows to move by 0.5 dB) with a number above each to type a gain to the tenth of a decibel, enable / bypass, the response curve drawn as the sliders move; presets: load into either EQ, save either EQ as a new preset, update a preset from the music EQ, rename, delete. Changes are heard as the sliders move, and other open pages follow them | operator |
+| **Processing** | The station's [AGC chain](audio-engine.md#master-agc-chain): bypass all, and one panel per block in the chain's order (gated AGC, stereo expander, bass EQ, 5-band, dual-band, final stage), each with its switch, a line saying what it does, and its settings as sliders with a number input; the bands of a processor side by side, with their mode and the links between them. Live meters: the chain's input and output, the AGC's gain, each band's gain reduction and the final stage's. Presets: load, save the chain as a new preset, update a preset from the chain, rename, delete. Changes are heard as the controls move, and other open pages follow them | operator |
 | **Outputs** | Outputs (Icecast for now) and encoder profiles (MP3 for now), with each output's live state: connected, reconnecting and why, bytes sent, listeners; the stream server's admin credentials, for listener sessions | admin |
 | **Statistics** | Listeners today, minute by minute; by day, week or month, per output or for the whole station: distinct listeners, peak, average, listening hours, sessions; the hours of the day; players; tracks with the most departures; CSV downloads ([Listener statistics](statistics.md)) | |
 | **Settings** | Autofill, rotation (separation windows, fallback category, categories kept out of the station's library, weights, rules across stations), the station's time zone, programming (what counts as a play, eras, mood and sound code scales) and the MusicBrainz details lookup, library layout and identification (AcoustID key), upload limits and how long the trash keeps tracks, analysis thresholds, listener statistics (minimum session, how long sessions are kept), medleys (where rendered medleys go, the liners, naming, the defaults of a new medley) | operator (queue, rotation, programming, medleys), admin (others) |
 | **Webhooks** | Webhooks on track changes: address, events, FX or not, the default JSON body or a template; the secret, shown once (and a new one); a test ping; each webhook's deliveries, with their status, attempts, what was sent and answered, and send again | admin |
 | **Stations** | The stations: add one with the address of its engine, rename, change its code, its engine or its position, enable or disable, delete ([Several stations](stations.md)) | admin |
 | **Users** | Users and roles, passwords, enable or disable; with several stations, a shared role and a role on each station | admin |
-| **Backups** | The backups, newest first (kind, time, the size of its two files, a failed dump), *Back up now*, download either file, restore a backup or an uploaded configuration file (with what it will replace, then its report), delete; the `backups` settings | admin |
+| **Backups** | The backups, newest first (kind, time, the size of its two files, a failed dump), *Back up now*, download either file, restore a backup or an uploaded configuration file (with what it will replace, then its report; the key for an encrypted one), delete; the `backups` settings; encryption: encrypt backups (the key shown once, then typed back, or the admin's own public key), check the key, change it, turn encryption off, which backups need an earlier key, the public key each key typed must match ([Backups – Encryption](backups.md#encryption)); *Test* on a backup, the last test, damaged backups ([Testing backups](backups.md#testing-backups)) | admin |
 | **Account** | Theme, language, width, password, API tokens | |
+| **About** | The build (version, commit, each service's version and whether it answers, web UI and API from the same build or not, links); for admins also the runtime (uptime, operating system, container, time zone and clock, CPU and memory), the dependencies (database, FFmpeg and stream servers versions) and the active configuration, read-only, with secrets only as *set* or *not set*; *Copy diagnostics* puts it all in the clipboard for a bug report. Linked at the bottom of the navigation | admin (all but the build) |
 
-Viewers see every page (except users and webhooks) without the controls. Every page shows a banner when something needs attention: the API, the database or the engine unreachable, live updates disconnected, the engine refusing the configuration, the **backup folder** not writable (admins), the web UI and the API **not from the same version** (an image pulled without the other: pull and start both again), or the **server clock** not synchronized or off by more than about a second (from `GET /api/v1/status`, see [API](api.md#authentication)).
+Viewers see every page (except users and webhooks) without the controls. Every page shows a banner when something needs attention: the API, the database or the engine unreachable, live updates disconnected, the engine refusing the configuration, the **backup folder** not writable (admins), **backups not encrypted**, **damaged** or **not tested** (admins), the web UI and the API **not from the same version** (an image pulled without the other: pull and start both again), or the **server clock** not synchronized or off by more than about a second (from `GET /api/v1/status`, see [API](api.md#authentication)). When an admin's [key check](backups.md#checking-the-key) is due, a dialog asks for the backup key, on any page.
 
 ## Several stations
 
@@ -68,13 +70,13 @@ The app keeps one WebSocket to `/api/v1/live` ([API – Live WebSocket](api.md#l
 
 ## Selecting rows
 
-In the lists with selection checkboxes (*Tracks*, *Buffer*):
+In the lists with selection checkboxes (*Tracks*, *Import music*):
 
 - a **click** on a checkbox checks or unchecks its row, and makes it the **anchor**;
 - **Shift + click** on a checkbox gives every row from the anchor to this one, both included, the new state of the checkbox clicked: check 8, then Shift + click 12, and rows 8 to 12 are checked; uncheck 9, then Shift + click 11, and 9 to 11 are unchecked. The anchor stays, so another Shift + click changes the range;
 - **Ctrl + click** (⌘ + click on macOS) **anywhere on a row** checks or unchecks it without opening it, and makes it the anchor; a plain click on a row still opens it.
 
-The range follows the rows as they are shown (sort, filters, page; in the Buffer, every group in turn). Another page or other filters drop the anchor.
+The range follows the rows as they are shown (sort, filters, page; in Import music, every group in turn). Another page or other filters drop the anchor.
 
 ## Waveform and previews
 
@@ -88,7 +90,7 @@ Points dragged on the waveform become the track's overrides once saved. *Next st
 
 ## Times
 
-Every time and date is shown in the station's time zone (`station` settings, see [Rotation](rotation.md)), whatever the browser's: the history's days, the queue's start times, the selection log and the schedule agree with the clocks and restrictions. The History and Schedule pages name the zone. When the clocks go back, the day has 25 hours and the repeated hour shows which it is, the way on-air logs write it: `02:40 (summer time)`, then `02:40 (winter time)`; the other times are shown as they are. When they go forward, the hour before and the hour after say it too: `01:59 (winter time)`, then `03:00 (summer time)`. Either way, the history has a line where the clocks changed, between the last play before it and the first one after: *Change to summer time · 02:00 → 03:00* on a yellow band, or *Change to winter time · 03:00 → 02:00* on a blue one.
+Every time and date is shown in the station's time zone (`station` settings, see [Rotation](rotation.md)), whatever the browser's: the history's days, the queue's start times, the rotation log and the schedule agree with the clocks and restrictions. The History and Schedule pages name the zone. When the clocks go back, the day has 25 hours and the repeated hour shows which it is, the way on-air logs write it: `02:40 (summer time)`, then `02:40 (winter time)`; the other times are shown as they are. When they go forward, the hour before and the hour after say it too: `01:59 (winter time)`, then `03:00 (summer time)`. Either way, the history has a line where the clocks changed, between the last play before it and the first one after: *Change to summer time · 02:00 → 03:00* on a yellow band, or *Change to winter time · 03:00 → 02:00* on a blue one.
 
 ## Themes
 
@@ -121,6 +123,28 @@ In development, `?lang=pseudo` on any page shows English accented, a third longe
 
 The layout works from phone width up: below 760 px the navigation moves to a menu, tables drop their secondary columns and cards stack.
 
+### Status bar
+
+A line one character high stays at the bottom of every page, in the monospace font. From left to right:
+
+- **Decks A and B:** the state (`▶` playing, `⏸` paused, `—` empty), then the artist and title with the elapsed time. The deck the listeners hear (on air) is brighter, with a red `▶`. Titles that do not fit are cut with an ellipsis. `engine ?` replaces both while the engine is unreachable.
+- **Listeners:** the total of the current station, read like the [Statistics](statistics.md) page's: at most a minute old, and `–` when no server could be read (never `0`).
+- **System** (operators and admins): `cpu 12% mem 41% load 0.4 0.5 0.6`. The CPU and memory turn to the warning colour from 80 % and to the alert colour from 95 %. Viewers do not get this part.
+
+While the live connection is down the bar greys out and says `offline`. Below 760 px the system part goes first, then the titles shrink to the deck letter and its state. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
+
+### About
+
+The **About** link at the bottom of the navigation, under the account, opens a page with:
+
+- **Build** (everyone): the web interface and each service (API, one engine per station, analyzer, librarian) with its version, commit, build date and whether it runs. A service that was never seen, or whose last sign of life is older than 90 seconds, shows as not running. The commit and the build date are set in the published images (`HERON_REVISION`, `HERON_BUILD_DATE`) and show `–` in a local build.
+- **Runtime** (admins): how long each service has been up and the operating system, kernel and architecture it runs on, whether in a container, the time zone, the server clock's synchronization, the CPU cores and memory.
+- **Dependencies** (admins): the database server's version and the migrations applied, and the FFmpeg version when the external encoder is set up.
+- **Active configuration** (admins): per service, the settings that matter as read-only values (folders, intervals, addresses) and switches. A secret (database URL, error-reporting DSN, metrics password) only shows whether it is set.
+- **Copy diagnostics:** puts what the page shows as plain text in the clipboard, for a bug report.
+
+The engine reports itself over its gRPC link. The analyzer and the librarian write a heartbeat to the database every 30 seconds, which the API reads; it is not part of [backups](backups.md). See [API](api.md#routes) for `GET /about`.
+
 ### Breadcrumb
 
 Above the title of every page that belongs to a section of the navigation, a breadcrumb says where it sits: the section (plain text, it has no page of its own), then the page, for instance `Library › Tracks` or `Station › Settings`. Pages outside a section (On air, Queue, History, Statistics, Account) have none.
@@ -135,11 +159,13 @@ The breadcrumb is built from the navigation's own list of pages, so a page added
 cd web
 npm ci
 HERON_API_URL=http://localhost:8000 npm run dev   # against a running station's heron-web
-npm test                                          # unit tests (Vitest), catalogs included
+npm test                                          # unit and component tests (Vitest), catalogs included
 npm run typecheck && npm run build
 ```
 
 Open a page with `?lang=pseudo` to check translations ([Pseudo-locale](#pseudo-locale)). `HERON_API_URL` defaults to `http://localhost:8080`, a `heron-api` run with `cargo run -p heron-api`. The API client is typed from the OpenAPI document ([API – Web client](api.md#web-client)). The app uses TanStack Query for requests and dnd-kit for dragging; routing is a small module on the History API (`src/lib/router.tsx`), since nginx answers every path with `index.html`.
+
+Logic lives in `src/lib`, tested on its own. Components are tested rendered in jsdom with Testing Library: a test file starts with `// @vitest-environment jsdom`, and `src/test/render.tsx` renders with the app's providers, signed in, against API answers the test gives.
 
 ## Limitations
 

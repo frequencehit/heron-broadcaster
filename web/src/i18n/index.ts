@@ -22,7 +22,7 @@ export type Catalog = { readonly [K in Key]: Message };
 
 // Adding a language: its catalog next to this file, and a line here.
 export const LANGUAGES = [
-  { code: "en", name: "English", load: async () => en },
+  { code: "en", name: "English", load: () => Promise.resolve(en) },
   { code: "fr", name: "Français", load: async () => (await import("./fr")).default },
   { code: "es", name: "Español", load: async () => (await import("./es")).default },
   { code: "de", name: "Deutsch", load: async () => (await import("./de")).default },

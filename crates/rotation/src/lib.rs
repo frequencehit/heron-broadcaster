@@ -136,7 +136,7 @@ impl AcrossStations {
 }
 
 impl RotationSettings {
-    pub const SETTINGS_NAME: &'static str = "rotation";
+    pub const SETTINGS_NAME: &str = "rotation";
 
     pub fn check(&self) -> Result<(), String> {
         self.separation.check()?;

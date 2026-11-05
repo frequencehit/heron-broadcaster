@@ -18,7 +18,7 @@ library=${1:?usage: soak-test.sh <library dir> <seconds> [work dir]}
 duration=${2:?usage: soak-test.sh <library dir> <seconds> [work dir]}
 work=${3:-$(mktemp -d)}
 engine=${HERON_ENGINE_BIN:-target/release/heron-engine}
-image=libretime/icecast:2.4.4
+image=libretime/icecast:2.5.0
 
 library=$(cd "$library" && pwd)
 mkdir -p "$work/state"
@@ -64,7 +64,9 @@ sleep 2
 autofill_pid=$!
 
 metric() {
-    printf '%s\n' "$1" | awk -v name="$2" '$1 == name { print $2 }'
+    local text=$1
+    local key=$2
+    printf "%s\n" "$text" | awk -v name="$key" '$1 == name { print $2 }'
 }
 
 echo "elapsed_s,rendered_s,drift_s,max_late_s,underruns,dropped_blocks,clock_resets,bytes_a,bytes_b,reconnects_a,reconnects_b" > "$csv"

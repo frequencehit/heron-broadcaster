@@ -78,7 +78,7 @@ struct SharedMedleySettings {
 }
 
 impl SharedMedleySettings {
-    const SETTINGS_NAME: &'static str = "medleys";
+    const SETTINGS_NAME: &str = "medleys";
 }
 
 /// A station's medley categories (its `medley_categories` settings).
@@ -92,7 +92,7 @@ pub struct MedleyCategories {
 }
 
 impl MedleyCategories {
-    pub const SETTINGS_NAME: &'static str = "medley_categories";
+    pub const SETTINGS_NAME: &str = "medley_categories";
 
     pub fn ids(self) -> impl Iterator<Item = u64> {
         [

@@ -20,6 +20,8 @@ path = "src/main.rs"
 # Local monitor output on the default sound card. Needs ALSA headers on Linux
 # (libasound2-dev); Docker images are built without it.
 monitor = ["dep:cpal"]
+# AAC-LC output encoder, with the system's libavcodec (see heron-outputs).
+aac = ["heron-outputs/aac"]
 
 [dependencies]
 anyhow.workspace = true

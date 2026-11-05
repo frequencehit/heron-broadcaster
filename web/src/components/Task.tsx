@@ -20,7 +20,7 @@ export function useTask(id: number | null) {
   });
 }
 
-export function TaskState({ task }: { task: LibraryTask | undefined }) {
+export function TaskState({ task }: Readonly<{ task: LibraryTask | undefined }>) {
   if (!task) {
     return null;
   }

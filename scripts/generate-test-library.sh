@@ -11,7 +11,7 @@ set -eu
 
 dir=${1:?usage: generate-test-library.sh <dir> <count>}
 count=${2:?usage: generate-test-library.sh <dir> <count>}
-image=linuxserver/ffmpeg:7.1.1
+image=linuxserver/ffmpeg:9.0.2
 scripts=$(cd "$(dirname "$0")/test-library" && pwd)
 
 mkdir -p "$dir"

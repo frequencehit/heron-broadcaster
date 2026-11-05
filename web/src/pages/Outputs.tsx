@@ -29,13 +29,13 @@ import { here } from "../lib/station";
 type Encoder = Schemas["EncoderKind"];
 type Kind = Schemas["OutputKind"];
 
-// Available so far: MP3 built in, and the external FFmpeg encoder (the
-// station's own ffmpeg, for HE-AAC with libfdk_aac); the others arrive in
+// Available so far: MP3 and AAC-LC built in, and the external FFmpeg encoder
+// (the station's own ffmpeg, for HE-AAC with libfdk_aac); the others arrive in
 // M11 and the engine refuses them.
 // Labels are functions: some are words of the current language.
 const ENCODERS: { value: Encoder; label: () => string; available: boolean }[] = [
   { value: "mp3", label: () => "MP3 (LAME)", available: true },
-  { value: "aac", label: () => "AAC-LC", available: false },
+  { value: "aac", label: () => "AAC-LC", available: true },
   { value: "opus", label: () => "Opus", available: false },
   { value: "vorbis", label: () => "Vorbis", available: false },
   { value: "external_ffmpeg", label: () => t("outputs.externalFfmpeg"), available: true },
@@ -590,6 +590,10 @@ function ProfileDialog({ profile, onClose }: { profile: EncoderProfileView | nul
     if (next === "external_ffmpeg" && !profile) {
       setBitrate(48);
     }
+    if (next === "aac" && !profile) {
+      setBitrate(96);
+      setSampleRate(48_000);
+    }
   };
   const ffmpegOptions = () => {
     const chosen: Record<string, string | number> = { codec: codec.trim() };
@@ -604,7 +608,7 @@ function ProfileDialog({ profile, onClose }: { profile: EncoderProfileView | nul
     }
     return chosen;
   };
-  const bitrates = external ? FFMPEG_BITRATES : MP3_BITRATES;
+  const bitrates = external || encoder === "aac" ? FFMPEG_BITRATES : MP3_BITRATES;
   const save = useAction(
     () => {
       const body = {

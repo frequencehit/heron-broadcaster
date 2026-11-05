@@ -29,6 +29,8 @@ service Engine {
   // State.
   rpc GetState(GetStateRequest) returns (EngineState);
   rpc GetLevels(GetLevelsRequest) returns (Levels);
+  // The engine's build, machine and configuration, for the About page.
+  rpc GetAbout(GetAboutRequest) returns (AboutInfo);
   // Track changes as they happen.
   rpc WatchEvents(WatchEventsRequest) returns (stream EngineEvent);
 
@@ -37,6 +39,7 @@ service Engine {
   rpc SetPlayoutSettings(SetPlayoutSettingsRequest) returns (SetPlayoutSettingsResponse);
   rpc SetOutputs(SetOutputsRequest) returns (SetOutputsResponse);
   rpc SetEqSettings(SetEqSettingsRequest) returns (SetEqSettingsResponse);
+  rpc SetAgcSettings(SetAgcSettingsRequest) returns (SetAgcSettingsResponse);
 }
 
 // Why a track is played, recorded in the play history. The engine only
@@ -199,6 +202,14 @@ message EngineState {
   optional QueueEntry pending_jingle = 10;
 }
 
+message GetAboutRequest {}
+
+message AboutInfo {
+  // heron_service::about::AboutReport. Empty from engines before the About
+  // page.
+  string json = 1;
+}
+
 message GetLevelsRequest {}
 
 // dBFS, -120 for silence.
@@ -210,10 +221,27 @@ message ChannelLevels {
 }
 
 message Levels {
+  // After the AGC chain.
   ChannelLevels master = 1;
   ChannelLevels deck_a = 2;
   ChannelLevels deck_b = 3;
   ChannelLevels fx = 4;
+  // While the AGC chain is on. Absent from engines before it.
+  optional AgcLevels agc = 5;
+}
+
+// The AGC chain's meters. Gain reductions in dB, 0 or less, holding their
+// deepest value and coming back by 20 dB/s.
+message AgcLevels {
+  // The master bus before the chain.
+  ChannelLevels input = 1;
+  // The gated AGC's gain, while it is on.
+  optional float agc_gain_db = 2;
+  // Five values.
+  repeated float five_band_db = 3;
+  // Two values: low, high.
+  repeated float dual_band_db = 4;
+  float final_stage_db = 5;
 }
 
 message WatchEventsRequest {}
@@ -229,6 +257,9 @@ enum EndReason {
 message TrackStarted {
   Deck deck = 1;
   QueueEntry entry = 2;
+  // The track on air going on after a restart or a handover: the same
+  // play, not a new one.
+  bool resumed = 3;
 }
 
 message TrackEnded {
@@ -255,6 +286,8 @@ message EngineConfig {
   string outputs_json = 2;
   // heron_core::EqSettings. Empty from engines before the deck EQ.
   string eq_settings_json = 3;
+  // heron_core::AgcSettings. Empty from engines before the AGC chain.
+  string agc_settings_json = 4;
 }
 
 message SetPlayoutSettingsRequest {
@@ -276,3 +309,11 @@ message SetEqSettingsRequest {
 }
 
 message SetEqSettingsResponse {}
+
+// The AGC chain, gliding to the new settings.
+message SetAgcSettingsRequest {
+  // heron_core::AgcSettings.
+  string settings_json = 1;
+}
+
+message SetAgcSettingsResponse {}

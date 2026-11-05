@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! The engine's own copy of its configuration (playout settings, encoder
-//! profiles and outputs, deck EQ). The API pushes it over gRPC; the engine keeps it on
+//! profiles and outputs, deck EQ, AGC chain). The API pushes it over gRPC; the engine keeps it on
 //! disk so it restarts with its outputs even when the API and the database
 //! are down.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use heron_core::{EqSettings, OutputsConfig, PlayoutSettings};
+use heron_core::{AgcSettings, EqSettings, OutputsConfig, PlayoutSettings};
 use serde::{Deserialize, Serialize};
 
 const FILE_NAME: &str = "config.json";
@@ -21,6 +21,8 @@ pub struct EngineConfig {
     /// Ignored by engines from before the deck EQ: their own struct does not
     /// deny unknown fields, so they can still read this file.
     pub eq: EqSettings,
+    /// Ignored by engines from before the AGC chain, as `eq`.
+    pub agc: AgcSettings,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -95,6 +97,9 @@ mod tests {
         config.playout.crossfade.min_track_ms = 30_000;
         config.eq.music.enabled = true;
         config.eq.music.gains_db[0] = 4.5;
+        config.agc.bypass_all = false;
+        config.agc.five_band.enabled = true;
+        config.agc.five_band.bands[1].ratio = 6.0;
         config.save(dir.path()).unwrap();
         assert_eq!(EngineConfig::load(dir.path()).unwrap(), config);
     }
@@ -107,10 +112,9 @@ mod tests {
             br#"{"playout": {}, "outputs": {}}"#,
         )
         .unwrap();
-        assert_eq!(
-            EngineConfig::load(dir.path()).unwrap().eq,
-            EqSettings::default()
-        );
+        let config = EngineConfig::load(dir.path()).unwrap();
+        assert_eq!(config.eq, EqSettings::default());
+        assert_eq!(config.agc, AgcSettings::default());
     }
 
     #[test]

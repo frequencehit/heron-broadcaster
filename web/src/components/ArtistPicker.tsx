@@ -13,12 +13,12 @@ export function ArtistPicker({
   actions,
   exclude = [],
   placeholder = t("artistPicker.search"),
-}: {
+}: Readonly<{
   /** Buttons for each result. */
   actions: (artist: Artist) => ReactNode;
   exclude?: number[];
   placeholder?: string;
-}) {
+}>) {
   const [text, setText] = useState("");
   const q = useDebounced(text.trim());
   const results = useQuery({

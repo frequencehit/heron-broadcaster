@@ -29,12 +29,13 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    // Components are rendered in jsdom, set by a comment at the top of their tests.
+    include: ["src/**/*.test.{ts,tsx}"],
     // `npm run coverage`: LCOV for SonarQube Cloud, paths from the repository root.
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/api/schema.ts", "src/**/*.test.ts"],
+      exclude: ["src/api/schema.ts", "src/**/*.test.{ts,tsx}", "src/test/**"],
       reporter: [["lcov", { projectRoot: ".." }], "text-summary"],
     },
   },

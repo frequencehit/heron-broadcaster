@@ -3,7 +3,8 @@
 //! The audio thread must never allocate or free memory: a global allocator
 //! counts every allocation made while a thread is marked as real-time, and
 //! the mixer is driven through everything it does (crossfades, skips, pauses,
-//! the FX player, underruns, queue changes, EQ changes) while marked.
+//! the FX player, underruns, queue changes, EQ and AGC chain changes) while
+//! marked.
 
 // A global allocator can only be written with `unsafe`.
 #![allow(unsafe_code)]
@@ -13,6 +14,7 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use heron_core::FadeCurve;
+use heron_dsp::agc::{BandMode, BassShape, ChainParams, FinalMode};
 use heron_engine::mixer::{
     AudioSource, BLOCK_FRAMES, CHANNELS, Command, EqTarget, FrameRamp, FrameTransition,
     LoadedTrack, Mixer, VecSource,
@@ -196,6 +198,56 @@ fn the_mixer_does_not_allocate() {
         ),
         (170, Command::Uncue),
     ];
+    // The AGC chain: on from the start, then every block moved and switched,
+    // during crossfades too.
+    let agc = |params: ChainParams, glide| Command::SetAgc { params, glide };
+    let mut on = ChainParams {
+        bypass_all: false,
+        ..ChainParams::default()
+    };
+    on.gated_agc.enabled = true;
+    on.stereo_expander.enabled = true;
+    on.bass_eq.enabled = true;
+    on.five_band.enabled = true;
+    on.dual_band.enabled = true;
+    let mut moved = on;
+    moved.gated_agc.max_gain_db = 12.0;
+    moved.stereo_expander.level = 100.0;
+    moved.bass_eq.shape = BassShape::Peak;
+    moved.bass_eq.frequency_hz = 200.0;
+    moved.five_band.overdrive_db = 9.0;
+    moved.five_band.crossovers_hz = [80.0, 300.0, 1_200.0, 5_000.0];
+    moved.five_band.links = [true, false, true, false];
+    moved.five_band.bands[2].mode = BandMode::Expander;
+    moved.dual_band.crossover_hz = 600.0;
+    moved.dual_band.bands[1].mode = BandMode::Limiter;
+    moved.final_stage.mode = FinalMode::Clipper;
+    moved.final_stage.ceiling_db = -3.0;
+    let mut switched = moved;
+    switched.five_band.enabled = false;
+    switched.final_stage.enabled = false;
+    switched.gated_agc.enabled = false;
+    script.extend([
+        (0, agc(on, false)),
+        (0, Command::StartAgcAt { gain_db: 3.0 }),
+        (63, agc(moved, true)),
+        (68, agc(switched, true)),
+        (75, agc(on, true)),
+        (
+            128,
+            agc(
+                ChainParams {
+                    bypass_all: true,
+                    ..on
+                },
+                true,
+            ),
+        ),
+        (145, agc(on, true)),
+        (200, agc(ChainParams::default(), true)),
+        (260, agc(moved, true)),
+    ]);
+    script.sort_by_key(|(at, _)| *at);
     script.reverse();
 
     let mut total = 0;

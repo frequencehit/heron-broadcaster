@@ -30,7 +30,7 @@ Already delivered in [M2](m2-engine-core.md): the queue lives in the engine's me
 
 ## Known limitations
 
-- Rotation picks restored after an engine restart are not linked to their plays in the selection log (picks are keyed by the engine's start time and entry ID; the play history itself is complete).
+- Rotation picks restored after an engine restart are not linked to their plays in the rotation log (picks are keyed by the engine's start time and entry ID; the play history itself is complete).
 - Fallback files are analyzed with the default analysis settings, not the station's (the engine never reads the database).
 - The clock state is read from the Linux kernel only.
 

@@ -95,9 +95,18 @@ impl HistoryRecorder {
                 deck,
                 entry,
                 at_unix_ms,
+                resumed,
             } => {
                 if !self.open.contains_key(&entry.entry_id) {
-                    let id = self.insert(deck, &entry, at_unix_ms).await?;
+                    let reopened = if resumed {
+                        self.reopen(deck, &entry, at_unix_ms).await?
+                    } else {
+                        None
+                    };
+                    let id = match reopened {
+                        Some(id) => id,
+                        None => self.insert(deck, &entry, at_unix_ms).await?,
+                    };
                     self.open.insert(entry.entry_id, id);
                 }
             }
@@ -124,6 +133,48 @@ impl HistoryRecorder {
             }
         }
         Ok(())
+    }
+
+    /// The play of a track on air that a new engine resumes, when the
+    /// reconnection did not find it on a deck (its file was slow to open)
+    /// and closed it: open again. `None` when there is no such play (the API
+    /// was away when it started).
+    async fn reopen(
+        &self,
+        deck: DeckName,
+        entry: &QueueEntry,
+        at_unix_ms: u64,
+    ) -> ApiResult<Option<u64>> {
+        let track = &entry.track;
+        // Started no longer ago than the track lasts.
+        let earliest = at_unix_ms
+            .saturating_sub(u64::from(track.duration_ms))
+            .saturating_sub(MATCH_TOLERANCE_MS);
+        // Closed by a reconnection: no reason, unlike an end the engine reported.
+        let candidates: Vec<u64> = sqlx::query_scalar(
+            "SELECT id FROM play_history
+             WHERE station_id = ? AND end_reason IS NULL AND track_id <=> ? AND title <=> ?
+               AND (deck = 'fx') = ? AND started_at >= FROM_UNIXTIME(?)
+             ORDER BY started_at DESC",
+        )
+        .bind(self.station_id)
+        .bind(track.track_id)
+        .bind(&track.title)
+        .bind(deck == DeckName::Fx)
+        .bind(seconds(earliest))
+        .fetch_all(&self.pool)
+        .await?;
+        let Some(id) = candidates
+            .into_iter()
+            .find(|id| !self.open.values().any(|open| open == id))
+        else {
+            return Ok(None);
+        };
+        sqlx::query("UPDATE play_history SET ended_at = NULL WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(Some(id))
     }
 
     async fn insert(&self, deck: DeckName, entry: &QueueEntry, started_at: u64) -> ApiResult<u64> {
@@ -550,6 +601,69 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(played, vec![Some(62_000)]);
+        db.drop().await;
+    }
+
+    /// A new engine slow to open the track on air: the API reconnects
+    /// before it starts again, and closes its play. Its start, resumed,
+    /// opens that play again instead of adding one.
+    #[tokio::test]
+    async fn a_track_resumed_after_the_reconnection_keeps_its_play() {
+        let Some(db) = ScratchDatabase::create().await else {
+            return;
+        };
+        let mut recorder = HistoryRecorder::new(db.pool.clone(), 1);
+        let now = unix_ms(SystemTime::now());
+        let first = state(
+            now - 600_000,
+            vec![on_air(DeckName::B, entry(41, "Release"), 60_000)],
+        );
+        recorder.reconcile(&first).await.unwrap();
+
+        // The new engine answers before "Release" is on a deck again.
+        recorder.reconcile(&state(now, Vec::new())).await.unwrap();
+        assert_eq!(
+            rows(&db.pool).await,
+            vec![("Release".to_owned(), "b".to_owned(), false)]
+        );
+        let started = |entry_id, title, resumed| TrackEvent::Started {
+            deck: DeckName::A,
+            entry: entry(entry_id, title),
+            at_unix_ms: now + 8_000,
+            resumed,
+        };
+        recorder.record(started(41, "Release", true)).await.unwrap();
+        assert_eq!(
+            rows(&db.pool).await,
+            vec![("Release".to_owned(), "b".to_owned(), true)]
+        );
+
+        // A new play of a track is a new row, even right after.
+        recorder
+            .record(TrackEvent::Ended {
+                deck: DeckName::A,
+                entry: entry(41, "Release"),
+                at_unix_ms: now + 9_000,
+                played_ms: 69_000,
+                reason: EndReason::Skipped,
+            })
+            .await
+            .unwrap();
+        recorder
+            .record(started(42, "Release", false))
+            .await
+            .unwrap();
+        // A resumed start with no play to go on (the API was away when it
+        // started) is recorded too.
+        recorder.record(started(43, "Tesla", true)).await.unwrap();
+        assert_eq!(
+            rows(&db.pool).await,
+            vec![
+                ("Release".to_owned(), "b".to_owned(), false),
+                ("Release".to_owned(), "a".to_owned(), true),
+                ("Tesla".to_owned(), "a".to_owned(), true),
+            ]
+        );
         db.drop().await;
     }
 }

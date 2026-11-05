@@ -9,7 +9,7 @@ import { placeOf } from "../lib/pages";
 import { Link, lastHref, useLocation } from "../lib/router";
 
 /** The breadcrumb of the current page, `title` its last level; none outside a section. */
-export function Breadcrumb({ title }: { title: string }) {
+export function Breadcrumb({ title }: Readonly<{ title: string }>) {
   const { pathname } = useLocation();
   const place = placeOf(pathname);
   if (!place?.section) {

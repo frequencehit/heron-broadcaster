@@ -491,7 +491,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
         <Banner kind="warn">
           {rich("track.needsReview", {
             reason: track.identification.reason,
-            link: <Link to="/review">{t("track.reviewIt")}</Link>,
+            link: <Link to="/to-organize">{t("track.reviewIt")}</Link>,
           })}
         </Banner>
       )}

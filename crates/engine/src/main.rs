@@ -200,8 +200,12 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         }
     };
 
+    let about = about_report(&cli).await;
     let grpc = tonic::transport::Server::builder()
-        .add_service(EngineService::server(std::sync::Arc::clone(&engine)))
+        .add_service(EngineService::server_with_about(
+            std::sync::Arc::clone(&engine),
+            about,
+        ))
         .serve_with_shutdown(cli.grpc_addr, heron_service::shutdown_signal());
     tracing::info!(addr = %cli.grpc_addr, "grpc server listening");
 
@@ -231,4 +235,39 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+/// What the About page shows of this engine, as JSON.
+async fn about_report(cli: &Cli) -> String {
+    use heron_service::about::{AboutReport, ConfigItem, ProcessInfo, common_config};
+
+    let external =
+        std::env::var_os(heron_outputs::external::FFMPEG_ENV).is_some_and(|v| !v.is_empty());
+    let program = heron_outputs::external::configured_program();
+    // The binary is only run when the external encoder is set up.
+    let ffmpeg = if external {
+        tokio::task::spawn_blocking(move || heron_outputs::external::version(&program))
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    let mut config = common_config(&cli.log, &cli.metrics, cli.http_addr);
+    config.extend([
+        ConfigItem::text("HERON_GRPC_ADDR", cli.grpc_addr),
+        ConfigItem::text("HERON_LIBRARY_DIR", cli.library_dir.display()),
+        ConfigItem::text("HERON_FALLBACK_DIR", cli.fallback_dir.display()),
+        ConfigItem::text("HERON_STATE_DIR", cli.state_dir.display()),
+        ConfigItem::text("HERON_PRELOAD_TRACKS", cli.preload_tracks),
+        ConfigItem::flag("HERON_MONITOR", cli.monitor),
+        ConfigItem::flag("HERON_FFMPEG", external),
+        ConfigItem::flag("HERON_RELAY_SOCKET", cli.relay_socket.is_some()),
+    ]);
+    let report = AboutReport {
+        process: ProcessInfo::read(std::time::SystemTime::now()),
+        config,
+        ffmpeg,
+    };
+    serde_json::to_string(&report).unwrap_or_default()
 }

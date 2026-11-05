@@ -22,6 +22,7 @@ heron-rotation = { path = "crates/rotation" }
 heron-service = { path = "crates/service" }
 heron-engine = { path = "crates/engine" }
 
+age = "0.12.1"
 anyhow = "1.0.104"
 argon2 = "0.6.0"
 audioadapter-buffers = "5.2.0"
@@ -32,14 +33,17 @@ bytes = "1.12.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 cpal = "0.18.2"
 ebur128 = "0.1.10"
+# FFmpeg 7.1 (Debian trixie); only the `aac` feature of heron-outputs uses it.
+ffmpeg-next = { version = "7.1", default-features = false, features = ["codec", "format"] }
+flate2 = "1.1.10"
 getrandom = "0.4.3"
 hmac = "0.13.0"
 hound = "3.5.1"
 jiff = { version = "0.2.38", default-features = false, features = ["std", "serde", "tzdb-bundle-always", "tzdb-zoneinfo", "tz-system"] }
-lofty = "0.25.4"
+lofty = "0.25.5"
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
-mp3lame-encoder = "0.2.5"
+mp3lame-encoder = "0.3.0"
 notify = "8.2.0"
 percent-encoding = "2.3.2"
 prost = "0.14.4"
@@ -59,16 +63,17 @@ sha2 = "0.11.1"
 snap = "1.1.2"
 symphonia = { version = "0.6.1", default-features = false, features = ["opt-simd", "all-meta", "mp1", "mp2", "mp3", "aac", "isomp4", "alac", "aiff", "flac", "ogg", "vorbis", "wav", "pcm", "adpcm"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "mysql", "migrate", "macros"] }
+sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
 tokio-stream = "0.1.19"
-tokio-tungstenite = "0.29.0"
+tokio-tungstenite = "0.30.0"
 tonic = "0.14.6"
 tonic-prost = "0.14.6"
 tonic-prost-build = "0.14.6"
 tower = "0.5.3"
-tower-http = { version = "0.6.11", features = ["fs"] }
+tower-http = { version = "0.7.1", features = ["fs"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 unicode-normalization = "0.1.25"

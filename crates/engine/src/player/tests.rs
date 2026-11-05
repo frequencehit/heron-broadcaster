@@ -573,7 +573,7 @@ fn the_silence_watchdog_skips_then_goes_to_the_fallback_directory() {
     let mut station = Station::with_fallback(fallback.path());
     let mut settings = PlayoutSettings::default();
     settings.silence_watchdog.timeout_ms = 2_000;
-    station.player.set_settings(settings);
+    station.player.set_settings(settings).unwrap();
     let tracks = vec![
         station.file_at("silent one.wav", 30.0, 0.0),
         station.file_at("silent two.wav", 30.0, 0.0),
@@ -615,7 +615,7 @@ fn the_silence_watchdog_ignores_pauses() {
     let mut station = Station::new();
     let mut settings = PlayoutSettings::default();
     settings.silence_watchdog.timeout_ms = 1_000;
-    station.player.set_settings(settings);
+    station.player.set_settings(settings).unwrap();
     let music = station.file("music.wav", 10.0);
     station.player.enqueue(vec![music], None).unwrap();
     station.play(0.5);
@@ -659,20 +659,23 @@ fn a_restart_resumes_the_track_on_air_and_the_queue() {
         deck.position_ms
     );
     station.play(8.0);
-    let order: Vec<(u64, String)> = station
+    // The track on air goes on: its start is not a new play.
+    let order: Vec<(u64, String, bool)> = station
         .events()
         .iter()
         .filter_map(|event| match event {
-            PlayerEvent::Started { entry, .. } => Some((entry.entry_id, entry.track.path.clone())),
+            PlayerEvent::Started { entry, resumed, .. } => {
+                Some((entry.entry_id, entry.track.path.clone(), *resumed))
+            }
             PlayerEvent::Ended { .. } => None,
         })
         .collect();
     assert_eq!(
         order,
         [
-            (ids[0], "one.wav".to_owned()),
-            (ids[1], "two.wav".to_owned()),
-            (ids[2], "three.wav".to_owned()),
+            (ids[0], "one.wav".to_owned(), true),
+            (ids[1], "two.wav".to_owned(), false),
+            (ids[2], "three.wav".to_owned(), false),
         ]
     );
     // New entries do not reuse the IDs of the saved ones.
@@ -997,4 +1000,28 @@ fn the_eq_plays_the_filter_gains_solved_from_the_sliders() {
         (solved - unsolved).abs() > 0.5,
         "{solved:.2} and {unsolved:.2} dB"
     );
+}
+
+#[test]
+fn a_loudness_target_the_mixer_was_too_busy_for_is_tried_again() {
+    let mut station = Station::new();
+    // The mixer does not run: its commands fill up.
+    let agc = *station.player.agc();
+    while station.player.set_agc(agc, true).is_ok() {}
+    let mut settings = *station.player.settings();
+    let before = settings.loudness.target_lufs;
+    settings.loudness.target_lufs = before - 3.0;
+    assert!(matches!(
+        station.player.set_settings(settings),
+        Err(PlayerError::Busy)
+    ));
+    assert_eq!(
+        station.player.settings().loudness.target_lufs,
+        before,
+        "nothing changed"
+    );
+    // Once the mixer has run, the same settings go through.
+    station.play(0.1);
+    station.player.set_settings(settings).unwrap();
+    assert_eq!(station.player.settings().loudness.target_lufs, before - 3.0);
 }

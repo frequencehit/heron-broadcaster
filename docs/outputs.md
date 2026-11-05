@@ -29,7 +29,7 @@ The user picks the encoder for each profile.
 | Encoder | Codec | Implementation | License |
 |---|---|---|---|
 | **MP3** | MP3 (CBR/VBR) | Built in, LAME | LGPL |
-| **AAC** | AAC-LC | Built in, FFmpeg's native `aac` encoder (libavcodec built without `--enable-nonfree`) | LGPL (GPL builds are also compatible) |
+| **AAC** | AAC-LC | Built in, optional: FFmpeg's native `aac` encoder from the system's libavcodec, linked dynamically (built without `--enable-nonfree`) | LGPL (GPL builds are also compatible) |
 | **Opus** | Opus (Ogg) | Built in, libopus | BSD |
 | **Vorbis** | Vorbis (Ogg) | Built in, libvorbis | BSD |
 | **External FFmpeg** | Anything the provided binary supports, e.g. HE-AAC v1/v2 with `libfdk_aac` | User-provided `ffmpeg` binary, run as a child process | User's responsibility |
@@ -47,6 +47,14 @@ Built in with LAME, compiled from source with Heron (LGPL, linked statically). P
 ### Built-in AAC
 
 Plain AAC-LC without HE (SBR/PS) is sufficient for current players and bitrates, so HE-AAC is not a built-in feature.
+
+Unlike LAME, there is no AAC-LC encoder to compile into Heron: FFmpeg's native `aac` encoder lives in libavcodec. It is therefore **optional at build time**. The `aac` Cargo feature of `heron-outputs` (forwarded by `heron-engine`, and enabled in Heron's Docker image builds) links the system's libavcodec dynamically (LGPL), through the `ffmpeg-next` bindings; it is off by default so that a plain `cargo build` needs no FFmpeg library. Heron's engine image is built with it, and installs libavcodec (Debian's build, without fdk-aac). The API never links it: it checks an AAC profile like any other. An engine built without the feature accepts the profile too, and reports `this Heron was built without AAC-LC` on the profile's outputs (*Outputs* and *On air*) while the other profiles keep streaming.
+
+To build it yourself, install FFmpeg 7.1's development libraries (`libavcodec-dev`, `libavformat-dev`, `libavutil-dev`, `libswresample-dev` and `libclang-dev` on Debian, `pkg-config`), then `cargo build --features heron-engine/aac`.
+
+libavcodec returns raw AAC frames; Heron frames them as ADTS (`audio/aac`), the stream format Icecast servers and players expect.
+
+Profile fields: `bitrate_kbps` (8 to 512, required, CBR), `sample_rate` (the AAC rates, 7.35 to 96 kHz; the master bus is resampled from 48 kHz), `channels` (1 or 2). No options: `encoder_profiles.options` must be empty.
 
 ### External FFmpeg encoder
 
@@ -94,7 +102,7 @@ Why these:
 - **Opus** is not created by default: it is the most efficient codec, but some hardware players and stream directories still do not support it. Stations can add an Opus profile in one click.
 - No outputs are created by default: they need the station's own server address and credentials.
 
-The default profiles are seeded by a migration in [M2](roadmap/m2-engine-core.md); AAC arrives in [M11](roadmap/m11-sinks-live-dj.md), so `AAC 96k` is seeded with it.
+The default profiles are seeded by migrations: `MP3 128k` in [M2](roadmap/m2-engine-core.md), `AAC 96k` with the AAC-LC encoder in [M11](roadmap/m11-sinks-live-dj.md).
 
 ## Outputs (sinks)
 

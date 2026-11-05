@@ -28,7 +28,7 @@ pub const MAX_GAIN_DB: f32 = 12.0;
 /// gains from the sliders may need more than the sliders' range.
 pub const MAX_FILTER_GAIN_DB: f64 = 24.0;
 /// Quality factor of the shelves: a slope of 1, no overshoot.
-const SHELF_Q: f64 = FRAC_1_SQRT_2;
+pub(crate) const SHELF_Q: f64 = FRAC_1_SQRT_2;
 /// Midpoints of the low and high shelves, an octave inside their bands'
 /// frequencies: at 60 Hz and 16 kHz the shelves are on their plateau, so
 /// the curve holds the slider's gain out to 20 Hz and 20 kHz. With the
@@ -285,7 +285,7 @@ pub fn clamp_gains(gains_db: [f32; BANDS]) -> [f32; BANDS] {
 /// changes while it plays: no click on a glide. The output mixes the input
 /// and the band-pass and low-pass outputs.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct Svf {
+pub(crate) struct Svf {
     a1: f64,
     a2: f64,
     a3: f64,
@@ -296,7 +296,7 @@ struct Svf {
 
 impl Svf {
     /// `warped` is tan(π f / fs), which does not depend on the gain.
-    fn new(shape: Shape, warped: f64, q: f64, gain_db: f64) -> Self {
+    pub(crate) fn new(shape: Shape, warped: f64, q: f64, gain_db: f64) -> Self {
         let a = 10f64.powf(gain_db / 40.0);
         let (g, k, m0, m1, m2) = match shape {
             Shape::Peaking => {
@@ -322,6 +322,17 @@ impl Svf {
             m1,
             m2,
         }
+    }
+
+    /// Filters one sample; `state` holds the two integrators of a channel.
+    pub(crate) fn tick(&self, state: &mut [f64; 2], x: f64) -> f64 {
+        let [ic1, ic2] = state;
+        let v3 = x - *ic2;
+        let v1 = self.a1 * *ic1 + self.a2 * v3;
+        let v2 = *ic2 + self.a2 * *ic1 + self.a3 * v3;
+        *ic1 = 2.0 * v1 - *ic1;
+        *ic2 = 2.0 * v2 - *ic2;
+        self.m0 * x + self.m1 * v1 + self.m2 * v2
     }
 
     const ZERO: Self = Self {

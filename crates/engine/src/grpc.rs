@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use heron_core::playout::TrackPlayout;
-use heron_core::{EqSettings, OutputsConfig, PlaySource, PlayoutSettings};
+use heron_core::{AgcSettings, EqSettings, OutputsConfig, PlaySource, PlayoutSettings};
 use heron_outputs::OutputState;
 use heron_proto::engine as pb;
 use heron_proto::engine::engine_server::{Engine as EngineRpc, EngineServer};
@@ -20,11 +20,21 @@ use crate::player::{PlayerError, PlayerEvent, QueueEntry, TrackRequest};
 
 pub struct EngineService {
     engine: Arc<Engine>,
+    /// What `GetAbout` answers: `heron_service::about::AboutReport` as JSON.
+    about: Arc<str>,
 }
 
 impl EngineService {
     pub fn server(engine: Arc<Engine>) -> EngineServer<Self> {
-        EngineServer::new(Self { engine })
+        Self::server_with_about(engine, String::new())
+    }
+
+    /// As [`server`](Self::server), answering `GetAbout` with `about`.
+    pub fn server_with_about(engine: Arc<Engine>, about: String) -> EngineServer<Self> {
+        EngineServer::new(Self {
+            engine,
+            about: about.into(),
+        })
     }
 }
 
@@ -184,6 +194,12 @@ impl EngineRpc for EngineService {
         }))
     }
 
+    async fn get_about(&self, _: Request<pb::GetAboutRequest>) -> Reply<pb::AboutInfo> {
+        Ok(Response::new(pb::AboutInfo {
+            json: self.about.to_string(),
+        }))
+    }
+
     async fn get_levels(&self, _: Request<pb::GetLevelsRequest>) -> Reply<pb::Levels> {
         let status = self.engine.status();
         Ok(Response::new(pb::Levels {
@@ -191,6 +207,7 @@ impl EngineRpc for EngineService {
             deck_a: Some(levels(&status.decks[Deck::A.slot()].meter)),
             deck_b: Some(levels(&status.decks[Deck::B.slot()].meter)),
             fx: Some(levels(&status.decks[Deck::Fx.slot()].meter)),
+            agc: agc_levels(&status.agc),
         }))
     }
 
@@ -213,6 +230,7 @@ impl EngineRpc for EngineService {
             playout_settings_json: to_json(&config.playout)?,
             outputs_json: to_json(&config.outputs)?,
             eq_settings_json: to_json(&config.eq)?,
+            agc_settings_json: to_json(&config.agc)?,
         }))
     }
 
@@ -252,6 +270,23 @@ impl EngineRpc for EngineService {
         self.engine.set_eq(settings).map_err(engine_status)?;
         Ok(Response::new(pb::SetEqSettingsResponse {}))
     }
+
+    async fn set_agc_settings(
+        &self,
+        request: Request<pb::SetAgcSettingsRequest>,
+    ) -> Reply<pb::SetAgcSettingsResponse> {
+        let settings = read_agc_settings(&request.into_inner().settings_json)?;
+        self.engine.set_agc(settings).map_err(engine_status)?;
+        Ok(Response::new(pb::SetAgcSettingsResponse {}))
+    }
+}
+
+/// Reads and checks AGC chain settings sent over gRPC.
+fn read_agc_settings(json: &str) -> Result<AgcSettings, Status> {
+    let settings: AgcSettings = serde_json::from_str(json)
+        .map_err(|error| Status::invalid_argument(format!("invalid AGC settings: {error}")))?;
+    settings.check().map_err(Status::invalid_argument)?;
+    Ok(settings)
 }
 
 /// Reads and checks deck EQ settings sent over gRPC.
@@ -409,11 +444,17 @@ fn unix_ms(time: SystemTime) -> u64 {
 
 fn event_to_proto(event: PlayerEvent) -> pb::EngineEvent {
     match event {
-        PlayerEvent::Started { deck, entry, at } => pb::EngineEvent {
+        PlayerEvent::Started {
+            deck,
+            entry,
+            resumed,
+            at,
+        } => pb::EngineEvent {
             timestamp_unix_ms: unix_ms(at),
             event: Some(pb::engine_event::Event::TrackStarted(pb::TrackStarted {
                 deck: deck_to_proto(deck).into(),
                 entry: Some(entry_to_proto(entry)),
+                resumed,
             })),
         },
         PlayerEvent::Ended {
@@ -442,6 +483,21 @@ fn to_dbfs(linear: f32) -> f32 {
     }
 }
 
+/// The AGC chain's meters, while it is on.
+fn agc_levels(status: &crate::mixer::AgcStatus) -> Option<pb::AgcLevels> {
+    if !status.active.load(std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
+    let (five, dual, last) = status.reductions_db();
+    Some(pb::AgcLevels {
+        input: Some(levels(&status.input)),
+        agc_gain_db: status.agc_gain_db(),
+        five_band_db: five.to_vec(),
+        dual_band_db: dual.to_vec(),
+        final_stage_db: last,
+    })
+}
+
 fn levels(meter: &MeterStatus) -> pb::ChannelLevels {
     let (peak, rms) = meter.read();
     pb::ChannelLevels {
@@ -455,6 +511,18 @@ fn levels(meter: &MeterStatus) -> pb::ChannelLevels {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agc_settings_are_checked() {
+        assert!(read_agc_settings("{}").is_ok());
+        assert_eq!(
+            read_agc_settings(r#"{"final_stage": {"ceiling_db": 3}}"#)
+                .unwrap_err()
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+        assert!(read_agc_settings(r#"{"limiter": {}}"#).is_err());
+    }
 
     #[test]
     fn unanalyzed_tracks_play_whole() {

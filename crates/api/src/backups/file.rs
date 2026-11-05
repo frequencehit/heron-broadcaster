@@ -152,14 +152,19 @@ const fn table(
     }
 }
 
+/// Settings about the backups themselves: not in the file, and kept by a
+/// restore (docs/backups.md#restores-and-the-key).
+const KEPT_SETTINGS: &[&str] = &["backup_encryption", "backup_tests"];
+
 /// The tables, parents before children.
 const TABLES: &[Table] = &[
-    table(
-        "settings",
-        &[Plain("name"), Json("value")],
-        Mode::Replace,
-        &[],
-    ),
+    Table {
+        name: "settings",
+        cols: &[Plain("name"), Json("value")],
+        mode: Mode::Replace,
+        unique: &[],
+        filter: Some("name NOT IN ('backup_encryption', 'backup_tests')"),
+    },
     table(
         "stations",
         &[
@@ -246,6 +251,12 @@ const TABLES: &[Table] = &[
     table(
         "eq_presets",
         &[Plain("id"), Plain("name"), Json("gains_db")],
+        Mode::Upsert,
+        &["name"],
+    ),
+    table(
+        "agc_presets",
+        &[Plain("id"), Plain("name"), Json("settings")],
         Mode::Upsert,
         &["name"],
     ),
@@ -777,6 +788,14 @@ pub async fn restore(
         let columns: Vec<&str> = table.cols.iter().map(|col| col.column()).collect();
         let mut resolved: Vec<Vec<Value>> = Vec::new();
         for row in rows_of(table) {
+            if table.name == "settings"
+                && row
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|name| KEPT_SETTINGS.contains(&name))
+            {
+                continue;
+            }
             let values: Option<Vec<Value>> = table
                 .cols
                 .iter()
@@ -885,4 +904,21 @@ pub async fn restore(
     report.missing_artists_total = library.missing_artists.len();
     report.missing_artists = library.missing_artists.into_keys().take(100).collect();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_about_backups_stay_out_of_the_file() {
+        let settings = TABLES
+            .iter()
+            .find(|table| table.name == "settings")
+            .unwrap();
+        let filter = settings.filter.unwrap();
+        for name in KEPT_SETTINGS {
+            assert!(filter.contains(&format!("'{name}'")), "{name}");
+        }
+    }
 }

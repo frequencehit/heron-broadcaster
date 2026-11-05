@@ -15,7 +15,7 @@ Design: [Several stations](../stations.md).
 - **Categories tagged with stations:** one, several or all; badges with the stations' codes; a station only offers its categories; untagging refused while the station uses the category, listing what uses it.
 - **Restrictions** apply to the stations they name, all by default.
 - **Plays per station:** each play is a station's; tracks and artists show plays and last play per station and in total; library sort and filters by station.
-- **Rules across stations:** artist, title and track windows against other stations' plays and planned queue, both ways, relaxed with the station's own rule of the same kind, explained in the selection log.
+- **Rules across stations:** artist, title and track windows against other stations' plays and planned queue, both ways, relaxed with the station's own rule of the same kind, explained in the rotation log.
 - **Medleys tagged with stations:** the rendered track goes into each station's medley category; songs from every category its stations can use unless the recipe narrows them; badges and a filter in the medley list.
 - **Roles per station:** a shared role and a role on each station (`none`, `viewer`, `operator`, `admin`).
 - **One engine per station**, each with its own outputs, state volume and handover; one queue manager per station in the API.
@@ -45,7 +45,7 @@ Design: [Several stations](../stations.md).
 - [x] Two stations, each with its own engine, play at once from the same library, each with its own clocks, schedule, queue, playout settings, EQ and outputs; a hot handover of one does not touch the other.
 - [x] A category tagged with two stations is offered by both, one tagged with one is offered by that one only; untagging a station that uses the category is refused and lists what uses it.
 - [x] Plays are recorded per station; a track and an artist show plays and last play per station and in total.
-- [x] With an artist window across stations of 30 minutes, a week simulated on two stations never plays an artist on one within 30 minutes of the other (played or planned), unless the selection log shows that rule relaxed; the same for titles and tracks.
+- [x] With an artist window across stations of 30 minutes, a week simulated on two stations never plays an artist on one within 30 minutes of the other (played or planned), unless the rotation log shows that rule relaxed; the same for titles and tracks.
 - [x] A medley tagged with two stations is in both stations' medley categories after its render; its songs come from the categories its stations can use, or from its recipe's.
 - [x] A user with `none` on a station does not see it, in the API or the web UI; a `viewer` on one station and `operator` on another can run only the second.
 - [x] The single-station API routes and public endpoints still answer for the first station.

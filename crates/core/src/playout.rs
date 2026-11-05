@@ -185,7 +185,7 @@ pub struct PlayoutSettings {
 
 impl PlayoutSettings {
     /// Name of the row in the `settings` table.
-    pub const SETTINGS_NAME: &'static str = "playout";
+    pub const SETTINGS_NAME: &str = "playout";
 }
 
 /// Per-track overrides (`track_overrides`). Missing fields use the analysis

@@ -305,7 +305,7 @@ fn write_wav(target: &Path, audio: &[f32]) -> std::io::Result<()> {
     std::fs::create_dir_all(folder)?;
     let name = target
         .file_name()
-        .and_then(|name| name.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("medley.wav");
     let temp: PathBuf = folder.join(format!(".{name}.part"));
     let spec = hound::WavSpec {

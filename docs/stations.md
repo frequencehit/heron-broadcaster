@@ -27,9 +27,9 @@ An existing Heron becomes **one station**, named after the station name setting 
 | **Library** | Tracks, files, analysis, cue points and overrides, intro and hook, tags, labels, programming details (era, mood, BPM…) | — |
 | **Artists** | Artists, their names, similar links | Plays and last play, separation windows |
 | **Categories** | Categories and category types, a track's categories and weights | Which categories a station can use: those tagged with it ([Categories](#categories)) |
-| **Programming** | — | Clocks, schedule, rotation settings (separation windows, fallback category, weights), selection log, simulations |
+| **Programming** | — | Clocks, schedule, rotation settings (separation windows, fallback category, weights), rotation log, simulations |
 | **Restrictions** | — | Each restriction applies to the stations it names, all by default ([Restrictions](#restrictions)) |
-| **Queue and playout** | — | Queue, autofill, playout (crossfade, loudness), deck EQ; EQ presets are shared |
+| **Queue and playout** | — | Queue, autofill, playout (crossfade, loudness), deck EQ, AGC chain; EQ and AGC presets are shared |
 | **History** | Plays in total | Each play is a station's ([Plays](#plays)) |
 | **Medleys** | Medleys, their recipes and parts, rendered files | Which stations a medley plays on ([Medleys](#medleys)) |
 | **Outputs** | Encoder profiles | Outputs, their listener statistics |
@@ -51,6 +51,7 @@ An existing Heron becomes **one station**, named after the station name setting 
 | `station` (time zone) | | ✓ |
 | `playout` (crossfade, loudness) | | ✓ |
 | `eq` (the music and FX EQs) | | ✓ |
+| `agc` (the AGC chain) | | ✓ |
 | `queue` (autofill, tracks waiting) | | ✓ |
 | `engine` (whether the API manages the engine's configuration) | | ✓ |
 | `rotation` (separation windows, rules across stations, fallback category, categories kept out, weights) | | ✓ |
@@ -83,7 +84,7 @@ A restriction (daypart, date range, category sequence) **applies to the stations
 
 - Each play in the history is a station's (`play_history.station_id`), recorded from that station's engine.
 - A track and an artist show their **plays and last play per station** and **in total**: the track and artist pages (`plays`), the library list and its sort and filters (`station_id`: a station's plays; without it, every station's).
-- Separation, weights and the selection log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
+- Separation, weights and the rotation log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
 - Listener statistics are per output, so per station, and for a whole station (an output's totals with no output: the station's).
 
 ## Rules across stations
@@ -100,7 +101,7 @@ A station can keep its music apart from what other stations play: in its `rotati
 - The window looks **both ways**: what the other stations played, and what their queue will play at its planned times, so two stations planning at the same moment do not pick the same artist for the same minutes. A pick that another station then takes too is caught by whichever station plans later.
 - Artists are compared as the station's own rule does: the same artist or a similar one ([Artists with several names](rotation.md#artists-with-several-names)).
 - **Relaxation:** each rule across stations is halved then dropped with the station's own rule of the same kind (artist at steps 3 and 4, title at 5 and 6, track at 7 and 8, [Rule relaxation](rotation.md#rule-relaxation)), so it holds as long as the station's own does.
-- The **selection log** says how many tracks the rules across stations held back, and which station's play or planned track held back the one a slot wanted; a simulation of a station takes the other stations' history and queues as they are, and does not simulate them.
+- The **rotation log** says how many tracks the rules across stations held back, and which station's play or planned track held back the one a slot wanted; a simulation of a station takes the other stations' history and queues as they are, and does not simulate them.
 
 ## Medleys
 
@@ -135,7 +136,7 @@ An existing user keeps their role, as their shared role and their role on the fi
 
 ## API
 
-- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedules, restrictions, rotation and its simulations, selection log, playout, EQ, queue and rotation settings, outputs, webhooks, listener statistics.
+- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedules, restrictions, rotation and its simulations, rotation log, playout, EQ, AGC, queue and rotation settings, outputs, webhooks, listener statistics.
 - `GET`, `POST /stations`; `GET`, `PUT`, `DELETE /stations/{id}` (admins).
 - Shared resources keep their routes: tracks, artists, categories (with `station_ids`), medleys (with `station_ids`), labels, encoder profiles, users (with their roles per station).
 - Track and artist answers carry their plays and last play per station and in total.

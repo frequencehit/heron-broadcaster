@@ -223,16 +223,9 @@ impl Library {
     }
 
     fn watch(&self, events: mpsc::Sender<()>) -> Option<notify::RecommendedWatcher> {
-        use notify::Watcher;
-        let handler = move |event: notify::Result<notify::Event>| {
-            if event.is_ok() {
-                // A full channel already means "rescan pending".
-                let _ = events.try_send(());
-            }
-        };
-        let watcher = notify::recommended_watcher(handler).and_then(|mut watcher| {
-            watcher.watch(&self.root, notify::RecursiveMode::Recursive)?;
-            Ok(watcher)
+        let watcher = heron_library::watch::watch_dir(&self.root, move || {
+            // A full channel already means "rescan pending".
+            let _ = events.try_send(());
         });
         match watcher {
             Ok(watcher) => {
@@ -313,8 +306,7 @@ impl Library {
                             report.updated += 1;
                         }
                         None => {
-                            let moved_from =
-                                vanished.get_mut(&info.hash[..]).and_then(|ids| ids.pop());
+                            let moved_from = vanished.get_mut(&info.hash[..]).and_then(Vec::pop);
                             if let Some(id) = moved_from {
                                 self.update_path(id, file, &info).await?;
                                 moved_ids.insert(id);

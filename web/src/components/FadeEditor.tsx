@@ -17,12 +17,12 @@ export function FadeEditor({
   onChange,
   kind,
   disabled,
-}: {
+}: Readonly<{
   value: Fade;
   onChange: (fade: Fade) => void;
   kind: "in" | "out";
   disabled?: boolean;
-}) {
+}>) {
   return (
     <div className="stack">
       <label className="check">

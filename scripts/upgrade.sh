@@ -68,6 +68,24 @@ is_relay() {
     esac
 }
 
+# An image by the digest of its copy on this node (repository:tag@sha256:…),
+# or nothing if the node has none. By its tag alone, a service update
+# changes nothing when the service already names that tag and Docker cannot
+# look the new digest up on the registry: a moving tag like edge would stay
+# where it was.
+pinned() {
+    local image=$1 digest
+    for digest in $(docker image inspect -f '{{join .RepoDigests " "}}' "$image" 2>/dev/null); do
+        case $digest in
+        "${image%:*}"@*)
+            echo "$image@${digest#*@}"
+            return
+            ;;
+        *) ;;
+        esac
+    done
+}
+
 # Docker Swarm: start-first updates of each engine do the handover.
 if [ -n "$swarm" ]; then
     engines=
@@ -85,21 +103,29 @@ if [ -n "$swarm" ]; then
             say "pulling $image"
             docker pull --quiet "$image" >/dev/null
         fi
+        # Without a digest (--no-pull, and no copy on the node), forced.
+        target=$(pinned "$image")
+        force=
+        if [ -z "$target" ]; then
+            target=$image
+            force=yes
+        fi
         if is_engine "$service"; then
-            engines="$engines $service=$image"
+            engines="$engines $service=$target"
         elif is_relay "$service"; then
             # Holds the connections: left running (docs/upgrading.md).
             :
         else
-            say "updating $service"
-            docker service update --quiet --with-registry-auth --image "$image" "$service" >/dev/null
+            say "updating $service to $target"
+            docker service update --quiet --with-registry-auth ${force:+--force} \
+                --image "$target" "$service" >/dev/null
         fi
     done
     [ -n "$engines" ] || fail "no heron-engine service in stack $swarm"
     # heron-engine first, then the other stations' (sorted).
     for engine in $(echo "$engines" | tr ' ' '\n' | LC_ALL=C sort -t= -k1,1); do
         service=${engine%%=*}
-        say "updating $service: the new engine takes over from the running one"
+        say "updating $service to ${engine#*=}: the new engine takes over from the running one"
         docker service update --quiet --with-registry-auth --image "${engine#*=}" \
             --update-order start-first --update-failure-action rollback \
             --stop-grace-period 30s --force "$service" >/dev/null

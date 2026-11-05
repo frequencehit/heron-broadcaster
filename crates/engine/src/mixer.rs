@@ -8,7 +8,8 @@
 //! Tracks are dropped by the control thread, never here.
 //!
 //! Each deck slot has its EQ ([`GraphicEq`]): Decks A and B the music EQ's
-//! settings, the FX player its own.
+//! settings, the FX player its own. The master bus goes through the AGC chain
+//! ([`Chain`]) after the pause, then is clipped at full scale.
 //!
 //! Transitions are decided here, sample-accurately, from a plan computed in
 //! advance ([`FrameTransition`]). The same code renders to a buffer offline,
@@ -19,7 +20,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use heron_core::playout::{Ramp, TrackPlayout, Transition};
 use heron_core::{EQ_BANDS, FadeCurve};
-use heron_dsp::GraphicEq;
+use heron_dsp::agc::ChainParams;
+use heron_dsp::{Chain, GraphicEq};
 
 /// Internal sample rate.
 pub const SAMPLE_RATE: u32 = 48_000;
@@ -177,6 +179,13 @@ pub struct Overlay {
     pub at: u64,
 }
 
+/// Commands are moved through a ring buffer of fixed size: their size only
+/// costs memory there. A large one is never boxed, since the box would be
+/// freed on the audio thread.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "SetAgc carries the chain's settings inline: no allocation to free on the audio thread"
+)]
 pub enum Command {
     /// Plays `track` next. It starts at `transition.next_start` on the track
     /// on air, when the track on air ends, or at once when nothing is on air.
@@ -229,6 +238,18 @@ pub enum Command {
         enabled: bool,
         filter_gains_db: [f32; EQ_BANDS],
         glide: bool,
+    },
+    /// New settings for the AGC chain. They glide in, or with `glide: false`
+    /// apply at once, from rest: only while nothing plays. Not boxed: the
+    /// box would be freed here, on the audio thread.
+    SetAgc {
+        params: ChainParams,
+        glide: bool,
+    },
+    /// The gated AGC starts from this gain: the gain of the engine handing
+    /// over, sent while nothing plays.
+    StartAgcAt {
+        gain_db: f32,
     },
 }
 
@@ -335,6 +356,50 @@ impl MeterStatus {
     }
 }
 
+/// The AGC chain's meters. Gains in dB as f32 bits; gain reductions hold
+/// their deepest value and come back by 20 dB/s, as the peak meters.
+#[derive(Debug, Default)]
+pub struct AgcStatus {
+    /// The chain is computed: on, or fading out.
+    pub active: AtomicBool,
+    /// The chain's input: the master bus before it.
+    pub input: MeterStatus,
+    /// The gated AGC is on, and its gain.
+    pub agc_on: AtomicBool,
+    pub agc_gain_db: AtomicU32,
+    pub five_band_db: [AtomicU32; 5],
+    pub dual_band_db: [AtomicU32; 2],
+    pub final_stage_db: AtomicU32,
+    /// Frames by which the chain delays the master bus now.
+    pub latency_frames: AtomicU64,
+}
+
+impl AgcStatus {
+    pub fn agc_gain_db(&self) -> Option<f32> {
+        self.agc_on
+            .load(Ordering::Relaxed)
+            .then(|| f32::from_bits(self.agc_gain_db.load(Ordering::Relaxed)))
+    }
+
+    /// The gain reductions of the 5 bands, the 2 bands and the final stage.
+    pub fn reductions_db(&self) -> ([f32; 5], [f32; 2], f32) {
+        let load = |value: &AtomicU32| f32::from_bits(value.load(Ordering::Relaxed));
+        (
+            self.five_band_db.each_ref().map(load),
+            self.dual_band_db.each_ref().map(load),
+            load(&self.final_stage_db),
+        )
+    }
+}
+
+/// A gain reduction meter: the deepest of this block, or the last one coming
+/// back by `rise_db`.
+fn publish_reduction(meter: &AtomicU32, block_db: f32, rise_db: f32) {
+    let previous = f32::from_bits(meter.load(Ordering::Relaxed));
+    let value = block_db.min((previous + rise_db).min(0.0));
+    meter.store(value.to_bits(), Ordering::Relaxed);
+}
+
 #[derive(Debug, Default)]
 pub struct DeckStatus {
     /// 0 when the deck is empty.
@@ -360,10 +425,13 @@ pub struct MixerStatus {
     /// air, 0 for none.
     pub overlay: AtomicU64,
     pub decks: [DeckStatus; 3],
+    /// The master bus, after the AGC chain.
     pub master: MeterStatus,
+    pub agc: AgcStatus,
     pub underruns: AtomicU64,
-    /// Frames of silence (below −50 dBFS) on the master bus up to now, 0
-    /// when the last block had sound. Read by the silence watchdog.
+    /// Frames of silence (below −50 dBFS) on the master bus before the AGC
+    /// chain up to now, 0 when the last block had sound. Read by the silence
+    /// watchdog.
     pub silent_frames: AtomicU64,
     /// Events or finished tracks that could not be handed to the control
     /// thread because its queues were full.
@@ -486,6 +554,8 @@ pub struct Mixer {
     /// The EQ of each deck slot.
     eqs: [GraphicEq; 3],
     meters: [BlockMeter; 3],
+    /// The AGC chain on the master bus.
+    chain: Chain,
     commands: rtrb::Consumer<Command>,
     events: rtrb::Producer<Event>,
     trash: rtrb::Producer<Box<LoadedTrack>>,
@@ -517,6 +587,7 @@ impl Mixer {
             scratch: vec![0.0; max_block_frames * CHANNELS],
             eqs: std::array::from_fn(|_| GraphicEq::new(SAMPLE_RATE)),
             meters: [BlockMeter::default(); 3],
+            chain: Chain::new(SAMPLE_RATE),
             commands: command_rx,
             events: event_tx,
             trash: trash_tx,
@@ -591,19 +662,25 @@ impl Mixer {
             self.frame += frames as u64;
         }
 
-        let mut master = BlockMeter::default();
-        for frame in out.as_chunks_mut::<CHANNELS>().0 {
-            // No limiter before M10: never let anything over full scale out.
-            frame[0] = frame[0].clamp(-1.0, 1.0);
-            frame[1] = frame[1].clamp(-1.0, 1.0);
-            master.add(frame[0], frame[1]);
+        // Silence is what the decks play: the AGC chain's gain never hides it.
+        let mut input = BlockMeter::default();
+        for frame in out.as_chunks::<CHANNELS>().0 {
+            input.add(frame[0], frame[1]);
         }
-        if master.peak[0].max(master.peak[1]) < SILENCE_LEVEL {
+        if input.peak[0].max(input.peak[1]) < SILENCE_LEVEL {
             self.silent_frames += frames as u64;
         } else {
             self.silent_frames = 0;
         }
-        self.publish(frames, &master);
+        self.chain.process(out);
+        let mut master = BlockMeter::default();
+        for frame in out.as_chunks_mut::<CHANNELS>().0 {
+            // A last safety: never let anything over full scale out.
+            frame[0] = frame[0].clamp(-1.0, 1.0);
+            frame[1] = frame[1].clamp(-1.0, 1.0);
+            master.add(frame[0], frame[1]);
+        }
+        self.publish(frames, &master, &input);
     }
 
     fn apply_commands(&mut self) {
@@ -678,6 +755,14 @@ impl Mixer {
                         }
                     }
                 }
+                Command::SetAgc { params, glide } => {
+                    if glide {
+                        self.chain.set(&params);
+                    } else {
+                        self.chain.restart(&params);
+                    }
+                }
+                Command::StartAgcAt { gain_db } => self.chain.start_agc_at(gain_db),
             }
         }
     }
@@ -1027,7 +1112,7 @@ impl Mixer {
         }
     }
 
-    fn publish(&self, frames: usize, master: &BlockMeter) {
+    fn publish(&mut self, frames: usize, master: &BlockMeter, input: &BlockMeter) {
         let seconds = frames as f32 / SAMPLE_RATE as f32;
         let decay = 10f32.powf(-PEAK_DECAY_DB_PER_S * seconds / 20.0);
         let alpha = 1.0 - (-seconds / RMS_TAU_S).exp();
@@ -1062,6 +1147,27 @@ impl Mixer {
             self.meters[slot].publish(frames, &deck.meter, decay, alpha);
         }
         master.publish(frames, &status.master, decay, alpha);
+
+        let agc = &status.agc;
+        input.publish(frames, &agc.input, decay, alpha);
+        let meters = self.chain.take_meters();
+        let rise = PEAK_DECAY_DB_PER_S * seconds;
+        for (meter, &block) in agc.five_band_db.iter().zip(&meters.five_band_db) {
+            publish_reduction(meter, block, rise);
+        }
+        for (meter, &block) in agc.dual_band_db.iter().zip(&meters.dual_band_db) {
+            publish_reduction(meter, block, rise);
+        }
+        publish_reduction(&agc.final_stage_db, meters.final_stage_db, rise);
+        agc.agc_on
+            .store(meters.agc_gain_db.is_some(), Ordering::Relaxed);
+        agc.agc_gain_db.store(
+            meters.agc_gain_db.unwrap_or_default().to_bits(),
+            Ordering::Relaxed,
+        );
+        agc.active.store(self.chain.is_active(), Ordering::Relaxed);
+        agc.latency_frames
+            .store(self.chain.latency() as u64, Ordering::Relaxed);
     }
 }
 

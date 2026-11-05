@@ -68,7 +68,7 @@ function startTimes(
   });
 }
 
-export function QueueList({ limit }: { limit?: number }) {
+export function QueueList({ limit }: Readonly<{ limit?: number }>) {
   const waiting = useWaiting();
   const player = useLive((live) => live.player);
   const positions = useLive((live) => live.positions);
@@ -189,7 +189,7 @@ function Item({
   canEdit,
   onNext,
   onRemove,
-}: {
+}: Readonly<{
   entry: QueueEntry;
   index: number;
   start: number | null;
@@ -201,7 +201,7 @@ function Item({
   canEdit: boolean;
   onNext: () => void;
   onRemove: () => void;
-}) {
+}>) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.entry_id,
     disabled: !canEdit,

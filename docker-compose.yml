@@ -29,7 +29,7 @@ x-database-url: &database-url mysql://heron:${HERON_DB_PASSWORD:?set HERON_DB_PA
 
 services:
   mariadb:
-    image: mariadb:11.8
+    image: mariadb:12.3
     restart: unless-stopped
     cpu_shares: 1024
     command:
@@ -61,6 +61,7 @@ services:
       target: heron-api
       args:
         HERON_REVISION: ${HERON_REVISION:-}
+        HERON_BUILD_DATE: ${HERON_BUILD_DATE:-}
     image: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-api:${HERON_VERSION:-latest}
     restart: unless-stopped
     user: ${HERON_LIBRARIAN_USER:-10001:10001}
@@ -90,6 +91,9 @@ services:
       context: .
       dockerfile: docker/rust.Dockerfile
       target: heron-analyzer
+      args:
+        HERON_REVISION: ${HERON_REVISION:-}
+        HERON_BUILD_DATE: ${HERON_BUILD_DATE:-}
     image: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-analyzer:${HERON_VERSION:-latest}
     restart: unless-stopped
     # Background work: last for the CPU, first to go when memory runs out.
@@ -120,6 +124,9 @@ services:
       context: .
       dockerfile: docker/rust.Dockerfile
       target: heron-librarian
+      args:
+        HERON_REVISION: ${HERON_REVISION:-}
+        HERON_BUILD_DATE: ${HERON_BUILD_DATE:-}
     image: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-librarian:${HERON_VERSION:-latest}
     restart: unless-stopped
     # Background work, like the analyzer; nice 10 (HERON_NICE).
@@ -152,6 +159,9 @@ services:
       context: .
       dockerfile: docker/rust.Dockerfile
       target: heron-engine
+      args:
+        HERON_REVISION: ${HERON_REVISION:-}
+        HERON_BUILD_DATE: ${HERON_BUILD_DATE:-}
     image: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-engine:${HERON_VERSION:-latest}
     restart: unless-stopped
     # Room for a hot handover to a new engine on upgrade (docs/upgrading.md).
@@ -201,7 +211,7 @@ services:
   # /live falls back to /fallback while the engine restarts (docs/upgrading.md).
   icecast:
     profiles: [icecast]
-    image: libretime/icecast:2.4.4
+    image: libretime/icecast:2.5.0
     restart: unless-stopped
     # The image edits its configuration in place: start from a copy of ours.
     entrypoint: ["sh", "-c", "cp /etc/heron/icecast.xml /etc/icecast.xml && exec docker-entrypoint \"$$@\"", "--"]
@@ -220,7 +230,7 @@ services:
   # 44.1 kHz, stereo.
   icecast-fallback:
     profiles: [icecast]
-    image: linuxserver/ffmpeg:7.1.1
+    image: linuxserver/ffmpeg:9.0.2
     restart: unless-stopped
     depends_on:
       - icecast

@@ -26,16 +26,18 @@ cd "$(dirname "$0")/.."
 
 # Settings from the environment, else from .env, else the defaults.
 setting() {
-    eval "value=\${$1:-}"
-    [ -n "$value" ] || value=$(sed -n "s/^$1=//p" .env 2>/dev/null | tail -1)
-    echo "${value:-$2}"
+    local key=$1
+    local fallback=$2
+    eval "value=\${$key:-}"
+    [ -n "$value" ] || value=$(sed -n "s/^$key=//p" .env 2>/dev/null | tail -1)
+    echo "${value:-$fallback}"
 }
 HERON_HTTP_PORT=$(setting HERON_HTTP_PORT 8000)
 HERON_ICECAST_PORT=$(setting HERON_ICECAST_PORT 8010)
 export HERON_HTTP_PORT HERON_ICECAST_PORT
 icecast=http://localhost:$HERON_ICECAST_PORT
 music=$(setting HERON_MUSIC_DIR ./data/music)
-ffmpeg_image=linuxserver/ffmpeg:7.1.1
+ffmpeg_image=linuxserver/ffmpeg:9.0.2
 work=$(mktemp -d)
 # The silent file of step 5: a name of its own, removed only once created.
 silence=chaos-silence-$$.wav
@@ -81,8 +83,9 @@ ctl() {
 # One of the engine's metrics, read from inside the network, summed over
 # its labels.
 metric() {
+    local name=$1
     docker compose exec -T heron-web wget -q -O - http://heron-engine:8081/metrics |
-        awk -v name="$1" '$1 == name || index($1, name "{") == 1 { sum += $2; found = 1 }
+        awk -v name="$name" '$1 == name || index($1, name "{") == 1 { sum += $2; found = 1 }
             END { if (found) print sum }'
 }
 
@@ -125,10 +128,10 @@ on_icecast() {
 
 # Starts recording $1 seconds of the stream in the background.
 start_listening() {
-    capture="$work/capture-$(date +%s).mp3"
-    curl -s -m "$1" "$icecast/live" >"$capture" &
-    listener=$!
     listened=$1
+    capture="$work/capture-$(date +%s).mp3"
+    curl -s -m "$listened" "$icecast/live" >"$capture" &
+    listener=$!
 }
 
 # Waits for the recording, then checks it: at least 90 % of the time

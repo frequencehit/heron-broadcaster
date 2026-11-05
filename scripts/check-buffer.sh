@@ -29,14 +29,18 @@ call() {
 }
 
 put() {
+    local offset=$1
+    local file=$2
     curl -fsS -b "$jar" -X PUT -H 'X-Requested-With: check-buffer' \
-        -H 'Content-Type: application/octet-stream' --data-binary "@$2" \
-        "$api/staging/uploads/$id?offset=$1"
+        -H 'Content-Type: application/octet-stream' --data-binary "@$file" \
+        "$api/staging/uploads/$id?offset=$offset"
 }
 
 within() {
-    if [ $(( $(date +%s) - start )) -ge "$1" ]; then
-        echo "$2" >&2
+    local limit=$1
+    local message=$2
+    if [ $(( $(date +%s) - start )) -ge "$limit" ]; then
+        echo "$message" >&2
         call GET /staging >&2 || true
         exit 1
     fi

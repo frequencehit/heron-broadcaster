@@ -24,7 +24,7 @@ export function useSeveralStations(): boolean {
 }
 
 /** The codes of `ids` as badges; `all` when given for no station at all. */
-export function StationBadges({ ids, emptyMeansAll }: { ids: number[]; emptyMeansAll?: boolean }) {
+export function StationBadges({ ids, emptyMeansAll }: Readonly<{ ids: number[]; emptyMeansAll?: boolean }>) {
   const stations = useStations();
   if (stations.length < 2) {
     return null;
@@ -52,11 +52,11 @@ export function StationChecks({
   value,
   onChange,
   disabled,
-}: {
+}: Readonly<{
   value: number[];
   onChange: (ids: number[]) => void;
   disabled?: boolean;
-}) {
+}>) {
   const stations = useStations();
   if (stations.length < 2) {
     return null;
@@ -87,7 +87,7 @@ export function StationChecks({
 type Plays = import("../api").Schemas["Plays"];
 
 /** Plays and last play on each station; nothing with one station. */
-export function PlaysByStation({ plays }: { plays: Plays | null | undefined }) {
+export function PlaysByStation({ plays }: Readonly<{ plays: Plays | null | undefined }>) {
   const stations = useStations();
   if (stations.length < 2 || !plays) {
     return null;

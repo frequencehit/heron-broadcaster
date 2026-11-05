@@ -13,6 +13,7 @@ publish = false
 blake3.workspace = true
 heron-core.workspace = true
 lofty.workspace = true
+notify.workspace = true
 serde.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true

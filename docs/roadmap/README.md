@@ -22,11 +22,14 @@ Progress is tracked here: the status column below and the acceptance checklists 
 | M7b | [Listener statistics](m7b-listener-statistics.md) | M4 | Done ([#34](https://github.com/dehy/heron-broadcaster/pull/34)) |
 | M8 | [Hot engine upgrades](m8-hot-engine-upgrade.md) | M3 | Done ([#32](https://github.com/dehy/heron-broadcaster/pull/32)) |
 | M9 | [Deck EQ](m9-deck-eq.md) | M2 | Done ([#37](https://github.com/dehy/heron-broadcaster/pull/37)) |
-| M10 | [AGC & multiband processing](m10-agc-multiband.md) | M9 | Not started |
-| M11 | [More encoders, sinks & live DJ](m11-sinks-live-dj.md) | M3 | Not started |
+| M10 | [AGC & multiband processing](m10-agc-multiband.md) | M9 | Done ([#42](https://github.com/dehy/heron-broadcaster/pull/42)) |
+| M11 | [More encoders, sinks & live DJ](m11-sinks-live-dj.md) | M3 | In progress (external FFmpeg encoder, AAC-LC) |
 | M12 | [Backups](m12-config-backups.md) | M4, M13, M14 | Done ([#114](https://github.com/dehy/heron-broadcaster/pull/114)) |
 | M13 | [Several stations](m13-several-stations.md) | M6, M7, M7b, M8 | Done ([#119](https://github.com/dehy/heron-broadcaster/pull/119)) |
 | M14 | [Several schedules](m14-schedules.md) | M6, M13 (the schedule per station) | Done ([#102](https://github.com/dehy/heron-broadcaster/pull/102)) |
+| M15 | [Encrypted and tested backups](m15-encrypted-backups.md) | M12 | In progress |
+| M16 | [Status bar](m16-status-bar.md) | M5, M7b, M13 | Done ([#58](https://github.com/dehy/heron-broadcaster/pull/58)) |
+| M17 | [About page](m17-about-page.md) | M5, M13, M16 | In review |
 
 ## Dependency graph
 
@@ -40,7 +43,7 @@ M0 ─► M1 ─┬─► M1b
                   │       ├─► M6
                   │       ├─► M7
                   │       ├─► M7b
-                  │       ├─► M12
+                  │       ├─► M12 ─► M15
                   │       └─► M13 (also after M6, M7, M7b, M8) ─► M14
                   └─► M9 ─► M10
 ```

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Keeps the engine's configuration (playout settings, encoder profiles and
-//! outputs, deck EQ) equal to the database's.
+//! outputs, deck EQ, AGC chain) equal to the database's.
 //!
 //! The engine keeps its own copy on disk and plays on with it while the API
 //! or the database are down. This task pushes the database's version when
@@ -9,16 +9,16 @@
 //!
 //! The first time, the API adopts the engine's configuration instead of
 //! replacing it (stations configured with `heron-engine ctl` before M4):
-//! playout settings and deck EQ never saved through the API and outputs,
-//! when the database has none, are copied from the engine.
+//! playout settings, deck EQ and AGC chain never saved through the API and
+//! outputs, when the database has none, are copied from the engine.
 //!
-//! Engines from before the deck EQ send no EQ settings: none are pushed to
-//! them.
+//! Engines from before the deck EQ or the AGC chain send no settings for
+//! them: none are pushed to them.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use heron_core::{EqSettings, OutputsConfig, PlayoutSettings};
+use heron_core::{AgcSettings, EqSettings, OutputsConfig, PlayoutSettings};
 use serde::Serialize;
 use sqlx::MySqlPool;
 use tokio::sync::{Notify, watch};
@@ -154,14 +154,8 @@ impl ConfigSync {
                 .map_err(|error| ApiError::Internal(format!("engine playout settings: {error}")))?;
         let engine_outputs: OutputsConfig = serde_json::from_str(&config.outputs_json)
             .map_err(|error| ApiError::Internal(format!("engine outputs: {error}")))?;
-        let engine_eq: Option<EqSettings> = if config.eq_settings_json.is_empty() {
-            None
-        } else {
-            Some(
-                serde_json::from_str(&config.eq_settings_json)
-                    .map_err(|error| ApiError::Internal(format!("engine EQ settings: {error}")))?,
-            )
-        };
+        let engine_eq: Option<EqSettings> = optional(&config.eq_settings_json, "EQ")?;
+        let engine_agc: Option<AgcSettings> = optional(&config.agc_settings_json, "AGC")?;
 
         let management: EngineManagement =
             settings::load_for(&self.pool, self.station_id, EngineManagement::SETTINGS_NAME)
@@ -195,6 +189,31 @@ impl ConfigSync {
                     .map_err(|error| ApiError::Internal(error.to_string()))?;
                 self.engine.set_eq_settings(json).await?;
                 tracing::info!("deck EQ applied to the engine");
+            }
+        }
+
+        if let Some(engine_agc) = engine_agc {
+            // A station managed before M10 has no AGC chain saved yet: the
+            // engine's is kept (set with `ctl set-agc`, or bypassed).
+            if !settings::exists_for(&self.pool, self.station_id, AgcSettings::SETTINGS_NAME)
+                .await?
+            {
+                settings::save_for(
+                    &self.pool,
+                    self.station_id,
+                    AgcSettings::SETTINGS_NAME,
+                    &engine_agc,
+                )
+                .await?;
+                tracing::info!("copied the engine's AGC chain into the database");
+            }
+            let agc: AgcSettings =
+                settings::load_for(&self.pool, self.station_id, AgcSettings::SETTINGS_NAME).await?;
+            if agc != engine_agc {
+                let json = serde_json::to_string(&agc)
+                    .map_err(|error| ApiError::Internal(error.to_string()))?;
+                self.engine.set_agc_settings(json).await?;
+                tracing::info!("AGC chain applied to the engine");
             }
         }
 
@@ -240,4 +259,14 @@ impl ConfigSync {
         outputs::adopt(&self.pool, self.station_id, outputs).await?;
         Ok(())
     }
+}
+
+/// Settings an engine may not know yet: empty from engines before them.
+fn optional<T: serde::de::DeserializeOwned>(json: &str, what: &str) -> ApiResult<Option<T>> {
+    if json.is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(json)
+        .map(Some)
+        .map_err(|error| ApiError::Internal(format!("engine {what} settings: {error}")))
 }

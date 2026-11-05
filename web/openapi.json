@@ -10,6 +10,186 @@
     "version": "0.2.0"
   },
   "paths": {
+    "/api/v1/about": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "The build, and for admins the machine, the dependencies and the\nconfiguration.",
+        "operationId": "about",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/About"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agc-presets": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Every AGC preset, by name.",
+        "operationId": "list_agc_presets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgcPreset"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Saves a chain's blocks as a new preset. Operators and admins.",
+        "operationId": "create_agc_preset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgcPresetInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgcPreset"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agc-presets/{id}": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Renames a preset or saves new blocks in it. The chains it was loaded\ninto keep their settings. Operators and admins.",
+        "operationId": "update_agc_preset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgcPresetInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgcPreset"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Deletes a preset. The chains it was loaded into keep their settings.\nOperators and admins.",
+        "operationId": "delete_agc_preset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/artist-names/{id}": {
       "put": {
         "tags": [
@@ -681,17 +861,223 @@
         }
       }
     },
+    "/api/v1/backups/key": {
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "The backup key: its public key, when and by whom it was set, the\nearlier ones. Never the secret key. Admins only.",
+        "operationId": "get_key",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "A new key, waiting to be typed back (`/backups/key/confirm`): generated\nand returned this once, or the admin's own public key. Admins only.",
+        "operationId": "new_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewKey"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Drops the key waiting to be typed back; with none, turns encryption\noff: new backups are written in clear. Admins only.",
+        "operationId": "drop_key",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/key/check": {
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Checks the key an admin types back: their next check further away, and\nthe newest backup encrypted with it tested in the background. A wrong\nkey changes nothing. Admins only.",
+        "operationId": "check_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Checked"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/key/confirm": {
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Turns encryption on with the key waiting, once typed back: the backups\nin clear are encrypted, a backup is taken and tested. Admins only.",
+        "operationId": "confirm_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Confirmed"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/key/later": {
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Asks this admin for the key again the next day. Admins only.",
+        "operationId": "later",
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/backups/restore": {
       "post": {
         "tags": [
           "backups"
         ],
-        "summary": "Restores an uploaded configuration file (the request's body), kept as an\n`uploaded` backup. Admins only.",
+        "summary": "Restores an uploaded configuration file (the request's body), kept as an\n`uploaded` backup. An encrypted one needs its key, in the\n`X-Heron-Backup-Key` header. Admins only.",
         "operationId": "upload_and_restore",
+        "parameters": [
+          {
+            "name": "X-Heron-Backup-Key",
+            "in": "header",
+            "description": "The key of an encrypted file",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "requestBody": {
-          "description": "A configuration file",
+          "description": "A configuration file, `.json` or `.json.age`",
           "content": {
-            "application/json": {
+            "application/octet-stream": {
               "schema": {
                 "type": "string"
               }
@@ -705,6 +1091,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RestoreReport"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/state": {
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "What the banners and the key check need, for the admin asking. Admins\nonly.",
+        "operationId": "get_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupState"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/tests": {
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "The last backup test, the last one that passed, and the one under way.\nAdmins only.",
+        "operationId": "get_tests",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestsView"
                 }
               }
             }
@@ -757,7 +1201,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "Downloads a backup's configuration file. Admins only: it holds secrets.",
+        "summary": "Downloads a backup's configuration file, encrypted when it is. Admins\nonly: it holds secrets.",
         "operationId": "download_config",
         "parameters": [
           {
@@ -792,7 +1236,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "Downloads a backup's database dump. Admins only: it holds secrets.",
+        "summary": "Downloads a backup's database dump, encrypted when it is. Admins only:\nit holds secrets.",
         "operationId": "download_database",
         "parameters": [
           {
@@ -839,12 +1283,85 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "The key of an encrypted backup",
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/WithKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RestoreReport"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backups/{name}/test": {
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "summary": "Tests a backup in the background: read back to its end with its key\nwhen it is encrypted, nothing restored. Its result is in\n`/backups/tests`. Admins only.",
+        "operationId": "test_backup",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The key of an encrypted backup",
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/WithKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Testing"
                 }
               }
             }
@@ -4840,7 +5357,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "The selection log, most recent first.",
+        "summary": "The rotation log, most recent first.",
         "operationId": "list_picks",
         "parameters": [
           {
@@ -5190,6 +5707,72 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/agc": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station's AGC chain.",
+        "operationId": "get_agc",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgcSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Replaces the station's AGC chain (missing fields take the defaults) and\npushes it to the engine at once, where it glides in. Every open live\nWebSocket gets an `agc` message. Operators and admins.",
+        "operationId": "put_agc",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgcSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgcSettings"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -8395,7 +8978,7 @@
         "tags": [
           "rotation"
         ],
-        "summary": "The selection log, most recent first.",
+        "summary": "The rotation log, most recent first.",
         "operationId": "list_picks_on_station",
         "parameters": [
           {
@@ -8836,6 +9419,94 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/settings/agc": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station's AGC chain.",
+        "operationId": "get_agc_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgcSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Replaces the station's AGC chain (missing fields take the defaults) and\npushes it to the engine at once, where it glides in. Every open live\nWebSocket gets an `agc` message. Operators and admins.",
+        "operationId": "put_agc_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgcSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgcSettings"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -11642,6 +12313,52 @@
   },
   "components": {
     "schemas": {
+      "About": {
+        "type": "object",
+        "required": [
+          "services"
+        ],
+        "properties": {
+          "configuration": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ServiceConfig"
+            },
+            "description": "Admins only."
+          },
+          "dependencies": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Dependencies",
+                "description": "Admins only."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtime": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Runtime",
+                "description": "Admins only."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceInfo"
+            }
+          }
+        }
+      },
       "AcrossStations": {
         "type": "object",
         "description": "What a station keeps apart from the other stations' plays and queues.",
@@ -11702,6 +12419,366 @@
             "description": "The same track.",
             "default": 0,
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgcLevels": {
+        "type": "object",
+        "description": "The AGC chain's meters. Gain reductions are in dB, 0 or less.",
+        "required": [
+          "input",
+          "five_band_db",
+          "dual_band_db",
+          "final_stage_db"
+        ],
+        "properties": {
+          "agc_gain_db": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "The gated AGC's gain, while it is on."
+          },
+          "dual_band_db": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "The dual-band processor's low and high bands."
+          },
+          "final_stage_db": {
+            "type": "number",
+            "format": "float"
+          },
+          "five_band_db": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "Each band of the 5-band processor, from the lowest."
+          },
+          "input": {
+            "$ref": "#/components/schemas/ChannelLevels",
+            "description": "The master bus before the chain (`master` is after it)."
+          }
+        }
+      },
+      "AgcPreset": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "settings"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AgcPresetSettings"
+          }
+        }
+      },
+      "AgcPresetInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "settings"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique, ignoring case."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AgcPresetSettings",
+            "description": "Missing fields take the defaults."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgcPresetSettings": {
+        "type": "object",
+        "description": "The blocks of an AGC chain, as a preset keeps them: the chain's\nsettings without `bypass_all`.",
+        "properties": {
+          "bass_eq": {
+            "$ref": "#/components/schemas/BassEqSettings",
+            "default": {
+              "enabled": false,
+              "frequency_hz": 100.0,
+              "gain_db": 0.0,
+              "shape": "shelf"
+            }
+          },
+          "dual_band": {
+            "$ref": "#/components/schemas/DualBandSettings",
+            "default": {
+              "bands": [
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                }
+              ],
+              "crossover_hz": 200.0,
+              "enabled": false,
+              "link": false
+            }
+          },
+          "final_stage": {
+            "$ref": "#/components/schemas/FinalStageSettings",
+            "default": {
+              "ceiling_db": -1.0,
+              "enabled": true,
+              "mode": "limiter",
+              "release_ms": 100.0
+            }
+          },
+          "five_band": {
+            "$ref": "#/components/schemas/FiveBandSettings",
+            "default": {
+              "bands": [
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                }
+              ],
+              "crossovers_hz": [
+                100.0,
+                400.0,
+                1600.0,
+                6400.0
+              ],
+              "enabled": false,
+              "links": [
+                false,
+                false,
+                false,
+                false
+              ],
+              "overdrive_db": 0.0
+            }
+          },
+          "gated_agc": {
+            "$ref": "#/components/schemas/GatedAgcSettings",
+            "default": {
+              "enabled": false,
+              "gate_lufs": -45.0,
+              "max_gain_db": 6.0
+            }
+          },
+          "stereo_expander": {
+            "$ref": "#/components/schemas/StereoExpanderSettings",
+            "default": {
+              "depth": 50.0,
+              "enabled": false,
+              "level": 50.0,
+              "threshold_db": -40.0
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgcSettings": {
+        "type": "object",
+        "description": "The whole chain. Bypassed by default; turned on as it is, it is the final\nlimiter alone.",
+        "properties": {
+          "bass_eq": {
+            "$ref": "#/components/schemas/BassEqSettings",
+            "default": {
+              "enabled": false,
+              "frequency_hz": 100.0,
+              "gain_db": 0.0,
+              "shape": "shelf"
+            }
+          },
+          "bypass_all": {
+            "type": "boolean",
+            "description": "Skips the chain, whatever the blocks' switches say.",
+            "default": true
+          },
+          "dual_band": {
+            "$ref": "#/components/schemas/DualBandSettings",
+            "default": {
+              "bands": [
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                }
+              ],
+              "crossover_hz": 200.0,
+              "enabled": false,
+              "link": false
+            }
+          },
+          "final_stage": {
+            "$ref": "#/components/schemas/FinalStageSettings",
+            "default": {
+              "ceiling_db": -1.0,
+              "enabled": true,
+              "mode": "limiter",
+              "release_ms": 100.0
+            }
+          },
+          "five_band": {
+            "$ref": "#/components/schemas/FiveBandSettings",
+            "default": {
+              "bands": [
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                },
+                {
+                  "attack_ms": 20.0,
+                  "gain_db": 0.0,
+                  "hold_ms": 0.0,
+                  "mode": "compressor",
+                  "ratio": 3.0,
+                  "release_ms": 250.0,
+                  "threshold_db": -20.0
+                }
+              ],
+              "crossovers_hz": [
+                100.0,
+                400.0,
+                1600.0,
+                6400.0
+              ],
+              "enabled": false,
+              "links": [
+                false,
+                false,
+                false,
+                false
+              ],
+              "overdrive_db": 0.0
+            }
+          },
+          "gated_agc": {
+            "$ref": "#/components/schemas/GatedAgcSettings",
+            "default": {
+              "enabled": false,
+              "gate_lufs": -45.0,
+              "max_gain_db": 6.0
+            }
+          },
+          "stereo_expander": {
+            "$ref": "#/components/schemas/StereoExpanderSettings",
+            "default": {
+              "depth": 50.0,
+              "enabled": false,
+              "level": 50.0,
+              "threshold_db": -40.0
+            }
           }
         },
         "additionalProperties": false
@@ -11988,6 +13065,15 @@
           }
         }
       },
+      "BackupKey": {
+        "type": "string",
+        "description": "Which key opens an encrypted backup.",
+        "enum": [
+          "current",
+          "earlier",
+          "unknown"
+        ]
+      },
       "BackupSettings": {
         "type": "object",
         "description": "The `backups` settings.",
@@ -12017,6 +13103,34 @@
         },
         "additionalProperties": false
       },
+      "BackupState": {
+        "type": "object",
+        "description": "What the banners say about backups, for the admin asking.",
+        "required": [
+          "encryption",
+          "check_due",
+          "damaged",
+          "test_due"
+        ],
+        "properties": {
+          "check_due": {
+            "type": "boolean",
+            "description": "This admin's key check is due."
+          },
+          "damaged": {
+            "type": "integer",
+            "description": "Backups that fail their checksums.",
+            "minimum": 0
+          },
+          "encryption": {
+            "$ref": "#/components/schemas/KeyState"
+          },
+          "test_due": {
+            "type": "boolean",
+            "description": "The last test failed, or none passed for 30 days."
+          }
+        }
+      },
       "BackupView": {
         "type": "object",
         "description": "A backup in the folder.",
@@ -12024,7 +13138,8 @@
           "name",
           "kind",
           "created_at_unix_ms",
-          "config_size"
+          "config_size",
+          "encrypted"
         ],
         "properties": {
           "config_size": {
@@ -12036,6 +13151,13 @@
           "created_at_unix_ms": {
             "type": "integer",
             "format": "int64"
+          },
+          "damaged": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What fails its checksums, at the last check: a file missing, cut\nshort or changed."
           },
           "database_error": {
             "type": [
@@ -12053,14 +13175,125 @@
             "description": "Bytes; missing without a dump.",
             "minimum": 0
           },
+          "encrypted": {
+            "type": "boolean",
+            "description": "Its files are encrypted."
+          },
+          "key": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BackupKey",
+                "description": "Which key opens it, when it is encrypted."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "$ref": "#/components/schemas/Kind"
           },
           "name": {
             "type": "string",
             "description": "Its time and kind: `2026-11-03T03-30-00Z-daily`."
+          },
+          "recipient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The public key of that key, `age1…`, when it is known: the key typed\nfor it must match."
           }
         }
+      },
+      "BandMode": {
+        "type": "string",
+        "enum": [
+          "compressor",
+          "expander",
+          "limiter"
+        ]
+      },
+      "BandSettings": {
+        "type": "object",
+        "description": "One band of the 5-band or the dual-band processor.",
+        "properties": {
+          "attack_ms": {
+            "type": "number",
+            "format": "float",
+            "description": "0.5 to 200 ms.",
+            "default": 20.0
+          },
+          "gain_db": {
+            "type": "number",
+            "format": "float",
+            "description": "After the dynamics, −12 to +12 dB.",
+            "default": 0.0
+          },
+          "hold_ms": {
+            "type": "number",
+            "format": "float",
+            "description": "0 to 500 ms.",
+            "default": 0.0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/BandMode",
+            "default": "compressor"
+          },
+          "ratio": {
+            "type": "number",
+            "format": "float",
+            "description": "1 to 20 (ignored by the limiter).",
+            "default": 3.0
+          },
+          "release_ms": {
+            "type": "number",
+            "format": "float",
+            "description": "10 to 2,000 ms.",
+            "default": 250.0
+          },
+          "threshold_db": {
+            "type": "number",
+            "format": "float",
+            "description": "−60 to 0 dBFS.",
+            "default": -20.0
+          }
+        },
+        "additionalProperties": false
+      },
+      "BassEqSettings": {
+        "type": "object",
+        "description": "The bass EQ: one shelf or peak.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "frequency_hz": {
+            "type": "number",
+            "format": "float",
+            "description": "40 to 250 Hz.",
+            "default": 100.0
+          },
+          "gain_db": {
+            "type": "number",
+            "format": "float",
+            "description": "−12 to +12 dB.",
+            "default": 0.0
+          },
+          "shape": {
+            "$ref": "#/components/schemas/BassShape",
+            "default": "shelf"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BassShape": {
+        "type": "string",
+        "enum": [
+          "shelf",
+          "peak"
+        ]
       },
       "Batch": {
         "type": "object",
@@ -12545,6 +13778,26 @@
           }
         }
       },
+      "Checked": {
+        "type": "object",
+        "required": [
+          "next_check_unix_ms"
+        ],
+        "properties": {
+          "next_check_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When this admin's next check is due."
+          },
+          "testing": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The backup being tested with the key."
+          }
+        }
+      },
       "ChoiceRequest": {
         "oneOf": [
           {
@@ -12733,6 +13986,124 @@
           }
         }
       },
+      "ConfigItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ConfigValue"
+          },
+          {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The setting, as its environment variable."
+              }
+            }
+          }
+        ],
+        "description": "A configuration value worth showing."
+      },
+      "ConfigValue": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A value that is not secret.",
+            "required": [
+              "value",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "description": "A value that is not secret."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A feature that is on or off.",
+            "required": [
+              "value",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "flag"
+                ]
+              },
+              "value": {
+                "type": "boolean",
+                "description": "A feature that is on or off."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A secret: only whether it is set.",
+            "required": [
+              "value",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "secret"
+                ]
+              },
+              "value": {
+                "type": "boolean",
+                "description": "A secret: only whether it is set."
+              }
+            }
+          }
+        ]
+      },
+      "Confirmed": {
+        "type": "object",
+        "required": [
+          "key",
+          "encrypted",
+          "left_in_clear"
+        ],
+        "properties": {
+          "backup": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The backup taken with the new key."
+          },
+          "encrypted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Backups that were in clear, now encrypted."
+          },
+          "key": {
+            "$ref": "#/components/schemas/KeyView"
+          },
+          "left_in_clear": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Backups left in clear: their files fail their checksums, or could\nnot be written."
+          }
+        }
+      },
       "CreatedToken": {
         "type": "object",
         "required": [
@@ -12887,6 +14258,26 @@
           }
         },
         "additionalProperties": false
+      },
+      "Database": {
+        "type": "object",
+        "properties": {
+          "migrations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Database migrations applied."
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`SELECT VERSION()`, e.g. `12.3.1-MariaDB`."
+          }
+        }
       },
       "DeckEq": {
         "type": "object",
@@ -13110,6 +14501,24 @@
           }
         }
       },
+      "Dependencies": {
+        "type": "object",
+        "required": [
+          "database"
+        ],
+        "properties": {
+          "database": {
+            "$ref": "#/components/schemas/Database"
+          },
+          "ffmpeg": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first line of `ffmpeg -version` of an engine with the external\nencoder; missing when the built-in encoders are used."
+          }
+        }
+      },
       "DetailsReport": {
         "type": "object",
         "description": "What a MusicBrainz details lookup did.",
@@ -13161,6 +14570,79 @@
             "format": "int64",
             "description": "Files removed from the buffer zone.",
             "minimum": 0
+          }
+        }
+      },
+      "DualBandSettings": {
+        "type": "object",
+        "description": "The dual-band processor.",
+        "properties": {
+          "bands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BandSettings"
+            },
+            "description": "Low, then high.",
+            "default": [
+              {
+                "attack_ms": 20.0,
+                "gain_db": 0.0,
+                "hold_ms": 0.0,
+                "mode": "compressor",
+                "ratio": 3.0,
+                "release_ms": 250.0,
+                "threshold_db": -20.0
+              },
+              {
+                "attack_ms": 20.0,
+                "gain_db": 0.0,
+                "hold_ms": 0.0,
+                "mode": "compressor",
+                "ratio": 3.0,
+                "release_ms": 250.0,
+                "threshold_db": -20.0
+              }
+            ]
+          },
+          "crossover_hz": {
+            "type": "number",
+            "format": "float",
+            "description": "60 to 2,000 Hz.",
+            "default": 200.0
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "link": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "EarlierKey": {
+        "type": "object",
+        "required": [
+          "recipient",
+          "since_unix_ms",
+          "until_unix_ms",
+          "set_by"
+        ],
+        "properties": {
+          "recipient": {
+            "type": "string"
+          },
+          "set_by": {
+            "type": "string"
+          },
+          "since_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "until_unix_ms": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -13537,7 +15019,7 @@
       },
       "Explanation": {
         "type": "object",
-        "description": "Why a track was picked: the selection log.",
+        "description": "Why a track was picked: the rotation log.",
         "required": [
           "at_unix_ms",
           "method",
@@ -13763,23 +15245,159 @@
         },
         "additionalProperties": false
       },
+      "FinalMode": {
+        "type": "string",
+        "enum": [
+          "limiter",
+          "clipper"
+        ]
+      },
+      "FinalStageSettings": {
+        "type": "object",
+        "description": "The final stage.",
+        "properties": {
+          "ceiling_db": {
+            "type": "number",
+            "format": "float",
+            "description": "−6 to 0 dBFS.",
+            "default": -1.0
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "$ref": "#/components/schemas/FinalMode",
+            "default": "limiter"
+          },
+          "release_ms": {
+            "type": "number",
+            "format": "float",
+            "description": "The limiter's, 10 to 1,000 ms.",
+            "default": 100.0
+          }
+        },
+        "additionalProperties": false
+      },
+      "FiveBandSettings": {
+        "type": "object",
+        "description": "The 5-band processor.",
+        "properties": {
+          "bands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BandSettings"
+            },
+            "default": [
+              {
+                "attack_ms": 20.0,
+                "gain_db": 0.0,
+                "hold_ms": 0.0,
+                "mode": "compressor",
+                "ratio": 3.0,
+                "release_ms": 250.0,
+                "threshold_db": -20.0
+              },
+              {
+                "attack_ms": 20.0,
+                "gain_db": 0.0,
+                "hold_ms": 0.0,
+                "mode": "compressor",
+                "ratio": 3.0,
+                "release_ms": 250.0,
+                "threshold_db": -20.0
+              },
+              {
+                "attack_ms": 20.0,
+                "gain_db": 0.0,
+                "hold_ms": 0.0,
+                "mode": "compressor",
+                "ratio": 3.0,
+                "release_ms": 250.0,
+                "threshold_db": -20.0
+              },
+              {
+                "attack_ms": 20.0,
+                "gain_db": 0.0,
+                "hold_ms": 0.0,
+                "mode": "compressor",
+                "ratio": 3.0,
+                "release_ms": 250.0,
+                "threshold_db": -20.0
+              },
+              {
+                "attack_ms": 20.0,
+                "gain_db": 0.0,
+                "hold_ms": 0.0,
+                "mode": "compressor",
+                "ratio": 3.0,
+                "release_ms": 250.0,
+                "threshold_db": -20.0
+              }
+            ]
+          },
+          "crossovers_hz": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "Rising, at least a third of an octave apart, 40 to 16,000 Hz.",
+            "default": [
+              100.0,
+              400.0,
+              1600.0,
+              6400.0
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "boolean"
+            },
+            "description": "`links[i]` links band `i` and band `i + 1`.",
+            "default": [
+              false,
+              false,
+              false,
+              false
+            ]
+          },
+          "overdrive_db": {
+            "type": "number",
+            "format": "float",
+            "description": "0 to 12 dB.",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false
+      },
       "FolderProblem": {
         "type": "object",
         "description": "What keeps backups from being written.",
         "required": [
           "error",
+          "permission_denied",
           "uid",
           "gid"
         ],
         "properties": {
           "error": {
             "type": "string",
-            "description": "The system's error (`Permission denied`…)."
+            "description": "The system's error (`Permission denied`, `No space left on device`…)."
           },
           "gid": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "permission_denied": {
+            "type": "boolean",
+            "description": "The folder is not the API's user's: `chown` fixes it."
           },
           "uid": {
             "type": "integer",
@@ -13788,6 +15406,29 @@
             "minimum": 0
           }
         }
+      },
+      "GatedAgcSettings": {
+        "type": "object",
+        "description": "The gated AGC: a slow gain to the station's loudness target.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "gate_lufs": {
+            "type": "number",
+            "format": "float",
+            "description": "Under this momentary loudness (LUFS) the gain holds: −70 to −20.",
+            "default": -45.0
+          },
+          "max_gain_db": {
+            "type": "number",
+            "format": "float",
+            "description": "The gain stays within ± this, in dB: 0 to 18.",
+            "default": 6.0
+          }
+        },
+        "additionalProperties": false
       },
       "GroupSource": {
         "type": "string",
@@ -14614,6 +16255,86 @@
         },
         "additionalProperties": false
       },
+      "KeyRecord": {
+        "type": "object",
+        "required": [
+          "recipient",
+          "since_unix_ms",
+          "set_by"
+        ],
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "description": "The public key, `age1…`."
+          },
+          "set_by": {
+            "type": "string",
+            "description": "Who set it."
+          },
+          "since_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "KeyRequest": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The secret key, `AGE-SECRET-KEY-1…`, or the contents of its file."
+          }
+        },
+        "additionalProperties": false
+      },
+      "KeyState": {
+        "type": "string",
+        "enum": [
+          "off",
+          "pending",
+          "on"
+        ]
+      },
+      "KeyView": {
+        "type": "object",
+        "required": [
+          "state",
+          "previous"
+        ],
+        "properties": {
+          "current": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KeyRecord",
+                "description": "The key backups are encrypted with."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_recipient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The public key waiting to be typed back."
+          },
+          "previous": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EarlierKey"
+            },
+            "description": "The keys used before, oldest first."
+          },
+          "state": {
+            "$ref": "#/components/schemas/KeyState"
+          }
+        }
+      },
       "Kind": {
         "type": "string",
         "description": "Why a backup was taken.",
@@ -14825,6 +16546,17 @@
           "fx"
         ],
         "properties": {
+          "agc": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgcLevels",
+                "description": "While the AGC chain is on."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "deck_a": {
             "$ref": "#/components/schemas/ChannelLevels"
           },
@@ -14835,7 +16567,8 @@
             "$ref": "#/components/schemas/ChannelLevels"
           },
           "master": {
-            "$ref": "#/components/schemas/ChannelLevels"
+            "$ref": "#/components/schemas/ChannelLevels",
+            "description": "After the AGC chain: what the listeners hear."
           }
         }
       },
@@ -15273,6 +17006,47 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "required": [
+              "settings",
+              "type"
+            ],
+            "properties": {
+              "settings": {
+                "$ref": "#/components/schemas/AgcSettings"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "agc"
+                ]
+              }
+            }
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SystemLoad",
+                "description": "The machine's load. Only operators and admins receive it."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "system"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The machine's load. Only operators and admins receive it."
           }
         ],
         "description": "A message on the live WebSocket."
@@ -15749,6 +17523,44 @@
           "name": {
             "type": "string",
             "description": "What the files are, for people (`Album 2024`, the dropped folder)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewKey": {
+        "type": "object",
+        "required": [
+          "recipient"
+        ],
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The secret key, `AGE-SECRET-KEY-1…`: shown this once, never stored.\nMissing for the admin's own key."
+          },
+          "key_file": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`heron-backup-key.txt`, an age identity file, with the secret key."
+          },
+          "recipient": {
+            "type": "string"
+          }
+        }
+      },
+      "NewKeyRequest": {
+        "type": "object",
+        "properties": {
+          "recipient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The admin's own public key, `age1…`; left out: Heron generates one."
           }
         },
         "additionalProperties": false
@@ -18011,6 +19823,45 @@
           }
         ]
       },
+      "Runtime": {
+        "type": "object",
+        "required": [
+          "hosts",
+          "clock",
+          "cpu_cores",
+          "memory_mib"
+        ],
+        "properties": {
+          "clock": {
+            "$ref": "#/components/schemas/ClockStatus"
+          },
+          "cpu_cores": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Logical cores of the machine the API runs on.",
+            "minimum": 0
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceHost"
+            }
+          },
+          "memory_mib": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its memory, in MiB.",
+            "minimum": 0
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `TZ` of the API's environment."
+          }
+        }
+      },
       "ScanReport": {
         "type": "object",
         "description": "Outcome of one scan, logged and served by `/api/v1/library/status`.",
@@ -18338,6 +20189,122 @@
           "artist",
           "album"
         ]
+      },
+      "ServiceConfig": {
+        "type": "object",
+        "required": [
+          "service",
+          "items"
+        ],
+        "properties": {
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigItem"
+            }
+          },
+          "service": {
+            "type": "string"
+          }
+        }
+      },
+      "ServiceHost": {
+        "type": "object",
+        "description": "The machine a service runs on (admins).",
+        "required": [
+          "service",
+          "container"
+        ],
+        "properties": {
+          "arch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "container": {
+            "type": "boolean"
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kernel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "os": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "service": {
+            "type": "string"
+          },
+          "uptime_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long it has been running, in seconds."
+          }
+        }
+      },
+      "ServiceInfo": {
+        "type": "object",
+        "description": "A Heron service and whether it runs.",
+        "required": [
+          "service",
+          "running"
+        ],
+        "properties": {
+          "build_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The station's code for an engine, the host name for the others."
+          },
+          "revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "running": {
+            "type": "boolean",
+            "description": "Answering now: the engine reachable, a worker's heartbeat recent."
+          },
+          "service": {
+            "type": "string",
+            "description": "`heron-api`, `heron-engine`, `heron-analyzer` or `heron-librarian`."
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Missing when the service was never seen or does not say."
+          }
+        }
       },
       "SilenceWatchdogSettings": {
         "type": "object",
@@ -19324,6 +21291,35 @@
           }
         }
       },
+      "StereoExpanderSettings": {
+        "type": "object",
+        "description": "The stereo expander: widens programmes close to mono.",
+        "properties": {
+          "depth": {
+            "type": "number",
+            "format": "float",
+            "description": "How much of the missing width is made up, 0 to 100 %.",
+            "default": 50.0
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "level": {
+            "type": "number",
+            "format": "float",
+            "description": "Most boost of the side, 0 to 100 % of 6 dB.",
+            "default": 50.0
+          },
+          "threshold_db": {
+            "type": "number",
+            "format": "float",
+            "description": "Programme level (dBFS) under which nothing is boosted: −60 to 0.",
+            "default": -40.0
+          }
+        },
+        "additionalProperties": false
+      },
       "SuggestionReview": {
         "type": "object",
         "required": [
@@ -19369,6 +21365,42 @@
           },
           "state": {
             "$ref": "#/components/schemas/SyncState"
+          }
+        }
+      },
+      "SystemLoad": {
+        "type": "object",
+        "description": "What the status bar shows of the machine.",
+        "required": [
+          "cpu_percent",
+          "mem_percent",
+          "load_avg",
+          "cores"
+        ],
+        "properties": {
+          "cores": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Logical cores, to read the load average against.",
+            "minimum": 0
+          },
+          "cpu_percent": {
+            "type": "number",
+            "format": "float",
+            "description": "CPU in use, 0 to 100, over all cores."
+          },
+          "load_avg": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "The load average over 1, 5 and 15 minutes."
+          },
+          "mem_percent": {
+            "type": "number",
+            "format": "float",
+            "description": "Memory in use (not counting what the system can give back), 0 to 100."
           }
         }
       },
@@ -19828,6 +21860,86 @@
           "failed"
         ]
       },
+      "TestRecord": {
+        "type": "object",
+        "description": "A backup read back to its end, nothing restored.",
+        "required": [
+          "name",
+          "at_unix_ms",
+          "ok"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who gave the key; none: Heron, for a backup in clear."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What failed, and in which file."
+          },
+          "name": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Testing": {
+        "type": "object",
+        "required": [
+          "testing"
+        ],
+        "properties": {
+          "testing": {
+            "type": "string",
+            "description": "The backup being tested."
+          }
+        }
+      },
+      "TestsView": {
+        "type": "object",
+        "properties": {
+          "last": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TestRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_ok": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TestRecord",
+                "description": "The last test that passed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "testing": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The backup being tested."
+          }
+        }
+      },
       "Theme": {
         "type": "string",
         "description": "The web UI's theme.",
@@ -20056,6 +22168,7 @@
               "deck",
               "entry",
               "at_unix_ms",
+              "resumed",
               "kind"
             ],
             "properties": {
@@ -20075,6 +22188,10 @@
                 "enum": [
                   "started"
                 ]
+              },
+              "resumed": {
+                "type": "boolean",
+                "description": "The track on air going on in a restarted engine, or one taking\nover from another: the same play, not a new one."
               }
             }
           },
@@ -21665,6 +23782,20 @@
         },
         "additionalProperties": false
       },
+      "WithKey": {
+        "type": "object",
+        "description": "The key of an encrypted backup.",
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The secret key, `AGE-SECRET-KEY-1…`, or the contents of its file."
+          }
+        },
+        "additionalProperties": false
+      },
       "u64": {
         "type": "integer",
         "format": "int64",
@@ -21738,7 +23869,7 @@
     },
     {
       "name": "rotation",
-      "description": "Clocks, the schedule, restrictions, the selection log and simulations"
+      "description": "Clocks, the schedule, restrictions, the rotation log and simulations"
     },
     {
       "name": "history",

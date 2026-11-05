@@ -2,6 +2,41 @@
 
 What changed in each release of Heron. Before upgrading, read the release's notes in [Upgrading](docs/upgrading.md#release-notes).
 
+## Edge
+
+What `main` has since the last release: it is published as the `edge` images. Read the [Edge upgrade notes](docs/upgrading.md#edge) first.
+
+### Added
+
+- **AGC and multiband processing** (M10): a processing chain on each station's master bus: a gated AGC that brings the level to the station's loudness target, a stereo expander, a bass EQ, 5-band and dual-band processors (compressor, expander or limiter per band) and a final look-ahead limiter or clipper, all without clicks. A **Processing** page shows the chain with its meters, and presets (Gentle, Pop, Dense, Rock, Talk) are shared by the stations ([Audio engine – Master AGC chain](docs/audio-engine.md#master-agc-chain)).
+- **Backups** (M12): every day, the configuration (stations, programming, outputs, users, what is set on each track, medleys) and a dump of the database, in a folder that can be a network share. A restore from the web that fails half-way changes nothing, and a banner says how to fix a backup folder that cannot be written ([Backups](docs/backups.md)).
+- **Encrypted and tested backups** (M15): optional encryption with [age](https://age-encryption.org/v1) (Heron keeps only the public key, and a restore asks for the key), a checksum file for each backup, every backup read back as it is written, key checks for each admin so that a lost key is noticed before a restore needs it, a *Test* button, and a banner when no test has passed for 30 days ([Backups – Encryption](docs/backups.md#encryption)).
+- **Status bar** (M16) at the bottom of every page: the two decks with their track and time, the station's listeners and, for operators and admins, CPU, memory and load.
+- **About page** (M17), linked at the bottom of the menu: the version, commit and build date of the web interface and of each service and whether it answers, and for admins the machine (system, kernel, architecture, container, time zone, clock, CPU, memory), the database and FFmpeg versions and the active configuration (a secret only shows whether it is set), with a button that copies it all for a bug report. The engine answers a new `GetAbout` call; the analyzer and the librarian write a heartbeat to the database every 30 seconds. The images carry their build date (`HERON_BUILD_DATE`) next to the commit.
+- **AAC-LC encoder** (first part of M11): FFmpeg's native `aac` encoder, as an ADTS stream for Icecast, with the default `AAC 96k` profile and an *AAC-LC* choice in the Outputs page. It is built with the optional `aac` Cargo feature, which links the system's libavcodec; Heron's engine image has it. See [Encoders and outputs](docs/outputs.md#built-in-aac).
+- **Track levels:** a track's level in dBFS on its waveform, with its lowest and highest.
+- **History** marks where the clocks change and which pass of the repeated hour a time belongs to.
+- **Spanish and German** web interface, next to English and French.
+- **Rotation:** hours without a clock rotate the station's library.
+
+### Changed
+
+- **Clearer page names**, in all four languages: *Buffer* is now **Import music**, *Import* is **Migrate**, *Review & organize* is **To organize**, *Selection log* is **Rotation log** and *AGC* is **Processing**. Their addresses changed with them (`/import-music`, `/migrate`, `/to-organize`, `/rotation-log`, `/processing`) and the old ones are not redirected: update any bookmark. The API is unchanged.
+- **Several stations** (M13) is finished: two stations never share an engine, a station's schedules are under its routes, and `scripts/upgrade.sh` hands over each station's engine, so a second station no longer restarts cold.
+- **Dependencies** are all up to date. The Docker Compose files now use MariaDB 12.3 (was 11.8), Icecast 2.5.0 (2.4.4) and ffmpeg 9.0.2 (7.1.1), and the web image Node 26 and nginx 1.31.
+- **The API answers requests it cannot read** as JSON errors.
+- **The web interface** says when it and the API are not from the same version, and suggests reloading the page first.
+
+### Fixed
+
+- A track resumed by a restarted engine, or by one taking over during an upgrade, is no longer reported as a new play: no second `track.started` webhook and no second row in the history.
+- A hot handover retried with a longer lead waits for its stop, instead of giving up after 2 s with the track still on air. An engine that handed over no longer removes its successor's socket.
+- `scripts/upgrade.sh --swarm` updates each service by the digest it pulled, so a moving tag like `edge` is upgraded for the API, web, analyzer and librarian too (only the engines were).
+- The library scanner and the incoming folder no longer scan again after every scan on Linux: reading files is not a change.
+- Writing the tags of an MP3 with a Picard `WORK` frame no longer fails.
+- Undoing a tag edit and restoring from the trash work with MariaDB 12.3.
+- A restore no longer fails while webhook deliveries are retried.
+
 ## 0.2.0 – 2026-11-01
 
 Milestones M9 (deck EQ), M13 (several stations, see [Not yet](#not-yet)) and M14 (several schedules), medleys, category types, imports from another software and the external FFmpeg encoder. Upgrading from 0.1.0 keeps the station on air: see [0.1.0 to 0.2.0](docs/upgrading.md#010-to-020).

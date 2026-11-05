@@ -26,6 +26,7 @@ use heron_librarian::organize;
 use heron_librarian::staging::{self, Stager};
 use heron_librarian::tasks::TaskRunner;
 use heron_library::LibraryLock;
+use heron_service::about::ConfigItem;
 use heron_service::db::{self, DatabaseHealth};
 use heron_service::{LogArgs, MetricsArgs};
 use sqlx::{MySqlPool, Row};
@@ -239,6 +240,25 @@ async fn serve(cli: &Cli, pool: MySqlPool, roots: Roots) -> anyhow::Result<()> {
     );
 
     let (stop, stopped) = tokio::sync::watch::channel(false);
+    // Says on the About page that the librarian runs, and how.
+    let mut about = heron_service::about::common_config(&cli.log, &cli.metrics, cli.http_addr);
+    about.extend([
+        ConfigItem::text("HERON_LIBRARY_DIR", roots.library.display()),
+        ConfigItem::text("HERON_INCOMING_DIR", roots.incoming.display()),
+        ConfigItem::text("HERON_STAGING_DIR", roots.staging.display()),
+        ConfigItem::flag("HERON_INCOMING_WATCH", cli.incoming_watch),
+        ConfigItem::text("HERON_INCOMING_INTERVAL", cli.incoming_interval),
+        ConfigItem::text("HERON_IMPORT_SETTLE", cli.import_settle),
+        ConfigItem::text("HERON_NICE", &cli.nice),
+    ]);
+    let instance = std::env::var("HOSTNAME").unwrap_or_else(|_| SERVICE.to_owned());
+    tokio::spawn(heron_service::about::run_heartbeat(
+        pool.clone(),
+        SERVICE,
+        instance,
+        about,
+        stopped.clone(),
+    ));
     let tasks = TaskRunner::new(pool.clone(), roots.clone(), endpoints.clone());
     let running_tasks = tokio::spawn(tasks.run(stopped.clone()));
     let stager = Stager::new(pool.clone(), roots.clone(), endpoints);

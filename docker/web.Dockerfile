@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -10,7 +10,7 @@ COPY web/ ./
 ARG HERON_REVISION=
 RUN HERON_REVISION=$HERON_REVISION npm run build
 
-FROM nginx:1.29-alpine AS heron-web
+FROM nginx:1.31-alpine AS heron-web
 LABEL org.opencontainers.image.source="https://github.com/dehy/heron-broadcaster" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

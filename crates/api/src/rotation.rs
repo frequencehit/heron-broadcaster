@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Rotation in the API: the station as `heron-rotation` sees it, loaded
-//! from the database; the selection log; simulations.
+//! from the database; the rotation log; simulations.
 //!
 //! - The library holds the tracks rotation may pick: enabled, present,
 //!   analyzed, with something audible between their cue points.
@@ -530,7 +530,7 @@ pub fn seed() -> u64 {
     u64::from_le_bytes(bytes)
 }
 
-/// Records a pick in the selection log. `entry` is the engine's queue
+/// Records a pick in the rotation log. `entry` is the engine's queue
 /// entry it became, with the engine's start time.
 pub async fn record_pick(
     pool: &MySqlPool,
@@ -604,7 +604,7 @@ pub struct PicksQuery {
     pub limit: Option<u32>,
 }
 
-/// The selection log, most recent first.
+/// The rotation log, most recent first.
 #[utoipa::path(get, path = "/rotation/picks", tag = "rotation",
     params(PicksQuery),
     responses((status = 200, body = Vec<RotationPick>), (status = "4XX", body = ErrorBody)))]

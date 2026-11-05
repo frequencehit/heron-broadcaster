@@ -610,7 +610,7 @@ export function TagsDialog({
             {tracks > 1 ? t("selection.tagsHelpMany") : t("selection.tagsHelpOne")}{" "}
             {keep
               ? t("selection.keptHelp")
-              : rich("selection.tagsUndo", { link: <Link to="/review">{t("nav.review")}</Link> })}
+              : rich("selection.tagsUndo", { link: <Link to="/to-organize">{t("nav.review")}</Link> })}
           </p>
           <div className="form-grid">
             {TAG_FIELDS.map(({ field, label, number: numeric }) => {

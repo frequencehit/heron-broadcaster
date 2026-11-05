@@ -15,7 +15,7 @@ import { useStation } from "../lib/station";
 import { useCategoryTypes } from "../pages/CategoryTypes";
 import { useStations } from "./Stations";
 
-export function NewCategory({ onCreated }: { onCreated: (category: Category) => void }) {
+export function NewCategory({ onCreated }: Readonly<{ onCreated: (category: Category) => void }>) {
   const [name, setName] = useState("");
   const station = useStation();
   const stations = useStations();

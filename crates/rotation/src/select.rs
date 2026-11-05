@@ -23,7 +23,7 @@ pub struct Pick {
     pub explanation: Explanation,
 }
 
-/// Why a track was picked: the selection log.
+/// Why a track was picked: the rotation log.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Explanation {

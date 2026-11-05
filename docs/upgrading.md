@@ -176,7 +176,7 @@ And Icecast with its fallback mount, from the files next to the stack:
 
 ```yaml
   icecast:
-    image: libretime/icecast:2.4.4
+    image: libretime/icecast:2.5.0
     # The image edits its configuration in place: start from a copy of ours.
     entrypoint: ["sh", "-c", "cp /etc/heron/icecast.xml /etc/icecast.xml && exec docker-entrypoint \"$$@\"", "--"]
     command: ["icecast", "-c", "/etc/icecast.xml"]
@@ -190,7 +190,7 @@ And Icecast with its fallback mount, from the files next to the stack:
       - "8000:8000"
 
   icecast-fallback:
-    image: linuxserver/ffmpeg:7.1.1
+    image: linuxserver/ffmpeg:9.0.2
     entrypoint: ["/fallback-source.sh"]
     command: ["/fallback", "icecast://source:${HERON_ICECAST_SOURCE_PASSWORD}@icecast:8000/fallback"]
     volumes:
@@ -212,6 +212,8 @@ scripts/upgrade.sh --swarm heron 0.2.0
 
 It pulls the images on the node first, so the update does not wait for the download, then runs `docker service update --image …` for each Heron service but the relays, the engines last (`heron-engine`, then `heron-engine-<code>`, one at a time), with `start-first`, a rollback on failure and a 30 s stop grace period (set even if the stack file lacks them). The engines are always updated (`--force`), even when their image did not change. Swarm starts the new engine, waits for it to be healthy (the standby), then stops the old one, which hands over.
 
+Each service gets the image by the digest just pulled (`ghcr.io/dehy/heron-api:edge@sha256:…`), not by its tag alone. A moving tag like `edge` is then upgraded too: by its tag, `docker service update` changes nothing when the service already names that tag and Docker cannot look the new digest up on the registry. With `--no-pull`, the digest is the one of the image already on the node; when the node has none, the service is updated by its tag, with `--force`.
+
 Deploying the stack again (`docker stack deploy`, after changing `HERON_VERSION` in `.env`) upgrades it the same way, `start-first`, with one difference: `docker stack deploy` checks every image again, so it also replaces `heron-relay` whenever its image changed, a short break covered by the fallback mount. To leave the relay running, give it a version of its own in `.env` (`HERON_RELAY_VERSION`), changed only when a release says so.
 
 ## Checking an upgrade
@@ -228,6 +230,17 @@ A new engine can only take over from an engine that speaks the same handover pro
 ## Release notes
 
 What each release asks of an upgrade, on top of the steps above. What it brings is in the [changelog](../CHANGELOG.md).
+
+### Edge
+
+The engines, the API and the web interface are upgraded as usual. A few things to know:
+
+- **MariaDB 12.3, Icecast 2.5.0 and ffmpeg 9.0.2** are the images of the Compose files now (MariaDB 11.8, Icecast 2.4.4 and ffmpeg 7.1.1 before). A deployment that keeps its own versions of these is not touched; to follow, back up first ([Backups](backups.md)) and read MariaDB's notes on upgrading from 11.8.
+- **Backups** have a folder: `HERON_BACKUP_FOLDER` in `.env` (`./data/backups` by default), mounted in the API's container. A banner in the web interface says if it cannot be written.
+- **The engine image contains libavcodec** (for the AAC-LC encoder) and is larger. A migration adds the `AAC 96k` encoder profile, which no output uses until you pick it.
+- **Processing, track levels and the backup key checks** come with migrations, applied when the API starts. A track shows its levels once it is analyzed again.
+- **The About page** needs the services to run the same build: an engine of the previous version does not answer its new `GetAbout` call, so the page shows it as running, with no version and no details, until it is replaced (`scripts/upgrade.sh` does it). A migration adds the `service_heartbeats` table, where the analyzer and the librarian report every 30 seconds; a worker that has not for 90 seconds shows as stopped. Images you build yourself take `HERON_REVISION` and `HERON_BUILD_DATE` as build arguments to show the commit and the date.
+- **Page addresses changed** with the page names (`/import-music`, `/migrate`, `/to-organize`, `/rotation-log`, `/processing`): update bookmarks.
 
 ### 0.1.0 to 0.2.0
 

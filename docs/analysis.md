@@ -14,7 +14,7 @@ The scanner and the analyzer only read the library: `heron-librarian` is the onl
 
 The scanner runs inside `heron-api`:
 
-- **When:** at startup, after file system events (debounced 5 s), and every `HERON_SCAN_INTERVAL` seconds (default 3600) as a safety net for file systems that do not report changes (NFS, SMB). Set `HERON_LIBRARY_WATCH=false` where watching does not work.
+- **When:** at startup, after file system changes (debounced 5 s; reads do not count), and every `HERON_SCAN_INTERVAL` seconds (default 3600) as a safety net for file systems that do not report changes (NFS, SMB). Set `HERON_LIBRARY_WATCH=false` where watching does not work.
 - **What it picks up:** `mp3 m4a mp4 aac flac ogg oga opus wav aif aiff`, case-insensitive. Hidden files and folders are skipped, including macOS `._` resource forks.
 - **Change detection:** each track stores the file's size and mtime. An unchanged file is not opened again, so rescanning 1,000 unchanged tracks takes under 100 ms locally.
 - **New or changed files:** the scanner reads the tags (title, artist, album, album artist, genre, year, track and disc numbers, MusicBrainz recording and release, duration, via `lofty`), the audio properties (codec, bitrate, CBR or VBR from the MP3 frame headers, lossless formats as such; sample rate, channels) and a **content hash**: BLAKE3 of the size plus the first and last 64 KiB. Reading whole files would double the I/O of an import, which hurts on network shares.
@@ -44,7 +44,7 @@ Re-analysis happens automatically when `ALGORITHM_VERSION` in `heron-analysis` i
 
 **Waveform:** the analysis also keeps the highest sample peak of every 50 ms, on a dB scale (one byte per point, from −72 dBFS to full scale: quiet intros and outros stay visible), in `track_waveforms`. The web UI draws it with the cue and fade points (`GET /api/v1/tracks/{id}/waveform`), and shows the level in dBFS under the pointer and at the playhead. About 1.2 kB per minute of audio.
 
-**Levels:** each track's lowest and highest peak in dBFS **between its cue-in and its cue-out** (its overrides first), from the waveform: the quietest and loudest 50 ms of what goes on air, its silences at both ends left out. A minimum at −72 dBFS reads "−72 dBFS or below". `heron-api` computes them from the waveform when a track is analyzed again or its cue points change (`track_levels`), within a few seconds.
+**Levels:** each track's lowest and highest peak in dBFS **between its cue-in and its cue-out** (its overrides first), from the waveform: the quietest and loudest 50 ms of what goes on air, its silences at both ends left out. A minimum at −72 dBFS reads "−72 dBFS or below". `heron-api` computes them from the waveform when a track is analyzed again or its cue points change (`track_levels`), within a few seconds. Levels from an earlier analysis are not shown: a track whose file changed has none until it is analyzed again.
 
 ## Analyzer
 

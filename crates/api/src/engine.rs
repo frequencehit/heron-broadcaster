@@ -172,10 +172,27 @@ pub struct ChannelLevels {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, ToSchema)]
 pub struct Levels {
+    /// After the AGC chain: what the listeners hear.
     pub master: ChannelLevels,
     pub deck_a: ChannelLevels,
     pub deck_b: ChannelLevels,
     pub fx: ChannelLevels,
+    /// While the AGC chain is on.
+    pub agc: Option<AgcLevels>,
+}
+
+/// The AGC chain's meters. Gain reductions are in dB, 0 or less.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, ToSchema)]
+pub struct AgcLevels {
+    /// The master bus before the chain (`master` is after it).
+    pub input: ChannelLevels,
+    /// The gated AGC's gain, while it is on.
+    pub agc_gain_db: Option<f32>,
+    /// Each band of the 5-band processor, from the lowest.
+    pub five_band_db: [f32; 5],
+    /// The dual-band processor's low and high bands.
+    pub dual_band_db: [f32; 2],
+    pub final_stage_db: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
@@ -209,6 +226,9 @@ pub enum TrackEvent {
         deck: DeckName,
         entry: QueueEntry,
         at_unix_ms: u64,
+        /// The track on air going on in a restarted engine, or one taking
+        /// over from another: the same play, not a new one.
+        resumed: bool,
     },
     Ended {
         deck: DeckName,
@@ -369,6 +389,17 @@ impl EngineLink {
         }
     }
 
+    /// What the engine says of itself for the About page; `None` when it is
+    /// unreachable or too old to say.
+    pub async fn fetch_about(&self) -> Option<heron_service::about::AboutReport> {
+        let mut client = self.client.clone();
+        let about = self
+            .call(client.get_about(pb::GetAboutRequest {}))
+            .await
+            .ok()?;
+        serde_json::from_str(&about.json).ok()
+    }
+
     pub async fn fetch_state(&self) -> ApiResult<PlayerState> {
         let mut client = self.client.clone();
         let state = self.call(client.get_state(pb::GetStateRequest {})).await?;
@@ -389,11 +420,29 @@ impl EngineLink {
                 rms_right: levels.rms_right,
             }
         };
+        let agc = levels.agc.map(|agc| {
+            let mut five_band_db = [0.0; 5];
+            let mut dual_band_db = [0.0; 2];
+            for (meter, value) in five_band_db.iter_mut().zip(agc.five_band_db) {
+                *meter = value;
+            }
+            for (meter, value) in dual_band_db.iter_mut().zip(agc.dual_band_db) {
+                *meter = value;
+            }
+            AgcLevels {
+                input: channel(agc.input),
+                agc_gain_db: agc.agc_gain_db,
+                five_band_db,
+                dual_band_db,
+                final_stage_db: agc.final_stage_db,
+            }
+        });
         Ok(Levels {
             master: channel(levels.master),
             deck_a: channel(levels.deck_a),
             deck_b: channel(levels.deck_b),
             fx: channel(levels.fx),
+            agc,
         })
     }
 
@@ -494,6 +543,13 @@ impl EngineLink {
     pub async fn set_eq_settings(&self, settings_json: String) -> ApiResult<()> {
         let mut client = self.client.clone();
         self.call(client.set_eq_settings(pb::SetEqSettingsRequest { settings_json }))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_agc_settings(&self, settings_json: String) -> ApiResult<()> {
+        let mut client = self.client.clone();
+        self.call(client.set_agc_settings(pb::SetAgcSettingsRequest { settings_json }))
             .await?;
         Ok(())
     }
@@ -619,6 +675,7 @@ fn track_event(event: pb::EngineEvent) -> Option<TrackEvent> {
     match event.event? {
         pb::engine_event::Event::TrackStarted(started) => Some(TrackEvent::Started {
             deck: deck(started.deck()),
+            resumed: started.resumed,
             entry: entry(started.entry?),
             at_unix_ms,
         }),

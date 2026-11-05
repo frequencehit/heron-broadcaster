@@ -33,6 +33,11 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 scripts/check-spdx.sh
 
+# The AAC-LC encoder (`aac` feature) needs FFmpeg 7.1's development libraries:
+# CI runs these in a Debian trixie container (.github/workflows/ci.yml, rust-aac)
+cargo clippy -p heron-outputs --features aac --all-targets --locked -- -D warnings
+cargo test -p heron-outputs --features aac --locked
+
 cd web
 npm run typecheck
 npm run coverage

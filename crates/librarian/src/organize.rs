@@ -139,12 +139,12 @@ pub fn free_path(
 pub fn stem_and_extension(path: &Path) -> (String, String) {
     let stem = path
         .file_stem()
-        .and_then(|stem| stem.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("track")
         .to_owned();
     let extension = path
         .extension()
-        .and_then(|extension| extension.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("")
         .to_owned();
     (stem, extension)
@@ -244,7 +244,7 @@ pub async fn undo(pool: &MySqlPool, roots: &Roots, batch: u64) -> Result<Report,
 
     let rows = sqlx::query(
         "SELECT m.id, m.track_id, CAST(m.from_root AS CHAR) AS from_root, m.from_path,
-                m.to_path, m.content_hash, t.path AS current_path, c.id AS change_id,
+                m.to_path, m.content_hash, t.path AS track_path, c.id AS change_id,
                 CAST(c.kind AS CHAR) AS kind, CAST(c.previous AS CHAR) AS previous,
                 c.cover_embedded, c.restore
          FROM library_moves m
@@ -276,7 +276,7 @@ pub async fn undo(pool: &MySqlPool, roots: &Roots, batch: u64) -> Result<Report,
         for row in chunk {
             let move_id: u64 = row.try_get("id")?;
             let track_id: u64 = row.try_get("track_id")?;
-            let current = LibraryPath::from_stored(row.try_get("current_path")?);
+            let current = LibraryPath::from_stored(row.try_get("track_path")?);
             let relocated = row.try_get::<String, _>("from_root")? == "library"
                 && row.try_get::<String, _>("from_path")? != row.try_get::<String, _>("to_path")?;
             let change_id: Option<u64> = row.try_get("change_id")?;

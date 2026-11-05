@@ -100,6 +100,12 @@ impl WebhookEvent {
     }
 }
 
+/// Whether a track change is sent: not the track on air going on in a
+/// restarted engine, or one taking over, which was sent when it started.
+fn is_news(event: &TrackEvent) -> bool {
+    !matches!(event, TrackEvent::Started { resumed: true, .. })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryStatus {
@@ -167,6 +173,7 @@ impl Payload {
                 deck,
                 entry,
                 at_unix_ms,
+                ..
             } => (*deck, entry, *at_unix_ms, None, None),
             TrackEvent::Ended {
                 deck,
@@ -487,7 +494,8 @@ impl Webhooks {
     ) {
         loop {
             let event = match events.recv().await {
-                Ok(LinkEvent::Track(event)) => event,
+                Ok(LinkEvent::Track(event)) if is_news(&event) => event,
+                Ok(LinkEvent::Track(_)) => continue,
                 // Plays missed while the API was away are not reported.
                 Ok(LinkEvent::Connected(_)) => continue,
                 Err(broadcast::error::RecvError::Lagged(missed)) => {
@@ -1423,6 +1431,7 @@ mod tests {
             deck: DeckName::B,
             entry: entry("Song"),
             at_unix_ms: 1,
+            resumed: false,
         };
         assert_eq!(WebhookEvent::of(&started), WebhookEvent::TrackStarted);
         assert_eq!(
@@ -1432,6 +1441,21 @@ mod tests {
         for reason in [EndReason::Finished, EndReason::Stopped, EndReason::Replaced] {
             assert_eq!(WebhookEvent::of(&ended(reason)), WebhookEvent::TrackEnded);
         }
+    }
+
+    /// The track on air going on after a restart or a handover was sent
+    /// when it started: not again.
+    #[test]
+    fn a_resumed_start_is_not_sent_again() {
+        let started = |resumed| TrackEvent::Started {
+            deck: DeckName::A,
+            entry: entry("Song"),
+            at_unix_ms: 1,
+            resumed,
+        };
+        assert!(is_news(&started(false)));
+        assert!(!is_news(&started(true)));
+        assert!(is_news(&ended(EndReason::Finished)));
     }
 
     #[test]
@@ -1455,6 +1479,7 @@ mod tests {
             deck: DeckName::A,
             entry: entry("Say \"hi\"\n"),
             at_unix_ms: 5,
+            resumed: false,
         });
         started.delivery_id = 2;
         let template = r#"{"content": "{{ artist }} – {{title}}", "album": "{{album}}", "played": "{{played_ms}}", "n": {{delivery_id}}}"#;
@@ -1681,6 +1706,7 @@ mod delivery_tests {
                 },
             },
             at_unix_ms: unix_ms(SystemTime::now()),
+            resumed: false,
         }
     }
 

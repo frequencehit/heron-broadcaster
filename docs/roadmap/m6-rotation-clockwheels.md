@@ -14,7 +14,7 @@ Clock construction and the way slots call their categories are the heart of a go
 - Rule relaxation and fallback category, with logging.
 - Clock scheduling by hour and day of week.
 - Drag-and-drop clock editor in the UI, showing each hour as it will sound; editors for artist names and restrictions.
-- Selection log explaining why each track was picked.
+- Rotation log explaining why each track was picked.
 
 ## Acceptance criteria
 

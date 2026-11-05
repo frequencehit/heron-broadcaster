@@ -32,8 +32,8 @@ export function daysLabel(days: number[]): string {
   }
   const runs: number[][] = [];
   for (const day of sorted) {
-    const run = runs[runs.length - 1];
-    if (run && run[run.length - 1] === day - 1) {
+    const run = runs.at(-1);
+    if (run?.at(-1) === day - 1) {
       run.push(day);
     } else {
       runs.push([day]);
@@ -42,7 +42,7 @@ export function daysLabel(days: number[]): string {
   return runs
     .map((run) => {
       const first = dayName(run[0] ?? 1);
-      const last = dayName(run[run.length - 1] ?? 1);
+      const last = dayName(run.at(-1) ?? 1);
       if (run.length >= 3) {
         return `${first}–${last}`;
       }

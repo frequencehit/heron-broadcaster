@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Two stations on air from one Heron (M13), upgraded, and a backup restored
-# while they stream (M12). On a running Compose stack with the icecast
+# Two stations on air from one Heron (M13), upgraded, and an encrypted backup
+# restored while they stream (M12, M15). On a running Compose stack with the icecast
 # profile, after scripts/check-streaming.sh (the first station streams to
 # /live):
 #
@@ -10,8 +10,9 @@
 #      and a station `hits80` streams to /hits80;
 #   2. scripts/upgrade.sh hands both engines over: each source keeps its
 #      connection to Icecast;
-#   3. a configuration backup is restored through the API: both stations
-#      play on, their outputs unchanged keep their connection.
+#   3. backups are encrypted, and a configuration backup is restored through
+#      the API with its key: both stations play on, their outputs unchanged
+#      keep their connection.
 #
 #   docker compose --profile icecast up -d --wait
 #   scripts/check-streaming.sh
@@ -85,18 +86,20 @@ sign_in() {
 
 # A field of a JSON document on stdin: `json id`, `json 0.name`.
 json() {
+    local path=$1
     python3 -c '
 import json, sys
 value = json.load(sys.stdin)
 for part in sys.argv[1].split("."):
     value = value[int(part)] if isinstance(value, list) else value[part]
 print(value if not isinstance(value, (dict, list)) else json.dumps(value))
-' "$1"
+' "$path"
 }
 
 # When Icecast's source on a mount connected (empty when there is none):
 # it changes with a new connection.
 source_started() {
+    local mount=$1
     curl -fsS "$icecast/status-json.xsl" | python3 -c '
 import json, sys
 sources = json.load(sys.stdin)["icestats"].get("source", [])
@@ -104,7 +107,7 @@ sources = sources if isinstance(sources, list) else [sources]
 for source in sources:
     if source.get("listenurl", "").endswith(sys.argv[1]) and source.get("title"):
         print(source.get("stream_start_iso8601", ""))
-' "$1"
+' "$mount"
 }
 
 wait_for() {
@@ -117,12 +120,16 @@ wait_for() {
     done
 }
 
-on_mount() { [ -n "$(source_started "$1")" ]; }
+on_mount() {
+    local mount=$1
+    [ -n "$(source_started "$mount")" ]
+}
 
 # Bytes of a mount in 5 s: a 128 kbps stream gives 80 kB, plus the burst.
 streams() {
-    bytes=$(curl -s -m 5 "$icecast$1" | wc -c | tr -d ' ')
-    [ "$bytes" -ge 70000 ] && pass "$1 streams ($bytes bytes in 5 s)" || fail "$1: $bytes bytes in 5 s"
+    local mount=$1
+    bytes=$(curl -s -m 5 "$icecast$mount" | wc -c | tr -d ' ')
+    [ "$bytes" -ge 70000 ] && pass "$mount streams ($bytes bytes in 5 s)" || fail "$mount: $bytes bytes in 5 s"
 }
 
 main() {
@@ -176,13 +183,23 @@ print(next((s["id"] for s in json.load(sys.stdin) if s["code"] == "hits80"), "")
         [ "$count" -eq 1 ] && pass "one $engine" || fail "$count $engine containers"
     done
 
-    step "A backup restored while both stations stream"
+    step "An encrypted backup restored while both stations stream"
     sign_in
+    key=$(call POST /backups/key -d '{}' | json key)
+    call POST /backups/key/confirm -d "{\"key\": \"$key\"}" >/dev/null &&
+        pass "backups encrypted" || fail "encryption was not turned on"
     name=$(call POST /backups | json name)
-    pass "backed up: $name"
+    [ "$(call GET /backups | json 0.encrypted)" = True ] && pass "backed up, encrypted: $name" ||
+        fail "$name is not encrypted"
     live_before=$(source_started /live)
     hits_before=$(source_started /hits80)
-    report=$(call POST "/backups/$name/restore") && pass "restored" || fail "the restore failed"
+    if call POST "/backups/$name/restore" >/dev/null 2>&1; then
+        fail "restored without its key"
+    else
+        pass "its key is needed"
+    fi
+    report=$(call POST "/backups/$name/restore" -d "{\"key\": \"$key\"}") && pass "restored with its key" ||
+        fail "the restore failed"
     echo "$report" | python3 -c '
 import json, sys
 report = json.load(sys.stdin)

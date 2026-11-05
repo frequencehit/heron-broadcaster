@@ -74,4 +74,16 @@ describe("the live socket across stations", () => {
     vi.advanceTimersByTime(1_000);
     expect(FakeSocket.all).toHaveLength(2);
   });
+
+  it("keeps the machine's load while connected, and forgets it after", () => {
+    startLive();
+    const socket = FakeSocket.all[0];
+    socket?.onopen?.();
+    // Viewers never get one.
+    expect(liveState().system).toBeNull();
+    socket?.receive({ type: "system", cpu_percent: 12, mem_percent: 41, load_avg: [0.4, 0.5, 0.6], cores: 4 });
+    expect(liveState().system).toEqual({ cpu_percent: 12, mem_percent: 41, load_avg: [0.4, 0.5, 0.6], cores: 4 });
+    socket?.onclose?.();
+    expect(liveState().system).toBeNull();
+  });
 });

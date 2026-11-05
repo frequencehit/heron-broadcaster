@@ -6,6 +6,7 @@
 use std::f32::consts::{PI, TAU};
 
 use heron_dsp::GraphicEq;
+use heron_dsp::agc::ChainParams;
 
 use super::*;
 
@@ -731,4 +732,115 @@ fn eq_changes_glide_in() {
     // There after 200 ms: 0.1 × 10^(12/20).
     let level = peak(&output[9_600 * CHANNELS..]);
     assert!((level - 0.398).abs() < 0.005, "{level}");
+}
+
+fn set_agc(handle: &mut MixerHandle, params: ChainParams, glide: bool) {
+    assert!(
+        handle
+            .commands
+            .push(Command::SetAgc { params, glide })
+            .is_ok()
+    );
+}
+
+/// The chain on, with its defaults: the final limiter alone.
+fn chain_on() -> ChainParams {
+    ChainParams {
+        bypass_all: false,
+        ..ChainParams::default()
+    }
+}
+
+#[test]
+fn the_agc_chain_limits_the_master_bus() {
+    let (mut mixer, mut handle) = Mixer::new(BLOCK_FRAMES);
+    set_agc(&mut handle, chain_on(), false);
+    let mut loud = track(1, &tone(48_000, 440.0, 0.9));
+    // 12 dB over full scale.
+    loud.gain = 4.0;
+    cue(&mut handle, loud, FrameTransition::back_to_back());
+    let output = render(&mut mixer, 48_000, BLOCK_FRAMES);
+    let ceiling = 10f32.powf(-1.0 / 20.0);
+    assert!(output.iter().all(|sample| sample.abs() <= ceiling));
+    // Limited, not clipped: the peaks come down smoothly, the sine keeps its
+    // shape (few samples at the ceiling).
+    let at_ceiling = output.iter().filter(|s| s.abs() > ceiling * 0.999).count();
+    assert!(at_ceiling < output.len() / 20, "{at_ceiling}");
+    let agc = &mixer.status.agc;
+    assert!(agc.active.load(Ordering::Relaxed));
+    assert_eq!(agc.latency_frames.load(Ordering::Relaxed), 239);
+    let (_, _, final_stage) = agc.reductions_db();
+    assert!(final_stage < -10.0, "{final_stage}");
+    // Its input is the master bus before it, over full scale.
+    let (peak, _) = agc.input.read();
+    assert!(peak[0] > 3.0, "{peak:?}");
+}
+
+#[test]
+fn a_bypassed_chain_reports_nothing_and_delays_nothing() {
+    let (mut mixer, mut handle) = Mixer::new(BLOCK_FRAMES);
+    let samples = tone(9_600, 440.0, 0.5);
+    cue(
+        &mut handle,
+        track(1, &samples),
+        FrameTransition::back_to_back(),
+    );
+    let output = render(&mut mixer, 9_600, BLOCK_FRAMES);
+    assert_eq!(output, samples);
+    let agc = &mixer.status.agc;
+    assert!(!agc.active.load(Ordering::Relaxed));
+    assert_eq!(agc.latency_frames.load(Ordering::Relaxed), 0);
+    assert_eq!(agc.agc_gain_db(), None);
+}
+
+#[test]
+fn silence_is_measured_before_the_agc_chain() {
+    let (mut mixer, mut handle) = Mixer::new(BLOCK_FRAMES);
+    let mut params = chain_on();
+    params.gated_agc.enabled = true;
+    params.gated_agc.gate_lufs = -70.0;
+    params.gated_agc.max_gain_db = 18.0;
+    set_agc(&mut handle, params, false);
+    // −54 dBFS: silence for the watchdog (under −50 dBFS).
+    let frames = 48_000 * 8;
+    cue(
+        &mut handle,
+        track(1, &tone(frames, 440.0, 0.002)),
+        FrameTransition::back_to_back(),
+    );
+    render(&mut mixer, frames, BLOCK_FRAMES);
+    let status = &mixer.status;
+    // The AGC lifted it over the silence level on the master bus...
+    let gain = status.agc.agc_gain_db().unwrap_or_default();
+    assert!(gain > 12.0, "{gain}");
+    assert!(status.master.read().0[0] > SILENCE_LEVEL);
+    // ...yet the watchdog sees the silence the decks play.
+    assert_eq!(status.silent_frames.load(Ordering::Relaxed), frames as u64);
+}
+
+#[test]
+fn the_agc_starts_from_the_gain_handed_over() {
+    let (mut mixer, mut handle) = Mixer::new(BLOCK_FRAMES);
+    let mut params = chain_on();
+    params.gated_agc.enabled = true;
+    params.final_stage.enabled = false;
+    set_agc(&mut handle, params, false);
+    assert!(
+        handle
+            .commands
+            .push(Command::StartAgcAt { gain_db: 4.0 })
+            .is_ok()
+    );
+    let samples = tone(4_800, 440.0, 0.1);
+    cue(
+        &mut handle,
+        track(1, &samples),
+        FrameTransition::back_to_back(),
+    );
+    let output = render(&mut mixer, 4_800, BLOCK_FRAMES);
+    let gain = 10f32.powf(4.0 / 20.0);
+    for (out, sample) in output.iter().zip(&samples) {
+        assert!((out - sample * gain).abs() < 1e-5);
+    }
+    assert_eq!(mixer.status.agc.agc_gain_db(), Some(4.0));
 }

@@ -403,7 +403,10 @@ impl Passwords {
 
     /// Answers 429 while a username is locked after too many failures.
     pub fn check_lockout(&self, username: &str) -> ApiResult<()> {
-        let failures = self.failures.lock().unwrap_or_else(|e| e.into_inner());
+        let failures = self
+            .failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match failures.get(username) {
             Some((count, last)) if *count >= MAX_FAILURES && last.elapsed() < LOCKOUT => {
                 Err(ApiError::TooManyRequests)
@@ -413,7 +416,10 @@ impl Passwords {
     }
 
     pub fn record(&self, username: &str, success: bool) {
-        let mut failures = self.failures.lock().unwrap_or_else(|e| e.into_inner());
+        let mut failures = self
+            .failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if success {
             failures.remove(username);
             return;

@@ -28,9 +28,9 @@ use crate::listeners::Collector;
 use crate::stations::Stations;
 use crate::webhooks::Webhooks;
 use crate::{
-    artists, categories, category_types, clocks, eq, history, import, labels, librarian, listeners,
-    live, medleys, outputs, player, public, restrictions, rotation, schedules, selection, settings,
-    staging, stations, tracks, users, webhooks,
+    about, agc, artists, categories, category_types, clocks, eq, history, import, labels,
+    librarian, listeners, live, medleys, outputs, player, public, restrictions, rotation,
+    schedules, selection, settings, staging, stations, tracks, users, webhooks,
 };
 
 pub const SERVICE: &str = "heron-api";
@@ -50,6 +50,10 @@ pub struct AppState {
     pub listeners: Arc<Collector>,
     /// The backup folder.
     pub backups: Arc<Backups>,
+    /// The machine's load, for operators' status bar.
+    pub system: crate::system::SystemWatch,
+    /// The API's start and configuration, for the About page.
+    pub about: Arc<crate::about::Own>,
 }
 
 #[derive(OpenApi)]
@@ -76,7 +80,7 @@ pub struct AppState {
         (name = "labels", description = "Keywords on tracks, to sort the library"),
         (name = "medleys", description = "Medleys built from song hooks and liners"),
         (name = "artists", description = "Artists, their names and similar artists"),
-        (name = "rotation", description = "Clocks, the schedule, restrictions, the selection log and simulations"),
+        (name = "rotation", description = "Clocks, the schedule, restrictions, the rotation log and simulations"),
         (name = "history", description = "What was played"),
         (name = "stations", description = "The stations, each with its own engine and programming"),
         (name = "settings", description = "Settings: shared ones, and each station's own"),
@@ -109,6 +113,7 @@ fn api() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(status))
         .routes(routes!(library_status))
+        .merge(about::router())
         .merge(users::router())
         .merge(crate::backups::router())
         .merge(stations::router())
@@ -130,6 +135,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(history::router())
         .merge(settings::router())
         .merge(eq::router())
+        .merge(agc::router())
         .merge(outputs::router())
         .merge(listeners::router())
         .merge(live::router())

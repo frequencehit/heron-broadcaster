@@ -114,7 +114,7 @@ Length-prefixed JSON: a 4-byte big-endian length, then the message. A message is
 | `Hello { protocol, version }` | both | First message each way |
 | `Prepare { attempt, config, queue }` | active → standby | Get ready to go on with this queue (the `queue.json` format), the track on air stopping at `queue.on_air.position_ms`. A later `Prepare` replaces it. |
 | `Ready { attempt }` | standby → active | The track on air is open at that position, with enough audio decoded |
-| `Cut { outputs }` | active → standby | Stopped. The connections of `outputs` (output ID and kind: `relayed` or `tcp`) come with it, in that order |
+| `Cut { outputs, agc_gain_db }` | active → standby | Stopped. The connections of `outputs` (output ID and kind: `relayed` or `tcp`) come with it, in that order. `agc_gain_db`: the gain of the [AGC chain](audio-engine.md#master-agc-chain)'s gated AGC at the stop, absent when it is off; older engines ignore it |
 | `Done` | standby → active | On air |
 | `Abort { reason }` | active → standby | The handover is given up |
 
@@ -162,7 +162,9 @@ So the cut never falls in a crossfade or under a jingle: there is a single voice
 
 The standby resets its player, then `Player::take_over` cues the track on air starting at the stop position (the same fast skip as a restart, without its own fade-in), and queues the waiting tracks. The mixer is held, so the cued track does not start. The standby polls `MixerStatus::cued_ready` (the decoder has `READY_SAMPLES` decoded) and answers `Ready`.
 
-The active engine needs `Ready` at least 300 ms (`READY_MARGIN`) before the track reaches the stop, to plan the stop in time. Seeking far into a long file on a Raspberry Pi can take longer than the 2 s lead, so a late `Ready` is not an error: the active engine sends a new `Prepare` with a lead three times longer (2 s, 6 s, 18 s), and ignores a `Ready` for an earlier attempt. After three attempts, or 25 s in all (within the 30 s stop grace period), it gives up.
+The active engine needs `Ready` at least 300 ms (`READY_MARGIN`) before the track reaches the stop, to plan the stop in time. Seeking far into a long file on a Raspberry Pi can take longer than the 2 s lead, so a late `Ready` is not an error: the active engine sends a new `Prepare` with a lead three times longer (2 s, 6 s, 18 s), and ignores a `Ready` for an earlier attempt. After three attempts, or 25 s in all (within the 30 s stop grace period), it gives up. The stop never falls after those 25 s: a longer lead is cut to the time left, and with less than 2 s left the active engine gives up.
+
+A standby may answer `Ready` well before the stop, when the track is quick to open the second time. The active engine then waits for the track to reach the stop, and gives up only 2 s after it should have stopped there.
 
 ## Stopping on the exact frame
 
@@ -184,6 +186,8 @@ flowchart LR
 
 The outputs must not carry the silence that follows. `Outputs::stop_after(at_frame)` makes the fan-out thread hand nothing to the encoders after that master frame (it counts the frames it reads, which match the frames rendered unless blocks were dropped). The active engine waits 100 ms for the audio rendered ahead (the clock renders 50 ms ahead) to reach the encoders.
 
+With the [AGC chain](audio-engine.md#master-agc-chain)'s limiter on, the audio comes out of the chain 5 ms late: the stop is `at_frame` plus the chain's delay, so the end of the fade-out reaches the encoders, and no step is left where it is cut short. The new engine's gated AGC starts at the gain of the old one (`agc_gain_db` in `Cut`), so the level does not change at the cut; the other blocks start from rest, under the 10 ms fade-in.
+
 ## Handing over the connections
 
 `Outputs::release` stops in this order, so no audio is lost and no connection is closed:
@@ -203,7 +207,7 @@ Exactly one engine writes the state at any time:
 - The active engine writes until it sends `Cut`, then never again (`stop_saving`).
 - The standby writes nothing until it is on air: `complete_takeover` or `cold_start` clears `closing`, saves the queue and the configuration, and only then does `main.rs` bind `handover.sock` and serve gRPC.
 
-The track on air keeps its entry ID and is not reported as a new play. `heron-api` sees a new engine (another `engine_started_at`) and matches the track on air to its open play, as after a restart, so the history has one entry. It matches by track and start time, not by deck: a new engine starts with an empty mixer, so it plays the track on deck A even when it was on deck B (the row keeps the deck the track started on). A fallback track on air is handed over too (`SavedTrack::fallback`), although it is never saved on disk.
+The track on air keeps its entry ID and its start is reported as `resumed`, not as a new play. `heron-api` sees a new engine (another `engine_started_at`) and matches the track on air to its open play, as after a restart, so the history has one entry. When the track only starts after the API reconnected (its file is slow to open at the position), the reconnection closes the play, and the resumed start opens it again. Webhooks do not send a resumed start. It matches by track and start time, not by deck: a new engine starts with an empty mixer, so it plays the track on deck A even when it was on deck B (the row keeps the deck the track started on). A fallback track on air is handed over too (`SavedTrack::fallback`), although it is never saved on disk.
 
 ## Failures
 
@@ -213,7 +217,7 @@ The rule: whatever fails, it ends as a cold restart covered by the fallback moun
 |---|---|---|
 | The standby dies, or its socket closes | `hand_over` fails; stops as before (saves the queue) | Gone |
 | Not ready after three attempts | Sends `Abort`, stops as before | Waits until the active engine is gone, then cold start |
-| The track on air does not stop (2 s) | Plays on (`unhold`), sends `Abort`, stops as before | Cold start |
+| The track on air does not stop (2 s after the stop) | Plays on (`unhold`), sends `Abort`, stops as before | Cold start |
 | An output gives no connection | Hands over the others | Connects that output itself |
 | The active engine dies before `Cut` | Gone (queue saved last, up to 5 s earlier) | Socket closed: cold start once nobody listens |
 | The active engine dies after `Cut` | Gone | On air already |

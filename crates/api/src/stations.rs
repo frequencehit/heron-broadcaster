@@ -20,7 +20,7 @@ use axum::Json;
 use axum::extract::{FromRequestParts, Path, State};
 use axum::http::request::Parts;
 use axum::http::{Request, StatusCode, Uri};
-use heron_core::EqSettings;
+use heron_core::{AgcSettings, EqSettings};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 use tokio::sync::broadcast;
@@ -61,7 +61,9 @@ const PER_STATION: [&str; 14] = [
     "listeners",
 ];
 /// The settings groups served per station (`/settings/{group}`).
-const STATION_SETTINGS: [&str; 6] = ["playout", "eq", "queue", "rotation", "station", "medleys"];
+const STATION_SETTINGS: [&str; 7] = [
+    "playout", "eq", "agc", "queue", "rotation", "station", "medleys",
+];
 /// The public routes per station (`/public/{route}`).
 const PUBLIC: [&str; 3] = ["now-playing", "queue", "history"];
 
@@ -131,6 +133,8 @@ pub struct StationRuntime {
     pub sync: Arc<ConfigSync>,
     /// Deck EQ settings as they change, for the live WebSockets.
     pub eq_changes: broadcast::Sender<EqSettings>,
+    /// AGC settings as they change, for the live WebSockets.
+    pub agc_changes: broadcast::Sender<AgcSettings>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -352,6 +356,7 @@ impl Stations {
             queue,
             sync,
             eq_changes: broadcast::channel(16).0,
+            agc_changes: broadcast::channel(16).0,
             tasks: Mutex::new(tasks),
         })))
     }

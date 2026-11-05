@@ -38,7 +38,7 @@ The name comes from "air on" sounding like *héron* (French for heron): keeping 
 | [Data model](data-model.md) | Initial database schema sketch |
 | [Monitoring](monitoring.md) | Metrics to Prometheus or Grafana Cloud (remote write), dashboard and alerts to import, health checks, logs, Sentry, metrics reference |
 | [Upgrading](upgrading.md) | Upgrading a station on air with Docker Compose or Swarm: hot engine handover, Icecast fallback mount |
-| [Backups](backups.md) | Everything set by hand, what is set on each track included, saved every day to a file with a database dump, the last 7 days kept, restored whole from the web UI or the command line |
+| [Backups](backups.md) | Everything set by hand, what is set on each track included, saved every day to a file with a database dump, the last 7 days kept, restored whole from the web UI or the command line; optionally encrypted with a key only the admins hold |
 | [Conventions](conventions.md) | Code style, errors, logging, testing, commits |
 
 ## Planning

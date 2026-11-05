@@ -110,7 +110,7 @@ function QueueCard() {
       description={rich("settings.queueHelp", {
         schedule: <Link to="/schedule">{t("clocks.scheduleLink")}</Link>,
         clocks: <Link to="/clocks">{t("settings.clocksLink")}</Link>,
-        log: <Link to="/rotation">{t("settings.logLink")}</Link>,
+        log: <Link to="/rotation-log">{t("settings.logLink")}</Link>,
       })}
       value={settings.data}
       save={(value) => save.mutate(value)}

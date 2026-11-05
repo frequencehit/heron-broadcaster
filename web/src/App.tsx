@@ -3,6 +3,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { api, can, done, errorMessage, fetchStatus, unwrap } from "./api";
+import { BackupWarnings } from "./components/BackupKey";
+import { StatusBar } from "./components/StatusBar";
 import { Banner, Icon, Loading, Logo } from "./components/ui";
 import { type PlainKey, rich, setLanguage, t, toSetting, useLanguage } from "./i18n";
 import { setTimeZone } from "./lib/format";
@@ -13,6 +15,7 @@ import { ME_KEY, StationScope, UserContext, useCan, useMeQuery, useUser } from "
 import { chooseStation, here, initialStation, stationRole, useStation } from "./lib/station";
 import { applyFullWidth, applyTheme, storedFullWidth, storedTheme } from "./lib/theme";
 import { buildLabel, differentBuilds, webBuild } from "./lib/version";
+import { About } from "./pages/About";
 import { Account } from "./pages/Account";
 import { Artists } from "./pages/Artists";
 import { Backups } from "./pages/Backups";
@@ -21,6 +24,7 @@ import { Categories } from "./pages/Categories";
 import { ClockEditor, Clocks } from "./pages/Clocks";
 import { Dashboard } from "./pages/Dashboard";
 import { Eq } from "./pages/Eq";
+import { Agc } from "./pages/Agc";
 import { History } from "./pages/History";
 import { Labels } from "./pages/Labels";
 import { MedleyEditor, Medleys } from "./pages/Medleys";
@@ -96,6 +100,8 @@ function route(pathname: string): ReactNode {
     return <ClockEditor id={clock.id === "new" ? null : Number(clock.id)} />;
   }
   switch (pathname) {
+    case "/about":
+      return <About />;
     case "/":
       return <Dashboard />;
     case "/queue":
@@ -106,7 +112,7 @@ function route(pathname: string): ReactNode {
       return <Statistics />;
     case "/library":
       return <Library />;
-    case "/buffer":
+    case "/import-music":
       return <Buffer />;
     case "/trash":
       return <Trash />;
@@ -124,16 +130,18 @@ function route(pathname: string): ReactNode {
       return <Schedule />;
     case "/restrictions":
       return <Restrictions />;
-    case "/rotation":
+    case "/rotation-log":
       return <Rotation />;
-    case "/review":
+    case "/to-organize":
       return <Review />;
-    case "/import":
+    case "/migrate":
       return <Import />;
     case "/playout":
       return <Playout />;
     case "/eq":
       return <Eq />;
+    case "/processing":
+      return <Agc />;
     case "/outputs":
       return <Outputs />;
     case "/settings":
@@ -269,12 +277,12 @@ function Shell() {
                   aria-current={isCurrent(page.path, pathname) ? "page" : undefined}
                 >
                   <Icon name={page.icon} /> {t(page.label)}
-                  {page.path === "/review" && reviewCount > 0 && (
+                  {page.path === "/to-organize" && reviewCount > 0 && (
                     <span className="count" title={t("nav.reviewCount")}>
                       {reviewCount}
                     </span>
                   )}
-                  {page.path === "/buffer" && readyCount > 0 && (
+                  {page.path === "/import-music" && readyCount > 0 && (
                     <span className="count" title={t("nav.bufferCount")}>
                       {readyCount}
                     </span>
@@ -288,6 +296,9 @@ function Shell() {
           <nav className="nav">
             <Link to="/account" aria-current={pathname === "/account" ? "page" : undefined}>
               <Icon name="user" /> <span className="ellipsis">{user?.username ?? t("nav.account")}</span>
+            </Link>
+            <Link to="/about" aria-current={pathname === "/about" ? "page" : undefined}>
+              <Icon name="info" /> {t("nav.about")}
             </Link>
             <a
               href="/"
@@ -329,6 +340,7 @@ function Shell() {
           )}
         </main>
       </div>
+      {station !== null && <StatusBar key={station} />}
     </div>
   );
 }
@@ -390,13 +402,16 @@ function Warnings() {
     );
   }
   if (isAdmin && status.data?.backups) {
-    const { uid, gid, error } = status.data.backups;
+    const { uid, gid, error, permission_denied } = status.data.backups;
+    const link = <Link to="/backups">{t("nav.backups")}</Link>;
     warnings.push(
-      rich("app.backupFolder", {
-        error,
-        command: <code className="mono">{`chown ${uid}:${gid}`}</code>,
-        link: <Link to="/backups">{t("nav.backups")}</Link>,
-      }),
+      permission_denied
+        ? rich("app.backupFolder", {
+            error,
+            command: <code className="mono">{`chown ${uid}:${gid}`}</code>,
+            link,
+          })
+        : rich("app.backupFolderError", { error, link }),
     );
   }
   if (status.data && differentBuilds(webBuild(), status.data)) {
@@ -417,6 +432,7 @@ function Warnings() {
           {warning}
         </Banner>
       ))}
+      {isAdmin && <BackupWarnings />}
     </>
   );
 }

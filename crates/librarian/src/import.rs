@@ -399,15 +399,8 @@ pub(crate) fn walk(root: &Path) -> Result<Vec<(LibraryPath, FileStamp)>, ImportE
 }
 
 fn watch_dir(dir: &Path, events: mpsc::Sender<()>) -> Option<notify::RecommendedWatcher> {
-    use notify::Watcher;
-    let handler = move |event: notify::Result<notify::Event>| {
-        if event.is_ok() {
-            let _ = events.try_send(());
-        }
-    };
-    let watcher = notify::recommended_watcher(handler).and_then(|mut watcher| {
-        watcher.watch(dir, notify::RecursiveMode::Recursive)?;
-        Ok(watcher)
+    let watcher = heron_library::watch::watch_dir(dir, move || {
+        let _ = events.try_send(());
     });
     match watcher {
         Ok(watcher) => Some(watcher),

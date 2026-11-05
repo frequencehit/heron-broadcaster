@@ -32,6 +32,7 @@
   --radius: 8px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --statusbar-h: 1.5rem;
   color-scheme: light;
 }
 
@@ -177,12 +178,14 @@ code,
   display: grid;
   grid-template-columns: 13.5rem minmax(0, 1fr);
   min-height: 100vh;
+  /* Room for the status bar fixed at the bottom. */
+  padding-bottom: var(--statusbar-h);
 }
 
 .sidebar {
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: calc(100vh - var(--statusbar-h));
   overflow-y: auto;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -1595,10 +1598,6 @@ ul.steps .bar {
 }
 
 /* A drop-down panel (the library's columns). */
-.menu {
-  position: relative;
-}
-
 .menu > summary {
   list-style: none;
   cursor: pointer;
@@ -1881,6 +1880,267 @@ ul.steps .bar {
   }
 }
 
+/* AGC -------------------------------------------------------------------- */
+
+.agc-chain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem 1.5rem;
+  align-items: center;
+}
+
+/* The blocks in the chain's order, as a flow: dimmed when off. */
+.agc-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agc-flow li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.agc-flow li + li::before {
+  content: "→";
+  color: var(--muted);
+}
+
+.agc-flow a {
+  padding: 0.3rem 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.agc-flow li.on a {
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  background: var(--surface-2);
+}
+
+.agc-flow.bypassed li.on a {
+  border-style: dashed;
+  border-color: var(--muted);
+  color: var(--muted);
+  background: none;
+}
+
+.agc-meters {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.agc-readouts {
+  display: grid;
+  align-content: center;
+  gap: 0.75rem;
+  min-width: 10rem;
+}
+
+.agc-readouts > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.agc-readouts .num {
+  font-size: 1.25rem;
+}
+
+.agc-readouts p {
+  margin: 0;
+  max-width: 12rem;
+}
+
+.agc-blocks {
+  display: grid;
+  gap: 1rem;
+}
+
+/* A bypassed chain: its blocks stay editable, but read as not heard. */
+.agc-blocks.bypassed .card {
+  opacity: 0.7;
+}
+
+.agc-block {
+  scroll-margin-top: 1rem;
+}
+
+.agc-block.off .card-body {
+  opacity: 0.6;
+}
+
+.agc-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  align-items: start;
+}
+
+/* The name and the number on a line, the slider under them. */
+.agc-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.3rem 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.agc-control > label,
+.agc-control > span:first-child {
+  color: var(--muted);
+}
+
+.agc-control > span:only-of-type:first-child {
+  grid-column: 1 / -1;
+}
+
+.agc-control input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.agc-control .input.num {
+  width: 4.5rem;
+  padding: 0.2rem 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.agc-control .hint {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.agc-control .gr-meter {
+  grid-column: 1 / -1;
+}
+
+.agc-note {
+  grid-column: 1 / -1;
+  margin: 0.75rem 0 0;
+}
+
+/* The bands of a processor side by side, wrapping on narrower screens. */
+.agc-bands {
+  display: grid;
+  grid-template-columns: repeat(var(--bands), minmax(0, 1fr));
+  max-width: calc(var(--bands) * 18rem);
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 1100px) {
+  .agc-bands {
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    max-width: none;
+  }
+}
+
+.agc-band {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.agc-band header {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.agc-band .agc-control {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.agc-link {
+  font-size: 0.85rem;
+}
+
+.agc-presets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.agc-presets li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.agc-presets li:first-child {
+  border-top: none;
+}
+
+.agc-presets .badge {
+  margin-left: 0.5rem;
+}
+
+/* Gain reduction: fills from the left as it deepens, to 24 dB. */
+.gr-meter {
+  display: grid;
+  grid-template-columns: minmax(4rem, 1fr) 3rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gr-track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.gr-track > div {
+  height: 100%;
+  background: var(--warn);
+  transition: width 80ms linear;
+}
+
+.gr-meter .num {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.gr-meter.idle .gr-track {
+  border-style: dashed;
+}
+
+@media (max-width: 640px) {
+  .agc-chain {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agc-presets li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .agc-presets li > .muted {
+    display: none;
+  }
+}
+
 /* Medley timeline: liners on top, hooks on two lanes so overlaps show. */
 .medley-timeline {
   padding: 0.75rem 1rem;
@@ -1889,6 +2149,8 @@ ul.steps .bar {
 .medley-timeline .lanes {
   position: relative;
   height: 7.8rem;
+  user-select: none;
+  touch-action: pan-y;
 }
 .medley-timeline .block {
   position: absolute;
@@ -1982,10 +2244,6 @@ ul.steps .bar {
   pointer-events: none;
   z-index: 2;
 }
-.medley-timeline .lanes {
-  user-select: none;
-  touch-action: pan-y;
-}
 .medley-player {
   display: flex;
   align-items: center;
@@ -2060,4 +2318,92 @@ ul.steps .bar {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
+}
+
+/* Status bar -------------------------------------------------------------- */
+
+.statusbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 20;
+  height: var(--statusbar-h);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0 0.75rem;
+  overflow: hidden;
+  white-space: nowrap;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font: 0.75rem/1 var(--mono);
+}
+
+.statusbar-offline {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.statusbar-deck {
+  display: flex;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.statusbar-deck-letter {
+  font-weight: 700;
+}
+
+.statusbar-deck-a .statusbar-deck-letter {
+  color: var(--deck-a);
+}
+
+.statusbar-deck-b .statusbar-deck-letter {
+  color: var(--deck-b);
+}
+
+.statusbar-deck-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusbar-on-air .statusbar-deck-text,
+.statusbar-on-air .statusbar-deck-symbol {
+  color: var(--fg);
+}
+
+.statusbar-on-air .statusbar-deck-symbol {
+  color: var(--on-air);
+}
+
+.statusbar-part {
+  flex: none;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.statusbar-warn {
+  color: var(--warn);
+}
+
+.statusbar-bad {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .statusbar {
+    gap: 0.75rem;
+  }
+
+  /* The machine's load goes first. */
+  .statusbar-system {
+    display: none;
+  }
+
+  .statusbar-deck-text {
+    display: none;
+  }
 }

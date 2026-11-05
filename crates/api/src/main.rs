@@ -6,6 +6,8 @@
 //! feeds the engine and serves the API and the ops endpoints. See
 //! `docs/api.md`.
 
+mod about;
+mod agc;
 mod app;
 mod artists;
 mod auth;
@@ -39,6 +41,7 @@ mod settings;
 mod staging;
 mod stations;
 mod sync;
+mod system;
 mod tracks;
 mod users;
 mod webhooks;
@@ -53,6 +56,7 @@ use anyhow::Context;
 use app::{AppState, SERVICE};
 use auth::{Passwords, Role};
 use clap::{Parser, Subcommand};
+use heron_service::about::ConfigItem;
 use heron_service::db::{self, DatabaseHealth, MIGRATOR};
 use heron_service::{LogArgs, MetricsArgs};
 use library::{Library, ScanOptions};
@@ -151,7 +155,13 @@ enum BackupCommand {
     /// Restore a backup's configuration file, by its name
     /// (`2026-11-03T03-30-00Z-daily`). Restart heron-api afterwards, so the
     /// engines get the restored configuration; everyone signs in again.
-    Restore { name: String },
+    Restore {
+        name: String,
+        /// The key of an encrypted backup: a file holding it, or `-` to
+        /// read it from the standard input.
+        #[arg(long)]
+        key_file: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -214,7 +224,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         );
     }
 
-    let library = Arc::new(Library::new(pool.clone(), cli.library_dir));
+    let staging_dir = cli.staging_dir.clone();
+    let library_dir = cli.library_dir.clone();
+    let library = Arc::new(Library::new(pool.clone(), cli.library_dir.clone()));
     let webhooks = webhooks::Webhooks::new(pool.clone()).context("cannot set up webhooks")?;
     let stations = stations::Stations::start(
         pool.clone(),
@@ -225,9 +237,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     )
     .await
     .context("cannot start the stations")?;
+    let station_count = stations.all().len();
     let listeners =
         listeners::Collector::new(pool.clone()).context("cannot set up listener statistics")?;
-    let backups = backups::Backups::new(cli.backup_dir, database_url.clone());
+    let backup_dir = cli.backup_dir.clone();
+    let backups = backups::Backups::new(cli.backup_dir.clone(), database_url.clone());
 
     let mut tasks = vec![
         tokio::spawn(library.clone().run(ScanOptions {
@@ -248,7 +262,24 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     tasks.push(tokio::spawn(
         Arc::clone(&backups).run_daily(pool.clone(), Arc::clone(&stations)),
     ));
+    let (load, system) = tokio::sync::watch::channel(None);
+    tasks.push(tokio::spawn(system::run(load)));
 
+    let about = about::Own::with_common(
+        &cli.log,
+        &cli.metrics,
+        cli.http_addr,
+        [
+            ConfigItem::text("HERON_LIBRARY_DIR", library_dir.display()),
+            ConfigItem::text("HERON_STAGING_DIR", staging_dir.display()),
+            ConfigItem::text("HERON_BACKUP_DIR", backup_dir.display()),
+            ConfigItem::secret("HERON_DATABASE_URL", Some(&database_url)),
+            ConfigItem::text("HERON_SCAN_INTERVAL", cli.scan_interval),
+            ConfigItem::flag("HERON_LIBRARY_WATCH", cli.library_watch),
+            ConfigItem::text("HERON_IMPORT_SETTLE", cli.import_settle),
+            ConfigItem::text("stations", station_count),
+        ],
+    );
     let health = DatabaseHealth(pool.clone());
     let state = AppState {
         pool: pool.clone(),
@@ -256,10 +287,12 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         library,
         stations,
         passwords: Arc::new(Passwords::default()),
-        staging: Arc::new(cli.staging_dir),
+        staging: Arc::new(staging_dir.clone()),
         webhooks,
         listeners,
         backups,
+        system,
+        about: Arc::new(about),
     };
     let router = app::router(state).merge(heron_service::ops_router(SERVICE, metrics, health));
 
@@ -272,6 +305,18 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 /// Reads a password without echoing it on a terminal.
+/// The backup key from `--key-file`: a file, or `-` for the standard input.
+fn read_key_file(path: &std::path::Path) -> anyhow::Result<String> {
+    if path.as_os_str() == "-" {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+            .context("cannot read the key from the standard input")?;
+        Ok(text)
+    } else {
+        std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))
+    }
+}
+
 fn read_password(prompt: &str) -> anyhow::Result<String> {
     let stdin = std::io::stdin();
     let terminal = stdin.is_terminal();
@@ -398,11 +443,19 @@ async fn manage_backups(
                 );
             }
         }
-        BackupCommand::Restore { name } => {
-            let bytes = std::fs::read(backups.dir().join(format!("heron-config-{name}.json")))
-                .with_context(|| format!("no backup {name}: see `heron-api backup list`"))?;
+        BackupCommand::Restore { name, key_file } => {
+            let bytes = backups
+                .read(&name)
+                .map_err(|error| anyhow::anyhow!("{error}: see `heron-api backup list`"))?;
+            let identity = match key_file {
+                None => None,
+                Some(path) => {
+                    let text = tokio::task::spawn_blocking(move || read_key_file(&path)).await??;
+                    Some(backups::parse_key(&text).map_err(fail)?)
+                }
+            };
             let report = backups
-                .restore(&pool, None, &bytes, false)
+                .restore(&pool, None, &bytes, false, identity.as_ref())
                 .await
                 .map_err(fail)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
@@ -436,6 +489,7 @@ mod tests {
         .await
         .unwrap();
         for expected in [
+            "agc_presets",
             "analysis_jobs",
             "api_tokens",
             "artist_names",
@@ -477,25 +531,33 @@ mod tests {
             assert!(tables.iter().any(|t| t == expected), "missing {expected}");
         }
 
-        // The default encoder profile (docs/outputs.md#default-profiles).
-        let (name, encoder, bitrate, rate, channels, mode): (String, String, u16, u32, u8, String) =
-            sqlx::query_as(
-                "SELECT name, CAST(encoder AS CHAR), bitrate_kbps, sample_rate, channels, \
-                 JSON_UNQUOTE(JSON_EXTRACT(options, '$.mode')) FROM encoder_profiles",
-            )
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        // The default encoder profiles (docs/outputs.md#default-profiles).
+        let profiles: Vec<(String, String, u16, u32, u8, Option<String>)> = sqlx::query_as(
+            "SELECT name, CAST(encoder AS CHAR), bitrate_kbps, sample_rate, channels, \
+             JSON_UNQUOTE(JSON_EXTRACT(options, '$.mode')) FROM encoder_profiles ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let profiles: Vec<_> = profiles
+            .iter()
+            .map(|(name, encoder, bitrate, rate, channels, mode)| {
+                (
+                    name.as_str(),
+                    encoder.as_str(),
+                    *bitrate,
+                    *rate,
+                    *channels,
+                    mode.as_deref(),
+                )
+            })
+            .collect();
         assert_eq!(
-            (
-                name.as_str(),
-                encoder.as_str(),
-                bitrate,
-                rate,
-                channels,
-                mode.as_str()
-            ),
-            ("MP3 128k", "mp3", 128, 44_100, 2, "cbr")
+            profiles,
+            [
+                ("MP3 128k", "mp3", 128, 44_100, 2, Some("cbr")),
+                ("AAC 96k", "aac", 96, 48_000, 2, None),
+            ]
         );
 
         // Long paths stay unique through the generated hash column.
@@ -516,7 +578,7 @@ mod tests {
     }
 
     /// An existing Heron upgrades to one station holding all it had: its
-    /// clocks, schedule, history, selection log, outputs, webhooks,
+    /// clocks, schedule, history, rotation log, outputs, webhooks,
     /// listener totals and per-station settings.
     #[tokio::test]
     async fn an_existing_heron_becomes_its_first_station() {

@@ -15,6 +15,8 @@
 
 use std::collections::BTreeMap;
 
+use sentry::integrations::tracing::{BreadcrumbLayer, ErrorLayer, SpanLayer};
+use tracing_subscriber::filter::{LevelFilter, filter_fn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
@@ -68,6 +70,23 @@ pub struct LogArgs {
 #[must_use = "dropping it stops error reporting"]
 pub struct Telemetry {
     _sentry: Option<sentry::ClientInitGuard>,
+}
+
+/// What Sentry gets from `tracing`: spans at INFO and above as traces, WARN
+/// events as breadcrumbs, ERROR events as error events.
+fn sentry_layers<S>() -> Vec<Box<dyn Layer<S> + Send + Sync>>
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    vec![
+        SpanLayer::new().with_filter(LevelFilter::INFO).boxed(),
+        BreadcrumbLayer::new()
+            .with_filter(filter_fn(|metadata| {
+                *metadata.level() == tracing::Level::WARN
+            }))
+            .boxed(),
+        ErrorLayer::new().with_filter(LevelFilter::ERROR).boxed(),
+    ]
 }
 
 /// Installs the global `tracing` subscriber, and Sentry when configured.
@@ -124,20 +143,13 @@ pub fn init_tracing(args: &LogArgs, service: &'static str) -> Result<Telemetry, 
             .flatten_event(true)
             .boxed(),
     };
-    tracing_subscriber::registry()
+    let enabled = sentry.is_some();
+    let init = tracing_subscriber::registry()
         .with(filter)
         .with(output)
-        .with(sentry.is_some().then(|| {
-            sentry::integrations::tracing::layer().event_filter(|metadata| {
-                match *metadata.level() {
-                    tracing::Level::ERROR => sentry::integrations::tracing::EventFilter::Event,
-                    tracing::Level::WARN => sentry::integrations::tracing::EventFilter::Breadcrumb,
-                    _ => sentry::integrations::tracing::EventFilter::Ignore,
-                }
-            })
-        }))
-        .try_init()
-        .map_err(|error| Error::Tracing(error.to_string()))?;
+        .with(enabled.then(sentry_layers))
+        .try_init();
+    init.map_err(|error| Error::Tracing(error.to_string()))?;
     if sentry.is_some() {
         tracing::info!(environment = %args.sentry_environment, "reporting errors to Sentry");
     }
@@ -199,6 +211,18 @@ fn redact_event(event: &mut sentry::protocol::Event<'static>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sentry_layers_take_spans_and_events() {
+        let subscriber = tracing_subscriber::registry().with(sentry_layers());
+        tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!("work");
+            let _entered = span.enter();
+            tracing::debug!("not kept");
+            tracing::warn!("a breadcrumb");
+            tracing::error!("an error event");
+        });
+    }
 
     #[test]
     fn sample_rates_are_read_leniently() {

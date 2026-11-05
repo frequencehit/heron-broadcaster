@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 
-use heron_core::{EqSettings, OutputsConfig, PlayoutSettings};
+use heron_core::{AgcSettings, EqSettings, OutputsConfig, PlayoutSettings};
 use heron_outputs::{ConfigError, NowPlaying, Outputs};
 use heron_service::HealthCheck;
 use tokio::sync::{broadcast, watch};
@@ -161,8 +161,9 @@ impl Engine {
         if let Some(dir) = options.fallback_dir {
             player = player.with_fallback(Fallback::start(dir, &options.state_dir));
         }
-        // Before anything plays: the first sample has the EQ.
+        // Before anything plays: the first sample has the EQ and the AGC chain.
         player.set_eq(config.eq, false)?;
+        player.set_agc(config.agc, false)?;
         if options.standby {
             player.hold().map_err(std::io::Error::other)?;
         } else {
@@ -231,19 +232,20 @@ impl Engine {
     }
 
     pub fn config(&self) -> EngineConfig {
-        let (playout, eq) = {
+        let (playout, eq, agc) = {
             let player = self.player();
-            (*player.settings(), *player.eq())
+            (*player.settings(), *player.eq(), *player.agc())
         };
         EngineConfig {
             playout,
             outputs: self.outputs().config().clone(),
             eq,
+            agc,
         }
     }
 
     pub fn set_playout_settings(&self, settings: PlayoutSettings) -> Result<(), EngineError> {
-        self.player().set_settings(settings);
+        self.player().set_settings(settings)?;
         self.save()
     }
 
@@ -251,6 +253,22 @@ impl Engine {
     pub fn set_eq(&self, eq: EqSettings) -> Result<(), EngineError> {
         self.player().set_eq(eq, true)?;
         self.save()
+    }
+
+    /// New AGC chain settings, gliding in.
+    pub fn set_agc(&self, agc: AgcSettings) -> Result<(), EngineError> {
+        self.player().set_agc(agc, true)?;
+        self.save()
+    }
+
+    /// Frames by which the AGC chain delays the master bus now.
+    pub fn agc_latency_frames(&self) -> u64 {
+        self.status.agc.latency_frames.load(Ordering::Relaxed)
+    }
+
+    /// The gated AGC's gain now, while it is on.
+    pub fn agc_gain_db(&self) -> Option<f32> {
+        self.status.agc.agc_gain_db()
     }
 
     /// Applies new outputs; an invalid configuration changes nothing.
@@ -297,10 +315,16 @@ impl Engine {
     /// later stopping point.
     pub fn prepare_takeover(&self, config: EngineConfig, queue: SavedQueue) {
         let mut player = self.player();
-        player.set_settings(config.playout);
-        // Held, nothing plays: the EQ is there from the first sample.
+        if let Err(error) = player.set_settings(config.playout) {
+            tracing::warn!(%error, "cannot set the playout settings handed over");
+        }
+        // Held, nothing plays: the EQ and the AGC chain are there from the
+        // first sample.
         if let Err(error) = player.set_eq(config.eq, false) {
             tracing::warn!(%error, "cannot set the deck EQ handed over");
+        }
+        if let Err(error) = player.set_agc(config.agc, false) {
+            tracing::warn!(%error, "cannot set the AGC chain handed over");
         }
         if let Err(error) = player.reset() {
             tracing::warn!(%error, "cannot forget the queue prepared before");
@@ -318,9 +342,13 @@ impl Engine {
     }
 
     /// Standby: goes on air, streaming to the outputs handed over
-    /// (`connections`, by output ID; the others connect), and becomes the
-    /// active engine, saving its state.
-    pub fn complete_takeover(&self, connections: HashMap<u64, heron_outputs::HandedConnection>) {
+    /// (`connections`, by output ID; the others connect), the gated AGC at
+    /// the old engine's gain, and becomes the active engine, saving its state.
+    pub fn complete_takeover(
+        &self,
+        connections: HashMap<u64, heron_outputs::HandedConnection>,
+        agc_gain_db: Option<f32>,
+    ) {
         let outputs = self
             .takeover_outputs
             .lock()
@@ -330,9 +358,16 @@ impl Engine {
         if let Err(error) = self.outputs().apply_adopting(&outputs, connections) {
             tracing::error!(%error, "cannot start the outputs handed over");
         }
-        if let Err(error) = self.player().unhold() {
+        let mut player = self.player();
+        if let Some(gain_db) = agc_gain_db
+            && let Err(error) = player.start_agc_at(gain_db)
+        {
+            tracing::warn!(%error, "cannot start the AGC at the gain handed over");
+        }
+        if let Err(error) = player.unhold() {
             tracing::error!(%error, "cannot start playing");
         }
+        drop(player);
         self.activate();
     }
 
@@ -342,10 +377,15 @@ impl Engine {
         let config = load_config(&self.state_dir);
         {
             let mut player = self.player();
-            player.set_settings(config.playout);
+            if let Err(error) = player.set_settings(config.playout) {
+                tracing::warn!(%error, "cannot set the saved playout settings");
+            }
             // Held, nothing plays yet.
             if let Err(error) = player.set_eq(config.eq, false) {
                 tracing::warn!(%error, "cannot set the saved deck EQ");
+            }
+            if let Err(error) = player.set_agc(config.agc, false) {
+                tracing::warn!(%error, "cannot set the saved AGC chain");
             }
             if let Err(error) = player.reset() {
                 tracing::warn!(%error, "cannot forget the queue prepared before");

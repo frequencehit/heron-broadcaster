@@ -9,6 +9,8 @@ import type { components, paths } from "./schema";
 
 export type Schemas = components["schemas"];
 export type ApiStatus = Schemas["Status"];
+export type About = Schemas["About"];
+export type ConfigItem = Schemas["ConfigItem"];
 export type LibraryStatus = Schemas["LibraryStatus"];
 export type LiveMessage = Schemas["LiveMessage"];
 export type User = Schemas["User"];
@@ -29,6 +31,13 @@ export type PlayoutSettings = Schemas["PlayoutSettings"];
 export type EqSettings = Schemas["EqSettings"];
 export type DeckEq = Schemas["DeckEq"];
 export type EqPreset = Schemas["EqPreset"];
+export type AgcSettings = Schemas["AgcSettings"];
+export type SystemLoad = Schemas["SystemLoad"];
+export type AgcPresetSettings = Schemas["AgcPresetSettings"];
+export type AgcPreset = Schemas["AgcPreset"];
+export type AgcLevels = Schemas["AgcLevels"];
+export type BandSettings = Schemas["BandSettings"];
+export type BandMode = Schemas["BandMode"];
 export type Fade = Schemas["Fade"];
 export type FadeCurve = Schemas["FadeCurve"];
 export type TransitionPreview = Schemas["TransitionPreview"];
@@ -59,6 +68,12 @@ export type WebhookEvent = Schemas["WebhookEvent"];
 export type DeliveryView = Schemas["DeliveryView"];
 export type BackupView = Schemas["BackupView"];
 export type BackupSettings = Schemas["BackupSettings"];
+export type BackupKeyView = Schemas["KeyView"];
+export type BackupState = Schemas["BackupState"];
+export type BackupTests = Schemas["TestsView"];
+export type BackupTest = Schemas["TestRecord"];
+export type NewBackupKey = Schemas["NewKey"];
+export type KeyConfirmed = Schemas["Confirmed"];
 export type RestoreReport = Schemas["RestoreReport"];
 
 export type TrackFilter = NonNullable<

@@ -91,6 +91,10 @@ enum CtlCommand {
     SetEq {
         file: PathBuf,
     },
+    /// Replace the AGC chain settings (JSON file, `AgcSettings`).
+    SetAgc {
+        file: PathBuf,
+    },
     /// Print track changes as they happen.
     Watch,
 }
@@ -191,12 +195,19 @@ async fn execute(args: Args, library_dir: &Path) -> anyhow::Result<()> {
             let playout: serde_json::Value = serde_json::from_str(&config.playout_settings_json)?;
             let outputs: serde_json::Value = serde_json::from_str(&config.outputs_json)?;
             let eq: serde_json::Value = serde_json::from_str(&config.eq_settings_json)?;
+            // Engines from before M10 send none: `null`.
+            let agc: serde_json::Value = if config.agc_settings_json.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::from_str(&config.agc_settings_json)?
+            };
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "playout": playout,
                     "outputs": outputs,
                     "eq": eq,
+                    "agc": agc,
                 }))?
             );
         }
@@ -225,6 +236,16 @@ async fn execute(args: Args, library_dir: &Path) -> anyhow::Result<()> {
                 .set_eq_settings(pb::SetEqSettingsRequest { settings_json })
                 .await?;
             println!("EQ applied");
+        }
+        CtlCommand::SetAgc { file } => {
+            let path = file.clone();
+            let settings_json = tokio::task::spawn_blocking(move || std::fs::read_to_string(path))
+                .await?
+                .with_context(|| format!("cannot read {}", file.display()))?;
+            client
+                .set_agc_settings(pb::SetAgcSettingsRequest { settings_json })
+                .await?;
+            println!("AGC chain applied");
         }
         CtlCommand::Watch => {
             let mut events = client
@@ -414,7 +435,7 @@ fn list_audio(dir: &Path, files: &mut Vec<PathBuf>) {
             list_audio(&path, files);
         } else if path
             .extension()
-            .and_then(|extension| extension.to_str())
+            .and_then(std::ffi::OsStr::to_str)
             .is_some_and(|extension| AUDIO_EXTENSIONS.contains(&extension.to_lowercase().as_str()))
         {
             files.push(path);

@@ -76,7 +76,7 @@ function Identifications() {
     return (
       <Card>
         <Empty>
-          {rich("review.nothing", { buffer: <Link to="/buffer">{t("review.nothingBuffer")}</Link> })}
+          {rich("review.nothing", { buffer: <Link to="/import-music">{t("review.nothingBuffer")}</Link> })}
         </Empty>
       </Card>
     );

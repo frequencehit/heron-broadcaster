@@ -12,11 +12,12 @@ use std::time::{Duration, Instant};
 
 use heron_core::playout::TrackPlayout;
 use heron_core::{
-    EncoderKind, EncoderProfile, EqSettings, OutputConfig, OutputKind, OutputsConfig, PlaySource,
+    AgcSettings, EncoderKind, EncoderProfile, EqSettings, OutputConfig, OutputKind, OutputsConfig,
+    PlaySource,
 };
 use heron_engine::engine::{Engine, EngineOptions};
 use heron_engine::handover::{self, Followed, Probe};
-use heron_engine::player::TrackRequest;
+use heron_engine::player::{PlayerEvent, TrackRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -218,6 +219,18 @@ fn station_eq() -> EqSettings {
     eq
 }
 
+/// The AGC chain of the station: the gated AGC and the look-ahead limiter,
+/// whose 5 ms delay the cut must wait for.
+fn station_agc() -> AgcSettings {
+    let mut agc = AgcSettings {
+        bypass_all: false,
+        ..AgcSettings::default()
+    };
+    agc.gated_agc.enabled = true;
+    agc.gated_agc.max_gain_db = 12.0;
+    agc
+}
+
 /// An engine on air with two tracks queued, streaming to `server`, through
 /// a relay listening on `relay` when given.
 async fn station(
@@ -234,6 +247,7 @@ async fn station(
     let active = engine(library.path(), state.path(), relay, false);
     active.set_outputs(&outputs(port)).unwrap();
     active.set_eq(station_eq()).unwrap();
+    active.set_agc(station_agc()).unwrap();
     let tracks = vec![
         track(library.path(), "first.wav", 30.0),
         track(library.path(), "second.wav", 10.0),
@@ -271,6 +285,7 @@ async fn hand_over(relay: Option<&Path>) {
     };
     let standby = engine(library.path(), state.path(), relay, true);
     assert!(standby.is_standby());
+    let mut events = standby.subscribe();
     let following = Arc::clone(&standby);
     let follow = tokio::task::spawn_blocking(move || handover::follow(&following, channel));
 
@@ -282,6 +297,11 @@ async fn hand_over(relay: Option<&Path>) {
     .await;
     let (entry_id, _) = on_air(&active).unwrap();
     let waiting = active.player().saved().waiting;
+    // The tone is about 5 dB over the loudness target: the AGC brings it down.
+    wait_for("the AGC", Duration::from_secs(10), || {
+        active.agc_gain_db().is_some_and(|gain| gain < -1.0)
+    })
+    .await;
 
     let handing = Arc::clone(&active);
     let runtime = tokio::runtime::Handle::current();
@@ -317,8 +337,29 @@ async fn hand_over(relay: Option<&Path>) {
         resumed_ms >= stopped_ms && resumed_ms <= stopped_ms + elapsed_ms + 50,
         "stopped at {stopped_ms} ms, resumed at {resumed_ms} ms, {elapsed_ms} ms after the hand-over started"
     );
+    // Its start is the same play going on, not a new one.
+    let started = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let PlayerEvent::Started { entry, resumed, .. } = events.recv().await.unwrap() {
+                return (entry.entry_id, resumed);
+            }
+        }
+    })
+    // Times out when the track on air reports no start.
+    .await
+    .unwrap();
+    assert_eq!(started, (entry_id, true));
     assert_eq!(standby.player().saved().waiting, waiting);
     assert_eq!(standby.config().eq, station_eq());
+    assert_eq!(standby.config().agc, station_agc());
+    // The new engine's AGC went on from the old one's gain, held since the
+    // stop.
+    let (old, new) = (
+        active.agc_gain_db().unwrap(),
+        standby.agc_gain_db().unwrap(),
+    );
+    println!("AGC gain at the cut: {old:.2} dB, after it: {new:.2} dB");
+    assert!((old - new).abs() < 0.5, "{old} dB, then {new} dB");
     let before = server.bytes();
     tokio::time::sleep(Duration::from_secs(1)).await;
     // 128 kbps: about 16 kB a second.
@@ -444,6 +485,7 @@ async fn starts_from_the_saved_state_when_nothing_is_handed_over() {
     .await;
     assert_eq!(standby.config().outputs.outputs.len(), 1);
     assert_eq!(standby.config().eq, station_eq());
+    assert_eq!(standby.config().agc, station_agc());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -548,6 +590,63 @@ async fn standby_failing(answer_prepare: bool) {
     // The same track, unless it ended during the attempts.
     assert!(on_air(&active).is_some());
     assert_eq!(server.sources.load(Ordering::Relaxed), 1);
+}
+
+/// A standby late for the first attempt and ready at once for the second
+/// (the track on air quick to open the second time), 6 s before its stop:
+/// the active engine waits for the stop and hands over.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hands_over_when_the_standby_is_ready_long_before_the_stop() {
+    let _real_time = REAL_TIME.lock().await;
+    let (_library, state, active, _server) = station(None).await;
+    let listener = handover::Listener::bind(state.path()).unwrap();
+    let Probe::Standby(mut fake) = handover::probe(state.path()) else {
+        panic!("no standby");
+    };
+    let fake = tokio::task::spawn_blocking(move || {
+        let mut prepares = 0;
+        while let Ok((message, _)) = fake.recv(None) {
+            match message {
+                // Silent on the first attempt, ready at once on the next.
+                handover::Message::Prepare { attempt, .. } => {
+                    prepares += 1;
+                    if attempt > 1 {
+                        fake.send(&handover::Message::Ready { attempt }).unwrap();
+                    }
+                }
+                handover::Message::Cut { .. } => {
+                    fake.send(&handover::Message::Done).unwrap();
+                    return (prepares, true);
+                }
+                _ => break,
+            }
+        }
+        (prepares, false)
+    });
+    let mut channel = None;
+    wait_for("the standby", Duration::from_secs(5), || {
+        channel = listener.take_standby();
+        channel.is_some()
+    })
+    .await;
+
+    let handing = Arc::clone(&active);
+    let runtime = tokio::runtime::Handle::current();
+    let channel = channel.unwrap();
+    let started = Instant::now();
+    tokio::task::spawn_blocking(move || handover::hand_over(&handing, channel, &runtime))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(fake.await.unwrap(), (2, true));
+    // The second stop was 6 s ahead, after the first attempt's 2 s.
+    assert!(
+        started.elapsed() > Duration::from_secs(7),
+        "{:?}",
+        started.elapsed()
+    );
+    // Stopped where the standby goes on, held there.
+    assert!(active.player().is_held());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -255,7 +255,8 @@ impl ListContext {
               LEFT JOIN track_overrides tov ON tov.track_id = t.id
               LEFT JOIN track_musicbrainz mb ON mb.track_id = t.id
               LEFT JOIN track_programming p ON p.track_id = t.id
-              LEFT JOIN track_levels l ON l.track_id = t.id
+              -- Levels of an earlier analysis are not the file's any more.
+              LEFT JOIN track_levels l ON l.track_id = t.id AND l.analyzed_at = a.analyzed_at
               LEFT JOIN (SELECT track_id, COUNT(*) AS plays, MAX(started_at) AS last_played
                          FROM play_history
                          WHERE track_id IS NOT NULL AND deck <> 'fx'",

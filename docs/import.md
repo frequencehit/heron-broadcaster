@@ -1,6 +1,6 @@
 # Importing from another software
 
-A station moving to Heron from another radio automation software keeps years of work in it: titles and artists fixed by hand, categories, fade lengths, intro and hook points. **Import** (admins, under *Library*) brings them into the library from an export of the other software, without touching the audio files. Every import can be undone.
+A station moving to Heron from another radio automation software keeps years of work in it: titles and artists fixed by hand, categories, fade lengths, intro and hook points. **Migrate** (admins, under *Library*) brings them into the library from an export of the other software, without touching the audio files. Every import can be undone.
 
 ## The export
 

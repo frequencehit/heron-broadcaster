@@ -3,6 +3,8 @@
 //! Station settings, stored as JSON in the `settings` table, one row per group.
 //!
 //! - `playout`: crossfades and loudness, pushed to the engine.
+//! - `eq` and `agc`: the deck EQ and the master AGC chain, pushed to the
+//!   engine (`eq.rs`, `agc.rs`).
 //! - `analysis`: Gap Killer and crossfade point detection. Changing them
 //!   re-analyzes the library.
 //! - `library`: identification and layout, read by `heron-librarian`.
@@ -44,7 +46,7 @@ pub struct QueueSettings {
 }
 
 impl QueueSettings {
-    pub const SETTINGS_NAME: &'static str = "queue";
+    pub const SETTINGS_NAME: &str = "queue";
 }
 
 impl Default for QueueSettings {
@@ -68,7 +70,7 @@ pub struct StationSettings {
 }
 
 impl StationSettings {
-    pub const SETTINGS_NAME: &'static str = "station";
+    pub const SETTINGS_NAME: &str = "station";
 
     /// The time zone; UTC if the stored one is unknown.
     pub fn time_zone(&self) -> TimeZone {
@@ -157,7 +159,7 @@ pub struct Era {
 }
 
 impl ProgrammingSettings {
-    pub const SETTINGS_NAME: &'static str = "programming";
+    pub const SETTINGS_NAME: &str = "programming";
 
     fn check(&self) -> Result<(), String> {
         if self.min_play_s > 3_600 {
@@ -282,15 +284,16 @@ pub struct EngineManagement {
 }
 
 impl EngineManagement {
-    pub const SETTINGS_NAME: &'static str = "engine";
+    pub const SETTINGS_NAME: &str = "engine";
 }
 
 /// The settings groups each station has its own of, in `station_settings`
 /// (docs/stations.md#settings). The others are shared, in `settings`.
-pub const PER_STATION: [&str; 7] = [
+pub const PER_STATION: [&str; 8] = [
     "station",
     "playout",
     "eq",
+    "agc",
     "queue",
     "engine",
     "rotation",

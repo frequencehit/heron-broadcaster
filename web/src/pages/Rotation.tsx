@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The selection log: every track rotation queued, and why. And simulations
+// The rotation log: every track rotation queued, and why. And simulations
 // of the programming to come, checked rule by rule.
 
 import { useStations } from "../components/Stations";

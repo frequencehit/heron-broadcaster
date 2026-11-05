@@ -10,7 +10,8 @@ target=/usr/share/nginx/html/config.js
 
 # A JSON string: control characters dropped, backslashes and quotes escaped.
 json() {
-    printf '"%s"' "$(printf '%s' "$1" | tr -d '\000-\037' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+    local value=$1
+    printf '"%s"' "$(printf '%s' "$value" | tr -d '\000-\037' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
 }
 
 if ! printf 'window.heronConfig = {"sentryDsn": %s, "sentryEnvironment": %s};\n' \

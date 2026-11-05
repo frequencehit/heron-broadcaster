@@ -28,7 +28,7 @@ export function useTrackCategories(trackIds: readonly (number | null | undefined
   return byTrack;
 }
 
-export function CategoryChips({ categories }: { categories: readonly CategoryRef[] | undefined }) {
+export function CategoryChips({ categories }: Readonly<{ categories: readonly CategoryRef[] | undefined }>) {
   if (!categories || categories.length === 0) {
     return null;
   }

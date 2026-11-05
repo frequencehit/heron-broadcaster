@@ -67,7 +67,7 @@ describe("medleyName", () => {
     expect([...name].length).toBeLessThanOrEqual(249);
     expect(name.endsWith(" - …)")).toBe(true);
     const cut = medleyName("2026-10-29", ["x".repeat(400)]);
-    expect([...cut].length).toBe(249);
+    expect([...cut]).toHaveLength(249);
     expect(cut.endsWith("x…)")).toBe(true);
   });
 });

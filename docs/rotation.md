@@ -60,7 +60,7 @@ Types let rules apply to every category of a kind at once, whatever their number
 A category type can be set to **never play twice in a row** (*Categories › Category types*); Jingle is from the start, any other type can be (Ad, Liner…). Then:
 
 - Rotation **never picks a track of that type right after a track of the same type**: what played or is queued just before, whatever its category (nine jingle categories count as one), a track queued by hand included. FX player tracks do not count: they play over the music.
-- A clock slot calling a category of that type right after one is **passed over** for the next slot, like a slot with nothing to play, and the selection log says why (*same type twice in a row*). It is never relaxed: no relaxation step or fallback plays a jingle there instead.
+- A clock slot calling a category of that type right after one is **passed over** for the next slot, like a slot with nothing to play, and the rotation log says why (*same type twice in a row*). It is never relaxed: no relaxation step or fallback plays a jingle there instead.
 - Hours without a clock never pick two of them in a row either.
 - The clock editor warns about two slots in a row calling the same such type (the last slot followed by the first one included: the clock starts over), and simulations check the rule like the restrictions.
 
@@ -119,7 +119,7 @@ The rule listeners notice least is relaxed first, and each rule is **halved befo
 - Step 10 cannot fail while the fallback category has a track; picking the least recently played one still avoids an immediate repeat. If the fallback category is empty, the engine's fallback directory takes over.
 - Slots with **enforce rules** off skip the separation rules entirely (step 0 without rules, then steps 9 and 10 only if restrictions leave nothing). Restrictions still apply.
 - Windows are those of the station (`rotation` settings), overridden by the slot's category, then by the slot; steps 1 to 8 relax those. Steps 9 and 10 use the fallback category's windows; without a fallback category set, the station's library is the fallback.
-- Every relaxed pick records its step in `play_history.relaxation_applied` and in the selection log.
+- Every relaxed pick records its step in `play_history.relaxation_applied` and in the rotation log.
 
 **Why artist before title** (the handoff proposed title first): repeating an artist within two hours is common and accepted on radio, while hearing the same song again, even in another version, is a clear repeat to listeners.
 
@@ -127,7 +127,7 @@ The rule listeners notice least is relaxed first, and each rule is **halved befo
 
 With [several stations](stations.md#rules-across-stations), a station can also keep the artists, titles and tracks it plays apart from what other stations played or will play, each within its own window (`across` in the `rotation` settings: `artist_min`, `title_min`, `track_min`, 0 for off, and `station_ids`, the stations it looks at, all the others when empty). The window looks both ways: plays of the other stations before the pick, and their queued tracks at their planned times, before or after it.
 
-They are relaxed with the station's own rule of the same kind: artist halved at step 3 and dropped at step 4, title at 5 and 6, track at 7 and 8; they are off in the fallback category (steps 9 and 10) and in slots with enforce rules off. The selection log counts the tracks they held back (`blocked.across`) and names, for the least recently played of them, the station and the play or planned track that held it back (`held_elsewhere`). A simulation takes the other stations' history and queues as they are, and its audit checks the picks against them too (`across_stations` violations).
+They are relaxed with the station's own rule of the same kind: artist halved at step 3 and dropped at step 4, title at 5 and 6, track at 7 and 8; they are off in the fallback category (steps 9 and 10) and in slots with enforce rules off. The rotation log counts the tracks they held back (`blocked.across`) and names, for the least recently played of them, the station and the play or planned track that held it back (`held_elsewhere`). A simulation takes the other stations' history and queues as they are, and its audit checks the picks against them too (`across_stations` violations).
 
 ### Scheduling
 
@@ -139,12 +139,12 @@ A station has **several schedules** ([M14](roadmap/m14-schedules.md)), each a we
 - Another schedule plays during its **periods**: from a date and hour to a date and hour, in station time, the end excluded (1 December 00:00 to 1 January 00:00 is the whole of December). Periods start and end on the hour. A period can come back **every year**: the years are ignored, and the range may run over the new year.
 - When periods overlap, the one that **started last** plays: a New Year's Eve evening from 31 December 20:00 inside the Christmas period plays its own schedule, then Christmas comes back until its end.
 - An hour the playing schedule leaves empty rotates the station's library, as an hour without a clock: it does **not** fall back on the default schedule. A new schedule can start as a copy of another, so that only the hours that change need painting.
-- Each pick in the selection log names the schedule it came from (`schedule_id`, `schedule_name` in its explanation), and simulations follow the periods.
+- Each pick in the rotation log names the schedule it came from (`schedule_id`, `schedule_name` in its explanation), and simulations follow the periods.
 - A track picked ahead for the next hour is picked from the schedule playing at its planned start: the change happens at the hour, like a change of clock.
 
 ## Rotation model
 
 - Rotation is a **pure function** of (library, play history, rules, current clock, current time), in the `heron-rotation` crate.
 - The history is what played on the decks (on the FX player, only the jingles rotation picked to play over an intro) as far back as the longest window looks, followed by the queue at its planned times: the queue manager picks each new track for when it should start.
-- It returns the next track plus an **explanation**: which clock and slot, the windows applied, the relaxation step, how many tracks each rule held back or restrictions forbade, how many were left to choose from. Each pick is kept in the **selection log** (`rotation_picks`); its play is linked to it and carries its step (`play_history.relaxation_applied`).
+- It returns the next track plus an **explanation**: which clock and slot, the windows applied, the relaxation step, how many tracks each rule held back or restrictions forbade, how many were left to choose from. Each pick is kept in the **rotation log** (`rotation_picks`); its play is linked to it and carries its step (`play_history.relaxation_applied`).
 - This makes it possible to **simulate** days of programming offline and test it without audio. A simulation is **audited** without trusting the log: each pick's windows are recomputed from its slot and step, and the pick is compared with every play before it, one by one; restrictions are checked again. Simulations run from the API (`POST /rotation/simulate`) and the web UI, and in the tests on a synthetic station over a week that crosses a daylight saving change.

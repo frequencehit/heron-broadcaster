@@ -19,7 +19,9 @@ use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
 use heron_core::playout::{TrackPlayout, Transition, db_to_gain, plan_transition};
-use heron_core::{CrossfadeSettings, DeckEq, EqSettings, FadeCurve, PlaySource, PlayoutSettings};
+use heron_core::{
+    AgcSettings, CrossfadeSettings, DeckEq, EqSettings, FadeCurve, PlaySource, PlayoutSettings,
+};
 use heron_outputs::NowPlaying;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, watch};
@@ -111,6 +113,9 @@ pub enum PlayerEvent {
     Started {
         deck: Deck,
         entry: QueueEntry,
+        /// The track on air going on after a restart or a handover
+        /// ([`Player::restore`], [`Player::take_over`]): not a new play.
+        resumed: bool,
         at: SystemTime,
     },
     Ended {
@@ -211,6 +216,7 @@ pub struct Player {
     library_dir: PathBuf,
     settings: PlayoutSettings,
     eq: EqSettings,
+    agc: AgcSettings,
     mixer: MixerHandle,
     queue: VecDeque<QueueEntry>,
     /// Entries handed to the mixer (cued, on air, fading out, FX).
@@ -251,6 +257,9 @@ pub struct Player {
     /// Held by [`Self::hold`]: waiting to take over from another engine.
     held: bool,
     halted: Option<Halted>,
+    /// The track on air restored from a saved or handed-over queue, until
+    /// its start.
+    resuming: Option<u64>,
 }
 
 impl Player {
@@ -265,6 +274,7 @@ impl Player {
             library_dir,
             settings,
             eq: EqSettings::default(),
+            agc: AgcSettings::default(),
             mixer,
             queue: VecDeque::new(),
             loaded: HashMap::new(),
@@ -288,6 +298,7 @@ impl Player {
             changed: false,
             held: false,
             halted: None,
+            resuming: None,
         }
     }
 
@@ -610,6 +621,7 @@ impl Player {
         self.uncue_with(false)?;
         self.queue.clear();
         self.halted = None;
+        self.resuming = None;
         Ok(())
     }
 
@@ -617,9 +629,20 @@ impl Player {
         &self.settings
     }
 
-    /// New settings apply to the next transitions planned.
-    pub fn set_settings(&mut self, settings: PlayoutSettings) {
+    /// New settings apply to the next transitions planned. A new loudness
+    /// target is the gated AGC's new target too: it glides there.
+    pub fn set_settings(&mut self, settings: PlayoutSettings) -> Result<(), PlayerError> {
+        if settings.loudness.target_lufs != self.settings.loudness.target_lufs {
+            // Sent first: when the mixer is busy, nothing has changed, and
+            // the same settings sent again try again.
+            let params = crate::agc::chain_params(&self.agc, settings.loudness.target_lufs);
+            self.send(Command::SetAgc {
+                params,
+                glide: true,
+            })?;
+        }
         self.settings = settings;
+        Ok(())
     }
 
     pub fn eq(&self) -> &EqSettings {
@@ -641,6 +664,25 @@ impl Player {
         self.send(commands(EqTarget::Fx, eq.fx))?;
         self.eq = eq;
         Ok(())
+    }
+
+    pub fn agc(&self) -> &AgcSettings {
+        &self.agc
+    }
+
+    /// New AGC chain settings. They glide in, or with `glide: false` apply
+    /// at once, from rest: only while nothing plays (starting, taking over).
+    pub fn set_agc(&mut self, agc: AgcSettings, glide: bool) -> Result<(), PlayerError> {
+        let params = crate::agc::chain_params(&agc, self.settings.loudness.target_lufs);
+        self.send(Command::SetAgc { params, glide })?;
+        self.agc = agc;
+        Ok(())
+    }
+
+    /// The gated AGC starts from this gain: the old engine's, after a
+    /// handover. Only while nothing plays.
+    pub fn start_agc_at(&mut self, gain_db: f32) -> Result<(), PlayerError> {
+        self.send(Command::StartAgcAt { gain_db })
     }
 
     /// Handles what the mixer reported and keeps the next track cued. Call
@@ -768,6 +810,8 @@ impl Player {
                     // Its jingle is the mixer's now: it starts on the intro.
                     self.cued_jingle = None;
                 }
+                // Only the first start on air can be the restored track.
+                let resumed = deck != Deck::Fx && self.resuming.take() == Some(entry_id);
                 let Some(entry) = self.loaded.get(&entry_id).cloned() else {
                     return;
                 };
@@ -792,11 +836,13 @@ impl Player {
                     entry_id,
                     artist = entry.track.artist.as_deref().unwrap_or_default(),
                     title = entry.track.title.as_deref().unwrap_or_default(),
+                    resumed,
                     "track started"
                 );
                 let _ = self.events.send(PlayerEvent::Started {
                     deck,
                     entry,
+                    resumed,
                     at: SystemTime::now(),
                 });
             }
@@ -1313,6 +1359,7 @@ impl Player {
                                 "resuming the track on air"
                             );
                             self.cued = Some(entry.entry_id);
+                            self.resuming = Some(entry.entry_id);
                             self.loaded.insert(entry.entry_id, entry);
                         }
                     }

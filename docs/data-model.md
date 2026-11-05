@@ -71,7 +71,7 @@ See [Several stations](stations.md) ([M13](roadmap/m13-several-stations.md)).
 | `medley_stations` | medley_id, station_id, position (0: the medley's first station) |
 | `restriction_stations` | restriction_id, station_id — none: every station |
 | `user_station_roles` | user_id, station_id, role (none, viewer, operator, admin); `users.role` is the shared role |
-| `station_settings` | station_id, name, JSON value: the per-station settings groups (`station`, `playout`, `eq`, `queue`, `engine`, `rotation`, and `medley_categories`: the medleys' category and liner categories) |
+| `station_settings` | station_id, name, JSON value: the per-station settings groups (`station`, `playout`, `eq`, `agc`, `queue`, `engine`, `rotation`, and `medley_categories`: the medleys' category and liner categories) |
 
 `station_id` is added to `clocks`, `clock_schedule` (replaced by `schedule_id` in [M14](roadmap/m14-schedules.md): each station's schedule became its default schedule), `rotation_picks`, `play_history`, `outputs`, `webhooks` and `listener_totals`. The first station gets every existing row.
 
@@ -116,7 +116,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 | `schedules` | id, station_id, name (unique for the station), is_default (one per station) — see [Rotation – Scheduling](rotation.md#scheduling) |
 | `schedule_periods` | id, schedule_id (not the default one), starts_at, ends_at (station time, on the hour, the end excluded), every_year (the years are ignored; the range may run over the new year) |
 | `clock_schedule` | schedule_id, day_of_week (ISO: 1 = Monday), hour (station time), clock_id |
-| `rotation_picks` | id, track_id, planned_at, clock_id, slot, hour_start, category_id, step, explanation (JSON, see [Rotation](rotation.md#rotation-model)), engine_started_at and entry_id (the engine's queue entry), play_id — the selection log |
+| `rotation_picks` | id, track_id, planned_at, clock_id, slot, hour_start, category_id, step, explanation (JSON, see [Rotation](rotation.md#rotation-model)), engine_started_at and entry_id (the engine's queue entry), play_id — the rotation log |
 
 ## History
 
@@ -128,8 +128,9 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 
 | Table | Columns |
 |---|---|
-| `settings` | name, JSON value. `analysis`: Gap Killer and crossfade point detection ([Import and analysis](analysis.md#settings)); `library`: AcoustID key, layout, covers ([Library management](library.md#settings)); `playout`: crossfade and loudness ([Audio engine](audio-engine.md#playout-settings)); `eq`: the music and FX deck EQs ([Audio engine](audio-engine.md#deck-eq)); `queue`: autofill and how many tracks wait ([API](api.md#queue-manager)); `engine`: whether the API manages the engine's configuration yet ([API](api.md#engine-configuration)); `rotation`: separation windows, fallback category, categories kept out of the station's library, weight factors; `station`: time zone ([Rotation](rotation.md#scheduling)); `programming`: what counts as a play, eras, mood and sound code scales ([API](api.md#track-details)); `statistics`: minimum session length, retention ([Listener statistics](statistics.md#settings)); `backups`: daily time, days kept, whether a database dump goes with each backup ([Backups](backups.md#settings)) |
+| `settings` | name, JSON value. `analysis`: Gap Killer and crossfade point detection ([Import and analysis](analysis.md#settings)); `library`: AcoustID key, layout, covers ([Library management](library.md#settings)); `playout`: crossfade and loudness ([Audio engine](audio-engine.md#playout-settings)); `eq`: the music and FX deck EQs ([Audio engine](audio-engine.md#deck-eq)); `agc`: the master AGC chain ([Audio engine](audio-engine.md#master-agc-chain)); `queue`: autofill and how many tracks wait ([API](api.md#queue-manager)); `engine`: whether the API manages the engine's configuration yet ([API](api.md#engine-configuration)); `rotation`: separation windows, fallback category, categories kept out of the station's library, weight factors; `station`: time zone ([Rotation](rotation.md#scheduling)); `programming`: what counts as a play, eras, mood and sound code scales ([API](api.md#track-details)); `statistics`: minimum session length, retention ([Listener statistics](statistics.md#settings)); `backups`: daily time, days kept, whether a database dump goes with each backup ([Backups](backups.md#settings)); `backup_encryption`: the public key backups are encrypted with, and the earlier ones; `backup_tests`: the last backup test and the last one that passed (neither in backups, both kept by a restore, [Backups – Encryption](backups.md#encryption)) |
 | `eq_presets` | id, name (unique), gains_db (JSON: ten gains in dB, from 60 Hz up). A fresh install has `Flat` and 17 starting points for styles of music (rock, pop, soft rock, dance, progressive rock and metal, jazz, classical, acoustic, hip-hop, R&B / soul, reggae, country, latin, chill), spoken programmes (`Talk`) and the FX player (`Voice (FX)`). Loading a preset copies its gains into an EQ: changing the preset later does not change the EQ ([Audio engine](audio-engine.md#deck-eq)) |
+| `agc_presets` | id, name (unique), settings (JSON: the blocks of the [AGC chain](audio-engine.md#master-agc-chain), without `bypass_all`). A fresh install has starting points for a gentle, open sound (`Gentle`), pop and hits (`Pop`), a loud and dense format (`Dense`), rock (`Rock`) and spoken programmes (`Talk`). Loading a preset copies its settings into a station's chain: changing the preset later does not change the chain |
 
 ## Encoders and outputs
 
@@ -160,7 +161,7 @@ Statistics settings are in `settings` (`statistics`: `min_session_s`, `retention
 |---|---|
 | `webhooks` | id, name (unique), url, enabled, events (JSON: `track.started`, `track.ended`, `track.skipped`), include_fx, secret (in clear: it signs the deliveries; never sent back), content_type, body_template (NULL: the default JSON body), created_at, updated_at |
 | `webhook_deliveries` | id, webhook_id (deleted with the webhook), event (or `ping`), body (as sent), status (pending, delivered, failed), attempts, next_attempt_at (while pending), last_attempt_at, last_status_code, last_error, last_response (first 1 KiB), created_at, delivered_at. Kept 30 days |
-| `users` | id, username, password_hash (Argon2id), role (viewer, operator, admin), enabled, theme (system, light, dark: the web UI's), language (system or a language tag: the web UI's), full_width (the web UI uses the whole screen), last_login_at, created_at, updated_at |
+| `users` | id, username, password_hash (Argon2id), role (viewer, operator, admin), enabled, theme (system, light, dark: the web UI's), language (system or a language tag: the web UI's), full_width (the web UI uses the whole screen), backup_key_checked_at, backup_key_interval_days and backup_key_later_until (the admin's [backup key checks](backups.md#checking-the-key): not in backups, kept by a restore), last_login_at, created_at, updated_at |
 | `sessions` | token_hash (BLAKE3 of the cookie's token), user_id, created_at, last_seen_at, expires_at (30 days after the last use) |
 | `api_tokens` | id, user_id, name, token_hash, created_at, last_used_at, expires_at, revoked_at |
 

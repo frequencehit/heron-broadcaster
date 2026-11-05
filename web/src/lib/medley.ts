@@ -82,12 +82,15 @@ export interface Ducking {
 }
 
 /** How much of the going down is before the liner. */
-export const duckBefore = (ducking: Ducking) =>
-  ducking.attack_at === "outside" ? ducking.attack_ms : ducking.attack_at === "across" ? Math.trunc(ducking.attack_ms / 2) : 0;
+const duckShare = (at: string, ms: number) => {
+  if (at === "outside") return ms;
+  return at === "across" ? Math.trunc(ms / 2) : 0;
+};
+
+export const duckBefore = (ducking: Ducking) => duckShare(ducking.attack_at, ducking.attack_ms);
 
 /** How much of the coming back up is after the liner. */
-export const duckAfter = (ducking: Ducking) =>
-  ducking.release_at === "outside" ? ducking.release_ms : ducking.release_at === "across" ? Math.trunc(ducking.release_ms / 2) : 0;
+export const duckAfter = (ducking: Ducking) => duckShare(ducking.release_at, ducking.release_ms);
 
 /**
  * For liners from `start` to `stop`: where the music starts going down, is
@@ -212,7 +215,7 @@ export function layout(parts: readonly LayoutPart[], recipe: MixRecipe): Layout 
   const gaps: number[][] = [[]];
   parts.forEach((part, index) => {
     if (isOver(part)) {
-      gaps[gaps.length - 1]?.push(index);
+      gaps.at(-1)?.push(index);
     } else {
       sequence.push(index);
       gaps.push([]);
@@ -354,7 +357,7 @@ export function duckWindows(medley: Layout): [number, number][] {
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const windows: [number, number][] = [];
   for (const [start, stop] of liners) {
-    const last = windows[windows.length - 1];
+    const last = windows.at(-1);
     if (last && start < last[1] + reach) {
       last[1] = Math.max(last[1], stop);
     } else {

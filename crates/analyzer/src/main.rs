@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use heron_service::about::ConfigItem;
 use heron_service::db::{self, DatabaseHealth};
 use heron_service::{LogArgs, MetricsArgs};
 use worker::WorkerConfig;
@@ -125,6 +126,7 @@ async fn run(cli: Cli, lowered: Result<(), String>) -> anyhow::Result<()> {
     let pool_for_workers = pool.clone();
     let pool_for_release = pool.clone();
 
+    let library_dir = cli.library_dir.clone();
     let config = WorkerConfig::new(cli.library_dir, instance.clone());
     // Jobs left running by a previous run of this instance (crash, kill).
     let released = heron_analysis::jobs::release(&pool, &instance).await?;
@@ -134,6 +136,21 @@ async fn run(cli: Cli, lowered: Result<(), String>) -> anyhow::Result<()> {
     tracing::info!(workers, %instance, "analysis workers starting");
 
     let (stop, stopped) = tokio::sync::watch::channel(false);
+    // Says on the About page that the analyzer runs, and how.
+    let mut about = heron_service::about::common_config(&cli.log, &cli.metrics, cli.http_addr);
+    about.extend([
+        ConfigItem::text("HERON_LIBRARY_DIR", library_dir.display()),
+        ConfigItem::text("HERON_ANALYZER_WORKERS", workers),
+        ConfigItem::text("HERON_ANALYZER_ID", &instance),
+        ConfigItem::text("HERON_NICE", &cli.nice),
+    ]);
+    tokio::spawn(heron_service::about::run_heartbeat(
+        pool.clone(),
+        SERVICE,
+        instance.clone(),
+        about,
+        stopped.clone(),
+    ));
     let pool_handle = worker::spawn(pool_for_workers, config, workers, stopped);
 
     let router = heron_service::ops_router(SERVICE, metrics, DatabaseHealth(pool.clone()));

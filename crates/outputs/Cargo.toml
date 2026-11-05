@@ -12,6 +12,7 @@ publish = false
 [dependencies]
 base64.workspace = true
 bytes.workspace = true
+ffmpeg-next = { workspace = true, optional = true }
 heron-core.workspace = true
 heron-dsp.workspace = true
 metrics.workspace = true
@@ -29,6 +30,11 @@ tracing.workspace = true
 symphonia.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "sync"] }
+
+[features]
+# AAC-LC with the system's libavcodec (FFmpeg's native `aac` encoder, LGPL,
+# linked dynamically). Needs FFmpeg's development libraries to build.
+aac = ["dep:ffmpeg-next"]
 
 [lints]
 workspace = true

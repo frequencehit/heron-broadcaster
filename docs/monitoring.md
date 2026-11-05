@@ -217,6 +217,9 @@ Every service also exports `heron_build_info{service, version}` (always 1), and,
 | `heron_api_logins_total` | counter | `result` (`ok`, `failed`) | Sign-ins |
 | `heron_listeners` | gauge | `output` | Listeners of the output at the last minute, from its stream server; `NaN` while the server cannot be read ([Listener statistics](statistics.md)) |
 | `heron_api_listener_polls_total` | counter | `result` (`ok`, `error`) | Requests to stream servers for listener statistics |
+| `heron_api_backup_last_success_timestamp_seconds` | gauge | | When the last backup that passed its checks was taken |
+| `heron_api_backup_last_test_success_timestamp_seconds` | gauge | | When a backup last passed a [test read](backups.md#testing-backups) |
+| `heron_api_backups_damaged` | gauge | | Backups whose files failed the daily checksum check |
 | `heron_library_files` | gauge | | Audio files found by the last library scan |
 | `heron_library_scan_duration_seconds` | gauge | | Duration of the last scan |
 | `heron_library_scans_total` | counter | `result` (`ok`, `error`) | Library scans |
@@ -360,7 +363,7 @@ The web interface reads its DSN when the page loads, from `/config.js`, which `h
 
 Not provided yet, and worth adding for a station on air around the clock:
 
-- **The host**: CPU, memory, disk, temperature (a Raspberry Pi throttles when hot). Grafana Alloy can collect them (`prometheus.exporter.unix`) and push them with the same remote write settings, as can [node_exporter](https://github.com/prometheus/node_exporter) when scraped.
+- **The host**: CPU, memory, disk, temperature (a Raspberry Pi throttles when hot). The web UI's [status bar](web.md#status-bar) shows the CPU, memory and load average to operators, as read by the API: inside a container, the CPU and memory can be the container's own and the load average is the host's, so it is a glance, not a replacement for monitoring the host. Grafana Alloy can collect them (`prometheus.exporter.unix`) and push them with the same remote write settings, as can [node_exporter](https://github.com/prometheus/node_exporter) when scraped.
 - **The stream from outside**: see [Health checks](#health-checks).
 - **Track changes as events**: webhooks on track start, end and skip ([M7](roadmap/m7-webhooks-output-api.md)) can post to a chat or annotate Grafana.
 

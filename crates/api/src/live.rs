@@ -9,10 +9,12 @@
 //! - `positions` twice a second;
 //! - `levels` ten times a second (unless `?levels=false`);
 //! - `track` for each track change reported by the engine;
-//! - `eq` whenever the deck EQ settings change.
+//! - `eq` whenever the deck EQ settings change;
+//! - `agc` whenever the AGC settings change;
+//! - `system` every few seconds, to operators and admins only.
 
-use axum::extract::Query;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Query, State};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -21,10 +23,11 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::app::AppState;
-use crate::auth::CurrentUser;
+use crate::auth::{CurrentUser, Role};
 use crate::engine::{DeckName, Levels, LinkEvent, PlayerState, TrackEvent, unix_ms};
 use crate::error::ErrorBody;
 use crate::stations::Station;
+use crate::system::{SystemLoad, SystemWatch};
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct DeckPosition {
@@ -54,6 +57,11 @@ pub enum LiveMessage {
     Eq {
         settings: heron_core::EqSettings,
     },
+    Agc {
+        settings: heron_core::AgcSettings,
+    },
+    /// The machine's load. Only operators and admins receive it.
+    System(SystemLoad),
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -73,15 +81,17 @@ pub fn router() -> OpenApiRouter<AppState> {
     responses((status = 101, description = "WebSocket of LiveMessage", body = LiveMessage),
               (status = "4XX", body = ErrorBody)))]
 async fn live(
-    _user: CurrentUser,
+    user: CurrentUser,
+    State(state): State<AppState>,
     station: Station,
     Query(query): Query<LiveQuery>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
     let levels = query.levels.unwrap_or(true);
+    let system = (user.role >= Role::Operator).then_some(state.system);
     upgrade.on_upgrade(move |socket| async move {
         metrics::gauge!("heron_api_live_clients").increment(1.0);
-        if let Err(error) = serve(socket, station, levels).await {
+        if let Err(error) = serve(socket, station, levels, system).await {
             tracing::debug!(%error, "live client gone");
         }
         metrics::gauge!("heron_api_live_clients").decrement(1.0);
@@ -112,10 +122,12 @@ async fn serve(
     mut socket: WebSocket,
     station: Station,
     with_levels: bool,
+    mut system: Option<SystemWatch>,
 ) -> Result<(), axum::Error> {
     let mut player = station.engine.state();
     let mut events = station.engine.events();
     let mut eq_changes = station.eq_changes.subscribe();
+    let mut agc_changes = station.agc_changes.subscribe();
     let mut levels = with_levels.then(|| station.engine.levels());
 
     let current = player.borrow_and_update().clone();
@@ -127,6 +139,12 @@ async fn serve(
         },
     )
     .await?;
+    if let Some(system) = &mut system {
+        let value = *system.borrow_and_update();
+        if let Some(value) = value {
+            send(&mut socket, &LiveMessage::System(value)).await?;
+        }
+    }
 
     loop {
         tokio::select! {
@@ -154,6 +172,22 @@ async fn serve(
                 Ok(settings) => send(&mut socket, &LiveMessage::Eq { settings }).await?,
                 Err(broadcast::error::RecvError::Lagged(_)) => {}
                 Err(broadcast::error::RecvError::Closed) => return Ok(()),
+            },
+            agc = agc_changes.recv() => match agc {
+                Ok(settings) => send(&mut socket, &LiveMessage::Agc { settings }).await?,
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => return Ok(()),
+            },
+            load = async {
+                match &mut system {
+                    Some(system) => system.changed().await.map(|()| *system.borrow_and_update()),
+                    None => std::future::pending().await,
+                }
+            } => match load {
+                Ok(Some(value)) => send(&mut socket, &LiveMessage::System(value)).await?,
+                Ok(None) => {}
+                // The sampler is gone: carry on without the system part.
+                Err(_) => system = None,
             },
             level = async {
                 match &mut levels {

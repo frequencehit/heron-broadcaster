@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // The live WebSocket (/api/v1/live): decks, queue, outputs, positions,
-// levels, track changes and the deck EQ, kept in one store that components read slices
+// levels, track changes, the deck EQ and the AGC chain, kept in one store that components read slices
 // of. Reconnects with a growing delay when the connection drops.
 
 import { useSyncExternalStore } from "react";
-import type { DeckPosition, EqSettings, Levels, LiveMessage, PlayerState, TrackEvent } from "../api";
+import type {
+  AgcSettings,
+  DeckPosition,
+  EqSettings,
+  Levels,
+  LiveMessage,
+  PlayerState,
+  SystemLoad,
+  TrackEvent,
+} from "../api";
 import { stationUrl } from "./station";
 
 export interface Positions {
@@ -24,6 +33,10 @@ export interface LiveState {
   events: TrackEvent[];
   /** The deck EQ as last changed while connected, `null` before. */
   eq: EqSettings | null;
+  /** The AGC chain as last changed while connected, `null` before. */
+  agc: AgcSettings | null;
+  /** The machine's load, sent to operators and admins only: `null` otherwise. */
+  system: SystemLoad | null;
 }
 
 const MAX_EVENTS = 20;
@@ -36,6 +49,8 @@ const EMPTY: LiveState = {
   levels: null,
   events: [],
   eq: null,
+  agc: null,
+  system: null,
 };
 let state: LiveState = EMPTY;
 const listeners = new Set<() => void>();
@@ -68,6 +83,14 @@ function handle(message: LiveMessage) {
     case "eq":
       set({ eq: message.settings });
       break;
+    case "agc":
+      set({ agc: message.settings });
+      break;
+    case "system": {
+      const { type: _type, ...system } = message;
+      set({ system });
+      break;
+    }
   }
 }
 
@@ -103,7 +126,7 @@ function connect() {
     }
     socket = null;
     // Changes made while disconnected are not known: read them again.
-    set({ connected: false, levels: null, eq: null });
+    set({ connected: false, levels: null, eq: null, agc: null, system: null });
     if (wanted) {
       retry = setTimeout(connect, delay);
       delay = Math.min(delay * 2, MAX_DELAY_MS);

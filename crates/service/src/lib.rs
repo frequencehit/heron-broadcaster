@@ -6,6 +6,7 @@
 //!
 //! Nothing in here belongs on the audio path.
 
+pub mod about;
 pub mod clock;
 #[cfg(feature = "mysql")]
 pub mod db;

@@ -11,7 +11,7 @@ declare global {
 export interface Build {
   version: string;
   /** The commit; missing or empty when built locally. */
-  revision?: string | null;
+  revision?: string | null | undefined;
 }
 
 /** The web app's own build. */

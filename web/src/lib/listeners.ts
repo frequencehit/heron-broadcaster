@@ -11,7 +11,8 @@ import { here, stationUrl } from "./station";
 /** Each output's listeners at the last minute; read again every half minute. */
 export function useListenersNow() {
   return useQuery({
-    queryKey: ["listeners", "now"],
+    // Per station: another station's count is not shown while this one's loads.
+    queryKey: ["listeners", "now", here().station_id],
     queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/listeners/now", { params: { path: here() } })),
     refetchInterval: 30_000,
   });

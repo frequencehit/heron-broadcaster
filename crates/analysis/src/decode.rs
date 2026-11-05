@@ -114,7 +114,7 @@ impl Decoder {
         };
         let stream = MediaSourceStream::new(source, Default::default());
         let mut hint = Hint::new();
-        if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
+        if let Some(extension) = path.extension().and_then(std::ffi::OsStr::to_str) {
             hint.with_extension(extension);
         }
         let format = symphonia::default::get_probe().probe(

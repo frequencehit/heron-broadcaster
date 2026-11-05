@@ -10,6 +10,7 @@
 //! - [`layout`]: where files go in the library (`{album_artist}/{album}/…`).
 //! - [`lock`]: the lock that keeps the scanner and the librarian from
 //!   working on the library at the same time.
+//! - [`watch`]: watching a folder for changes, ignoring reads.
 
 pub mod details;
 pub mod files;
@@ -17,6 +18,7 @@ pub mod layout;
 pub mod lock;
 pub mod properties;
 pub mod tags;
+pub mod watch;
 
 pub use files::{content_hash, is_audio, is_hidden};
 pub use lock::LibraryLock;

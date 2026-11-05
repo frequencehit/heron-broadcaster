@@ -23,7 +23,7 @@ A station is set by hand, over months: stations, clocks, schedules, categories, 
 - Restoring part of a backup (only the clocks, only the outputs, one station).
 - Restoring the database dump from the web UI.
 - Sending backups to object storage (S3…): the backup folder can be a mounted share.
-- Encrypting the files.
+- Encrypting the files: [M15](m15-encrypted-backups.md).
 
 ## Deliverables
 

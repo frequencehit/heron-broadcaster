@@ -399,10 +399,10 @@ fn list_audio(root: &Path, dir: &Path, files: &mut Vec<(String, u64, u64)>) {
         }
         let audio = path
             .extension()
-            .and_then(|extension| extension.to_str())
+            .and_then(std::ffi::OsStr::to_str)
             .is_some_and(|extension| AUDIO_EXTENSIONS.contains(&extension.to_lowercase().as_str()));
         let Some(relative) = path.strip_prefix(root).ok().and_then(|relative| {
-            let parts: Option<Vec<&str>> = relative.iter().map(|part| part.to_str()).collect();
+            let parts: Option<Vec<&str>> = relative.iter().map(std::ffi::OsStr::to_str).collect();
             parts.map(|parts| parts.join("/"))
         }) else {
             continue;

@@ -35,7 +35,7 @@ pub struct AnalysisSettings {
 
 impl AnalysisSettings {
     /// Name of the row in the `settings` table.
-    pub const SETTINGS_NAME: &'static str = "analysis";
+    pub const SETTINGS_NAME: &str = "analysis";
 
     /// Fingerprint of these settings. Stored with each analysis, so changing a
     /// setting marks every track for re-analysis.
@@ -92,9 +92,8 @@ pub struct LibrarySettings {
 
 impl LibrarySettings {
     /// Name of the row in the `settings` table.
-    pub const SETTINGS_NAME: &'static str = "library";
-    pub const DEFAULT_LAYOUT: &'static str =
-        "{album_artist}/{album}/{disc-}{track:02} {title}.{ext}";
+    pub const SETTINGS_NAME: &str = "library";
+    pub const DEFAULT_LAYOUT: &str = "{album_artist}/{album}/{disc-}{track:02} {title}.{ext}";
 }
 
 impl Default for LibrarySettings {

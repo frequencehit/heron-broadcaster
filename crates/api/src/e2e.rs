@@ -154,6 +154,14 @@ impl Station {
         .unwrap();
         tasks.push(tokio::spawn(Arc::clone(&webhooks).send_loop()));
 
+        // A fixed reading, so a test can tell who receives it.
+        let (_, system) = tokio::sync::watch::channel(Some(crate::system::reading(
+            12.0,
+            1,
+            4,
+            [0.5, 0.4, 0.3],
+            2,
+        )));
         let state = AppState {
             pool: pool.clone(),
             health: DatabaseHealth(pool.clone()),
@@ -165,6 +173,11 @@ impl Station {
             // Driven by the tests, minute by minute.
             listeners: crate::listeners::Collector::new(pool.clone()).unwrap(),
             backups: crate::backups::Backups::new(backups.path().to_path_buf(), db.url()),
+            system,
+            about: Arc::new(crate::about::Own::new(vec![
+                heron_service::about::ConfigItem::secret("HERON_DATABASE_URL", Some(&db.url())),
+                heron_service::about::ConfigItem::flag("HERON_LIBRARY_WATCH", true),
+            ])),
         };
         let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api = http.local_addr().unwrap();
@@ -290,6 +303,45 @@ impl Client {
     }
 }
 
+impl Client {
+    /// A download, as it is.
+    async fn get_bytes(&self, path: &str) -> Vec<u8> {
+        let mut request = self.http.get(format!("{}{path}", self.base));
+        if let Some(cookie) = &self.cookie {
+            request = request.header("cookie", cookie);
+        }
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "GET {path}");
+        response.bytes().await.unwrap().to_vec()
+    }
+
+    /// Uploads a file, with a backup key in its header.
+    async fn post_bytes(
+        &self,
+        path: &str,
+        bytes: Vec<u8>,
+        key: Option<&str>,
+    ) -> (StatusCode, Value) {
+        let mut request = self
+            .http
+            .post(format!("{}{path}", self.base))
+            .header("content-type", "application/octet-stream")
+            .body(bytes);
+        if let Some(cookie) = &self.cookie {
+            request = request
+                .header("cookie", cookie)
+                .header("x-requested-with", "test");
+        }
+        if let Some(key) = key {
+            request = request.header("x-heron-backup-key", key);
+        }
+        let response = request.send().await.unwrap();
+        let status = response.status();
+        let value = response.json().await.unwrap_or(Value::Null);
+        (status, value)
+    }
+}
+
 /// Polls `check` until it returns something, for at most `timeout`.
 async fn eventually<T, F: Future<Output = Option<T>>>(
     what: &str,
@@ -313,6 +365,85 @@ fn waiting_tracks(queue: &Value) -> Vec<u64> {
         .iter()
         .map(|entry| entry["track"]["track_id"].as_u64().unwrap())
         .collect()
+}
+
+/// The About page: the build for everyone, the rest for admins, and a secret
+/// never shown.
+#[tokio::test(flavor = "multi_thread")]
+async fn about_page_roles_and_secrets() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let anonymous = station.client();
+    let (status, _) = anonymous.request(Method::GET, "/about", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let viewer = station.signed_in("viewer").await;
+    let about = viewer.get("/about").await;
+    let api = &about["services"][0];
+    assert_eq!(api["service"], "heron-api");
+    assert_eq!(api["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(api["running"], true);
+    assert!(about["runtime"].is_null());
+    assert!(about["dependencies"].is_null());
+    assert!(about["configuration"].is_null());
+
+    // The workers have not been seen: listed as not running.
+    let worker = |about: &Value, name: &str| {
+        about["services"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|service| service["service"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(worker(&about, "heron-analyzer")["running"], false);
+    assert!(worker(&about, "heron-analyzer")["version"].is_null());
+
+    // A recent heartbeat is a worker running; an old one, a worker stopped.
+    for (service, seen) in [("heron-analyzer", "0"), ("heron-librarian", "600")] {
+        sqlx::query(
+            "INSERT INTO service_heartbeats
+                 (service, instance, version, started_at, seen_at, config)
+             VALUES (?, 'box', '0.2.0', UTC_TIMESTAMP(6) - INTERVAL 1 HOUR,
+                     UTC_TIMESTAMP(6) - INTERVAL ? SECOND,
+                     '[{\"name\":\"HERON_NICE\",\"kind\":\"text\",\"value\":\"10\"}]')",
+        )
+        .bind(service)
+        .bind(seen)
+        .execute(&station.state.pool)
+        .await
+        .unwrap();
+    }
+    let about = viewer.get("/about").await;
+    let analyzer = worker(&about, "heron-analyzer");
+    assert_eq!(analyzer["running"], true);
+    assert_eq!(analyzer["version"], "0.2.0");
+    assert_eq!(analyzer["instance"], "box");
+    assert_eq!(worker(&about, "heron-librarian")["running"], false);
+    assert_eq!(worker(&about, "heron-librarian")["version"], "0.2.0");
+
+    let admin = station.signed_in("admin").await;
+    let about = admin.get("/about").await;
+    assert!(about["runtime"]["cpu_cores"].as_u64().unwrap() >= 1);
+    assert!(about["dependencies"]["database"]["version"].is_string());
+    assert!(
+        about["dependencies"]["database"]["migrations"]
+            .as_i64()
+            .unwrap()
+            > 0
+    );
+    let api_config = about["configuration"][0]["items"].as_array().unwrap();
+    let url = api_config
+        .iter()
+        .find(|item| item["name"] == "HERON_DATABASE_URL")
+        .unwrap();
+    assert_eq!(url["kind"], "secret");
+    assert_eq!(url["value"], true);
+    // The secret itself is nowhere in the answer.
+    assert!(!about.to_string().contains(&station.db.url()));
+    assert!(!about.to_string().contains("mysql://"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -482,6 +613,35 @@ async fn queue_manager_feeds_the_engine_and_records_history() {
     let first = next().await;
     assert_eq!(first["type"], "state");
     assert!(first["player"]["decks"].is_array());
+    // Operators and admins get the machine's load right after the state.
+    let system = next().await;
+    assert_eq!(system["type"], "system", "{system}");
+    assert_eq!(system["cpu_percent"], 12.0);
+    assert_eq!(system["mem_percent"], 25.0);
+    assert_eq!(system["cores"], 2);
+    assert_eq!(system["load_avg"].as_array().unwrap().len(), 3);
+
+    // Viewers never do.
+    let viewer = station.signed_in("viewer").await;
+    let url = format!("ws://{}/api/v1/live?levels=false", station.api);
+    let mut request = tungstenite::client::IntoClientRequest::into_client_request(url).unwrap();
+    request
+        .headers_mut()
+        .insert("cookie", viewer.cookie.as_deref().unwrap().parse().unwrap());
+    let (mut viewer_socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    // Positions keep coming, so listen for a fixed time.
+    let mut types = Vec::new();
+    let until = tokio::time::Instant::now() + Duration::from_millis(1500);
+    while let Ok(Some(Ok(message))) = tokio::time::timeout_at(until, viewer_socket.next()).await {
+        let message: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+        types.push(message["type"].as_str().unwrap().to_owned());
+    }
+    assert_eq!(
+        types.first().map(String::as_str),
+        Some("state"),
+        "{types:?}"
+    );
+    assert!(!types.iter().any(|kind| kind == "system"), "{types:?}");
 
     // Skip: the play ends as skipped in the history, the next one starts.
     let (status, _) = admin.request(Method::POST, "/player/skip", None).await;
@@ -1353,6 +1513,7 @@ async fn adopts_outputs_configured_on_the_engine() {
     let engine_config: EngineConfig = serde_json::from_value(json!({
         "playout": {"crossfade": {"min_track_ms": 25000}},
         "eq": {"music": {"enabled": true, "gains_db": [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]}},
+        "agc": {"bypass_all": false, "final_stage": {"ceiling_db": -2}},
         "outputs": {
             "encoder_profiles": [
                 {"id": 1, "name": "MP3 128k", "encoder": "mp3", "bitrate_kbps": 128,
@@ -1384,6 +1545,9 @@ async fn adopts_outputs_configured_on_the_engine() {
     let eq = admin.get("/settings/eq").await;
     assert_eq!(eq["music"]["enabled"], true);
     assert_eq!(eq["music"]["gains_db"][0], 2.0);
+    let agc = admin.get("/settings/agc").await;
+    assert_eq!(agc["bypass_all"], false);
+    assert_eq!(agc["final_stage"]["ceiling_db"], -2.0);
 
     // Same IDs: the engine kept its configuration as it was.
     let config = station
@@ -1396,6 +1560,31 @@ async fn adopts_outputs_configured_on_the_engine() {
         .unwrap();
     let outputs: heron_core::OutputsConfig = serde_json::from_str(&config.outputs_json).unwrap();
     assert_eq!(outputs.outputs, engine_config.outputs.outputs);
+
+    // A station managed before M10: no AGC chain saved, the engine's set
+    // with `ctl set-agc` meanwhile. It is kept, not replaced by the defaults.
+    sqlx::query("DELETE FROM station_settings WHERE name = 'agc'")
+        .execute(&station.state.pool)
+        .await
+        .unwrap();
+    let first = station.state.stations.first();
+    let mut chain: heron_core::AgcSettings =
+        serde_json::from_str(&config.agc_settings_json).unwrap();
+    chain.final_stage.ceiling_db = -3.0;
+    first
+        .engine
+        .set_agc_settings(serde_json::to_string(&chain).unwrap())
+        .await
+        .unwrap();
+    first.sync.changed();
+    eventually("the AGC chain kept", Duration::from_secs(10), || async {
+        let agc = admin.get("/settings/agc").await;
+        (agc["final_stage"]["ceiling_db"] == -3.0).then_some(())
+    })
+    .await;
+    let config = first.engine.config().await.unwrap();
+    let kept: heron_core::AgcSettings = serde_json::from_str(&config.agc_settings_json).unwrap();
+    assert_eq!(kept.final_stage.ceiling_db, -3.0);
     station.stop().await;
 }
 
@@ -4530,6 +4719,165 @@ async fn deck_eq_and_presets() {
     station.stop().await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn agc_chain_and_presets() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+
+    // Bypassed until set, the final limiter on.
+    let agc = admin.get("/settings/agc").await;
+    assert_eq!(agc["bypass_all"], true);
+    assert_eq!(agc["final_stage"]["enabled"], true);
+    assert_eq!(agc["five_band"]["bands"].as_array().unwrap().len(), 5);
+
+    let presets = viewer.get("/agc-presets").await;
+    let names: Vec<&str> = presets
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|preset| preset["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Dense", "Gentle", "Pop", "Rock", "Talk"]);
+    let pop = presets
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "Pop")
+        .unwrap();
+    assert_eq!(pop["settings"]["five_band"]["enabled"], true);
+    assert!(pop["settings"]["bypass_all"].is_null());
+
+    // Loading a preset: its blocks into the chain, switched on.
+    let mut settings = pop["settings"].clone();
+    settings["bypass_all"] = json!(false);
+    let (status, _) = viewer
+        .send(Method::PUT, "/settings/agc", settings.clone())
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let mut backwards = settings.clone();
+    backwards["five_band"]["crossovers_hz"] = json!([100, 400, 300, 6400]);
+    let (status, body) = admin.send(Method::PUT, "/settings/agc", backwards).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let mut unknown = settings.clone();
+    unknown["final_stage"]["mode"] = json!("brickwall");
+    let (status, _) = admin.send(Method::PUT, "/settings/agc", unknown).await;
+    assert!(status.is_client_error());
+
+    // Every live socket follows, and the engine has it at once.
+    let url = format!("ws://{}/api/v1/live", station.api);
+    let mut request = tungstenite::client::IntoClientRequest::into_client_request(url).unwrap();
+    request
+        .headers_mut()
+        .insert("cookie", viewer.cookie.as_deref().unwrap().parse().unwrap());
+    let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut next = async || -> Value {
+        let message = tokio::time::timeout(Duration::from_secs(10), socket.next())
+            .await
+            .expect("live message")
+            .unwrap()
+            .unwrap();
+        serde_json::from_str(message.to_text().unwrap()).unwrap()
+    };
+    assert_eq!(next().await["type"], "state");
+    let (status, saved) = admin
+        .send(Method::PUT, "/settings/agc", settings.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let mut agc_message = None;
+    let mut agc_levels = None;
+    for _ in 0..100 {
+        let message = next().await;
+        if message["type"] == "agc" {
+            agc_message = Some(message);
+        } else if message["type"] == "levels" && message["levels"]["agc"].is_object() {
+            agc_levels = Some(message);
+        }
+        if agc_message.is_some() && agc_levels.is_some() {
+            break;
+        }
+    }
+    assert_eq!(agc_message.expect("an agc message")["settings"], saved);
+    let levels = agc_levels.expect("the chain's meters")["levels"]["agc"].clone();
+    assert_eq!(levels["five_band_db"].as_array().unwrap().len(), 5);
+    assert_eq!(levels["dual_band_db"].as_array().unwrap().len(), 2);
+    assert!(levels["final_stage_db"].as_f64().unwrap() <= 0.0);
+    assert!(levels["input"]["peak_left"].is_number());
+    let config = station
+        .state
+        .stations
+        .first()
+        .engine
+        .config()
+        .await
+        .unwrap();
+    let engine_agc: heron_core::AgcSettings =
+        serde_json::from_str(&config.agc_settings_json).unwrap();
+    assert_eq!(serde_json::to_value(engine_agc).unwrap(), saved);
+    assert_eq!(admin.get("/settings/agc").await, saved);
+
+    // Presets: save, rename, delete; names are unique.
+    let blocks = pop["settings"].clone();
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            "/agc-presets",
+            json!({"name": "Morning", "settings": blocks}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, preset) = admin
+        .send(
+            Method::POST,
+            "/agc-presets",
+            json!({"name": "Morning", "settings": {"gated_agc": {"enabled": true}}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{preset}");
+    assert_eq!(preset["settings"]["gated_agc"]["enabled"], true);
+    assert_eq!(preset["settings"]["final_stage"]["ceiling_db"], -1.0);
+    let id = preset["id"].as_u64().unwrap();
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/agc-presets",
+            json!({"name": "pop", "settings": blocks}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/agc-presets",
+            json!({"name": "Bypassed", "settings": {"bypass_all": true}}),
+        )
+        .await;
+    assert!(status.is_client_error());
+    let (status, renamed) = admin
+        .send(
+            Method::PUT,
+            &format!("/agc-presets/{id}"),
+            json!({"name": "Morning show", "settings": blocks}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{renamed}");
+    assert_eq!(renamed["name"], "Morning show");
+    assert_eq!(renamed["settings"], blocks);
+    let (status, _) = admin
+        .request(Method::DELETE, &format!("/agc-presets/{id}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = admin
+        .request(Method::DELETE, &format!("/agc-presets/{id}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // The chain keeps what was loaded.
+    assert_eq!(admin.get("/settings/agc").await, saved);
+    station.stop().await;
+}
+
 /// Two stations, each with its own engine, play at once from the same
 /// library, each with its own clocks, queue and history; the routes of a
 /// single station still serve the first.
@@ -5251,7 +5599,7 @@ async fn categories_restrictions_and_medleys_follow_their_stations() {
 }
 
 /// A station keeps the artists it plays apart from another station's plays
-/// and queue, and says so in its selection log; plays are counted per
+/// and queue, and says so in its rotation log; plays are counted per
 /// station and in total.
 #[tokio::test(flavor = "multi_thread")]
 async fn rules_across_stations_and_plays_per_station() {
@@ -5762,6 +6110,8 @@ async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
         "/webhooks",
         "/users",
         "/eq-presets",
+        "/settings/agc",
+        "/agc-presets",
         "/stations",
         "/medleys",
         "/settings/medleys",
@@ -6016,6 +6366,19 @@ async fn a_backup_restores_onto_an_empty_database() {
         .await;
     assert_eq!(status, StatusCode::CREATED);
     let token = token["token"].as_str().unwrap().to_owned();
+    // The AGC chain and a preset of its own.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/agc-presets",
+            json!({"name": "Morning", "settings": {"gated_agc": {"enabled": true, "max_gain_db": 9}}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut agc = admin.get("/settings/agc").await;
+    agc["final_stage"]["ceiling_db"] = json!(-2.0);
+    let (status, body) = admin.send(Method::PUT, "/settings/agc", agc).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
     let configured = configuration(&admin, &t).await;
 
     // Backed up, then restored onto another Heron's empty database with
@@ -6154,6 +6517,342 @@ async fn a_backup_restores_onto_an_empty_database() {
     other.stop().await;
 }
 
+/// Waits for the backup test under way, and returns the last one.
+async fn tested(admin: &Client) -> Value {
+    eventually("the backup test", Duration::from_secs(60), || async {
+        let tests = admin.get("/backups/tests").await;
+        (tests["testing"].is_null() && !tests["last"].is_null()).then_some(tests)
+    })
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_encrypted_backup_opens_with_its_key_only() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let dir = station.state.backups.dir().to_owned();
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+
+    // A backup in clear, with its checksums.
+    let (status, clear) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{clear}");
+    assert_eq!(clear["encrypted"], false);
+    assert_eq!(clear["database_error"], Value::Null, "\n::error::{clear}");
+    let clear = clear["name"].as_str().unwrap().to_owned();
+    let checksums =
+        std::fs::read_to_string(dir.join(format!("heron-checksums-{clear}.sha256"))).unwrap();
+    assert!(
+        checksums.contains(&format!("  heron-config-{clear}.json\n")),
+        "{checksums}"
+    );
+    assert!(
+        checksums.contains(&format!("  heron-database-{clear}.sql.gz\n")),
+        "{checksums}"
+    );
+    let state = admin.get("/backups/state").await;
+    assert_eq!(state["encryption"], "off");
+    assert_eq!(state["check_due"], false);
+
+    // Only admins set a key; it is shown once, then typed back.
+    let (status, _) = viewer.send(Method::POST, "/backups/key", json!({})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, new) = admin.send(Method::POST, "/backups/key", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{new}");
+    let key = new["key"].as_str().unwrap().to_owned();
+    let recipient = new["recipient"].as_str().unwrap().to_owned();
+    assert!(new["key_file"].as_str().unwrap().contains(&key));
+    let view = admin.get("/backups/key").await;
+    assert_eq!(view["state"], "pending");
+    assert!(!view.to_string().contains(&key), "{view}");
+    let (other_key, _) = crate::backups::generate_key();
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/backups/key/confirm",
+            json!({"key": other_key}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, confirmed) = admin
+        .send(
+            Method::POST,
+            "/backups/key/confirm",
+            json!({"key": key.to_lowercase()}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{confirmed}");
+    assert_eq!(confirmed["key"]["state"], "on");
+    assert_eq!(confirmed["encrypted"], json!([clear]));
+    let with_key = confirmed["backup"].as_str().unwrap().to_owned();
+    // The new backup is tested with the key just typed.
+    let tests = tested(&admin).await;
+    assert_eq!(tests["last"]["name"], with_key, "{tests}");
+    assert_eq!(tests["last"]["ok"], true, "{tests}");
+
+    // Encrypted in place: the files in clear are gone, the checksums follow.
+    assert!(!dir.join(format!("heron-config-{clear}.json")).exists());
+    assert!(!dir.join(format!("heron-database-{clear}.sql.gz")).exists());
+    for name in [&clear, &with_key] {
+        let config = std::fs::read(dir.join(format!("heron-config-{name}.json.age"))).unwrap();
+        assert!(config.starts_with(b"age-encryption.org/v1\n"));
+        assert!(
+            dir.join(format!("heron-database-{name}.sql.gz.age"))
+                .exists()
+        );
+        let checksums =
+            std::fs::read_to_string(dir.join(format!("heron-checksums-{name}.sha256"))).unwrap();
+        assert!(
+            checksums.contains(&format!("  heron-config-{name}.json.age\n")),
+            "{checksums}"
+        );
+        assert!(
+            checksums.contains(&format!("  heron-database-{name}.sql.gz.age\n")),
+            "{checksums}"
+        );
+    }
+    // Nothing Heron keeps holds the secret key.
+    let stored: Vec<String> = sqlx::query_scalar("SELECT CAST(value AS CHAR) FROM settings")
+        .fetch_all(&station.db.pool)
+        .await
+        .unwrap();
+    assert!(stored.iter().all(|value| !value.contains("AGE-SECRET-KEY")));
+    assert!(stored.iter().any(|value| value.contains(&recipient)));
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let bytes = std::fs::read(entry.unwrap().path()).unwrap_or_default();
+        assert!(!String::from_utf8_lossy(&bytes).contains("AGE-SECRET-KEY"));
+    }
+    let backups = admin.get("/backups").await;
+    assert!(
+        backups
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|backup| backup["encrypted"] == true
+                && backup["key"] == "current"
+                && backup["recipient"] == recipient.as_str()),
+        "{backups}"
+    );
+
+    // A restore asks for the key; a wrong one changes nothing.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            &format!("/backups/{with_key}/restore"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().contains("encrypted"),
+        "{body}"
+    );
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            &format!("/backups/{with_key}/restore"),
+            json!({"key": other_key}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        admin.get("/backups").await.as_array().unwrap().len(),
+        2,
+        "nothing taken"
+    );
+    let (status, report) = admin
+        .send(
+            Method::POST,
+            &format!("/backups/{with_key}/restore"),
+            json!({"key": key}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+
+    // An encrypted file uploaded, with its key in the header; kept as it is.
+    let file = admin.get_bytes(&format!("/backups/{clear}/config")).await;
+    let (status, body) = admin
+        .post_bytes("/backups/restore", file.clone(), None)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, report) = admin
+        .post_bytes("/backups/restore", file.clone(), Some(&key))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    let uploaded = admin
+        .get("/backups")
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|backup| backup["kind"] == "uploaded")
+        .cloned()
+        .unwrap();
+    assert_eq!(uploaded["key"], "unknown", "{uploaded}");
+    let name = uploaded["name"].as_str().unwrap();
+    assert_eq!(
+        std::fs::read(dir.join(format!("heron-config-{name}.json.age"))).unwrap(),
+        file
+    );
+
+    // A restore keeps the key, whatever the file says.
+    let plain = crate::backups::decrypt_with(&key, &file);
+    let mut plain: Value = serde_json::from_slice(&plain).unwrap();
+    plain["tables"]["settings"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name": "backup_encryption", "value": {"current": null}}));
+    let (status, report) = admin.send(Method::POST, "/backups/restore", plain).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    let view = admin.get("/backups/key").await;
+    assert_eq!(view["current"]["recipient"], recipient.as_str(), "{view}");
+
+    // Each admin checks the key: a new one at once, then further away.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/users",
+            json!({"username": "night", "password": "correct horse", "role": "admin"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let night = station.signed_in("night").await;
+    assert_eq!(admin.get("/backups/state").await["check_due"], false);
+    assert_eq!(night.get("/backups/state").await["check_due"], true);
+    let (status, _) = night
+        .send(
+            Method::POST,
+            "/backups/key/check",
+            json!({"key": other_key}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        night.get("/backups/state").await["check_due"],
+        true,
+        "a wrong key changes nothing"
+    );
+    let (status, _) = night
+        .send(Method::POST, "/backups/key/later", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        night.get("/backups/state").await["check_due"],
+        false,
+        "asked again tomorrow"
+    );
+    let (status, checked) = night
+        .send(Method::POST, "/backups/key/check", json!({"key": key}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{checked}");
+    let next = checked["next_check_unix_ms"].as_i64().unwrap();
+    let in_a_day = jiff::Timestamp::now().as_millisecond() + 24 * 3600 * 1000;
+    assert!((next - in_a_day).abs() < 60_000, "{checked}");
+    let tests = tested(&night).await;
+    assert_eq!(tests["last"]["by"], "night", "{tests}");
+    assert_eq!(tests["last"]["ok"], true, "{tests}");
+
+    // A file changed in the folder: damaged at the next check, and its test fails.
+    let dump = dir.join(format!("heron-database-{clear}.sql.gz.age"));
+    let mut bytes = std::fs::read(&dump).unwrap();
+    let middle = bytes.len() / 2;
+    bytes[middle] ^= 1;
+    std::fs::write(&dump, bytes).unwrap();
+    station.state.backups.verify_all().await.unwrap();
+    let damaged = admin
+        .get("/backups")
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|backup| backup["name"] == clear.as_str())
+        .cloned()
+        .unwrap();
+    assert!(
+        damaged["damaged"].as_str().unwrap().contains("changed"),
+        "{damaged}"
+    );
+    assert_eq!(admin.get("/backups/state").await["damaged"], 1);
+    let (status, body) = admin
+        .send(Method::POST, &format!("/backups/{clear}/test"), json!({}))
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "the key is needed: {body}"
+    );
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            &format!("/backups/{clear}/test"),
+            json!({"key": key}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let tests = tested(&admin).await;
+    assert_eq!(tests["last"]["ok"], false, "{tests}");
+    assert!(
+        tests["last"]["error"]
+            .as_str()
+            .unwrap()
+            .contains(".sql.gz.age"),
+        "{tests}"
+    );
+    assert_eq!(admin.get("/backups/state").await["test_due"], true);
+
+    // A new key: the backup taken with it opens with it, the older ones
+    // need the earlier key, even within the same second.
+    let (status, second) = admin.send(Method::POST, "/backups/key", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{second}");
+    let (status, confirmed) = admin
+        .send(
+            Method::POST,
+            "/backups/key/confirm",
+            json!({"key": second["key"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{confirmed}");
+    assert_eq!(confirmed["encrypted"], json!([]), "nothing left in clear");
+    let newest = confirmed["backup"].as_str().unwrap().to_owned();
+    let backups = admin.get("/backups").await;
+    for backup in backups.as_array().unwrap() {
+        let (expected, public) = if backup["name"] == newest.as_str() {
+            ("current", second["recipient"].clone())
+        } else if backup["kind"] == "uploaded" {
+            ("unknown", Value::Null)
+        } else {
+            ("earlier", json!(recipient))
+        };
+        assert_eq!(backup["key"], expected, "{backup}");
+        assert_eq!(backup["recipient"], public, "{backup}");
+    }
+    tested(&admin).await;
+
+    // Turned off: new backups in clear, the others stay encrypted.
+    let (status, view) = admin.send(Method::DELETE, "/backups/key", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["state"], "off");
+    assert_eq!(view["previous"][0]["recipient"], recipient.as_str());
+    assert_eq!(view["previous"][1]["recipient"], second["recipient"]);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    assert_eq!(backup["encrypted"], false);
+    let backups = admin.get("/backups").await;
+    let earlier = backups
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|backup| backup["name"] == with_key.as_str())
+        .cloned()
+        .unwrap();
+    assert_eq!(earlier["key"], "earlier", "{earlier}");
+    station.stop().await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn tracks_have_their_lowest_and_highest_level() {
     let Some(station) = Station::start().await else {
@@ -6214,5 +6913,14 @@ async fn tracks_have_their_lowest_and_highest_level() {
         .collect();
     assert_eq!(order[..2], [t[1], t[0]]);
     assert_eq!(page["items"][4]["level_min_db"], Value::Null);
+    // The file changed: its analysis is gone, and so are its levels.
+    sqlx::query("DELETE FROM track_analysis WHERE track_id = ?")
+        .bind(t[1])
+        .execute(pool)
+        .await
+        .unwrap();
+    let detail = admin.get(&format!("/tracks/{}", t[1])).await;
+    assert_eq!(detail["level_min_db"], Value::Null, "{detail}");
+    assert_eq!(detail["level_max_db"], Value::Null);
     station.stop().await;
 }

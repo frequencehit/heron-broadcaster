@@ -3,6 +3,68 @@
 // Generated from openapi.json by `npm run generate-api`. Do not edit.
 
 export interface paths {
+    "/api/v1/about": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The build, and for admins the machine, the dependencies and the
+         *     configuration.
+         */
+        get: operations["about"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agc-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every AGC preset, by name. */
+        get: operations["list_agc_presets"];
+        put?: never;
+        /** Saves a chain's blocks as a new preset. Operators and admins. */
+        post: operations["create_agc_preset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agc-presets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Renames a preset or saves new blocks in it. The chains it was loaded
+         *     into keep their settings. Operators and admins.
+         */
+        put: operations["update_agc_preset"];
+        post?: never;
+        /**
+         * Deletes a preset. The chains it was loaded into keep their settings.
+         *     Operators and admins.
+         */
+        delete: operations["delete_agc_preset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/artist-names/{id}": {
         parameters: {
             query?: never;
@@ -256,6 +318,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backups/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The backup key: its public key, when and by whom it was set, the
+         *     earlier ones. Never the secret key. Admins only.
+         */
+        get: operations["get_key"];
+        put?: never;
+        /**
+         * A new key, waiting to be typed back (`/backups/key/confirm`): generated
+         *     and returned this once, or the admin's own public key. Admins only.
+         */
+        post: operations["new_key"];
+        /**
+         * Drops the key waiting to be typed back; with none, turns encryption
+         *     off: new backups are written in clear. Admins only.
+         */
+        delete: operations["drop_key"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/key/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Checks the key an admin types back: their next check further away, and
+         *     the newest backup encrypted with it tested in the background. A wrong
+         *     key changes nothing. Admins only.
+         */
+        post: operations["check_key"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/key/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turns encryption on with the key waiting, once typed back: the backups
+         *     in clear are encrypted, a backup is taken and tested. Admins only.
+         */
+        post: operations["confirm_key"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/key/later": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Asks this admin for the key again the next day. Admins only. */
+        post: operations["later"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backups/restore": {
         parameters: {
             query?: never;
@@ -267,9 +415,50 @@ export interface paths {
         put?: never;
         /**
          * Restores an uploaded configuration file (the request's body), kept as an
-         *     `uploaded` backup. Admins only.
+         *     `uploaded` backup. An encrypted one needs its key, in the
+         *     `X-Heron-Backup-Key` header. Admins only.
          */
         post: operations["upload_and_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the banners and the key check need, for the admin asking. Admins
+         *     only.
+         */
+        get: operations["get_state"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The last backup test, the last one that passed, and the one under way.
+         *     Admins only.
+         */
+        get: operations["get_tests"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -300,7 +489,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Downloads a backup's configuration file. Admins only: it holds secrets. */
+        /**
+         * Downloads a backup's configuration file, encrypted when it is. Admins
+         *     only: it holds secrets.
+         */
         get: operations["download_config"];
         put?: never;
         post?: never;
@@ -317,7 +509,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Downloads a backup's database dump. Admins only: it holds secrets. */
+        /**
+         * Downloads a backup's database dump, encrypted when it is. Admins only:
+         *     it holds secrets.
+         */
         get: operations["download_database"];
         put?: never;
         post?: never;
@@ -341,6 +536,27 @@ export interface paths {
          *     configuration. Everyone signs in again. Admins only.
          */
         post: operations["restore_backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/{name}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tests a backup in the background: read back to its end with its key
+         *     when it is encrypted, nothing restored. Its result is in
+         *     `/backups/tests`. Admins only.
+         */
+        post: operations["test_backup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1646,7 +1862,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The selection log, most recent first. */
+        /** The rotation log, most recent first. */
         get: operations["list_picks"];
         put?: never;
         post?: never;
@@ -1729,6 +1945,28 @@ export interface paths {
         post?: never;
         /** Deletes a schedule other than the default one. Operators and admins. */
         delete: operations["delete_schedule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/agc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's AGC chain. */
+        get: operations["get_agc"];
+        /**
+         * Replaces the station's AGC chain (missing fields take the defaults) and
+         *     pushes it to the engine at once, where it glides in. Every open live
+         *     WebSocket gets an `agc` message. Operators and admins.
+         */
+        put: operations["put_agc"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2673,7 +2911,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The selection log, most recent first. */
+        /** The rotation log, most recent first. */
         get: operations["list_picks_on_station"];
         put?: never;
         post?: never;
@@ -2756,6 +2994,28 @@ export interface paths {
         post?: never;
         /** Deletes a schedule other than the default one. Operators and admins. */
         delete: operations["delete_schedule_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/settings/agc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's AGC chain. */
+        get: operations["get_agc_on_station"];
+        /**
+         * Replaces the station's AGC chain (missing fields take the defaults) and
+         *     pushes it to the engine at once, where it glides in. Every open live
+         *     WebSocket gets an `agc` message. Operators and admins.
+         */
+        put: operations["put_agc_on_station"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3583,6 +3843,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        About: {
+            /** @description Admins only. */
+            configuration?: components["schemas"]["ServiceConfig"][] | null;
+            dependencies?: components["schemas"]["Dependencies"] | null;
+            runtime?: components["schemas"]["Runtime"] | null;
+            services: components["schemas"]["ServiceInfo"][];
+        };
         /** @description What a station keeps apart from the other stations' plays and queues. */
         AcrossStations: {
             /**
@@ -3633,6 +3900,309 @@ export interface components {
              * @default 0
              */
             track_min: number;
+        };
+        /** @description The AGC chain's meters. Gain reductions are in dB, 0 or less. */
+        AgcLevels: {
+            /**
+             * Format: float
+             * @description The gated AGC's gain, while it is on.
+             */
+            agc_gain_db?: number | null;
+            /** @description The dual-band processor's low and high bands. */
+            dual_band_db: number[];
+            /** Format: float */
+            final_stage_db: number;
+            /** @description Each band of the 5-band processor, from the lowest. */
+            five_band_db: number[];
+            /** @description The master bus before the chain (`master` is after it). */
+            input: components["schemas"]["ChannelLevels"];
+        };
+        AgcPreset: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            settings: components["schemas"]["AgcPresetSettings"];
+        };
+        AgcPresetInput: {
+            /** @description Unique, ignoring case. */
+            name: string;
+            /** @description Missing fields take the defaults. */
+            settings: components["schemas"]["AgcPresetSettings"];
+        };
+        /**
+         * @description The blocks of an AGC chain, as a preset keeps them: the chain's
+         *     settings without `bypass_all`.
+         */
+        AgcPresetSettings: {
+            /**
+             * @default {
+             *       "enabled": false,
+             *       "frequency_hz": 100,
+             *       "gain_db": 0,
+             *       "shape": "shelf"
+             *     }
+             */
+            bass_eq: components["schemas"]["BassEqSettings"];
+            /**
+             * @default {
+             *       "bands": [
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         }
+             *       ],
+             *       "crossover_hz": 200,
+             *       "enabled": false,
+             *       "link": false
+             *     }
+             */
+            dual_band: components["schemas"]["DualBandSettings"];
+            /**
+             * @default {
+             *       "ceiling_db": -1,
+             *       "enabled": true,
+             *       "mode": "limiter",
+             *       "release_ms": 100
+             *     }
+             */
+            final_stage: components["schemas"]["FinalStageSettings"];
+            /**
+             * @default {
+             *       "bands": [
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         }
+             *       ],
+             *       "crossovers_hz": [
+             *         100,
+             *         400,
+             *         1600,
+             *         6400
+             *       ],
+             *       "enabled": false,
+             *       "links": [
+             *         false,
+             *         false,
+             *         false,
+             *         false
+             *       ],
+             *       "overdrive_db": 0
+             *     }
+             */
+            five_band: components["schemas"]["FiveBandSettings"];
+            /**
+             * @default {
+             *       "enabled": false,
+             *       "gate_lufs": -45,
+             *       "max_gain_db": 6
+             *     }
+             */
+            gated_agc: components["schemas"]["GatedAgcSettings"];
+            /**
+             * @default {
+             *       "depth": 50,
+             *       "enabled": false,
+             *       "level": 50,
+             *       "threshold_db": -40
+             *     }
+             */
+            stereo_expander: components["schemas"]["StereoExpanderSettings"];
+        };
+        /**
+         * @description The whole chain. Bypassed by default; turned on as it is, it is the final
+         *     limiter alone.
+         */
+        AgcSettings: {
+            /**
+             * @default {
+             *       "enabled": false,
+             *       "frequency_hz": 100,
+             *       "gain_db": 0,
+             *       "shape": "shelf"
+             *     }
+             */
+            bass_eq: components["schemas"]["BassEqSettings"];
+            /**
+             * @description Skips the chain, whatever the blocks' switches say.
+             * @default true
+             */
+            bypass_all: boolean;
+            /**
+             * @default {
+             *       "bands": [
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         }
+             *       ],
+             *       "crossover_hz": 200,
+             *       "enabled": false,
+             *       "link": false
+             *     }
+             */
+            dual_band: components["schemas"]["DualBandSettings"];
+            /**
+             * @default {
+             *       "ceiling_db": -1,
+             *       "enabled": true,
+             *       "mode": "limiter",
+             *       "release_ms": 100
+             *     }
+             */
+            final_stage: components["schemas"]["FinalStageSettings"];
+            /**
+             * @default {
+             *       "bands": [
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         },
+             *         {
+             *           "attack_ms": 20,
+             *           "gain_db": 0,
+             *           "hold_ms": 0,
+             *           "mode": "compressor",
+             *           "ratio": 3,
+             *           "release_ms": 250,
+             *           "threshold_db": -20
+             *         }
+             *       ],
+             *       "crossovers_hz": [
+             *         100,
+             *         400,
+             *         1600,
+             *         6400
+             *       ],
+             *       "enabled": false,
+             *       "links": [
+             *         false,
+             *         false,
+             *         false,
+             *         false
+             *       ],
+             *       "overdrive_db": 0
+             *     }
+             */
+            five_band: components["schemas"]["FiveBandSettings"];
+            /**
+             * @default {
+             *       "enabled": false,
+             *       "gate_lufs": -45,
+             *       "max_gain_db": 6
+             *     }
+             */
+            gated_agc: components["schemas"]["GatedAgcSettings"];
+            /**
+             * @default {
+             *       "depth": 50,
+             *       "enabled": false,
+             *       "level": 50,
+             *       "threshold_db": -40
+             *     }
+             */
+            stereo_expander: components["schemas"]["StereoExpanderSettings"];
         };
         AnalysisQueueStatus: {
             /** Format: int64 */
@@ -3755,6 +4325,11 @@ export interface components {
             /** @description `names` or `musicbrainz`. */
             source: string;
         };
+        /**
+         * @description Which key opens an encrypted backup.
+         * @enum {string}
+         */
+        BackupKey: "current" | "earlier" | "unknown";
         /** @description The `backups` settings. */
         BackupSettings: {
             /**
@@ -3779,6 +4354,16 @@ export interface components {
              */
             time: string;
         };
+        /** @description What the banners say about backups, for the admin asking. */
+        BackupState: {
+            /** @description This admin's key check is due. */
+            check_due: boolean;
+            /** @description Backups that fail their checksums. */
+            damaged: number;
+            encryption: components["schemas"]["KeyState"];
+            /** @description The last test failed, or none passed for 30 days. */
+            test_due: boolean;
+        };
         /** @description A backup in the folder. */
         BackupView: {
             /**
@@ -3788,6 +4373,11 @@ export interface components {
             config_size: number;
             /** Format: int64 */
             created_at_unix_ms: number;
+            /**
+             * @description What fails its checksums, at the last check: a file missing, cut
+             *     short or changed.
+             */
+            damaged?: string | null;
             /** @description Why the dump failed. */
             database_error?: string | null;
             /**
@@ -3795,10 +4385,82 @@ export interface components {
              * @description Bytes; missing without a dump.
              */
             database_size?: number | null;
+            /** @description Its files are encrypted. */
+            encrypted: boolean;
+            key?: components["schemas"]["BackupKey"] | null;
             kind: components["schemas"]["Kind"];
             /** @description Its time and kind: `2026-11-03T03-30-00Z-daily`. */
             name: string;
+            /**
+             * @description The public key of that key, `age1…`, when it is known: the key typed
+             *     for it must match.
+             */
+            recipient?: string | null;
         };
+        /** @enum {string} */
+        BandMode: "compressor" | "expander" | "limiter";
+        /** @description One band of the 5-band or the dual-band processor. */
+        BandSettings: {
+            /**
+             * Format: float
+             * @description 0.5 to 200 ms.
+             * @default 20
+             */
+            attack_ms: number;
+            /**
+             * Format: float
+             * @description After the dynamics, −12 to +12 dB.
+             * @default 0
+             */
+            gain_db: number;
+            /**
+             * Format: float
+             * @description 0 to 500 ms.
+             * @default 0
+             */
+            hold_ms: number;
+            /** @default compressor */
+            mode: components["schemas"]["BandMode"];
+            /**
+             * Format: float
+             * @description 1 to 20 (ignored by the limiter).
+             * @default 3
+             */
+            ratio: number;
+            /**
+             * Format: float
+             * @description 10 to 2,000 ms.
+             * @default 250
+             */
+            release_ms: number;
+            /**
+             * Format: float
+             * @description −60 to 0 dBFS.
+             * @default -20
+             */
+            threshold_db: number;
+        };
+        /** @description The bass EQ: one shelf or peak. */
+        BassEqSettings: {
+            /** @default false */
+            enabled: boolean;
+            /**
+             * Format: float
+             * @description 40 to 250 Hz.
+             * @default 100
+             */
+            frequency_hz: number;
+            /**
+             * Format: float
+             * @description −12 to +12 dB.
+             * @default 0
+             */
+            gain_db: number;
+            /** @default shelf */
+            shape: components["schemas"]["BassShape"];
+        };
+        /** @enum {string} */
+        BassShape: "shelf" | "peak";
         Batch: {
             /** Format: int64 */
             created_at_unix_ms: number;
@@ -4008,6 +4670,15 @@ export interface components {
             /** Format: float */
             rms_right: number;
         };
+        Checked: {
+            /**
+             * Format: int64
+             * @description When this admin's next check is due.
+             */
+            next_check_unix_ms: number;
+            /** @description The backup being tested with the key. */
+            testing?: string | null;
+        };
         ChoiceRequest: {
             /** @enum {string} */
             kind: "release";
@@ -4078,6 +4749,39 @@ export interface components {
              */
             scheduled_hours: number;
             slots: components["schemas"]["ClockSlot"][];
+        };
+        /** @description A configuration value worth showing. */
+        ConfigItem: components["schemas"]["ConfigValue"] & {
+            /** @description The setting, as its environment variable. */
+            name: string;
+        };
+        ConfigValue: {
+            /** @enum {string} */
+            kind: "text";
+            /** @description A value that is not secret. */
+            value: string;
+        } | {
+            /** @enum {string} */
+            kind: "flag";
+            /** @description A feature that is on or off. */
+            value: boolean;
+        } | {
+            /** @enum {string} */
+            kind: "secret";
+            /** @description A secret: only whether it is set. */
+            value: boolean;
+        };
+        Confirmed: {
+            /** @description The backup taken with the new key. */
+            backup?: string | null;
+            /** @description Backups that were in clear, now encrypted. */
+            encrypted: string[];
+            key: components["schemas"]["KeyView"];
+            /**
+             * @description Backups left in clear: their files fail their checksums, or could
+             *     not be written.
+             */
+            left_in_clear: string[];
         };
         CreatedToken: {
             /** Format: int64 */
@@ -4166,6 +4870,15 @@ export interface components {
              */
             skip_fade_ms: number;
         };
+        Database: {
+            /**
+             * Format: int64
+             * @description Database migrations applied.
+             */
+            migrations?: number | null;
+            /** @description `SELECT VERSION()`, e.g. `12.3.1-MariaDB`. */
+            version?: string | null;
+        };
         /** @description One deck EQ. Flat and bypassed by default. */
         DeckEq: {
             /** @default false */
@@ -4250,6 +4963,14 @@ export interface components {
             /** Format: int64 */
             webhook_id: number;
         };
+        Dependencies: {
+            database: components["schemas"]["Database"];
+            /**
+             * @description The first line of `ffmpeg -version` of an engine with the external
+             *     encoder; missing when the built-in encoders are used.
+             */
+            ffmpeg?: string | null;
+        };
         /** @description What a MusicBrainz details lookup did. */
         DetailsReport: {
             /**
@@ -4281,6 +5002,51 @@ export interface components {
              * @description Files removed from the buffer zone.
              */
             discarded: number;
+        };
+        /** @description The dual-band processor. */
+        DualBandSettings: {
+            /**
+             * @description Low, then high.
+             * @default [
+             *       {
+             *         "attack_ms": 20,
+             *         "gain_db": 0,
+             *         "hold_ms": 0,
+             *         "mode": "compressor",
+             *         "ratio": 3,
+             *         "release_ms": 250,
+             *         "threshold_db": -20
+             *       },
+             *       {
+             *         "attack_ms": 20,
+             *         "gain_db": 0,
+             *         "hold_ms": 0,
+             *         "mode": "compressor",
+             *         "ratio": 3,
+             *         "release_ms": 250,
+             *         "threshold_db": -20
+             *       }
+             *     ]
+             */
+            bands: components["schemas"]["BandSettings"][];
+            /**
+             * Format: float
+             * @description 60 to 2,000 Hz.
+             * @default 200
+             */
+            crossover_hz: number;
+            /** @default false */
+            enabled: boolean;
+            /** @default false */
+            link: boolean;
+        };
+        EarlierKey: {
+            recipient: string;
+            set_by: string;
+            /** Format: int64 */
+            since_unix_ms: number;
+            /** Format: int64 */
+            until_unix_ms: number;
         };
         /** @description How the engine will play the track: analysis and overrides combined. */
         EffectivePlayout: {
@@ -4433,7 +5199,7 @@ export interface components {
             /** @description For people. */
             message: string;
         };
-        /** @description Why a track was picked: the selection log. */
+        /** @description Why a track was picked: the rotation log. */
         Explanation: {
             /** @description Windows across stations applied at this step. */
             across?: components["schemas"]["AcrossWindows"];
@@ -4525,18 +5291,139 @@ export interface components {
         FileSelection: {
             file_ids: number[];
         };
+        /** @enum {string} */
+        FinalMode: "limiter" | "clipper";
+        /** @description The final stage. */
+        FinalStageSettings: {
+            /**
+             * Format: float
+             * @description −6 to 0 dBFS.
+             * @default -1
+             */
+            ceiling_db: number;
+            /** @default true */
+            enabled: boolean;
+            /** @default limiter */
+            mode: components["schemas"]["FinalMode"];
+            /**
+             * Format: float
+             * @description The limiter's, 10 to 1,000 ms.
+             * @default 100
+             */
+            release_ms: number;
+        };
+        /** @description The 5-band processor. */
+        FiveBandSettings: {
+            /**
+             * @default [
+             *       {
+             *         "attack_ms": 20,
+             *         "gain_db": 0,
+             *         "hold_ms": 0,
+             *         "mode": "compressor",
+             *         "ratio": 3,
+             *         "release_ms": 250,
+             *         "threshold_db": -20
+             *       },
+             *       {
+             *         "attack_ms": 20,
+             *         "gain_db": 0,
+             *         "hold_ms": 0,
+             *         "mode": "compressor",
+             *         "ratio": 3,
+             *         "release_ms": 250,
+             *         "threshold_db": -20
+             *       },
+             *       {
+             *         "attack_ms": 20,
+             *         "gain_db": 0,
+             *         "hold_ms": 0,
+             *         "mode": "compressor",
+             *         "ratio": 3,
+             *         "release_ms": 250,
+             *         "threshold_db": -20
+             *       },
+             *       {
+             *         "attack_ms": 20,
+             *         "gain_db": 0,
+             *         "hold_ms": 0,
+             *         "mode": "compressor",
+             *         "ratio": 3,
+             *         "release_ms": 250,
+             *         "threshold_db": -20
+             *       },
+             *       {
+             *         "attack_ms": 20,
+             *         "gain_db": 0,
+             *         "hold_ms": 0,
+             *         "mode": "compressor",
+             *         "ratio": 3,
+             *         "release_ms": 250,
+             *         "threshold_db": -20
+             *       }
+             *     ]
+             */
+            bands: components["schemas"]["BandSettings"][];
+            /**
+             * @description Rising, at least a third of an octave apart, 40 to 16,000 Hz.
+             * @default [
+             *       100,
+             *       400,
+             *       1600,
+             *       6400
+             *     ]
+             */
+            crossovers_hz: number[];
+            /** @default false */
+            enabled: boolean;
+            /**
+             * @description `links[i]` links band `i` and band `i + 1`.
+             * @default [
+             *       false,
+             *       false,
+             *       false,
+             *       false
+             *     ]
+             */
+            links: boolean[];
+            /**
+             * Format: float
+             * @description 0 to 12 dB.
+             * @default 0
+             */
+            overdrive_db: number;
+        };
         /** @description What keeps backups from being written. */
         FolderProblem: {
-            /** @description The system's error (`Permission denied`…). */
+            /** @description The system's error (`Permission denied`, `No space left on device`…). */
             error: string;
             /** Format: int32 */
             gid: number;
+            /** @description The folder is not the API's user's: `chown` fixes it. */
+            permission_denied: boolean;
             /**
              * Format: int32
              * @description The user and group the API runs as: the backup folder must be
              *     theirs.
              */
             uid: number;
+        };
+        /** @description The gated AGC: a slow gain to the station's loudness target. */
+        GatedAgcSettings: {
+            /** @default false */
+            enabled: boolean;
+            /**
+             * Format: float
+             * @description Under this momentary loudness (LUFS) the gain holds: −70 to −20.
+             * @default -45
+             */
+            gate_lufs: number;
+            /**
+             * Format: float
+             * @description The gain stays within ± this, in dB: 0 to 18.
+             * @default 6
+             */
+            max_gain_db: number;
         };
         /** @enum {string} */
         GroupSource: "upload" | "incoming";
@@ -4911,6 +5798,28 @@ export interface components {
              */
             intro_ms?: number | null;
         };
+        KeyRecord: {
+            /** @description The public key, `age1…`. */
+            recipient: string;
+            /** @description Who set it. */
+            set_by: string;
+            /** Format: int64 */
+            since_unix_ms: number;
+        };
+        KeyRequest: {
+            /** @description The secret key, `AGE-SECRET-KEY-1…`, or the contents of its file. */
+            key: string;
+        };
+        /** @enum {string} */
+        KeyState: "off" | "pending" | "on";
+        KeyView: {
+            current?: components["schemas"]["KeyRecord"] | null;
+            /** @description The public key waiting to be typed back. */
+            pending_recipient?: string | null;
+            /** @description The keys used before, oldest first. */
+            previous: components["schemas"]["EarlierKey"][];
+            state: components["schemas"]["KeyState"];
+        };
         /**
          * @description Why a backup was taken.
          * @enum {string}
@@ -5003,9 +5912,11 @@ export interface components {
             parts: components["schemas"]["Placed"][];
         };
         Levels: {
+            agc?: components["schemas"]["AgcLevels"] | null;
             deck_a: components["schemas"]["ChannelLevels"];
             deck_b: components["schemas"]["ChannelLevels"];
             fx: components["schemas"]["ChannelLevels"];
+            /** @description After the AGC chain: what the listeners hear. */
             master: components["schemas"]["ChannelLevels"];
         };
         /** @description Changes to the library settings: missing fields are kept. */
@@ -5153,7 +6064,14 @@ export interface components {
             settings: components["schemas"]["EqSettings"];
             /** @enum {string} */
             type: "eq";
-        };
+        } | {
+            settings: components["schemas"]["AgcSettings"];
+            /** @enum {string} */
+            type: "agc";
+        } | (components["schemas"]["SystemLoad"] & {
+            /** @enum {string} */
+            type: "system";
+        });
         LoginRequest: {
             password: string;
             username: string;
@@ -5412,6 +6330,20 @@ export interface components {
         NewGroup: {
             /** @description What the files are, for people (`Album 2024`, the dropped folder). */
             name: string;
+        };
+        NewKey: {
+            /**
+             * @description The secret key, `AGE-SECRET-KEY-1…`: shown this once, never stored.
+             *     Missing for the admin's own key.
+             */
+            key?: string | null;
+            /** @description `heron-backup-key.txt`, an age identity file, with the secret key. */
+            key_file?: string | null;
+            recipient: string;
+        };
+        NewKeyRequest: {
+            /** @description The admin's own public key, `age1…`; left out: Heron generates one. */
+            recipient?: string | null;
         };
         NewSchedule: {
             /**
@@ -6368,6 +7300,22 @@ export interface components {
             /** @enum {string} */
             kind: "not_after";
         };
+        Runtime: {
+            clock: components["schemas"]["ClockStatus"];
+            /**
+             * Format: int32
+             * @description Logical cores of the machine the API runs on.
+             */
+            cpu_cores: number;
+            hosts: components["schemas"]["ServiceHost"][];
+            /**
+             * Format: int64
+             * @description Its memory, in MiB.
+             */
+            memory_mib: number;
+            /** @description The `TZ` of the API's environment. */
+            timezone?: string | null;
+        };
         /** @description Outcome of one scan, logged and served by `/api/v1/library/status`. */
         ScanReport: {
             /** Format: int64 */
@@ -6508,6 +7456,38 @@ export interface components {
          * @enum {string}
          */
         SeparationRule: "track" | "title" | "artist" | "album";
+        ServiceConfig: {
+            instance?: string | null;
+            items: components["schemas"]["ConfigItem"][];
+            service: string;
+        };
+        /** @description The machine a service runs on (admins). */
+        ServiceHost: {
+            arch?: string | null;
+            container: boolean;
+            instance?: string | null;
+            kernel?: string | null;
+            os?: string | null;
+            service: string;
+            /**
+             * Format: int64
+             * @description How long it has been running, in seconds.
+             */
+            uptime_seconds?: number | null;
+        };
+        /** @description A Heron service and whether it runs. */
+        ServiceInfo: {
+            build_date?: string | null;
+            /** @description The station's code for an engine, the host name for the others. */
+            instance?: string | null;
+            revision?: string | null;
+            /** @description Answering now: the engine reachable, a worker's heartbeat recent. */
+            running: boolean;
+            /** @description `heron-api`, `heron-engine`, `heron-analyzer` or `heron-librarian`. */
+            service: string;
+            /** @description Missing when the service was never seen or does not say. */
+            version?: string | null;
+        };
         /**
          * @description The engine's silence watchdog: after this long of silence on the master
          *     bus (below −50 dBFS), it skips to the next track, then to the fallback
@@ -6874,6 +7854,29 @@ export interface components {
             service: string;
             version: string;
         };
+        /** @description The stereo expander: widens programmes close to mono. */
+        StereoExpanderSettings: {
+            /**
+             * Format: float
+             * @description How much of the missing width is made up, 0 to 100 %.
+             * @default 50
+             */
+            depth: number;
+            /** @default false */
+            enabled: boolean;
+            /**
+             * Format: float
+             * @description Most boost of the side, 0 to 100 % of 6 dB.
+             * @default 50
+             */
+            level: number;
+            /**
+             * Format: float
+             * @description Programme level (dBFS) under which nothing is boosted: −60 to 0.
+             * @default -40
+             */
+            threshold_db: number;
+        };
         SuggestionReview: {
             /** @description `true` marks the artists similar; `false` dismisses the suggestion. */
             accept: boolean;
@@ -6886,6 +7889,26 @@ export interface components {
             checked_at_unix_ms?: number | null;
             error?: string | null;
             state: components["schemas"]["SyncState"];
+        };
+        /** @description What the status bar shows of the machine. */
+        SystemLoad: {
+            /**
+             * Format: int32
+             * @description Logical cores, to read the load average against.
+             */
+            cores: number;
+            /**
+             * Format: float
+             * @description CPU in use, 0 to 100, over all cores.
+             */
+            cpu_percent: number;
+            /** @description The load average over 1, 5 and 15 minutes. */
+            load_avg: number[];
+            /**
+             * Format: float
+             * @description Memory in use (not counting what the system can give back), 0 to 100.
+             */
+            mem_percent: number;
         };
         TagEdit: {
             /**
@@ -7001,6 +8024,27 @@ export interface components {
         };
         /** @enum {string} */
         TaskStatus: "pending" | "running" | "done" | "failed";
+        /** @description A backup read back to its end, nothing restored. */
+        TestRecord: {
+            /** Format: int64 */
+            at_unix_ms: number;
+            /** @description Who gave the key; none: Heron, for a backup in clear. */
+            by?: string | null;
+            /** @description What failed, and in which file. */
+            error?: string | null;
+            name: string;
+            ok: boolean;
+        };
+        Testing: {
+            /** @description The backup being tested. */
+            testing: string;
+        };
+        TestsView: {
+            last?: components["schemas"]["TestRecord"] | null;
+            last_ok?: components["schemas"]["TestRecord"] | null;
+            /** @description The backup being tested. */
+            testing?: string | null;
+        };
         /**
          * @description The web UI's theme.
          * @enum {string}
@@ -7079,6 +8123,11 @@ export interface components {
             entry: components["schemas"]["QueueEntry"];
             /** @enum {string} */
             kind: "started";
+            /**
+             * @description The track on air going on in a restarted engine, or one taking
+             *     over from another: the same play, not a new one.
+             */
+            resumed: boolean;
         } | {
             /** Format: int64 */
             at_unix_ms: number;
@@ -7637,6 +8686,11 @@ export interface components {
              */
             track_min: number;
         };
+        /** @description The key of an encrypted backup. */
+        WithKey: {
+            /** @description The secret key, `AGE-SECRET-KEY-1…`, or the contents of its file. */
+            key?: string | null;
+        };
         /** Format: int64 */
         u64: number;
     };
@@ -7648,6 +8702,151 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    about: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["About"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_agc_presets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgcPreset"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_agc_preset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgcPresetInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgcPreset"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_agc_preset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgcPresetInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgcPreset"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_agc_preset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     move_name: {
         parameters: {
             query?: never;
@@ -8156,17 +9355,192 @@ export interface operations {
             };
         };
     };
-    upload_and_restore: {
+    get_key: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description A configuration file */
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    new_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         requestBody: {
             content: {
-                "application/json": string;
+                "application/json": components["schemas"]["NewKeyRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewKey"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    drop_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Checked"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirm_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Confirmed"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    later: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_and_restore: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The key of an encrypted file */
+                "X-Heron-Backup-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A configuration file, `.json` or `.json.age` */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
             };
         };
         responses: {
@@ -8176,6 +9550,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RestoreReport"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupState"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_tests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestsView"];
                 };
             };
             "4XX": {
@@ -8282,7 +9710,12 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description The key of an encrypted backup */
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WithKey"] | null;
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -8290,6 +9723,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RestoreReport"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    test_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** @description The key of an encrypted backup */
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WithKey"] | null;
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Testing"];
                 };
             };
             "4XX": {
@@ -11448,6 +12915,64 @@ export interface operations {
             };
         };
     };
+    get_agc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgcSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_agc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgcSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgcSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_analysis: {
         parameters: {
             query?: never;
@@ -14037,6 +15562,70 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_agc_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgcSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_agc_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgcSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgcSettings"];
+                };
             };
             "4XX": {
                 headers: {

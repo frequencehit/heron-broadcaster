@@ -5,7 +5,7 @@
 //! - Builds the tracks the engine plays from the database: path, tags, cue
 //!   points and crossfade point from the analysis, per-track overrides.
 //! - Keeps the queue from running dry (`queue.autofill`) with the tracks
-//!   rotation picks (`heron-rotation`), each recorded in the selection log.
+//!   rotation picks (`heron-rotation`), each recorded in the rotation log.
 //! - Follows the library: queued tracks whose file the librarian moved, or
 //!   whose cue points were changed, are updated; tracks whose file
 //!   disappeared are taken out of the queue.
