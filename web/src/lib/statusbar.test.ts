@@ -22,7 +22,14 @@ describe("summarizeDeck", () => {
       symbol: "▶",
       text: "Jamiroquai – Space Cowboy 2:31",
       onAir: true,
+      progress: 151_000 / 240_000,
     });
+  });
+
+  it("keeps the progress between 0 and 1, and has none without a length", () => {
+    expect(summarizeDeck("A", deck(), false, 300_000).progress).toBe(1);
+    expect(summarizeDeck("A", deck(), false, -5).progress).toBe(0);
+    expect(summarizeDeck("A", deck({ length_ms: 0 }), false, null).progress).toBeNull();
   });
 
   it("moves on from the position it is given", () => {
@@ -35,7 +42,7 @@ describe("summarizeDeck", () => {
   });
 
   it("is empty without a track, or when the player does not list the deck", () => {
-    const empty = { letter: "B", status: "empty", symbol: "—", text: "", onAir: false };
+    const empty = { letter: "B", status: "empty", symbol: "—", text: "", onAir: false, progress: null };
     expect(summarizeDeck("B", deck({ entry: null }), false, null)).toEqual(empty);
     expect(summarizeDeck("B", undefined, false, null)).toEqual(empty);
   });
