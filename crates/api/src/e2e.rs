@@ -7469,13 +7469,26 @@ async fn the_same_daypart_on_the_following_days_is_set_per_category() {
             .await;
         assert_eq!(status, StatusCode::OK);
     }
-    // Two days of the clock: a handful of tracks, so the rule holds them
-    // back the second day, and the audit finds nothing.
+    // Every track played a day ago, in the daypart of now: the history
+    // reaches back that far, and the first pick finds them all held back,
+    // until the rule is dropped (halved to 1 day, it still holds).
+    for track in &station.tracks {
+        sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, played_ms,
+                                       deck, source)
+             VALUES (1, ?, 'x', NOW(6) - INTERVAL 1 DAY, NOW(6) - INTERVAL 1 DAY + INTERVAL 3 SECOND,
+                     3000, 'a', 'rotation')",
+        )
+        .bind(track)
+        .execute(&station.db.pool)
+        .await
+        .unwrap();
+    }
     let (status, report) = admin
         .send(
             Method::POST,
             "/rotation/simulate",
-            json!({"hours": 48, "seed": 4, "clock_id": clock["id"]}),
+            json!({"hours": 1, "seed": 4, "clock_id": clock["id"]}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{report}");
@@ -7485,16 +7498,19 @@ async fn the_same_daypart_on_the_following_days_is_set_per_category() {
         "{}",
         simulation["violations"]
     );
-    let picks = simulation["picks"].as_array().unwrap();
-    for pick in picks {
-        assert_eq!(pick["explanation"]["daypart"]["days"], 2, "{pick}");
-    }
-    assert!(
-        picks
-            .iter()
-            .any(|pick| pick["explanation"]["blocked"]["daypart_days"].as_u64() > Some(0)),
-        "nothing held back by the same daypart"
+    let first = &simulation["picks"][0]["explanation"];
+    assert_eq!(first["daypart"]["days"], 2, "{first}");
+    // The others by the track separation: what the station has just
+    // played or queued.
+    let blocked = &first["blocked"];
+    assert!(blocked["daypart_days"].as_u64() >= Some(4), "{first}");
+    assert_eq!(
+        blocked["daypart_days"].as_u64().unwrap() + blocked["track"].as_u64().unwrap(),
+        5,
+        "{first}"
     );
+    assert_eq!(blocked["daypart"], 0, "{first}");
+    assert_eq!(first["step"], 4, "{first}");
     station.stop().await;
 }
 
