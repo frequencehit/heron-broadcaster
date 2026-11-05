@@ -224,8 +224,87 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Signs in: answers with the user and sets the `heron_session` cookie. */
+        /**
+         * Signs in: answers with the user and sets the `heron_session` cookie.
+         *     When the user has a second factor, answers 202 with the factors they can
+         *     use and a `heron_pending` cookie instead (5 minutes): finish with
+         *     `/auth/login/totp`, `/auth/login/recovery` or `/auth/login/webauthn/…`.
+         */
         post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finishes signing in with a recovery code, which then stops working. */
+        post: operations["login_recovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finishes signing in with a code of the authenticator app. Each code is
+         *     accepted once.
+         */
+        post: operations["login_totp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login/webauthn/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finishes signing in with what the browser's passkey answered. */
+        post: operations["login_webauthn_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login/webauthn/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Starts signing in with a passkey: the options for
+         *     `navigator.credentials.get()`.
+         */
+        post: operations["login_webauthn_start"];
         delete?: never;
         options?: never;
         head?: never;
@@ -294,6 +373,140 @@ export interface paths {
         /** Saves your preferences: the web UI's theme, language and width. */
         put: operations["set_preferences"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your authenticator app, passkeys and recovery codes. */
+        get: operations["get_two_factor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts adding a passkey: the options for `navigator.credentials.create()`. */
+        post: operations["start_passkey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/passkeys/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adds the passkey the browser created. Your other sessions are signed out. */
+        post: operations["finish_passkey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/passkeys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Removes one of your passkeys. Refused when it is your last factor and
+         *     your role requires one.
+         */
+        delete: operations["remove_passkey"];
+        options?: never;
+        head?: never;
+        /** Renames one of your passkeys. */
+        patch: operations["rename_passkey"];
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 10 new recovery codes; the old ones stop working. */
+        post: operations["regenerate_codes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Starts setting up an authenticator app: a new secret, which
+         *     `POST /auth/two-factor/totp/confirm` turns on within 10 minutes. It
+         *     replaces your app once confirmed.
+         */
+        post: operations["start_totp"];
+        /**
+         * Removes your authenticator app. Refused when it is your last factor
+         *     and your role requires one.
+         */
+        delete: operations["remove_totp"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/totp/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turns the app being set up on, with a code it shows. Your other
+         *     sessions are signed out.
+         */
+        post: operations["confirm_totp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2188,6 +2401,24 @@ export interface paths {
          *     kept still cover. Admins only.
          */
         put: operations["put_statistics"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/two-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which roles require a second factor. */
+        get: operations["get_two_factor_settings"];
+        /** Requires a second factor for some roles. Admins only. */
+        put: operations["put_two_factor_settings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4779,6 +5010,9 @@ export interface components {
             scheduled_hours: number;
             slots: components["schemas"]["ClockSlot"][];
         };
+        CodeRequest: {
+            code: string;
+        };
         /** @description A configuration value worth showing. */
         ConfigItem: components["schemas"]["ConfigValue"] & {
             /** @description The setting, as its environment variable. */
@@ -5257,7 +5491,7 @@ export interface components {
         ErrorBody: {
             /**
              * @description Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,
-             *     `not_found`, `conflict`, `invalid`, `too_many_requests`,
+             *     `two_factor_required`, `not_found`, `conflict`, `invalid`, `too_many_requests`,
              *     `engine_unavailable` or `internal`.
              */
             error: string;
@@ -5341,6 +5575,11 @@ export interface components {
             weight: number;
             /** @description Separation windows applied at this step. */
             windows: components["schemas"]["Windows"];
+        };
+        /** @description A factor set up. */
+        FactorAdded: {
+            /** @description The 10 recovery codes, shown once: when this is your first factor. */
+            recovery_codes?: string[] | null;
         };
         /** @description One side of a crossfade. */
         Fade: {
@@ -6483,6 +6722,12 @@ export interface components {
             /** @description The admin's own public key, `age1…`; left out: Heron generates one. */
             recipient?: string | null;
         };
+        NewPasskey: {
+            /** @description What it is: "MacBook (Touch ID)", "Blue security key"… */
+            name: string;
+            /** @description Your password, asked again. */
+            password: string;
+        };
         NewSchedule: {
             /**
              * Format: int64
@@ -6693,9 +6938,25 @@ export interface components {
             /** Format: int64 */
             track_id: number;
         };
+        PasskeyRename: {
+            name: string;
+        };
+        PasskeyView: {
+            /** Format: int64 */
+            created_at_unix_ms: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            last_used_at_unix_ms?: number | null;
+            name: string;
+        };
         PasswordChange: {
             current_password: string;
             new_password: string;
+        };
+        PasswordCheck: {
+            /** @description Your password, asked again. */
+            password: string;
         };
         /** @description When a schedule other than the default one plays. */
         Period: {
@@ -7268,6 +7529,10 @@ export interface components {
             /** @default picked */
             order: components["schemas"]["HookOrder"];
         };
+        RecoveryCodes: {
+            /** @description Shown once. */
+            recovery_codes: string[];
+        };
         /** @description What a MusicBrainz relationships lookup found. */
         RelationsReport: {
             /**
@@ -7601,6 +7866,16 @@ export interface components {
             next_change?: components["schemas"]["NextChange"] | null;
             /** @description The default schedule first, then the others by name. */
             schedules: components["schemas"]["ScheduleSummary"][];
+        };
+        /**
+         * @description A way to finish signing in.
+         * @enum {string}
+         */
+        SecondFactor: "totp" | "webauthn" | "recovery";
+        /** @description A sign-in waiting for its second factor. */
+        SecondFactorNeeded: {
+            /** @description The factors the user can finish signing in with. */
+            second_factor: components["schemas"]["SecondFactor"][];
         };
         /** @description What an action on a selection did. */
         SelectionResult: {
@@ -8265,6 +8540,21 @@ export interface components {
          * @enum {string}
          */
         Theme: "system" | "light" | "dark";
+        /** @description An authenticator app to set up. */
+        TotpSetup: {
+            /** @description The QR code, as an SVG image. */
+            qr_svg: string;
+            /** @description The secret in base32, to type into the app. */
+            secret: string;
+            /** @description The `otpauth://` URI the QR code holds. */
+            uri: string;
+        };
+        TotpView: {
+            /** Format: int64 */
+            created_at_unix_ms: number;
+            /** Format: int64 */
+            last_used_at_unix_ms?: number | null;
+        };
         TrackAnalysis: {
             /** Format: int64 */
             analyzed_at_unix_ms: number;
@@ -8730,6 +9020,41 @@ export interface components {
              */
             trash_days: number;
         };
+        /**
+         * @description Which roles require a second factor. With several stations, a user's
+         *     highest role counts.
+         */
+        TwoFactorSettings: {
+            /** @default false */
+            admin: boolean;
+            /** @default false */
+            operator: boolean;
+            /** @default false */
+            viewer: boolean;
+        };
+        /** @description A user's second factors, as `GET /users` and `GET /auth/me` show them. */
+        TwoFactorStatus: {
+            /**
+             * Format: int32
+             * @description How many passkeys.
+             */
+            passkeys: number;
+            /** @description Their role requires a second factor. */
+            required: boolean;
+            /** @description An authenticator app is set up. */
+            totp: boolean;
+        };
+        /** @description Your second factors. */
+        TwoFactorView: {
+            passkeys: components["schemas"]["PasskeyView"][];
+            /**
+             * Format: int32
+             * @description Recovery codes not used yet.
+             */
+            recovery_codes_left: number;
+            required_by?: components["schemas"]["Role"] | null;
+            totp?: components["schemas"]["TotpView"] | null;
+        };
         /** @description A track waiting in the queue. */
         UpcomingTrack: {
             album?: string | null;
@@ -8777,6 +9102,8 @@ export interface components {
              */
             station_roles: components["schemas"]["StationRole"][];
             theme: components["schemas"]["Theme"];
+            /** @description Their second factors, and whether their role requires one. */
+            two_factor: components["schemas"]["TwoFactorStatus"];
             username: string;
         };
         UserPatch: {
@@ -8866,6 +9193,20 @@ export interface components {
             interval_ms: number;
             /** @description One byte per point, base64: the highest sample peak in the interval. */
             peaks: string;
+        };
+        WebauthnCredential: {
+            /**
+             * @description What `navigator.credentials` answered, as JSON (binary fields in
+             *     base64url).
+             */
+            credential: Record<string, never>;
+        };
+        /**
+         * @description What the browser needs to create or use a passkey, for
+         *     `navigator.credentials.create()` or `.get()`: binary fields in base64url.
+         */
+        WebauthnOptions: {
+            publicKey: Record<string, never>;
         };
         /**
          * @description What a delivery reports.
@@ -9444,6 +9785,15 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            /** @description A second factor is needed */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecondFactorNeeded"];
+                };
+            };
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9454,6 +9804,192 @@ export interface operations {
             };
             /** @description Too many failures for this username */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_recovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description No sign-in waiting, or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Wrong code */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too many failures for this username */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_totp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description No sign-in waiting, or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Wrong code */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too many failures for this username */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_webauthn_finish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebauthnCredential"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description No sign-in waiting, or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The passkey was refused */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too many failures for this username */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_webauthn_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebauthnOptions"];
+                };
+            };
+            /** @description No sign-in waiting, or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9563,6 +10099,279 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["User"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_two_factor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_passkey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPasskey"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebauthnOptions"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finish_passkey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebauthnCredential"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactorAdded"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_passkey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordCheck"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rename_passkey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyRename"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    regenerate_codes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordCheck"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_totp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordCheck"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpSetup"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_totp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordCheck"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirm_totp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactorAdded"];
                 };
             };
             "4XX": {
@@ -13873,6 +14682,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatisticsSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_two_factor_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_two_factor_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TwoFactorSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSettings"];
                 };
             };
             "4XX": {

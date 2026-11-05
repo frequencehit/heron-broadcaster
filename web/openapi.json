@@ -635,7 +635,7 @@
         "tags": [
           "auth"
         ],
-        "summary": "Signs in: answers with the user and sets the `heron_session` cookie.",
+        "summary": "Signs in: answers with the user and sets the `heron_session` cookie.\nWhen the user has a second factor, answers 202 with the factors they can\nuse and a `heron_pending` cookie instead (5 minutes): finish with\n`/auth/login/totp`, `/auth/login/recovery` or `/auth/login/webauthn/…`.",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -657,6 +657,16 @@
               }
             }
           },
+          "202": {
+            "description": "A second factor is needed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecondFactorNeeded"
+                }
+              }
+            }
+          },
           "401": {
             "content": {
               "application/json": {
@@ -668,6 +678,237 @@
           },
           "429": {
             "description": "Too many failures for this username",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/auth/login/recovery": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Finishes signing in with a recovery code, which then stops working.",
+        "operationId": "login_recovery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No sign-in waiting, or it expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Wrong code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failures for this username",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/auth/login/totp": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Finishes signing in with a code of the authenticator app. Each code is\naccepted once.",
+        "operationId": "login_totp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No sign-in waiting, or it expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Wrong code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failures for this username",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/auth/login/webauthn/finish": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Finishes signing in with what the browser's passkey answered.",
+        "operationId": "login_webauthn_finish",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebauthnCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No sign-in waiting, or it expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The passkey was refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failures for this username",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/auth/login/webauthn/start": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Starts signing in with a passkey: the options for\n`navigator.credentials.get()`.",
+        "operationId": "login_webauthn_start",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnOptions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No sign-in waiting, or it expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
@@ -786,6 +1027,343 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Your authenticator app, passkeys and recovery codes.",
+        "operationId": "get_two_factor",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor/passkeys": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Starts adding a passkey: the options for `navigator.credentials.create()`.",
+        "operationId": "start_passkey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPasskey"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnOptions"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor/passkeys/finish": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Adds the passkey the browser created. Your other sessions are signed out.",
+        "operationId": "finish_passkey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebauthnCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactorAdded"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor/passkeys/{id}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Removes one of your passkeys. Refused when it is your last factor and\nyour role requires one.",
+        "operationId": "remove_passkey",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Renames one of your passkeys.",
+        "operationId": "rename_passkey",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor/recovery-codes": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "10 new recovery codes; the old ones stop working.",
+        "operationId": "regenerate_codes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodes"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor/totp": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Starts setting up an authenticator app: a new secret, which\n`POST /auth/two-factor/totp/confirm` turns on within 10 minutes. It\nreplaces your app once confirmed.",
+        "operationId": "start_totp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpSetup"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Removes your authenticator app. Refused when it is your last factor\nand your role requires one.",
+        "operationId": "remove_totp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor/totp/confirm": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Turns the app being set up on, with a code it shows. Your other\nsessions are signed out.",
+        "operationId": "confirm_totp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactorAdded"
                 }
               }
             }
@@ -6491,6 +7069,72 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StatisticsSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/two-factor": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Which roles require a second factor.",
+        "operationId": "get_two_factor_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Requires a second factor for some roles. Admins only.",
+        "operationId": "put_two_factor_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorSettings"
                 }
               }
             }
@@ -14087,6 +14731,18 @@
           }
         }
       },
+      "CodeRequest": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ConfigItem": {
         "allOf": [
           {
@@ -15161,7 +15817,7 @@
         "properties": {
           "error": {
             "type": "string",
-            "description": "Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,\n`not_found`, `conflict`, `invalid`, `too_many_requests`,\n`engine_unavailable` or `internal`."
+            "description": "Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,\n`two_factor_required`, `not_found`, `conflict`, `invalid`, `too_many_requests`,\n`engine_unavailable` or `internal`."
           },
           "message": {
             "type": "string",
@@ -15366,6 +16022,22 @@
           "windows": {
             "$ref": "#/components/schemas/Windows",
             "description": "Separation windows applied at this step."
+          }
+        }
+      },
+      "FactorAdded": {
+        "type": "object",
+        "description": "A factor set up.",
+        "properties": {
+          "recovery_codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The 10 recovery codes, shown once: when this is your first factor."
           }
         }
       },
@@ -17872,6 +18544,24 @@
         },
         "additionalProperties": false
       },
+      "NewPasskey": {
+        "type": "object",
+        "required": [
+          "password",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "What it is: \"MacBook (Touch ID)\", \"Blue security key\"…"
+          },
+          "password": {
+            "type": "string",
+            "description": "Your password, asked again."
+          }
+        },
+        "additionalProperties": false
+      },
       "NewSchedule": {
         "type": "object",
         "required": [
@@ -18435,6 +19125,47 @@
           }
         }
       },
+      "PasskeyRename": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PasskeyView": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at_unix_ms"
+        ],
+        "properties": {
+          "created_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "last_used_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "PasswordChange": {
         "type": "object",
         "required": [
@@ -18447,6 +19178,19 @@
           },
           "new_password": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PasswordCheck": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Your password, asked again."
           }
         },
         "additionalProperties": false
@@ -19656,6 +20400,21 @@
         },
         "additionalProperties": false
       },
+      "RecoveryCodes": {
+        "type": "object",
+        "required": [
+          "recovery_codes"
+        ],
+        "properties": {
+          "recovery_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Shown once."
+          }
+        }
+      },
       "RelationsReport": {
         "type": "object",
         "description": "What a MusicBrainz relationships lookup found.",
@@ -20507,6 +21266,31 @@
               "$ref": "#/components/schemas/ScheduleSummary"
             },
             "description": "The default schedule first, then the others by name."
+          }
+        }
+      },
+      "SecondFactor": {
+        "type": "string",
+        "description": "A way to finish signing in.",
+        "enum": [
+          "totp",
+          "webauthn",
+          "recovery"
+        ]
+      },
+      "SecondFactorNeeded": {
+        "type": "object",
+        "description": "A sign-in waiting for its second factor.",
+        "required": [
+          "second_factor"
+        ],
+        "properties": {
+          "second_factor": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SecondFactor"
+            },
+            "description": "The factors the user can finish signing in with."
           }
         }
       },
@@ -22385,6 +23169,48 @@
           "dark"
         ]
       },
+      "TotpSetup": {
+        "type": "object",
+        "description": "An authenticator app to set up.",
+        "required": [
+          "secret",
+          "uri",
+          "qr_svg"
+        ],
+        "properties": {
+          "qr_svg": {
+            "type": "string",
+            "description": "The QR code, as an SVG image."
+          },
+          "secret": {
+            "type": "string",
+            "description": "The secret in base32, to type into the app."
+          },
+          "uri": {
+            "type": "string",
+            "description": "The `otpauth://` URI the QR code holds."
+          }
+        }
+      },
+      "TotpView": {
+        "type": "object",
+        "required": [
+          "created_at_unix_ms"
+        ],
+        "properties": {
+          "created_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_used_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "TrackAnalysis": {
         "type": "object",
         "required": [
@@ -23744,6 +24570,94 @@
           }
         }
       },
+      "TwoFactorSettings": {
+        "type": "object",
+        "description": "Which roles require a second factor. With several stations, a user's\nhighest role counts.",
+        "properties": {
+          "admin": {
+            "type": "boolean",
+            "default": false
+          },
+          "operator": {
+            "type": "boolean",
+            "default": false
+          },
+          "viewer": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "TwoFactorStatus": {
+        "type": "object",
+        "description": "A user's second factors, as `GET /users` and `GET /auth/me` show them.",
+        "required": [
+          "totp",
+          "passkeys",
+          "required"
+        ],
+        "properties": {
+          "passkeys": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many passkeys.",
+            "minimum": 0
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Their role requires a second factor."
+          },
+          "totp": {
+            "type": "boolean",
+            "description": "An authenticator app is set up."
+          }
+        }
+      },
+      "TwoFactorView": {
+        "type": "object",
+        "description": "Your second factors.",
+        "required": [
+          "passkeys",
+          "recovery_codes_left"
+        ],
+        "properties": {
+          "passkeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PasskeyView"
+            }
+          },
+          "recovery_codes_left": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Recovery codes not used yet.",
+            "minimum": 0
+          },
+          "required_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Role",
+                "description": "The role that requires a second factor (your highest), if one does."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totp": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TotpView",
+                "description": "The authenticator app, when one is set up."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "UpcomingTrack": {
         "type": "object",
         "description": "A track waiting in the queue.",
@@ -23802,7 +24716,8 @@
           "language",
           "full_width",
           "created_at_unix_ms",
-          "station_roles"
+          "station_roles",
+          "two_factor"
         ],
         "properties": {
           "created_at_unix_ms": {
@@ -23844,6 +24759,10 @@
           },
           "theme": {
             "$ref": "#/components/schemas/Theme"
+          },
+          "two_factor": {
+            "$ref": "#/components/schemas/TwoFactorStatus",
+            "description": "Their second factors, and whether their role requires one."
           },
           "username": {
             "type": "string"
@@ -24142,6 +25061,31 @@
           "peaks": {
             "type": "string",
             "description": "One byte per point, base64: the highest sample peak in the interval."
+          }
+        }
+      },
+      "WebauthnCredential": {
+        "type": "object",
+        "required": [
+          "credential"
+        ],
+        "properties": {
+          "credential": {
+            "type": "object",
+            "description": "What `navigator.credentials` answered, as JSON (binary fields in\nbase64url)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "WebauthnOptions": {
+        "type": "object",
+        "description": "What the browser needs to create or use a passkey, for\n`navigator.credentials.create()` or `.get()`: binary fields in base64url.",
+        "required": [
+          "publicKey"
+        ],
+        "properties": {
+          "publicKey": {
+            "type": "object"
           }
         }
       },

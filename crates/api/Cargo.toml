@@ -36,12 +36,18 @@ jiff.workspace = true
 quick-xml.workspace = true
 metrics.workspace = true
 notify.workspace = true
+# The account in an authenticator app's setup URI.
+percent-encoding.workspace = true
+# The QR code of an authenticator app's setup.
+qrcode.workspace = true
 # Reads passwords without echoing them.
 rustix = { workspace = true, features = ["termios", "process"] }
 # Sends webhook deliveries.
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Authenticator app codes (TOTP, RFC 6238: HMAC-SHA-1).
+sha1.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 # Reads the CPU, memory and load average for the status bar.
@@ -61,6 +67,8 @@ tracing.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 walkdir.workspace = true
+# Passkeys and security keys (WebAuthn).
+webauthn-rs.workspace = true
 
 [dev-dependencies]
 # End-to-end tests drive a real engine, in process.

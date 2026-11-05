@@ -114,12 +114,20 @@ impl FromRequestParts<AppState> for CurrentUser {
         let Some(token) = cookie(&parts.headers, SESSION_COOKIE) else {
             return Err(ApiError::Unauthorized);
         };
-        let user = authenticate_session(&state.pool, token).await?;
+        let (user, has_factor) = authenticate_session(&state.pool, token).await?;
         let safe = matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS);
         if !safe && !parts.headers.contains_key("x-requested-with") {
             return Err(ApiError::BadRequest(
                 "requests signed in with a cookie need an X-Requested-With header".to_owned(),
             ));
+        }
+        // A user whose role requires a second factor and who has none can
+        // only set one up (API tokens are not concerned).
+        if !has_factor
+            && !crate::two_factor::allowed_before_enrolment(parts.uri.path())
+            && crate::two_factor::required(&state.pool, user.id, user.role).await?
+        {
+            return Err(ApiError::TwoFactorRequired);
         }
         on_station(&state.pool, user, parts).await
     }
@@ -192,7 +200,7 @@ pub fn token_hash(token: &str) -> [u8; 32] {
 }
 
 /// A new random token (256 bits) and its hash.
-fn new_token(prefix: &str) -> ApiResult<(String, [u8; 32])> {
+pub fn new_token(prefix: &str) -> ApiResult<(String, [u8; 32])> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes)
         .map_err(|error| ApiError::Internal(format!("no randomness: {error}")))?;
@@ -204,18 +212,21 @@ fn new_token(prefix: &str) -> ApiResult<(String, [u8; 32])> {
     Ok((token, hash))
 }
 
-async fn authenticate_session(pool: &MySqlPool, token: &str) -> ApiResult<CurrentUser> {
+/// The session's user, and whether they have a second factor.
+async fn authenticate_session(pool: &MySqlPool, token: &str) -> ApiResult<(CurrentUser, bool)> {
     let hash = token_hash(token);
-    let row: Option<(u64, String, String, bool)> = sqlx::query_as(
+    let row: Option<(u64, String, String, bool, bool)> = sqlx::query_as(
         "SELECT u.id, u.username, CAST(u.role AS CHAR),
-                s.last_seen_at < NOW(6) - INTERVAL 1 MINUTE
+                s.last_seen_at < NOW(6) - INTERVAL 1 MINUTE,
+                EXISTS (SELECT 1 FROM user_totp t WHERE t.user_id = u.id)
+                    OR EXISTS (SELECT 1 FROM user_webauthn w WHERE w.user_id = u.id)
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = ? AND s.expires_at > NOW(6) AND u.enabled",
     )
     .bind(hash.as_slice())
     .fetch_optional(pool)
     .await?;
-    let Some((id, username, role, stale)) = row else {
+    let Some((id, username, role, stale, has_factor)) = row else {
         return Err(ApiError::Unauthorized);
     };
     if stale {
@@ -230,12 +241,15 @@ async fn authenticate_session(pool: &MySqlPool, token: &str) -> ApiResult<Curren
         .execute(pool)
         .await?;
     }
-    Ok(CurrentUser {
-        id,
-        username,
-        role: Role::parse(&role).unwrap_or(Role::Viewer),
-        credential: Credential::Session { token_hash: hash },
-    })
+    Ok((
+        CurrentUser {
+            id,
+            username,
+            role: Role::parse(&role).unwrap_or(Role::Viewer),
+            credential: Credential::Session { token_hash: hash },
+        },
+        has_factor,
+    ))
 }
 
 async fn authenticate_token(pool: &MySqlPool, token: &str) -> ApiResult<CurrentUser> {
@@ -310,13 +324,25 @@ pub async fn create_api_token(
 
 /// The `Set-Cookie` header opening a session (or closing it, with `None`).
 pub fn session_cookie(token: Option<&str>, secure: bool) -> HeaderValue {
+    let max_age = u64::from(SESSION_DAYS) * 86_400;
+    set_cookie(SESSION_COOKIE, "/api", token, max_age, secure)
+}
+
+/// A `Set-Cookie` header (`None` clears the cookie).
+pub fn set_cookie(
+    name: &str,
+    path: &str,
+    token: Option<&str>,
+    max_age: u64,
+    secure: bool,
+) -> HeaderValue {
     let (value, max_age) = match token {
-        Some(token) => (token, u64::from(SESSION_DAYS) * 86_400),
+        Some(token) => (token, max_age),
         None => ("", 0),
     };
     let secure = if secure { "; Secure" } else { "" };
     let cookie = format!(
-        "{SESSION_COOKIE}={value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age={max_age}{secure}"
+        "{name}={value}; Path={path}; HttpOnly; SameSite=Strict; Max-Age={max_age}{secure}"
     );
     HeaderValue::from_str(&cookie).unwrap_or_else(|_| HeaderValue::from_static(""))
 }
@@ -369,6 +395,42 @@ fn verify_blocking(hash: &str, password: &str) -> bool {
     })
 }
 
+fn find_code_blocking(hashes: &[String], code: &str) -> Option<usize> {
+    let mut computed: Vec<(Vec<u8>, String)> = Vec::new();
+    for (index, stored) in hashes.iter().enumerate() {
+        let Ok(parsed) = PasswordHash::new(stored) else {
+            continue;
+        };
+        let Some(salt) = parsed.salt.as_ref().map(|salt| salt.as_ref().to_vec()) else {
+            continue;
+        };
+        let candidate = match computed.iter().find(|(known, _)| *known == salt) {
+            Some((_, candidate)) => candidate.clone(),
+            None => {
+                let Ok(params) = argon2::Params::try_from(&parsed) else {
+                    continue;
+                };
+                let argon =
+                    Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+                let Ok(hash) = PasswordHasher::<PasswordHash>::hash_password_with_salt(
+                    &argon,
+                    code.as_bytes(),
+                    &salt,
+                ) else {
+                    continue;
+                };
+                let candidate = hash.to_string();
+                computed.push((salt, candidate.clone()));
+                candidate
+            }
+        };
+        if candidate == *stored {
+            return Some(index);
+        }
+    }
+    None
+}
+
 impl Default for Passwords {
     fn default() -> Self {
         Self {
@@ -399,6 +461,36 @@ impl Passwords {
             .await
             .map_err(internal)?;
         Ok(known && valid)
+    }
+
+    /// Hashes recovery codes, with one salt for the batch so that a code
+    /// is checked with one hash (`find_code`), not one per code.
+    pub async fn hash_codes(&self, codes: Vec<String>) -> ApiResult<Vec<String>> {
+        let mut salt = [0u8; 16];
+        getrandom::fill(&mut salt).map_err(internal)?;
+        let _permit = self.permits.acquire().await.map_err(internal)?;
+        tokio::task::spawn_blocking(move || {
+            codes
+                .iter()
+                .map(|code| {
+                    Argon2::default()
+                        .hash_password_with_salt(code.as_bytes(), &salt)
+                        .map(|hash: PasswordHash| hash.to_string())
+                        .map_err(internal)
+                })
+                .collect()
+        })
+        .await
+        .map_err(internal)?
+    }
+
+    /// The index of the hash `code` matches, among `hashes` (`hash_codes`).
+    pub async fn find_code(&self, hashes: Vec<String>, code: &str) -> ApiResult<Option<usize>> {
+        let _permit = self.permits.acquire().await.map_err(internal)?;
+        let code = code.to_owned();
+        tokio::task::spawn_blocking(move || find_code_blocking(&hashes, &code))
+            .await
+            .map_err(internal)
     }
 
     /// Answers 429 while a username is locked after too many failures.
@@ -500,6 +592,26 @@ mod tests {
         assert!(verify_blocking(&hash, "correct horse"));
         assert!(!verify_blocking(&hash, "wrong horse"));
         assert!(!verify_blocking("not a hash", "correct horse"));
+    }
+
+    #[test]
+    fn codes_share_a_salt_and_are_found() {
+        let mut salt = [7u8; 16];
+        salt[0] = 1;
+        let hashes: Vec<String> = ["AAAA2222", "BBBB3333", "CCCC4444"]
+            .iter()
+            .map(|code| {
+                Argon2::default()
+                    .hash_password_with_salt(code.as_bytes(), &salt)
+                    .map(|hash: PasswordHash| hash.to_string())
+                    .unwrap()
+            })
+            .collect();
+        assert!(hashes[0].starts_with("$argon2id$"));
+        assert_eq!(find_code_blocking(&hashes, "BBBB3333"), Some(1));
+        assert_eq!(find_code_blocking(&hashes, "CCCC4444"), Some(2));
+        assert_eq!(find_code_blocking(&hashes, "DDDD5555"), None);
+        assert_eq!(find_code_blocking(&[], "AAAA2222"), None);
     }
 
     #[test]

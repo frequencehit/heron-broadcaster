@@ -21,6 +21,10 @@ use crate::auth::{
     create_session, is_https, session_cookie,
 };
 use crate::error::{ApiError, ApiResult, ErrorBody, is_duplicate};
+use crate::two_factor::login::{PENDING_COOKIE, PENDING_PATH};
+use crate::two_factor::{
+    PENDING_SIGN_IN, SecondFactor, TwoFactorSettings, TwoFactorStatus, highest_role,
+};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -54,6 +58,8 @@ pub struct User {
     /// the shared role (the library, what stations share); a shared admin
     /// is admin on every station.
     pub station_roles: Vec<StationRole>,
+    /// Their second factors, and whether their role requires one.
+    pub two_factor: TwoFactorStatus,
 }
 
 /// A role on a station; `none`: the user does not see it.
@@ -103,7 +109,7 @@ pub struct StationRole {
     pub role: StationRoleName,
 }
 
-/// The users' roles on stations.
+/// The users' roles on stations, and their second factors.
 async fn attach_roles(pool: &MySqlPool, users: &mut [User]) -> ApiResult<()> {
     let rows: Vec<(u64, u64, String)> = sqlx::query_as(
         "SELECT user_id, station_id, CAST(role AS CHAR) FROM user_station_roles
@@ -111,7 +117,7 @@ async fn attach_roles(pool: &MySqlPool, users: &mut [User]) -> ApiResult<()> {
     )
     .fetch_all(pool)
     .await?;
-    for user in users {
+    for user in users.iter_mut() {
         user.station_roles = rows
             .iter()
             .filter(|(user_id, ..)| *user_id == user.id)
@@ -120,6 +126,22 @@ async fn attach_roles(pool: &MySqlPool, users: &mut [User]) -> ApiResult<()> {
                 role: StationRoleName::parse(role),
             })
             .collect();
+    }
+    let required: TwoFactorSettings =
+        crate::settings::load(pool, TwoFactorSettings::SETTINGS_NAME).await?;
+    let factors = crate::two_factor::statuses(pool).await?;
+    for user in users {
+        let (totp, passkeys) = factors.get(&user.id).copied().unwrap_or_default();
+        let station_roles: Vec<Role> = rows
+            .iter()
+            .filter(|(user_id, ..)| *user_id == user.id)
+            .filter_map(|(_, _, role)| Role::parse(role))
+            .collect();
+        user.two_factor = TwoFactorStatus {
+            totp,
+            passkeys,
+            required: required.requires(highest_role(user.role, &station_roles)),
+        };
     }
     Ok(())
 }
@@ -216,6 +238,7 @@ fn user(
         last_login_at_unix_ms: last_login,
         created_at_unix_ms: created,
         station_roles: Vec::new(),
+        two_factor: TwoFactorStatus::default(),
     }
 }
 
@@ -318,10 +341,22 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+/// A sign-in waiting for its second factor.
+#[derive(Serialize, ToSchema)]
+pub struct SecondFactorNeeded {
+    /// The factors the user can finish signing in with.
+    pub second_factor: Vec<SecondFactor>,
+}
+
 /// Signs in: answers with the user and sets the `heron_session` cookie.
+/// When the user has a second factor, answers 202 with the factors they can
+/// use and a `heron_pending` cookie instead (5 minutes): finish with
+/// `/auth/login/totp`, `/auth/login/recovery` or `/auth/login/webauthn/…`.
 #[utoipa::path(post, path = "/auth/login", tag = "auth", security(()),
     request_body = LoginRequest,
-    responses((status = 200, body = User), (status = 401, body = ErrorBody),
+    responses((status = 200, body = User),
+              (status = 202, body = SecondFactorNeeded, description = "A second factor is needed"),
+              (status = 401, body = ErrorBody),
               (status = 429, body = ErrorBody, description = "Too many failures for this username")))]
 async fn login(
     State(state): State<AppState>,
@@ -345,12 +380,49 @@ async fn login(
         metrics::counter!("heron_api_logins_total", "result" => "failed").increment(1);
         return Err(ApiError::Unauthorized);
     };
-    let token = create_session(&state.pool, id).await?;
-    tracing::info!(username = %request.username, "signed in");
+    let second_factor = crate::two_factor::factors(&state.pool, id).await?;
+    if !second_factor.is_empty() {
+        let token = state.two_factor.start_sign_in(id, &request.username)?;
+        tracing::info!(username = %request.username, "password accepted, second factor next");
+        let cookie = auth::set_cookie(
+            PENDING_COOKIE,
+            PENDING_PATH,
+            Some(&token),
+            PENDING_SIGN_IN.as_secs(),
+            is_https(&headers),
+        );
+        return Ok((
+            StatusCode::ACCEPTED,
+            [(header::SET_COOKIE, cookie)],
+            Json(SecondFactorNeeded { second_factor }),
+        )
+            .into_response());
+    }
+    signed_in(&state, &headers, id, &request.username).await
+}
+
+/// Opens the session of a user who signed in, and answers with them.
+pub async fn signed_in(
+    state: &AppState,
+    headers: &HeaderMap,
+    user_id: u64,
+    username: &str,
+) -> ApiResult<Response> {
+    let token = create_session(&state.pool, user_id).await?;
+    tracing::info!(%username, "signed in");
     metrics::counter!("heron_api_logins_total", "result" => "ok").increment(1);
-    let user = find_user(&state.pool, id).await?;
-    let cookie = session_cookie(Some(&token), is_https(&headers));
-    Ok(([(header::SET_COOKIE, cookie)], Json(user)).into_response())
+    let user = find_user(&state.pool, user_id).await?;
+    let https = is_https(headers);
+    let session = session_cookie(Some(&token), https);
+    let pending = auth::set_cookie(PENDING_COOKIE, PENDING_PATH, None, 0, https);
+    Ok((
+        axum::response::AppendHeaders([
+            (header::SET_COOKIE, session),
+            (header::SET_COOKIE, pending),
+        ]),
+        Json(user),
+    )
+        .into_response())
 }
 
 /// Signs out: ends the session and clears the cookie.

@@ -204,6 +204,45 @@ const TABLES: &[Table] = &[
         Mode::Replace,
         &[],
     ),
+    // Second factors (docs/api.md#two-factor-authentication).
+    table(
+        "user_totp",
+        &[
+            Plain("user_id"),
+            Hex("secret"),
+            Plain("last_step"),
+            Plain("created_at"),
+            Plain("last_used_at"),
+        ],
+        Mode::Replace,
+        &[],
+    ),
+    table(
+        "user_webauthn",
+        &[
+            Plain("id"),
+            Plain("user_id"),
+            Hex("credential_id"),
+            Plain("name"),
+            Json("passkey"),
+            Plain("created_at"),
+            Plain("last_used_at"),
+        ],
+        Mode::Replace,
+        &[],
+    ),
+    table(
+        "user_recovery_codes",
+        &[
+            Plain("id"),
+            Plain("user_id"),
+            Plain("code_hash"),
+            Plain("used_at"),
+            Plain("created_at"),
+        ],
+        Mode::Replace,
+        &[],
+    ),
     table(
         "api_tokens",
         &[
