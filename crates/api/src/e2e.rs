@@ -6014,6 +6014,58 @@ async fn rules_across_stations_and_plays_per_station() {
     let total = count_on(None).await;
     let on_second = count_on(Some(second)).await;
     assert!(on_second > 0 && on_second < total, "{on_second} of {total}");
+    // When it played: one station's plays, or all of them added up.
+    let grid_count = |query: String| {
+        let admin = &admin;
+        async move {
+            let grid = admin
+                .get(&format!("/tracks/{track}/plays/grid{query}"))
+                .await;
+            assert_eq!(grid["days"].as_array().unwrap().len(), 30, "{grid}");
+            let by_day: usize = grid["days"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|day| day["plays"].as_array().unwrap().len())
+                .sum();
+            let by_hour: usize = grid["hours"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|cell| cell["plays"].as_array().unwrap().len())
+                .sum();
+            assert_eq!(by_day, by_hour, "{grid}");
+            by_day as u64
+        }
+    };
+    // The stations play on: as many plays as counted above, or more.
+    let on_second_grid = grid_count(format!("?station_id={second}&days=90")).await;
+    assert!(
+        on_second_grid >= on_second,
+        "{on_second_grid} < {on_second}"
+    );
+    let all = grid_count(String::new()).await;
+    assert!(all >= total && all > on_second_grid, "{all} of {total}");
+    assert_eq!(
+        grid_count(format!("?station_id={second}&source=request")).await,
+        0
+    );
+    let (status, _) = admin
+        .send(
+            Method::GET,
+            &format!("/tracks/{track}/plays/grid?days=366"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = admin
+        .send(
+            Method::GET,
+            &format!("/tracks/{track}/plays/grid?station_id=999"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
     crate::artists::link_pending(&station.db.pool)
         .await
         .unwrap();

@@ -3626,6 +3626,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tracks/{id}/plays/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * When a track played: its plays of the last 30 days, day by day, and the
+         *     hours of the week it played in over `days` days, in the station's time
+         *     zone (the first station's with every station).
+         */
+        get: operations["get_play_grid"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tracks/{id}/review/apply": {
         parameters: {
             query?: never;
@@ -5481,6 +5502,52 @@ export interface components {
              */
             max_gain_db: number;
         };
+        /** @description A day of the last 30. */
+        GridDay: {
+            /** @description `2026-10-12`. */
+            date: string;
+            /** Format: int64 */
+            end_unix_ms: number;
+            /** @description Its plays, in order. */
+            plays: components["schemas"]["GridPlay"][];
+            /**
+             * Format: int64
+             * @description Where the day starts and ends, for the history.
+             */
+            start_unix_ms: number;
+            /**
+             * Format: int32
+             * @description 1 = Monday to 7 = Sunday.
+             */
+            weekday: number;
+        };
+        /** @description An hour of the week the track played in. */
+        GridHour: {
+            /**
+             * Format: int32
+             * @description 0 to 23, as the clock shows it.
+             */
+            hour: number;
+            /** @description Its plays, the latest first. */
+            plays: components["schemas"]["GridPlay"][];
+            /**
+             * Format: int32
+             * @description 1 = Monday to 7 = Sunday.
+             */
+            weekday: number;
+        };
+        /** @description One play, at its local time. */
+        GridPlay: {
+            /** @description `2026-10-12`, in the grid's time zone. */
+            date: string;
+            source: components["schemas"]["PlaySource"];
+            /** Format: int64 */
+            started_at_unix_ms: number;
+            /** Format: int64 */
+            station_id: number;
+            /** @description `08:12`, in the grid's time zone. */
+            time: string;
+        };
         /** @enum {string} */
         GroupSource: "upload" | "incoming";
         /** @description A track rotation offered and its ratio held back. */
@@ -6767,6 +6834,19 @@ export interface components {
         PlayFxResponse: {
             /** Format: int64 */
             entry_id: number;
+        };
+        /** @description When a track played, by day and by hour of the week. */
+        PlayGrid: {
+            /** @description The 30 days ending today, oldest first. */
+            days: components["schemas"]["GridDay"][];
+            /** @description The hours of the week with plays, by weekday then hour. */
+            hours: components["schemas"]["GridHour"][];
+            /** @description The first day of the hours' period. */
+            hours_from: string;
+            /** @description The IANA time zone of the dates and times. */
+            time_zone: string;
+            /** @description `2026-11-05`. */
+            today: string;
         };
         /**
          * @description Why a track is played (`play_history.source`).
@@ -17179,6 +17259,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_play_grid: {
+        parameters: {
+            query?: {
+                /** @description This station's plays; every station's, added up, when left out. */
+                station_id?: number;
+                /**
+                 * @description The period of the hours of the week: 1 to 365 days ending today, 30
+                 *     by default.
+                 */
+                days?: number;
+                /** @description Only the plays of this source. */
+                source?: components["schemas"]["PlaySource"];
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayGrid"];
+                };
             };
             "4XX": {
                 headers: {

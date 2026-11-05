@@ -150,7 +150,7 @@ An existing user keeps their role, as their shared role and their role on the fi
 - A **station switcher** at the top of the menu, when there is more than one station the user can see: the On air, Queue, History, programming and station pages show the chosen station, kept per user. Library pages are shared and show the station badges.
 - **Stations** page (admins): create, rename, enable or disable, and see each station's engine variable and whether it is set.
 - **Users**: a role per station.
-- Track and artist pages show plays per station and in total.
+- Track and artist pages show plays per station and in total. The track page's grids of plays by day and hour show one station or all of them added up.
 - A category created on the spot, from a track, a selection of tracks or the buffer, belongs to the station shown; the Categories page changes its stations.
 
 ## Limitations
