@@ -77,6 +77,8 @@ fn station() -> Station {
             artists: names.iter().map(|name| artists.id(name)).collect(),
             categories: vec![],
             length_ms: 150_000 + dice.roll(180_000) as u32,
+            // Every ninth track plays 3 times out of 10.
+            ratio: if id % 9 == 0 { 3 } else { 10 },
         });
         members.entry(category).or_default().push(Member {
             track: id,
@@ -295,6 +297,7 @@ fn station() -> Station {
                 ..RotationSettings::default()
             },
             no_two_in_a_row: Vec::new(),
+            counters: HashMap::new(),
         },
         artists,
     }
@@ -342,6 +345,56 @@ fn a_week_breaks_no_rule_outside_logged_relaxations() {
         let last = simulation.picks.last().unwrap();
         assert!(last.start_unix_ms + i64::from(last.length_ms) >= simulation.end_unix_ms);
     }
+}
+
+#[test]
+fn a_week_follows_the_play_ratios() {
+    let mut station = station();
+    // Start some counters in their held-back steps.
+    station.parts.counters = HashMap::from([(9, 7), (18, 1), (27, 10)]);
+    let library = Library::new(station.parts, paris());
+    let simulation = week(&library, 8);
+    assert!(
+        simulation.violations.is_empty(),
+        "{:?}",
+        simulation.violations
+    );
+    let held: usize = simulation
+        .picks
+        .iter()
+        .map(|pick| pick.explanation.held_by_ratio.len())
+        .sum();
+    assert!(held > 10, "{held} tracks held back by their ratio");
+    // Each track at 0.3 plays at 10, 9 and 8 and is held back from 7 down
+    // to 1: replayed here from the picks.
+    let mut counters = library.counters.clone();
+    let mut offers: HashMap<u64, (u32, u32)> = HashMap::new();
+    for pick in &simulation.picks {
+        let offered = pick
+            .explanation
+            .held_by_ratio
+            .iter()
+            .map(|held| (held.track_id, false))
+            .chain([(pick.track_id, true)]);
+        for (track, played) in offered {
+            let counter = counters.get(&track).copied().unwrap_or(10);
+            if library.tracks[&track].ratio == 3 {
+                assert_eq!(played, counter > 7, "track {track} at {counter}");
+                let entry = offers.entry(track).or_default();
+                entry.0 += 1;
+                entry.1 += u32::from(played);
+            }
+            counters.insert(track, if counter == 1 { 10 } else { counter - 1 });
+        }
+    }
+    let (offered, played) = offers.values().fold((0, 0), |(o, p), (offered, played)| {
+        (o + offered, p + played)
+    });
+    assert!(offered > 20, "{offered} offers");
+    assert!(
+        played > 0 && played < offered,
+        "{played} played of {offered}"
+    );
 }
 
 #[test]
