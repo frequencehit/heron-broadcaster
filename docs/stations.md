@@ -54,7 +54,7 @@ An existing Heron becomes **one station**, named after the station name setting 
 | `agc` (the AGC chain) | | ✓ |
 | `queue` (autofill, tracks waiting) | | ✓ |
 | `engine` (whether the API manages the engine's configuration) | | ✓ |
-| `rotation` (separation windows, rules across stations, fallback category, categories kept out, weights) | | ✓ |
+| `rotation` (separation windows, dayparts and daypart separation, rules across stations, fallback category, categories kept out, weights) | | ✓ |
 
 The web UI's **Settings** keeps the shared groups; each station's own are under that station.
 
@@ -84,7 +84,7 @@ A restriction (daypart, date range, category sequence) **applies to the stations
 
 - Each play in the history is a station's (`play_history.station_id`), recorded from that station's engine.
 - A track and an artist show their **plays and last play per station** and **in total**: the track and artist pages (`plays`), the library list and its sort and filters (`station_id`: a station's plays; without it, every station's).
-- Separation, weights and the rotation log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
+- Separation (daypart separation included), weights and the rotation log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
 - Listener statistics are per output, so per station, and for a whole station (an output's totals with no output: the station's).
 
 ## Rules across stations
@@ -100,7 +100,7 @@ A station can keep its music apart from what other stations play: in its `rotati
 - **Which stations** a station looks at: all others, or some.
 - The window looks **both ways**: what the other stations played, and what their queue will play at its planned times, so two stations planning at the same moment do not pick the same artist for the same minutes. A pick that another station then takes too is caught by whichever station plans later.
 - Artists are compared as the station's own rule does: the same artist or a similar one ([Artists with several names](rotation.md#artists-with-several-names)).
-- **Relaxation:** each rule across stations is halved then dropped with the station's own rule of the same kind (artist at steps 3 and 4, title at 5 and 6, track at 7 and 8, [Rule relaxation](rotation.md#rule-relaxation)), so it holds as long as the station's own does.
+- **Relaxation:** each rule across stations is halved then dropped with the station's own rule of the same kind (artist at steps 5 and 6, title at 7 and 8, track at 9 and 10, [Rule relaxation](rotation.md#rule-relaxation)), so it holds as long as the station's own does.
 - The **rotation log** says how many tracks the rules across stations held back, and which station's play or planned track held back the one a slot wanted; a simulation of a station takes the other stations' history and queues as they are, and does not simulate them.
 
 ## Medleys
