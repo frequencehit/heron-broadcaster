@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
+use crate::dayparts::{self, DaypartLog};
 use crate::ratio::{self, HeldByRatio};
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{AcrossWindows, FALLBACK_STEP, LAST_STEP, Windows, describe_step};
@@ -51,7 +52,7 @@ pub struct Explanation {
     /// Applied: least recently played at step 10.
     pub method: Method,
     pub enforce_rules: bool,
-    /// Relaxation step, 0 (none) to 10.
+    /// Relaxation step, 0 (none) to 12.
     pub step: u8,
     pub step_description: String,
     /// Separation windows applied at this step.
@@ -86,6 +87,10 @@ pub struct Explanation {
     /// in the order they were offered.
     #[serde(default)]
     pub held_by_ratio: Vec<HeldByRatio>,
+    /// The pick's daypart, and the one the track last played in. Missing
+    /// in picks logged before daypart separation.
+    #[serde(default)]
+    pub daypart: Option<DaypartLog>,
 }
 
 /// A track another station's play or planned track held back.
@@ -108,6 +113,9 @@ pub struct Blocked {
     pub title: u32,
     pub artist: u32,
     pub album: u32,
+    /// By daypart separation. Missing in picks logged before it.
+    #[serde(default)]
+    pub daypart: u32,
     /// By the rules across stations (and by none of the station's own).
     #[serde(default)]
     pub across: u32,
@@ -145,6 +153,9 @@ pub enum SeparationRule {
     Title,
     Artist,
     Album,
+    /// Daypart separation: in a daypart kept out after the track's last
+    /// play.
+    Daypart,
 }
 
 /// When each track, title, album and artist last started, up to `at`.
@@ -153,15 +164,20 @@ struct Recent<'h> {
     titles: HashMap<&'h str, i64>,
     albums: HashMap<&'h str, i64>,
     artists: HashMap<ArtistId, i64>,
+    /// The station's division of the day, and `at` in station time.
+    daypart_count: u8,
+    local: DateTime,
 }
 
 impl<'h> Recent<'h> {
-    fn new(history: &'h History, at_ms: i64) -> Self {
+    fn new(library: &Library, history: &'h History, at_ms: i64) -> Self {
         let mut recent = Self {
             tracks: HashMap::new(),
             titles: HashMap::new(),
             albums: HashMap::new(),
             artists: HashMap::new(),
+            daypart_count: library.daypart_count(),
+            local: library.local(at_ms).datetime(),
         };
         // In order: later plays overwrite earlier ones.
         for play in history.plays().iter().take_while(|p| p.start_ms <= at_ms) {
@@ -215,6 +231,18 @@ impl<'h> Recent<'h> {
             if held {
                 return Some(SeparationRule::Artist);
             }
+        }
+        if windows.dayparts > 0
+            && self.tracks.get(&track.id).is_some_and(|last| {
+                dayparts::holds(
+                    self.daypart_count,
+                    windows.dayparts,
+                    library.local(*last).datetime(),
+                    self.local,
+                )
+            })
+        {
+            return Some(SeparationRule::Daypart);
         }
         if key_within(&self.albums, &track.album_key, windows.album_min) {
             return Some(SeparationRule::Album);
@@ -284,13 +312,10 @@ impl<'l> Call<'l> {
         category: Option<CategoryId>,
         extra: Option<&crate::SeparationOverrides>,
     ) -> Self {
-        let base = library.settings.separation;
         match category {
             Some(id) => {
                 let category = library.categories.get(&id);
-                let windows = base
-                    .with(&category.map(|c| c.separation).unwrap_or_default())
-                    .with(&extra.copied().unwrap_or_default());
+                let windows = library.windows(category.map(|c| &c.separation), extra);
                 Self {
                     category_id: Some(id),
                     category_name: category.map(|c| c.name.clone()),
@@ -314,7 +339,7 @@ impl<'l> Call<'l> {
                     category_id: None,
                     category_name: None,
                     pool,
-                    windows: base,
+                    windows: library.windows(None, None),
                 }
             }
         }
@@ -418,7 +443,7 @@ fn fill(
     let previous = history
         .previous(at_ms)
         .map(|play| play.categories.as_slice());
-    let recent = Recent::new(history, at_ms);
+    let recent = Recent::new(library, history, at_ms);
     let (allowed, restricted) = slot.call.allowed(library, local, previous);
     let across = if slot.enforce_rules {
         library.settings.across.windows()
@@ -434,6 +459,7 @@ fn fill(
                 Some(SeparationRule::Title) => blocked.title += 1,
                 Some(SeparationRule::Artist) => blocked.artist += 1,
                 Some(SeparationRule::Album) => blocked.album += 1,
+                Some(SeparationRule::Daypart) => blocked.daypart += 1,
                 None => {
                     if let Some((rule, other)) =
                         held_elsewhere(library, history, track, across, at_ms)
@@ -546,6 +572,14 @@ fn fill(
             held_elsewhere: held.map(|(_, held)| held),
             counter: Some(counter),
             held_by_ratio: Vec::new(),
+            daypart: Some(DaypartLog {
+                count: recent.daypart_count,
+                daypart: dayparts::of(recent.daypart_count, local),
+                separation: slot.call.windows.dayparts,
+                last_daypart: history
+                    .last_played(track.id)
+                    .map(|last| dayparts::of(recent.daypart_count, library.local(last).datetime())),
+            }),
         };
         return Some((track.id, explanation));
     }
@@ -940,8 +974,8 @@ mod tests {
         }
         let pick = next(&library, &history, 0, None, &mut rng).unwrap();
         // Track separation is never dropped in the slot's category: the
-        // fallback (the station's library) gives a track at step 9.
-        assert_eq!(pick.explanation.step, 9);
+        // fallback (the station's library) gives a track at step 11.
+        assert_eq!(pick.explanation.step, 11);
         assert_eq!(pick.explanation.category_id, None);
         assert!(pick.track > 5);
         assert_eq!(pick.explanation.windows.track_min, 60);
@@ -951,7 +985,7 @@ mod tests {
             history.push(Play::of(&library.tracks[&id], -(id as i64 + 6) * 10 * MIN));
         }
         let pick = next(&library, &history, 0, None, &mut rng).unwrap();
-        assert_eq!(pick.explanation.step, 8);
+        assert_eq!(pick.explanation.step, 10);
         assert_eq!(pick.explanation.category_id, Some(1));
     }
 
@@ -984,7 +1018,7 @@ mod tests {
             history.push(Play::of(&library.tracks[&id], -(id as i64) * 10 * MIN));
         }
         let pick = next(&library, &history, 0, None, &mut rng).unwrap();
-        assert_eq!(pick.explanation.step, 9);
+        assert_eq!(pick.explanation.step, 11);
         assert!((6..=10).contains(&pick.track), "{}", pick.track);
         // A station with no category yet rotates the whole library.
         library.categories.clear();
@@ -1142,6 +1176,146 @@ mod tests {
             );
             assert!(pick.explanation.restricted >= 10, "{:?}", pick.explanation);
         }
+    }
+
+    /// Only track separation (30 min) and daypart separation `dayparts`,
+    /// with `count` dayparts.
+    fn daypart_library(count: u8, dayparts: u8) -> Library {
+        let mut library = library(vec![slot(1, Method::LeastRecentlyPlayed)]);
+        library.settings.daypart_count = count;
+        library.settings.separation = Windows {
+            track_min: 30,
+            dayparts,
+            ..Windows::OFF
+        };
+        library
+    }
+
+    /// Whether track 1, played at `played`, is held back by its daypart at
+    /// `at` (Thursday 1970-01-01 is day 0, Friday day 1).
+    fn held_by_daypart(library: &Library, played: i64, at: i64) -> bool {
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], played));
+        let mut rng = Rng::new(21);
+        let pick = next(library, &history, at, None, &mut rng).unwrap();
+        // Least recently played: track 1 is the only one ever played, so
+        // it is picked last unless held back; the others never are.
+        assert_eq!(pick.explanation.step, 0);
+        pick.explanation.blocked.daypart == 1
+    }
+
+    #[test]
+    fn a_daypart_separation_of_one_keeps_out_the_next_daypart() {
+        let library = daypart_library(4, 1);
+        // Played in A (00:30).
+        assert!(
+            !held_by_daypart(&library, 30 * MIN, 5 * HOUR),
+            "same daypart"
+        );
+        assert!(held_by_daypart(&library, 30 * MIN, 6 * HOUR + 30 * MIN));
+        assert!(held_by_daypart(&library, 30 * MIN, 11 * HOUR + 59 * MIN));
+        assert!(!held_by_daypart(&library, 30 * MIN, 12 * HOUR));
+        // Played in D (22:00): the next day's A follows it.
+        assert!(held_by_daypart(&library, 22 * HOUR, 24 * HOUR + 30 * MIN));
+        assert!(!held_by_daypart(&library, 22 * HOUR, 30 * HOUR));
+        // Off.
+        let off = daypart_library(4, 0);
+        assert!(!held_by_daypart(&off, 30 * MIN, 6 * HOUR + 30 * MIN));
+    }
+
+    #[test]
+    fn a_daypart_separation_of_six_runs_into_the_next_day() {
+        let library = daypart_library(4, 6);
+        // Played in A (01:00): kept out of B, C, D, then Friday's A, B, C.
+        assert!(held_by_daypart(&library, HOUR, 18 * HOUR));
+        assert!(held_by_daypart(&library, HOUR, 24 * HOUR + HOUR));
+        assert!(held_by_daypart(&library, HOUR, 24 * HOUR + 17 * HOUR));
+        assert!(!held_by_daypart(&library, HOUR, 24 * HOUR + 18 * HOUR));
+        // The history reaches back far enough: 7 dayparts and an hour.
+        assert!(library.horizon_ms() >= 43 * HOUR);
+    }
+
+    #[test]
+    fn six_dayparts_are_four_hours_long() {
+        // Played at 03:00: with 6 dayparts, 04:30 is the next one (B).
+        assert!(held_by_daypart(
+            &daypart_library(6, 1),
+            3 * HOUR,
+            4 * HOUR + 30 * MIN
+        ));
+        assert!(!held_by_daypart(
+            &daypart_library(4, 1),
+            3 * HOUR,
+            4 * HOUR + 30 * MIN
+        ));
+        // Up to 10 with 6 dayparts; a category's 10 is cut to 6 with 4.
+        let library = daypart_library(6, 10);
+        assert!(held_by_daypart(&library, 21 * HOUR, 48 * HOUR + 15 * HOUR));
+        assert!(!held_by_daypart(&library, 21 * HOUR, 48 * HOUR + 16 * HOUR));
+        let mut library = daypart_library(4, 0);
+        library.categories.get_mut(&1).unwrap().separation.dayparts = Some(10);
+        assert_eq!(
+            library
+                .windows(Some(&library.categories[&1].separation), None)
+                .dayparts,
+            6
+        );
+        // A slot never overrides it.
+        let slot = SeparationOverrides {
+            dayparts: Some(3),
+            ..SeparationOverrides::default()
+        };
+        assert_eq!(library.windows(None, Some(&slot)).dayparts, 0);
+    }
+
+    #[test]
+    fn daypart_separation_is_relaxed_after_album_and_before_artist() {
+        // Every track of the category played in A, artists 2 hours ago.
+        let mut library = library(vec![slot(1, Method::Random)]);
+        library.settings.separation = Windows {
+            album_min: 600,
+            artist_min: 120,
+            title_min: 0,
+            track_min: 30,
+            dayparts: 2,
+        };
+        let mut history = History::default();
+        for id in 1..=5 {
+            history.push(Play::of(&library.tracks[&id], (id as i64) * MIN));
+        }
+        let mut rng = Rng::new(22);
+        // At 12:30 (C, two dayparts after A): album separation holds until
+        // it is halved (step 1), the dayparts until they are halved (step
+        // 3): C is no longer kept out.
+        let pick = next(&library, &history, 12 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 3);
+        assert_eq!(pick.explanation.windows.dayparts, 1);
+        assert_eq!(pick.explanation.windows.artist_min, 120);
+        assert_eq!(pick.explanation.blocked.daypart, 5);
+        assert_eq!(
+            pick.explanation.daypart,
+            Some(DaypartLog {
+                count: 4,
+                daypart: 2,
+                separation: 2,
+                last_daypart: Some(0),
+            })
+        );
+        // At 06:30 (B): halved, 1 still holds; dropped at step 4, with
+        // artist separation as configured.
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 4);
+        assert_eq!(
+            pick.explanation.step_description,
+            "daypart separation dropped"
+        );
+        assert_eq!(pick.explanation.windows.dayparts, 0);
+        assert_eq!(pick.explanation.windows.artist_min, 120);
+        assert_eq!(pick.explanation.daypart.unwrap().daypart, 1);
+        // At 01:00, artist separation holds too: relaxed after dayparts.
+        let pick = next(&library, &history, HOUR, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 6);
+        assert_eq!(pick.explanation.blocked.artist, 5);
     }
 
     /// Track 1 at 0.2, offered first at every pick (its weight dwarfs the

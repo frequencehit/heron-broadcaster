@@ -17,6 +17,9 @@ pub struct Windows {
     pub title_min: u32,
     /// Do not play the same track within.
     pub track_min: u32,
+    /// Daypart separation: a track played in a daypart does not play in
+    /// this many dayparts after it ([`crate::dayparts`]); 0: off.
+    pub dayparts: u8,
 }
 
 impl Default for Windows {
@@ -26,6 +29,7 @@ impl Default for Windows {
             artist_min: 120,
             title_min: 240,
             track_min: 240,
+            dayparts: 0,
         }
     }
 }
@@ -44,6 +48,9 @@ pub struct SeparationOverrides {
     pub title_min: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub track_min: Option<u32>,
+    /// Daypart separation; categories only, never clock slots.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dayparts: Option<u8>,
 }
 
 impl SeparationOverrides {
@@ -54,10 +61,10 @@ impl SeparationOverrides {
 
 /// Last relaxation step: the fallback category's least recently played
 /// track, without rules.
-pub const LAST_STEP: u8 = 10;
+pub const LAST_STEP: u8 = 12;
 
 /// First step taken in the fallback category.
-pub const FALLBACK_STEP: u8 = 9;
+pub const FALLBACK_STEP: u8 = 11;
 
 /// The longest any window can be: one week.
 pub const MAX_WINDOW_MIN: u32 = 7 * 24 * 60;
@@ -68,6 +75,7 @@ impl Windows {
         artist_min: 0,
         title_min: 0,
         track_min: 0,
+        dayparts: 0,
     };
 
     pub fn with(self, overrides: &SeparationOverrides) -> Self {
@@ -76,11 +84,12 @@ impl Windows {
             artist_min: overrides.artist_min.unwrap_or(self.artist_min),
             title_min: overrides.title_min.unwrap_or(self.title_min),
             track_min: overrides.track_min.unwrap_or(self.track_min),
+            dayparts: overrides.dayparts.unwrap_or(self.dayparts),
         }
     }
 
-    /// The windows at a relaxation step, from these as configured. Steps 9
-    /// and 10 apply to the fallback category's windows.
+    /// The windows at a relaxation step, from these as configured. Steps 11
+    /// and 12 apply to the fallback category's windows.
     pub fn at_step(self, step: u8) -> Self {
         let mut windows = self;
         if step >= 1 {
@@ -90,21 +99,27 @@ impl Windows {
             windows.album_min = 0;
         }
         if step >= 3 {
-            windows.artist_min /= 2;
+            windows.dayparts /= 2;
         }
         if step >= 4 {
-            windows.artist_min = 0;
+            windows.dayparts = 0;
         }
         if step >= 5 {
-            windows.title_min /= 2;
+            windows.artist_min /= 2;
         }
         if step >= 6 {
-            windows.title_min = 0;
+            windows.artist_min = 0;
         }
         if step >= 7 {
-            windows.track_min = self.track_min / 2;
+            windows.title_min /= 2;
         }
         if step >= 8 {
+            windows.title_min = 0;
+        }
+        if step >= 9 {
+            windows.track_min = self.track_min / 2;
+        }
+        if step >= 10 {
             windows.track_min = self.track_min / 4;
         }
         if step >= LAST_STEP {
@@ -113,6 +128,7 @@ impl Windows {
         windows
     }
 
+    /// The longest window in minutes (daypart separation aside).
     pub fn longest_min(&self) -> u32 {
         self.album_min
             .max(self.artist_min)
@@ -120,11 +136,18 @@ impl Windows {
             .max(self.track_min)
     }
 
-    /// Checks the windows are within a week.
+    /// Checks the windows are within a week, and the daypart separation
+    /// within the longest any division allows.
     pub fn check(&self) -> Result<(), String> {
         if self.longest_min() > MAX_WINDOW_MIN {
             return Err(format!(
                 "separation windows are at most {MAX_WINDOW_MIN} minutes"
+            ));
+        }
+        if self.dayparts > crate::dayparts::MAX_SEPARATION {
+            return Err(format!(
+                "daypart separation is at most {} dayparts",
+                crate::dayparts::MAX_SEPARATION
             ));
         }
         Ok(())
@@ -154,25 +177,25 @@ impl AcrossWindows {
     };
 
     /// Relaxed with the station's own rule of the same kind: artist halved
-    /// at step 3 and dropped at 4, title at 5 and 6, track at 7 and 8.
+    /// at step 5 and dropped at 6, title at 7 and 8, track at 9 and 10.
     pub fn at_step(self, step: u8) -> Self {
         let mut windows = self;
-        if step >= 3 {
+        if step >= 5 {
             windows.artist_min /= 2;
         }
-        if step >= 4 {
+        if step >= 6 {
             windows.artist_min = 0;
         }
-        if step >= 5 {
+        if step >= 7 {
             windows.title_min /= 2;
         }
-        if step >= 6 {
+        if step >= 8 {
             windows.title_min = 0;
         }
-        if step >= 7 {
+        if step >= 9 {
             windows.track_min /= 2;
         }
-        if step >= 8 {
+        if step >= 10 {
             windows.track_min = 0;
         }
         windows
@@ -202,13 +225,15 @@ pub fn describe_step(step: u8) -> &'static str {
         0 => "all rules as configured",
         1 => "album separation halved",
         2 => "album separation dropped",
-        3 => "artist separation halved",
-        4 => "artist separation dropped",
-        5 => "title separation halved",
-        6 => "title separation dropped",
-        7 => "track separation halved",
-        8 => "track separation quartered",
-        9 => "fallback category, track separation at a quarter",
+        3 => "daypart separation halved",
+        4 => "daypart separation dropped",
+        5 => "artist separation halved",
+        6 => "artist separation dropped",
+        7 => "title separation halved",
+        8 => "title separation dropped",
+        9 => "track separation halved",
+        10 => "track separation quartered",
+        11 => "fallback category, track separation at a quarter",
         _ => "fallback category, least recently played, no rules",
     }
 }
@@ -219,22 +244,50 @@ mod tests {
 
     #[test]
     fn relaxation_follows_the_documented_table() {
-        let windows = Windows::default();
+        let windows = Windows {
+            dayparts: 3,
+            ..Windows::default()
+        };
         let at = |step| {
             let w = windows.at_step(step);
-            (w.album_min, w.artist_min, w.title_min, w.track_min)
+            (
+                w.album_min,
+                w.dayparts,
+                w.artist_min,
+                w.title_min,
+                w.track_min,
+            )
         };
-        assert_eq!(at(0), (60, 120, 240, 240));
-        assert_eq!(at(1), (30, 120, 240, 240));
-        assert_eq!(at(2), (0, 120, 240, 240));
-        assert_eq!(at(3), (0, 60, 240, 240));
-        assert_eq!(at(4), (0, 0, 240, 240));
-        assert_eq!(at(5), (0, 0, 120, 240));
-        assert_eq!(at(6), (0, 0, 0, 240));
-        assert_eq!(at(7), (0, 0, 0, 120));
-        assert_eq!(at(8), (0, 0, 0, 60));
-        assert_eq!(at(9), (0, 0, 0, 60));
-        assert_eq!(at(10), (0, 0, 0, 0));
+        assert_eq!(at(0), (60, 3, 120, 240, 240));
+        assert_eq!(at(1), (30, 3, 120, 240, 240));
+        assert_eq!(at(2), (0, 3, 120, 240, 240));
+        // Daypart separation: after album, before artist; halved rounded
+        // down, then dropped.
+        assert_eq!(at(3), (0, 1, 120, 240, 240));
+        assert_eq!(at(4), (0, 0, 120, 240, 240));
+        assert_eq!(at(5), (0, 0, 60, 240, 240));
+        assert_eq!(at(6), (0, 0, 0, 240, 240));
+        assert_eq!(at(7), (0, 0, 0, 120, 240));
+        assert_eq!(at(8), (0, 0, 0, 0, 240));
+        assert_eq!(at(9), (0, 0, 0, 0, 120));
+        assert_eq!(at(10), (0, 0, 0, 0, 60));
+        assert_eq!(at(11), (0, 0, 0, 0, 60));
+        assert_eq!(at(12), (0, 0, 0, 0, 0));
+        for (separation, halved) in [(1, 0), (2, 1), (6, 3), (10, 5)] {
+            let windows = Windows {
+                dayparts: separation,
+                ..Windows::OFF
+            };
+            assert_eq!(windows.at_step(3).dayparts, halved);
+        }
+        assert!(
+            Windows {
+                dayparts: 11,
+                ..Windows::OFF
+            }
+            .check()
+            .is_err()
+        );
     }
 
     #[test]
@@ -249,13 +302,13 @@ mod tests {
             (w.artist_min, w.title_min, w.track_min)
         };
         assert_eq!(at(0), (30, 60, 120));
-        assert_eq!(at(2), (30, 60, 120));
-        assert_eq!(at(3), (15, 60, 120));
-        assert_eq!(at(4), (0, 60, 120));
-        assert_eq!(at(5), (0, 30, 120));
-        assert_eq!(at(6), (0, 0, 120));
-        assert_eq!(at(7), (0, 0, 60));
-        assert_eq!(at(8), (0, 0, 0));
+        assert_eq!(at(4), (30, 60, 120));
+        assert_eq!(at(5), (15, 60, 120));
+        assert_eq!(at(6), (0, 60, 120));
+        assert_eq!(at(7), (0, 30, 120));
+        assert_eq!(at(8), (0, 0, 120));
+        assert_eq!(at(9), (0, 0, 60));
+        assert_eq!(at(10), (0, 0, 0));
         assert!(AcrossWindows::default().is_off());
     }
 
@@ -264,6 +317,7 @@ mod tests {
         let windows = Windows::default().with(&SeparationOverrides {
             track_min: Some(90),
             artist_min: Some(0),
+            dayparts: Some(2),
             ..SeparationOverrides::default()
         });
         assert_eq!(
@@ -273,6 +327,7 @@ mod tests {
                 artist_min: 0,
                 title_min: 240,
                 track_min: 90,
+                dayparts: 2,
             }
         );
         let parsed: SeparationOverrides = serde_json::from_str(r#"{"title_min": 30}"#).unwrap();

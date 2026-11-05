@@ -13,7 +13,7 @@ use crate::rules::{FALLBACK_STEP, LAST_STEP};
 use crate::select::SeparationRule;
 use crate::{
     AcrossWindows, CategoryId, Elsewhere, Explanation, History, Library, Play, Position, Rng,
-    TrackId, Windows, next_outcome, ratio,
+    TrackId, Windows, dayparts, next_outcome, ratio,
 };
 
 /// Shortest length a simulated track is counted for.
@@ -63,6 +63,14 @@ pub enum Violation {
     },
     /// Played while its play ratio counter was in its held-back steps.
     Ratio { pick: u32, ratio: u8, counter: u8 },
+    /// Played in a daypart its last play keeps it out of, with the daypart
+    /// separation at its step.
+    Daypart {
+        pick: u32,
+        /// The track's last play before it.
+        earlier_unix_ms: i64,
+        dayparts: u8,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,7 +82,7 @@ pub struct Simulation {
     /// Minutes nothing could be picked (restrictions forbade every track):
     /// the engine's fallback directory would play.
     pub gap_minutes: u32,
-    /// Picks per relaxation step, 0 to 10: every pick past step 0 is a
+    /// Picks per relaxation step, 0 to 12: every pick past step 0 is a
     /// logged relaxation.
     pub steps: Vec<u32>,
     pub violations: Vec<Violation>,
@@ -151,14 +159,14 @@ pub fn simulate(
 
 /// The windows and category a pick must respect, from its slot and step.
 fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<CategoryId>) {
-    let base = library.settings.separation;
     let step = explanation.step;
     if step >= FALLBACK_STEP {
         let fallback = library.fallback_category();
         let windows = if step >= LAST_STEP {
             Windows::OFF
         } else {
-            base.with(&fallback.map(|c| c.separation).unwrap_or_default())
+            library
+                .windows(fallback.map(|c| &c.separation), None)
                 .at_step(step)
         };
         return (windows, fallback.map(|c| c.id));
@@ -169,16 +177,17 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
         .and_then(|(clock, slot)| library.clocks.get(&clock)?.slots.get(slot as usize));
     match slot {
         // No clock: the whole library, rules enforced.
-        None => (base.at_step(step), None),
+        None => (library.windows(None, None).at_step(step), None),
         Some(slot) if !slot.enforce_rules => (Windows::OFF, Some(slot.category)),
         Some(slot) => {
             let category = library
                 .categories
                 .get(&slot.category)
-                .map(|c| c.separation)
-                .unwrap_or_default();
+                .map(|c| &c.separation);
             (
-                base.with(&category).with(&slot.separation).at_step(step),
+                library
+                    .windows(category, Some(&slot.separation))
+                    .at_step(step),
                 Some(slot.category),
             )
         }
@@ -186,7 +195,8 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
 }
 
 /// Checks each pick against the plays before it (`before`, then the
-/// earlier picks): separation as relaxed at its step, restrictions always,
+/// earlier picks): separation as relaxed at its step (daypart separation
+/// against the track's last play), restrictions always,
 /// and the play ratio always: the counters start from the library's and
 /// move with the tracks each pick lists as held back, then with the pick.
 pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec<Violation> {
@@ -275,6 +285,24 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
                     });
                 }
             }
+        }
+        if windows.dayparts > 0
+            && let Some(last) = timeline
+                .iter()
+                .rev()
+                .find(|p| p.start_ms <= at && p.track == Some(track.id))
+            && dayparts::holds(
+                library.daypart_count(),
+                windows.dayparts,
+                library.local(last.start_ms).datetime(),
+                library.local(at).datetime(),
+            )
+        {
+            violations.push(Violation::Daypart {
+                pick: index,
+                earlier_unix_ms: last.start_ms,
+                dayparts: windows.dayparts,
+            });
         }
         let previous = timeline
             .iter()
@@ -467,6 +495,7 @@ mod tests {
                 held_elsewhere: None,
                 counter: None,
                 held_by_ratio: vec![],
+                daypart: None,
             },
         }
     }
@@ -518,10 +547,10 @@ mod tests {
             "similar"
         );
         assert!(across(1, noon + 40 * MIN, 0).is_empty());
-        // Halved at step 3, dropped at 4.
-        assert!(across(1, noon + 20 * MIN, 3).is_empty());
-        assert_eq!(across(1, noon + 10 * MIN, 3).len(), 1);
-        assert!(across(1, noon + 10 * MIN, 4).is_empty());
+        // Halved at step 5, dropped at 6.
+        assert!(across(1, noon + 20 * MIN, 5).is_empty());
+        assert_eq!(across(1, noon + 10 * MIN, 5).len(), 1);
+        assert!(across(1, noon + 10 * MIN, 6).is_empty());
         let off = audit_across(
             &with_across(library.clone(), 0),
             &others,
@@ -685,23 +714,53 @@ mod tests {
     fn relaxed_picks_are_checked_against_relaxed_windows() {
         let library = library();
         // Artist 100 min apart: fine once artist separation is halved
-        // (step 3: 60 min), not before.
+        // (step 5: 60 min), not before.
         let close = |step| [pick(&library, 1, 0, 0), pick(&library, 2, 100 * MIN, step)];
-        assert!(audit(&library, &[], &close(3)).is_empty());
+        assert!(audit(&library, &[], &close(5)).is_empty());
         assert_eq!(
-            rules(&audit(&library, &[], &close(2))),
+            rules(&audit(&library, &[], &close(4))),
             [SeparationRule::Artist]
         );
         let repeat = |step| [pick(&library, 1, 0, 0), pick(&library, 1, 70 * MIN, step)];
-        // Step 8 keeps a quarter of the track window: 60 min.
-        assert!(audit(&library, &[], &repeat(8)).is_empty());
+        // Step 10 keeps a quarter of the track window: 60 min.
+        assert!(audit(&library, &[], &repeat(10)).is_empty());
         assert_eq!(
-            rules(&audit(&library, &[], &repeat(7))),
+            rules(&audit(&library, &[], &repeat(9))),
             [SeparationRule::Track]
         );
-        // Step 10: no rules at all.
-        let immediate = [pick(&library, 1, 0, 0), pick(&library, 1, MIN, 10)];
+        // Step 12: no rules at all.
+        let immediate = [pick(&library, 1, 0, 0), pick(&library, 1, MIN, 12)];
         assert!(audit(&library, &[], &immediate).is_empty());
+    }
+
+    #[test]
+    fn catches_a_track_back_in_a_daypart_kept_out() {
+        let mut library = library();
+        library.settings.separation = Windows {
+            dayparts: 1,
+            ..Windows::OFF
+        };
+        let hour = 60 * MIN;
+        // Played in A at 01:00, again in B at 07:00.
+        let again = |at, step| [pick(&library, 1, hour, 0), pick(&library, 1, at, step)];
+        assert_eq!(
+            audit(&library, &[], &again(7 * hour, 0)),
+            [Violation::Daypart {
+                pick: 1,
+                earlier_unix_ms: hour,
+                dayparts: 1,
+            }]
+        );
+        // Halved at step 3 (1 becomes 0); C is never kept out.
+        assert!(audit(&library, &[], &again(7 * hour, 3)).is_empty());
+        assert!(audit(&library, &[], &again(13 * hour, 0)).is_empty());
+        // Plays before the simulation count, across midnight (D, then A);
+        // only the last one does.
+        let before = [Play::of(&library.tracks[&1], -2 * hour)];
+        let at_five = [pick(&library, 1, 5 * hour, 0)];
+        assert_eq!(audit(&library, &before, &at_five).len(), 1);
+        let before = [before[0].clone(), Play::of(&library.tracks[&1], 30 * MIN)];
+        assert!(audit(&library, &before, &at_five).is_empty());
     }
 
     #[test]
@@ -717,7 +776,7 @@ mod tests {
             }]
         );
         // Relaxation never excuses a restriction.
-        let violations = audit(&library, &[], &[pick(&library, 2, noon, 10)]);
+        let violations = audit(&library, &[], &[pick(&library, 2, noon, 12)]);
         assert!(matches!(violations[..], [Violation::Restriction { .. }]));
         // Track 4 is not in the slot's category.
         let violations = audit(&library, &[], &[pick(&library, 4, 0, 0)]);
@@ -740,8 +799,8 @@ mod tests {
         // Track 1 plays at 10 and 9, then at 8 it is held back.
         let picks = [
             pick(&library, 1, 0, 0),
-            pick(&library, 1, 5 * hour, 10),
-            pick(&library, 1, 10 * hour, 10),
+            pick(&library, 1, 5 * hour, 12),
+            pick(&library, 1, 10 * hour, 12),
         ];
         assert_eq!(
             audit(&library, &[], &picks),

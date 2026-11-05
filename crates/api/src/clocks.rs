@@ -190,6 +190,12 @@ async fn write_slots(
         .execute(&mut *tx)
         .await?;
     for (position, slot) in slots.iter().enumerate() {
+        if slot.separation.dayparts.is_some() {
+            return Err(ApiError::Invalid(
+                "daypart separation is set for the station or a category, not a clock slot"
+                    .to_owned(),
+            ));
+        }
         let separation = separation_json(&slot.separation)?;
         sqlx::query(
             "INSERT INTO clock_slots
