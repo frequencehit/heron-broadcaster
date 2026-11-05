@@ -200,11 +200,8 @@ function RotationCard() {
           </div>
           <DaypartSettings
             count={draft.daypart_count}
-            separation={draft.separation.dayparts}
             disabled={!canEdit}
-            onChange={(daypart_count, dayparts) =>
-              set({ daypart_count, separation: { ...draft.separation, dayparts } })
-            }
+            onChange={(daypart_count) => set({ daypart_count })}
           />
           <div className="form-grid">
             <Field label={t("settings.fallback")} hint={t("settings.fallbackHint")}>

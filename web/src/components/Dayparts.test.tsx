@@ -8,44 +8,52 @@ import { renderApp } from "../test/render";
 import { CategoryDayparts, DaypartBadge, DaypartSettings, daypartNote } from "./Dayparts";
 
 describe("DaypartSettings", () => {
-  it("draws where a track played and the dayparts kept out", () => {
+  it("draws where a track played and the dayparts kept out, in an example", () => {
     const onChange = vi.fn();
-    const { container } = renderApp(<DaypartSettings count={4} separation={1} disabled={false} onChange={onChange} />);
+    const { container } = renderApp(<DaypartSettings count={4} disabled={false} onChange={onChange} />);
     const states = () => [...container.querySelectorAll(".daypart")].map((part) => part.className.split(" ")[1]);
-    // Today, then tomorrow.
+    // The separation is the categories'.
+    expect(screen.getByRole("link", { name: "Categories" }).getAttribute("href")).toMatch(/\/categories$/);
+    // Today, then tomorrow, with a separation of 1.
     expect(states()).toEqual(["played", "kept", "free", "free", "free", "free", "free", "free"]);
     expect(screen.getByText(/Played in A, it does not play in B; at the earliest in C\./)).toBeTruthy();
     // Played in D: tomorrow's A is kept out, across midnight.
     fireEvent.click(screen.getByTitle("Today · D: can play again"));
     expect(states()).toEqual(["free", "free", "free", "played", "kept", "free", "free", "free"]);
     expect(screen.getByText(/does not play in tomorrow's A; at the earliest in tomorrow's B/)).toBeTruthy();
-    // Up to 6 with 4 dayparts.
-    expect(screen.getByRole("group", { name: "Dayparts kept out after a play" }).querySelectorAll("button")).toHaveLength(7);
+    // Up to 6 with 4 dayparts; the example's separation is not saved.
+    const example = screen.getByRole("group", { name: "Dayparts kept out, in the example" });
+    expect(example.querySelectorAll("button")).toHaveLength(7);
     fireEvent.click(screen.getByRole("button", { name: "3" }));
-    expect(onChange).toHaveBeenLastCalledWith(4, 3);
+    expect(states().slice(3, 7)).toEqual(["played", "kept", "kept", "kept"]);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("keeps the separation within the division's maximum", () => {
+  it("changes the division only", () => {
     const onChange = vi.fn();
-    renderApp(<DaypartSettings count={6} separation={10} disabled={false} onChange={onChange} />);
+    renderApp(<DaypartSettings count={6} disabled={false} onChange={onChange} />);
     expect(screen.getByText(/A 00:00–03:59 · B 04:00–07:59/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "4 dayparts of 6 h" }));
-    expect(onChange).toHaveBeenLastCalledWith(4, 6);
+    expect(onChange).toHaveBeenLastCalledWith(4);
   });
 });
 
 describe("CategoryDayparts", () => {
-  it("offers the station's value or its own", () => {
+  it("is a plain value, 0 for off", () => {
     const onChange = vi.fn();
-    renderApp(<CategoryDayparts value={undefined} station={1} count={4} onChange={onChange} />);
+    renderApp(<CategoryDayparts value={0} count={4} onChange={onChange} />);
     const select = screen.getByRole("combobox");
-    expect((select as HTMLSelectElement).value).toBe("");
-    expect(screen.getByRole("option", { name: "Station's (1)" })).toBeTruthy();
-    expect(screen.getAllByRole("option")).toHaveLength(8);
+    expect((select as HTMLSelectElement).value).toBe("0");
+    expect(screen.getByRole("option", { name: "0: off" })).toBeTruthy();
+    expect(screen.getAllByRole("option")).toHaveLength(7);
+    expect(screen.getByText("Off: only the windows in minutes count.")).toBeTruthy();
     fireEvent.change(select, { target: { value: "4" } });
     expect(onChange).toHaveBeenLastCalledWith(4);
-    fireEvent.change(select, { target: { value: "" } });
-    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("keeps a value set for another station's division", () => {
+    renderApp(<CategoryDayparts value={9} count={4} onChange={vi.fn()} />);
+    expect(screen.getAllByRole("option")).toHaveLength(10);
   });
 });
 

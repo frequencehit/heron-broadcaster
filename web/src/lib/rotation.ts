@@ -154,7 +154,7 @@ function minutes(value: number): string {
   return t("rotation.minutes", { minutes: number(value) });
 }
 
-/** The windows overridden: `track 1 h 30, artist off`; empty when none. */
+/** The windows in minutes overridden: `track 1 h 30, artist off`; empty when none. */
 export function describeOverrides(overrides: SeparationOverrides | undefined): string {
   if (!overrides) {
     return "";
@@ -162,9 +162,6 @@ export function describeOverrides(overrides: SeparationOverrides | undefined): s
   const described = WINDOW_NAMES.filter(([key]) => overrides[key] !== undefined && overrides[key] !== null).map(
     ([key, name]) => t("rotation.window", { name: t(name), length: minutes(overrides[key] ?? 0) }),
   );
-  if (overrides.dayparts !== undefined && overrides.dayparts !== null) {
-    described.push(dayparts(overrides.dayparts));
-  }
   return described.join(", ");
 }
 

@@ -7411,7 +7411,8 @@ export interface components {
             /**
              * Format: int32
              * @description The station's division of the day for daypart separation: 4
-             *     dayparts of 6 hours, or 6 of 4 hours.
+             *     dayparts of 6 hours, or 6 of 4 hours. The separation itself is each
+             *     category's.
              * @default 4
              */
             daypart_count: number;
@@ -7428,12 +7429,11 @@ export interface components {
              * @default {
              *       "album_min": 60,
              *       "artist_min": 120,
-             *       "dayparts": 0,
              *       "title_min": 240,
              *       "track_min": 240
              *     }
              */
-            separation: components["schemas"]["Windows"];
+            separation: components["schemas"]["StationWindows"];
             /**
              * @default {
              *       "play_factor": 1,
@@ -7626,7 +7626,8 @@ export interface components {
             artist_min?: number | null;
             /**
              * Format: int32
-             * @description Daypart separation; categories only, never clock slots.
+             * @description Daypart separation: a category's own (none or 0: off), never a
+             *     clock slot's.
              */
             dayparts?: number | null;
             /** Format: int32 */
@@ -7999,6 +8000,37 @@ export interface components {
              *     `Europe/Paris`. By default the server's (`TZ`), or UTC.
              */
             timezone: string;
+        };
+        /**
+         * @description The station's separation windows, in minutes (`rotation` settings); 0
+         *     turns a rule off. Daypart separation is not among them: it is each
+         *     category's.
+         */
+        StationWindows: {
+            /**
+             * Format: int32
+             * @description Do not play the same album within.
+             * @default 60
+             */
+            album_min: number;
+            /**
+             * Format: int32
+             * @description Do not play the same artist (or a similar one) within.
+             * @default 120
+             */
+            artist_min: number;
+            /**
+             * Format: int32
+             * @description Do not play the same title (any version) within.
+             * @default 240
+             */
+            title_min: number;
+            /**
+             * Format: int32
+             * @description Do not play the same track within.
+             * @default 240
+             */
+            track_min: number;
         };
         /** @description Listener statistics. See `docs/statistics.md#settings`. */
         StatisticsSettings: {

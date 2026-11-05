@@ -20071,7 +20071,7 @@
           "daypart_count": {
             "type": "integer",
             "format": "int32",
-            "description": "The station's division of the day for daypart separation: 4\ndayparts of 6 hours, or 6 of 4 hours.",
+            "description": "The station's division of the day for daypart separation: 4\ndayparts of 6 hours, or 6 of 4 hours. The separation itself is each\ncategory's.",
             "default": 4,
             "minimum": 0
           },
@@ -20096,11 +20096,10 @@
             "default": []
           },
           "separation": {
-            "$ref": "#/components/schemas/Windows",
+            "$ref": "#/components/schemas/StationWindows",
             "default": {
               "album_min": 60,
               "artist_min": 120,
-              "dayparts": 0,
               "title_min": 240,
               "track_min": 240
             }
@@ -20559,7 +20558,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Daypart separation; categories only, never clock slots.",
+            "description": "Daypart separation: a category's own (none or 0: off), never a\nclock slot's.",
             "minimum": 0
           },
           "title_min": {
@@ -21614,6 +21613,41 @@
           "timezone": {
             "type": "string",
             "description": "IANA time zone the clocks and restrictions follow, e.g.\n`Europe/Paris`. By default the server's (`TZ`), or UTC."
+          }
+        },
+        "additionalProperties": false
+      },
+      "StationWindows": {
+        "type": "object",
+        "description": "The station's separation windows, in minutes (`rotation` settings); 0\nturns a rule off. Daypart separation is not among them: it is each\ncategory's.",
+        "properties": {
+          "album_min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Do not play the same album within.",
+            "default": 60,
+            "minimum": 0
+          },
+          "artist_min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Do not play the same artist (or a similar one) within.",
+            "default": 120,
+            "minimum": 0
+          },
+          "title_min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Do not play the same title (any version) within.",
+            "default": 240,
+            "minimum": 0
+          },
+          "track_min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Do not play the same track within.",
+            "default": 240,
+            "minimum": 0
           }
         },
         "additionalProperties": false

@@ -740,6 +740,14 @@ fn push_value(query: &mut QueryBuilder<MySql>, col: Col, value: Value) {
     }
 }
 
+/// Migrations that change configuration a backup holds, run again on the
+/// rows of a file of an older schema once they are written. Each one does
+/// nothing to rows already in the new shape.
+const UPGRADES: &[(i64, &str)] = &[(
+    20261130000000,
+    include_str!("../../../../migrations/20261130000000_daypart_separation_per_category.sql"),
+)];
+
 /// Writes the file's configuration over the database's, in `tx`.
 pub async fn restore(
     tx: &mut Transaction<'_, MySql>,
@@ -878,6 +886,12 @@ pub async fn restore(
                 "{name}: cannot delete what the backup does not have: {error}"
             ))
         })?;
+    }
+    // What migrations since the file's schema changed in the configuration.
+    for (version, sql) in UPGRADES {
+        if file.schema < *version {
+            sqlx::raw_sql(*sql).execute(&mut **tx).await?;
+        }
     }
     // Tracks turned off.
     sqlx::query("UPDATE tracks SET enabled = TRUE WHERE NOT enabled")

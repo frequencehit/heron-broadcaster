@@ -34,6 +34,53 @@ impl Default for Windows {
     }
 }
 
+/// The station's separation windows, in minutes (`rotation` settings); 0
+/// turns a rule off. Daypart separation is not among them: it is each
+/// category's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct StationWindows {
+    /// Do not play the same album within.
+    pub album_min: u32,
+    /// Do not play the same artist (or a similar one) within.
+    pub artist_min: u32,
+    /// Do not play the same title (any version) within.
+    pub title_min: u32,
+    /// Do not play the same track within.
+    pub track_min: u32,
+}
+
+impl Default for StationWindows {
+    fn default() -> Self {
+        Windows::default().into()
+    }
+}
+
+impl From<Windows> for StationWindows {
+    fn from(windows: Windows) -> Self {
+        Self {
+            album_min: windows.album_min,
+            artist_min: windows.artist_min,
+            title_min: windows.title_min,
+            track_min: windows.track_min,
+        }
+    }
+}
+
+impl From<StationWindows> for Windows {
+    /// Without daypart separation: a category sets it.
+    fn from(windows: StationWindows) -> Self {
+        Self {
+            album_min: windows.album_min,
+            artist_min: windows.artist_min,
+            title_min: windows.title_min,
+            track_min: windows.track_min,
+            dayparts: 0,
+        }
+    }
+}
+
 /// Separation windows overridden by a category or a clock slot; missing
 /// ones are inherited.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,7 +95,8 @@ pub struct SeparationOverrides {
     pub title_min: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub track_min: Option<u32>,
-    /// Daypart separation; categories only, never clock slots.
+    /// Daypart separation: a category's own (none or 0: off), never a
+    /// clock slot's.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dayparts: Option<u8>,
 }
@@ -330,6 +378,10 @@ mod tests {
                 dayparts: 2,
             }
         );
+        // The station's windows have no daypart separation: it is each
+        // category's.
+        assert!(serde_json::from_str::<StationWindows>(r#"{"dayparts": 1}"#).is_err());
+        assert_eq!(Windows::from(StationWindows::default()), Windows::default());
         let parsed: SeparationOverrides = serde_json::from_str(r#"{"title_min": 30}"#).unwrap();
         assert_eq!(parsed.title_min, Some(30));
         assert!(!parsed.is_empty());

@@ -136,6 +136,9 @@ export function Categories() {
                 {header("tracks", t("nav.tracks"), "num")}
                 {header("total", t("categories.totalTime"), "num", t("categories.totalTimeHint"))}
                 <th>{t("categories.separation")}</th>
+                <th className="num" title={t("categories.daypartsHint")}>
+                  {t("categories.dayparts")}
+                </th>
                 <th>
                   <span className="visually-hidden">{t("library.actions")}</span>
                 </th>
@@ -162,6 +165,13 @@ export function Categories() {
                   </td>
                   <td className="num">{totalTime(category.total_ms)}</td>
                   <td className="small muted">{describeOverrides(category.separation) || t("categories.stationRules")}</td>
+                  <td className="num">
+                    {category.separation.dayparts ? (
+                      number(category.separation.dayparts)
+                    ) : (
+                      <span className="muted">{t("rotation.off")}</span>
+                    )}
+                  </td>
                   <td className="actions">
                     {canEdit && (
                       <>
@@ -316,18 +326,9 @@ function CategoryDialog({ category, onClose }: { category: Category | null; onCl
           <legend>{t("categories.separation")}</legend>
           <SeparationEditor value={separation} inherited={rotation.data?.separation} onChange={setSeparation} />
           <CategoryDayparts
-            value={separation.dayparts ?? undefined}
-            station={rotation.data?.separation.dayparts}
+            value={separation.dayparts ?? 0}
             count={rotation.data?.daypart_count ?? 4}
-            onChange={(dayparts) => {
-              const next = { ...separation };
-              if (dayparts === undefined) {
-                delete next.dayparts;
-              } else {
-                next.dayparts = dayparts;
-              }
-              setSeparation(next);
-            }}
+            onChange={(dayparts) => setSeparation({ ...separation, dayparts })}
           />
         </fieldset>
       </form>

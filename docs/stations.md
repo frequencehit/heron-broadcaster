@@ -54,7 +54,7 @@ An existing Heron becomes **one station**, named after the station name setting 
 | `agc` (the AGC chain) | | ✓ |
 | `queue` (autofill, tracks waiting) | | ✓ |
 | `engine` (whether the API manages the engine's configuration) | | ✓ |
-| `rotation` (separation windows, dayparts and daypart separation, rules across stations, fallback category, categories kept out, weights) | | ✓ |
+| `rotation` (separation windows, dayparts, rules across stations, fallback category, categories kept out, weights) | | ✓ |
 
 The web UI's **Settings** keeps the shared groups; each station's own are under that station.
 

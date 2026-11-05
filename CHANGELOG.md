@@ -19,7 +19,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Spanish and German** web interface, next to English and French.
 - **Rotation:** hours without a clock rotate the station's library.
 - **Play ratio** per track: an exact quota of plays, from 0.1 to 1 (2 times out of 10 at 0.2), with a counter per station, shown on the track's page and in the rotation log. 0 disables the track; re-enabling it asks for its ratio. A column, a filter and a bulk edit in the track list ([Rotation – Play ratio](docs/rotation.md#play-ratio)).
-- **Daypart separation:** a track played in a daypart (4 of 6 hours or 6 of 4 hours, in the station's time zone) does not play in the dayparts that follow it, across midnight too. Off by default, set per station and overridden per category, relaxed between album and artist separation, and shown in the rotation log ([Rotation – Daypart separation](docs/rotation.md#daypart-separation)).
+- **Daypart separation:** a track played in a daypart (4 of 6 hours or 6 of 4 hours, in the station's time zone) does not play in the dayparts that follow it, across midnight too. Off by default and set per category (the station sets its division of the day), relaxed between album and artist separation, and shown in the rotation log ([Rotation – Daypart separation](docs/rotation.md#daypart-separation)).
 - **When a track played**, on its page: its plays of the last 30 days week by week, and the hours of the week it played in over 30, 90 or 365 days, for one station or all of them, all plays or rotation only. Hovering a day or an hour gives the plays; a click on a day opens the history at that day, for that track ([Web UI – Plays by day and hour](docs/web.md#plays-by-day-and-hour)).
 
 ### Changed

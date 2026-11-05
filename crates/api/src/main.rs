@@ -800,4 +800,86 @@ mod tests {
             .await
             .unwrap();
     }
+
+    /// A station's daypart separation goes onto its Song categories without
+    /// a value of their own, the highest for a category of several
+    /// stations, then leaves the station's settings.
+    #[tokio::test]
+    async fn the_station_daypart_separation_moves_to_its_song_categories() {
+        const PER_CATEGORY: i64 = 20261130000000;
+        let Ok(admin_url) = std::env::var("HERON_TEST_DATABASE_URL") else {
+            return;
+        };
+        let admin_url = admin_url.trim_end_matches('/').to_owned();
+        let name = format!("heron_dayparts_category_{}", std::process::id());
+        let admin = sqlx::MySqlPool::connect(&admin_url).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+        let pool = sqlx::MySqlPool::connect(&format!("{admin_url}/{name}"))
+            .await
+            .unwrap();
+        MIGRATOR.run_to(PER_CATEGORY - 1, &pool).await.unwrap();
+        sqlx::raw_sql(
+            r#"INSERT INTO stations (id, name, code, enabled, position)
+                 VALUES (2, 'Two', 'two', TRUE, 1), (3, 'Three', 'three', TRUE, 2);
+             INSERT INTO station_settings (station_id, name, value) VALUES
+                 (1, 'rotation', '{"separation": {"artist_min": 45, "dayparts": 2}, "daypart_count": 4}'),
+                 (2, 'rotation', '{"separation": {"dayparts": 5}, "daypart_count": 6}'),
+                 (3, 'rotation', '{"separation": {"track_min": 60}}');
+             INSERT INTO categories (id, name, type_id, separation) VALUES
+                 (1, 'Hits', 1, NULL),
+                 (2, 'Shared', 1, '{"track_min": 90}'),
+                 (3, 'Own', 1, '{"dayparts": 0}'),
+                 (4, 'Jingles', 2, NULL),
+                 (5, 'Untyped', NULL, NULL),
+                 (6, 'Third', 1, NULL);
+             INSERT INTO category_stations (category_id, station_id) VALUES
+                 (1, 1), (2, 1), (2, 2), (3, 1), (4, 1), (5, 1), (6, 3);"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        MIGRATOR.run(&pool).await.unwrap();
+        let categories: Vec<(u64, Option<String>)> =
+            sqlx::query_as("SELECT id, CAST(separation AS CHAR) FROM categories ORDER BY id")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        let parsed: Vec<(u64, Option<serde_json::Value>)> = categories
+            .into_iter()
+            .map(|(id, json)| (id, json.map(|json| serde_json::from_str(&json).unwrap())))
+            .collect();
+        assert_eq!(
+            parsed,
+            [
+                (1, Some(serde_json::json!({"dayparts": 2}))),
+                (2, Some(serde_json::json!({"track_min": 90, "dayparts": 5}))),
+                (3, Some(serde_json::json!({"dayparts": 0}))),
+                (4, None),
+                (5, None),
+                (6, None),
+            ]
+        );
+        let settings: Vec<String> = sqlx::query_scalar(
+            "SELECT CAST(value AS CHAR) FROM station_settings WHERE name = 'rotation' ORDER BY station_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let settings: Vec<heron_rotation::RotationSettings> = settings
+            .iter()
+            .map(|json| serde_json::from_str(json).unwrap())
+            .collect();
+        assert_eq!(settings[0].separation.artist_min, 45);
+        assert_eq!(settings[1].daypart_count, 6);
+        assert_eq!(settings[2].separation.track_min, 60);
+
+        pool.close().await;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+    }
 }

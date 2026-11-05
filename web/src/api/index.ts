@@ -62,6 +62,7 @@ export type RotationPick = Schemas["RotationPick"];
 export type Explanation = Schemas["Explanation"];
 export type SeparationOverrides = Schemas["SeparationOverrides"];
 export type Windows = Schemas["Windows"];
+export type StationWindows = Schemas["StationWindows"];
 export type SimulationReport = Schemas["SimulationReport"];
 export type WebhookView = Schemas["WebhookView"];
 export type WebhookEvent = Schemas["WebhookEvent"];

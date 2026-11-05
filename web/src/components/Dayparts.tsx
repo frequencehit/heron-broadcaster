@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Daypart separation (docs/rotation.md#daypart-separation): the station's
-// division and separation with an example over several days, a category's
-// own value, and a pick's daypart in the rotation log.
+// division of the day with an example over several days, a category's
+// separation, and a pick's daypart in the rotation log.
 
 import { useState } from "react";
 import type { Explanation } from "../api";
-import { t } from "../i18n";
+import { rich, t } from "../i18n";
 import {
   DAYPART_COUNTS,
   type PartState,
@@ -19,6 +19,7 @@ import {
   maxSeparation,
 } from "../lib/dayparts";
 import { dateTime } from "../lib/format";
+import { Link } from "../lib/router";
 import { Field, Segmented } from "./ui";
 
 const STATES: Record<PartState, "dayparts.played" | "dayparts.kept" | "dayparts.free"> = {
@@ -27,20 +28,23 @@ const STATES: Record<PartState, "dayparts.played" | "dayparts.kept" | "dayparts.
   free: "dayparts.free",
 };
 
-/** The station's dayparts and their separation, with an example. */
+/**
+ * The station's dayparts, with an example over several days. The separation
+ * of the example is not saved: each category sets its own.
+ */
 export function DaypartSettings({
   count,
-  separation,
   disabled,
   onChange,
 }: Readonly<{
   count: number;
-  separation: number;
   disabled: boolean;
-  onChange: (count: number, separation: number) => void;
+  onChange: (count: number) => void;
 }>) {
   const [played, setPlayed] = useState(0);
+  const [chosen, setSeparation] = useState(1);
   const max = maxSeparation(count);
+  const separation = Math.min(chosen, max);
   const from = Math.min(played, count - 1);
   const days = exampleDays(count, separation, from);
   return (
@@ -48,6 +52,9 @@ export function DaypartSettings({
       <legend>{t("dayparts.title")}</legend>
       <p className="muted small" style={{ marginTop: 0 }}>
         {t("dayparts.help")}
+      </p>
+      <p className="small">
+        {rich("dayparts.perCategory", { link: <Link to="/categories">{t("nav.categories")}</Link> })}
       </p>
       <div className="form-grid">
         <div className="field">
@@ -60,10 +67,7 @@ export function DaypartSettings({
               value: String(n),
               label: t("dayparts.divisionOption", { count: n, hours: 24 / n }),
             }))}
-            onChange={(value) => {
-              const next = Number(value);
-              onChange(next, Math.min(separation, maxSeparation(next)));
-            }}
+            onChange={(value) => onChange(Number(value))}
           />
           <span className="hint">{daypartsList(count)}</span>
         </div>
@@ -72,9 +76,8 @@ export function DaypartSettings({
           <Segmented
             label={t("dayparts.separation")}
             value={String(separation)}
-            disabled={disabled}
             options={Array.from({ length: max + 1 }, (_, n) => ({ value: String(n), label: String(n) }))}
-            onChange={(value) => onChange(count, Number(value))}
+            onChange={(value) => setSeparation(Number(value))}
           />
           <span className="hint">{t("dayparts.separationHint", { max, last: count - 1 })}</span>
         </div>
@@ -154,33 +157,32 @@ function DayRow({
   );
 }
 
-/** A category's daypart separation: the station's, or its own. */
+/**
+ * A category's daypart separation, 0 (off) by default, described in the
+ * station's dayparts. A value over this station's maximum, set for another
+ * station's division, stays offered.
+ */
 export function CategoryDayparts({
   value,
-  station,
   count,
   disabled,
   onChange,
 }: Readonly<{
-  /** Its own; `undefined` for the station's. */
-  value: number | undefined;
-  /** The station's, and its division of the day, when known. */
-  station: number | undefined;
+  value: number;
+  /** The station's division of the day. */
   count: number;
   disabled?: boolean;
-  onChange: (value: number | undefined) => void;
+  onChange: (value: number) => void;
 }>) {
-  const max = Math.max(maxSeparation(count), value ?? 0);
-  const applied = value ?? station ?? 0;
+  const max = Math.max(maxSeparation(count), value);
   return (
-    <Field label={t("dayparts.category")} hint={describeSeparation(count, applied)}>
+    <Field label={t("dayparts.category")} hint={describeSeparation(count, value)}>
       <select
         className="input"
-        value={value === undefined ? "" : String(value)}
+        value={String(value)}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+        onChange={(event) => onChange(Number(event.target.value))}
       >
-        <option value="">{t("dayparts.stationValue", { value: station ?? "–" })}</option>
         {Array.from({ length: max + 1 }, (_, n) => (
           <option key={n} value={n}>
             {n === 0 ? t("dayparts.offOption") : n}

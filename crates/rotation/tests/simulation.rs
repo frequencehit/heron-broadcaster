@@ -348,19 +348,20 @@ fn a_week_breaks_no_rule_outside_logged_relaxations() {
 }
 
 /// Daypart separation over a week that crosses the clocks going back
-/// (Sunday 25 October 2026 in Paris): 1 for the station, 2 for Current, 4
-/// or 6 dayparts. No pick plays in a daypart its last play keeps it out of,
+/// (Sunday 25 October 2026 in Paris): 2 for Current, 1 for Gold, none for
+/// the other categories, 4 or 6 dayparts. No pick plays in a daypart its last play keeps it out of,
 /// unless it logged the rule relaxed (step 3 halves it, 4 drops it).
 #[test]
 fn a_week_keeps_tracks_out_of_the_next_dayparts() {
     for count in [4u8, 6] {
         let mut station = station();
         station.parts.settings.daypart_count = count;
-        station.parts.settings.separation.dayparts = 1;
         for category in &mut station.parts.categories {
-            if category.id == CURRENT {
-                category.separation.dayparts = Some(2);
-            }
+            category.separation.dayparts = match category.id {
+                CURRENT => Some(2),
+                GOLD => Some(1),
+                _ => None,
+            };
         }
         let library = Library::new(station.parts, paris());
         let simulation = week(&library, 5);
@@ -404,6 +405,15 @@ fn a_week_keeps_tracks_out_of_the_next_dayparts() {
                     Some(daypart(previous).rem_euclid(i64::from(count)))
                 );
                 let after = daypart(pick.start_unix_ms) - daypart(previous);
+                // Only the slot's category's value counts.
+                let own = match explanation.slot_category_id {
+                    Some(CURRENT) => 2,
+                    Some(GOLD) => 1,
+                    _ => 0,
+                };
+                if explanation.enforce_rules && explanation.step == 0 {
+                    assert_eq!(explanation.windows.dayparts, own, "{explanation:?}");
+                }
                 if explanation.enforce_rules && explanation.step < 3 {
                     assert!(
                         !(1..=i64::from(explanation.windows.dayparts)).contains(&after),
