@@ -17,10 +17,10 @@ The configuration file is what a station restores after a bad change or a lost d
 
 | Saved | Left out |
 |---|---|
-| Stations (name, code, enabled, order) and every settings group, shared and per station (the rotation settings with their dayparts) | Tracks themselves, their analysis, waveforms, fingerprints and identification: the scan rebuilds them |
+| Stations (name, code, enabled, order) and every settings group, shared and per station (the rotation settings with the station's dayparts) | Tracks themselves, their analysis, waveforms, fingerprints and identification: the scan rebuilds them |
 | Encoder profiles and outputs, with their passwords and statistics credentials | The play history, the rotation log, listener statistics: in the database dump |
 | EQ and AGC presets | Library tasks, import batches, the trash journal |
-| Category types, categories (their separation overrides, daypart separation included) and their stations | The buffer zone |
+| Category types, categories (their separation overrides and daypart separation) and their stations | The buffer zone |
 | Clocks and their slots, every station's schedules, their periods and hours | Webhook deliveries |
 | Restrictions and their stations | Sessions (everyone signs in again after a restore) |
 | Labels | Rendered medley files: they are in the library, under `medleys/` |
@@ -53,6 +53,7 @@ The configuration file is what a station restores after a bad change or a lost d
 - `format` is the version of this document's layout; `schema`, the last database migration of the Heron that wrote it.
 - `kind`: `daily`, `manual` (backed up on request), `before_restore` (taken before a restore), `uploaded`. It is in the files' names too: a backup's name is its time and kind, `2026-11-03T03-30-00Z-daily`.
 - A Heron restores files of its own format and older ones. A file written by a newer Heron is refused, with its version in the message.
+- A file of an older `schema` gets the changes the migrations since made to the configuration: a station's daypart separation from before it was set per category goes onto the categories as the [upgrade](upgrading.md#edge) did.
 
 ## Where and when
 

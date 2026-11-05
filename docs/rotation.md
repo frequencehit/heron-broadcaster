@@ -25,14 +25,14 @@ Artist separation compares **artists, not names**: see [Artists with several nam
 
 The windows count minutes since a play: they do not say where in the day it was, and a track heard in the morning show can come back in the afternoon. **Daypart separation** keeps a track out of the dayparts that follow the one it played in, so the listeners of each part of the day hear it at a different time.
 
-- A station divides its day into **dayparts**, in its time zone, named A, B, C…: **4 dayparts of 6 hours** (the default) or **6 of 4 hours** (`daypart_count` in the `rotation` settings, 4 or 6).
+- A station divides its day into **dayparts**, in its time zone, named A, B, C…: **4 dayparts of 6 hours** (the default) or **6 of 4 hours** (`daypart_count` in the `rotation` settings, 4 or 6). The division is the station's; the separation is each category's.
 
   | Division | A | B | C | D | E | F |
   |---|---|---|---|---|---|---|
   | 4 dayparts | 00:00–05:59 | 06:00–11:59 | 12:00–17:59 | 18:00–23:59 | | |
   | 6 dayparts | 00:00–03:59 | 04:00–07:59 | 08:00–11:59 | 12:00–15:59 | 16:00–19:59 | 20:00–23:59 |
 
-- **Daypart separation N** (`separation.dayparts`): a track played in a daypart does not play in the N dayparts that follow it. 0 turns it off, the default. With 4 dayparts, a track played in A:
+- **Daypart separation N** (`dayparts` in a category's separation): a track of the category played in a daypart does not play in the N dayparts that follow it. 0 (or left out) turns it off, the default. With 4 dayparts, a track played in A:
 
   | Separation | Kept out of | Can play again in |
   |---|---|---|
@@ -43,7 +43,8 @@ The windows count minutes since a play: they do not say where in the day it was,
 - Dayparts follow one another **across midnight**: the next day's A follows D. N goes up to **6 with 4 dayparts and 10 with 6**, so the rule can run into the next days: with 4 dayparts and a separation of 6, a track played in A is kept out of B, C, D, then the next day's A, B and C, and can play again from the next day's D, at least 36 hours later.
 - **The daypart it played in is not kept out**: whether the track plays again later in the same daypart is for the track separation to decide.
 - It compares the **track itself**, not its title, artist or album, with its last play on the station (or its planned start, when it waits in the queue). Plays on other stations do not count: the [rules across stations](#rules-across-stations) are for that.
-- It is set for the station, and **overridden per category** like the windows (`dayparts` in the category's separation): a power rotation can come back sooner than a gold category. Clock slots do not override it. Categories are shared by the stations: a category's value counts in each station's own dayparts, and is cut to that station's maximum (6 with 4 dayparts).
+- It is set **per category only**: a power rotation needs 1 or 2, a gold category 4 to 6, and jingles and liners none, since they must be able to play at any hour. There is no station value. Clock slots do not override it. Categories are shared by the stations: a category's value counts in each station's own dayparts, and is cut to that station's maximum (6 with 4 dayparts).
+- The value is the **slot's category's**: a track in several categories follows the one the slot called. Hours without a clock, which rotate the station's library, have no daypart separation.
 - **Clock changes:** times are the station's. When the clocks go back, the repeated hour stays in its daypart (02:00 is in A both times); when they go forward, the daypart holding the skipped hour is an hour shorter.
 - It is a **separation rule**: it is relaxed like the others when a slot finds no candidate, halved (rounded down) then dropped, after album separation and before artist separation ([Rule relaxation](#rule-relaxation)). It is not one of the dayparting [restrictions](#restrictions), which allow or ban a track in some hours and are never relaxed.
 - The rotation log gives each pick's daypart and the daypart the track last played in, and counts the tracks the rule held back (`blocked.daypart`).
@@ -145,7 +146,7 @@ When no track satisfies the rules, relax them step by step, then fall back to a 
 
 The rule listeners notice least is relaxed first, and each rule is **halved before it is dropped**, so a small library gets "a bit less separation" rather than losing a rule outright.
 
-| Step | Relaxation | With the default windows, and a daypart separation of 3 |
+| Step | Relaxation | With the default windows, and a category's daypart separation of 3 |
 |---|---|---|
 | 0 | All rules as configured | album 60, dayparts 3, artist 120, title 240, track 240 min |
 | 1 | Album separation halved | album 30 |
@@ -165,7 +166,7 @@ The rule listeners notice least is relaxed first, and each rule is **halved befo
 - Track separation is never dropped inside the slot's own category: playing the exact same recording again is the most audible repeat.
 - Step 12 cannot fail while the fallback category has a track; picking the least recently played one still avoids an immediate repeat. If the fallback category is empty, the engine's fallback directory takes over.
 - Slots with **enforce rules** off skip the separation rules entirely (step 0 without rules, then steps 11 and 12 only if restrictions leave nothing). Restrictions still apply.
-- Windows are those of the station (`rotation` settings), overridden by the slot's category, then by the slot (the daypart separation by the category only); steps 1 to 10 relax those. Steps 11 and 12 use the fallback category's windows; without a fallback category set, the station's library is the fallback.
+- Windows are those of the station (`rotation` settings), overridden by the slot's category, then by the slot; the daypart separation is the category's only; steps 1 to 10 relax those. Steps 11 and 12 use the fallback category's windows; without a fallback category set, the station's library is the fallback.
 - Every relaxed pick records its step in `play_history.relaxation_applied` and in the rotation log.
 
 **Why artist before title** (the handoff proposed title first): repeating an artist within two hours is common and accepted on radio, while hearing the same song again, even in another version, is a clear repeat to listeners. **Dayparts before the artist:** listeners notice a track coming back in the next daypart less than an artist repeated within the hour.
