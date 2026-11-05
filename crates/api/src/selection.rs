@@ -2,7 +2,8 @@
 
 //! Actions on a selection of tracks, given by IDs or by the filters of the
 //! track list (every matching track, on every page): labels, categories,
-//! mood, sound code and tempo, and the files' tags: written by
+//! mood, sound code, tempo and play ratio, enabled or not, and the files'
+//! tags: written by
 //! `heron-librarian`, as a library task, or kept in Heron's database when
 //! the library setting `write_tags` is off.
 
@@ -11,7 +12,7 @@ use axum::extract::{Query, State};
 use heron_core::LibrarySettings;
 use heron_core::library::{FieldValues, TagField, TaskRequest};
 use serde::{Deserialize, Serialize};
-use sqlx::QueryBuilder;
+use sqlx::{MySql, QueryBuilder, Transaction};
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -105,12 +106,92 @@ pub struct SelectionResult {
 #[serde(deny_unknown_fields)]
 pub struct EnabledChange {
     pub selection: TrackSelection,
-    /// Off: autofill, clocks and medleys never pick the tracks.
+    /// Off: the tracks do not play at all (rotation, clocks, medleys,
+    /// queued by hand), and leave the queue.
     pub enabled: bool,
+    /// When enabling: the play ratio of every selected track, in tenths, 1
+    /// to 10. Missing: each keeps its own.
+    pub play_ratio: Option<u8>,
+    /// Puts their play ratio counters back to 10 on every station.
+    #[serde(default)]
+    pub reset_counters: bool,
 }
 
-/// Disables or enables every selected track. Tracks already waiting in the
-/// queue stay there. Operators and admins.
+/// Whether a change of `enabled` and `play_ratio` enables the tracks,
+/// disables them, or leaves them: a ratio of 0 disables.
+pub fn check_ratio(enabled: Option<bool>, play_ratio: Option<u8>) -> ApiResult<Option<bool>> {
+    match (enabled, play_ratio) {
+        (_, Some(ratio)) if ratio > 10 => Err(ApiError::Invalid(
+            "play_ratio is 0 to 10 (tenths)".to_owned(),
+        )),
+        (Some(true), Some(0)) => Err(ApiError::Invalid(
+            "a play ratio of 0 disables the track".to_owned(),
+        )),
+        (_, Some(0)) => Ok(Some(false)),
+        (enabled, _) => Ok(enabled),
+    }
+}
+
+/// Sets the play ratio (tenths, 1 to 10) of `ids`; answers how many changed.
+pub async fn set_play_ratio(
+    tx: &mut Transaction<'_, MySql>,
+    ids: &[u64],
+    ratio: u8,
+) -> ApiResult<u64> {
+    let mut changed = 0;
+    for chunk in ids.chunks(CHUNK) {
+        let mut query = QueryBuilder::new("INSERT INTO track_programming (track_id, play_ratio) ");
+        query.push_values(chunk, |mut row, id| {
+            row.push_bind(*id).push_bind(ratio);
+        });
+        query.push(" ON DUPLICATE KEY UPDATE play_ratio = VALUES(play_ratio)");
+        let result = query.build().execute(&mut **tx).await?;
+        // 1 a row added, 2 a row changed, 0 unchanged.
+        changed += result.rows_affected().min(chunk.len() as u64);
+    }
+    Ok(changed)
+}
+
+/// Puts the play ratio counters of `ids` back to 10 on every station.
+pub async fn reset_counters(tx: &mut Transaction<'_, MySql>, ids: &[u64]) -> ApiResult<()> {
+    for chunk in ids.chunks(CHUNK) {
+        let mut query = QueryBuilder::new("DELETE FROM track_ratio_counters WHERE track_id IN (");
+        let mut separated = query.separated(", ");
+        for id in chunk {
+            separated.push_bind(*id);
+        }
+        query.push(")");
+        query.build().execute(&mut **tx).await?;
+    }
+    Ok(())
+}
+
+/// Sets `enabled` on `ids`; answers how many changed.
+async fn set_enabled_on(
+    tx: &mut Transaction<'_, MySql>,
+    ids: &[u64],
+    enabled: bool,
+) -> ApiResult<u64> {
+    let mut changed = 0;
+    for chunk in ids.chunks(CHUNK) {
+        let mut query = QueryBuilder::new("UPDATE tracks SET enabled = ");
+        query
+            .push_bind(enabled)
+            .push(" WHERE enabled <> ")
+            .push_bind(enabled)
+            .push(" AND id IN (");
+        let mut separated = query.separated(", ");
+        for id in chunk {
+            separated.push_bind(*id);
+        }
+        query.push(")");
+        changed += query.build().execute(&mut **tx).await?.rows_affected();
+    }
+    Ok(changed)
+}
+
+/// Disables or enables every selected track, enabled ones at the play ratio
+/// given. Disabled tracks leave the queue. Operators and admins.
 #[utoipa::path(post, path = "/tracks/enabled", tag = "library",
     request_body = EnabledChange,
     responses((status = 200, body = SelectionResult), (status = "4XX", body = ErrorBody)))]
@@ -120,22 +201,21 @@ async fn set_enabled(
     Json(change): Json<EnabledChange>,
 ) -> ApiResult<Json<SelectionResult>> {
     user.require(Role::Operator)?;
+    if let Some(ratio) = change.play_ratio
+        && !(change.enabled && (1..=10).contains(&ratio))
+    {
+        return Err(ApiError::Invalid(format!(
+            "play_ratio {ratio}: enabled tracks get a ratio of 1 to 10 (tenths)"
+        )));
+    }
     let ids = change.selection.resolve(&state, MAX_SELECTION).await?;
     let mut tx = state.pool.begin().await?;
-    let mut changed = 0;
-    for chunk in ids.chunks(CHUNK) {
-        let mut query = QueryBuilder::new("UPDATE tracks SET enabled = ");
-        query
-            .push_bind(change.enabled)
-            .push(" WHERE enabled <> ")
-            .push_bind(change.enabled)
-            .push(" AND id IN (");
-        let mut separated = query.separated(", ");
-        for id in chunk {
-            separated.push_bind(*id);
-        }
-        query.push(")");
-        changed += query.build().execute(&mut *tx).await?.rows_affected();
+    let mut changed = set_enabled_on(&mut tx, &ids, change.enabled).await?;
+    if let Some(ratio) = change.play_ratio {
+        changed = changed.max(set_play_ratio(&mut tx, &ids, ratio).await?);
+    }
+    if change.reset_counters {
+        reset_counters(&mut tx, &ids).await?;
     }
     tx.commit().await?;
     tracing::info!(user = %user.username, tracks = ids.len(), changed, enabled = change.enabled,
@@ -449,10 +529,13 @@ pub struct ProgrammingChange {
     #[serde(default, deserialize_with = "some_or_null")]
     #[schema(value_type = Option<f64>)]
     pub bpm: Option<Option<f64>>,
+    /// The play ratio, in tenths, 1 to 10; 0 disables the tracks, which keep
+    /// their ratio.
+    pub play_ratio: Option<u8>,
 }
 
-/// Sets the mood, sound code or tempo of every selected track. Operators
-/// and admins.
+/// Sets the mood, sound code, tempo or play ratio of every selected track.
+/// Operators and admins.
 #[utoipa::path(post, path = "/tracks/programming", tag = "library",
     request_body = ProgrammingChange,
     responses((status = 200, body = SelectionResult), (status = "4XX", body = ErrorBody)))]
@@ -485,12 +568,18 @@ async fn apply_programming(
     if let Some(bpm) = bpm {
         columns.push(("bpm", None, bpm));
     }
-    if columns.is_empty() {
+    let disable = check_ratio(None, change.play_ratio)? == Some(false);
+    if columns.is_empty() && change.play_ratio.is_none() {
         return Err(ApiError::Invalid("nothing to set".to_owned()));
     }
     let ids = change.selection.resolve(&state, MAX_SELECTION).await?;
     let mut tx = state.pool.begin().await?;
     let mut changed = 0;
+    match change.play_ratio {
+        Some(_) if disable => changed += set_enabled_on(&mut tx, &ids, false).await?,
+        Some(ratio) => changed += set_play_ratio(&mut tx, &ids, ratio).await?,
+        None => {}
+    }
     for chunk in ids.chunks(CHUNK) {
         for (column, text, number) in &columns {
             let mut query = QueryBuilder::new(format!(

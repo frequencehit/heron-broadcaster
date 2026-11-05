@@ -10846,6 +10846,28 @@
             }
           },
           {
+            "name": "ratio_min",
+            "in": "query",
+            "description": "Tracks whose play ratio, in tenths, is at least this; a disabled\ntrack counts as 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "ratio_max",
+            "in": "query",
+            "description": "Tracks whose play ratio, in tenths, is at most this (0: the disabled\ntracks).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -10866,7 +10888,8 @@
                 "sound_code",
                 "genre",
                 "level_min",
-                "level_max"
+                "level_max",
+                "play_ratio"
               ]
             }
           },
@@ -11047,7 +11070,7 @@
         "tags": [
           "library"
         ],
-        "summary": "Disables or enables every selected track. Tracks already waiting in the\nqueue stay there. Operators and admins.",
+        "summary": "Disables or enables every selected track, enabled ones at the play ratio\ngiven. Disabled tracks leave the queue. Operators and admins.",
         "operationId": "set_enabled",
         "requestBody": {
           "content": {
@@ -11125,7 +11148,7 @@
         "tags": [
           "library"
         ],
-        "summary": "Sets the mood, sound code or tempo of every selected track. Operators\nand admins.",
+        "summary": "Sets the mood, sound code, tempo or play ratio of every selected track.\nOperators and admins.",
         "operationId": "apply_programming",
         "requestBody": {
           "content": {
@@ -11320,7 +11343,7 @@
         "tags": [
           "library"
         ],
-        "summary": "Enables or disables a track. Operators and admins.",
+        "summary": "Enables or disables a track, sets its play ratio, resets its play\nratio counters. Operators and admins.",
         "operationId": "patch_track",
         "parameters": [
           {
@@ -14689,7 +14712,20 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Off: autofill, clocks and medleys never pick the tracks."
+            "description": "Off: the tracks do not play at all (rotation, clocks, medleys,\nqueued by hand), and leave the queue."
+          },
+          "play_ratio": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "When enabling: the play ratio of every selected track, in tenths, 1\nto 10. Missing: each keeps its own.",
+            "minimum": 0
+          },
+          "reset_counters": {
+            "type": "boolean",
+            "description": "Puts their play ratio counters back to 10 on every station."
           },
           "selection": {
             "$ref": "#/components/schemas/TrackSelection"
@@ -15088,8 +15124,24 @@
               "null"
             ]
           },
+          "counter": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The picked track's play ratio counter when it was picked, 10 down\nto 1. Missing in picks logged before play ratios.",
+            "minimum": 0
+          },
           "enforce_rules": {
             "type": "boolean"
+          },
+          "held_by_ratio": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeldByRatio"
+            },
+            "description": "Tracks offered before this one and held back by their play ratio,\nin the order they were offered."
           },
           "held_elsewhere": {
             "oneOf": [
@@ -15436,6 +15488,32 @@
           "upload",
           "incoming"
         ]
+      },
+      "HeldByRatio": {
+        "type": "object",
+        "description": "A track rotation offered and its ratio held back.",
+        "required": [
+          "track_id",
+          "ratio",
+          "counter"
+        ],
+        "properties": {
+          "counter": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Where its counter was, 10 down to 1: it plays again in this many\noffers.",
+            "minimum": 0
+          },
+          "ratio": {
+            "type": "integer",
+            "format": "int32",
+            "description": "In tenths, 1 to 9.",
+            "minimum": 0
+          },
+          "track_id": {
+            "$ref": "#/components/schemas/u64"
+          }
+        }
       },
       "HeldElsewhere": {
         "type": "object",
@@ -18801,6 +18879,15 @@
             ],
             "description": "A value of the mood scale, or `null` to clear it. Missing: kept."
           },
+          "play_ratio": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The play ratio, in tenths, 1 to 10; 0 disables the tracks, which keep\ntheir ratio.",
+            "minimum": 0
+          },
           "selection": {
             "$ref": "#/components/schemas/TrackSelection"
           },
@@ -19143,6 +19230,27 @@
           "start_ms": {
             "type": "integer",
             "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RatioCounter": {
+        "type": "object",
+        "description": "Where a track's play ratio counter is on a station.",
+        "required": [
+          "station_id",
+          "counter"
+        ],
+        "properties": {
+          "counter": {
+            "type": "integer",
+            "format": "int32",
+            "description": "10 down to 1: the next time rotation picks the track, it plays if\nthis is in its first `play_ratio` steps.",
+            "minimum": 0
+          },
+          "station_id": {
+            "type": "integer",
+            "format": "int64",
             "minimum": 0
           }
         }
@@ -19624,7 +19732,8 @@
         "required": [
           "id",
           "planned_at_unix_ms",
-          "explanation"
+          "explanation",
+          "held_tracks"
         ],
         "properties": {
           "artist": {
@@ -19635,6 +19744,13 @@
           },
           "explanation": {
             "$ref": "#/components/schemas/Explanation"
+          },
+          "held_tracks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackLabel"
+            },
+            "description": "The tracks its play ratio held back (`explanation.held_by_ratio`)."
           },
           "id": {
             "type": "integer",
@@ -22070,7 +22186,8 @@
               "tag_overrides",
               "playout",
               "categories",
-              "plays"
+              "plays",
+              "ratio_counters"
             ],
             "properties": {
               "analysis": {
@@ -22148,6 +22265,13 @@
               "plays": {
                 "$ref": "#/components/schemas/Plays",
                 "description": "Plays and last play in total and per station."
+              },
+              "ratio_counters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RatioCounter"
+                },
+                "description": "The play ratio counter on each station, in the stations' order."
               },
               "tag_overrides": {
                 "type": "array",
@@ -22658,7 +22782,21 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Off: the track does not play at all (rotation, clocks, medleys,\nqueued by hand), and leaves the queue."
+          },
+          "play_ratio": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "In tenths, 1 to 10; 0 disables the track, which keeps its ratio.",
+            "minimum": 0
+          },
+          "reset_counters": {
+            "type": "boolean",
+            "description": "Puts its play ratio counters back to 10 on every station."
           }
         },
         "additionalProperties": false
@@ -22812,6 +22950,24 @@
             ],
             "description": "Words found in the title, artist, album, album artist, genre or path."
           },
+          "ratio_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks whose play ratio, in tenths, is at most this (0: the disabled\ntracks).",
+            "minimum": 0
+          },
+          "ratio_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks whose play ratio, in tenths, is at least this; a disabled\ntrack counts as 0.",
+            "minimum": 0
+          },
           "sort": {
             "oneOf": [
               {
@@ -22902,7 +23058,8 @@
           "sound_code",
           "genre",
           "level_min",
-          "level_max"
+          "level_max",
+          "play_ratio"
         ]
       },
       "TrackSummary": {
@@ -22916,6 +23073,7 @@
           "silent",
           "added_at_unix_ms",
           "play_count",
+          "play_ratio",
           "labels"
         ],
         "properties": {
@@ -23067,6 +23225,12 @@
           "play_count": {
             "type": "integer",
             "format": "int64",
+            "minimum": 0
+          },
+          "play_ratio": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Play ratio in tenths, 1 to 10: plays this many times out of the 10\ntimes rotation picks it. Kept while the track is disabled.",
             "minimum": 0
           },
           "silent": {
@@ -23562,6 +23726,39 @@
                 "$ref": "#/components/schemas/u64"
               },
               "window_min": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Played while its play ratio counter was in its held-back steps.",
+            "required": [
+              "pick",
+              "ratio",
+              "counter",
+              "kind"
+            ],
+            "properties": {
+              "counter": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ratio"
+                ]
+              },
+              "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "ratio": {
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0

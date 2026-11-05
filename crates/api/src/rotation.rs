@@ -61,13 +61,17 @@ pub fn target(kind: &str, id: u64) -> Option<Target> {
 /// A station's library as its rotation sees it: the tracks, its clocks,
 /// schedule and rotation settings.
 pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Library> {
-    let rows: Vec<(u64, Option<String>, Option<String>, i64)> = sqlx::query_as(
+    // ID, title, album, playable length, play ratio.
+    type Row = (u64, Option<String>, Option<String>, i64, u64);
+    let rows: Vec<Row> = sqlx::query_as(
         "SELECT t.id, t.title, t.album,
                 CAST(COALESCE(o.cue_out_ms, a.cue_out_ms) AS SIGNED)
-                  - CAST(COALESCE(o.cue_in_ms, a.cue_in_ms) AS SIGNED)
+                  - CAST(COALESCE(o.cue_in_ms, a.cue_in_ms) AS SIGNED),
+                CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED)
          FROM tracks t
          JOIN track_analysis a ON a.track_id = t.id
          LEFT JOIN track_overrides o ON o.track_id = t.id
+         LEFT JOIN track_programming p ON p.track_id = t.id
          WHERE t.enabled AND t.missing_since IS NULL
            AND COALESCE(o.cue_out_ms, a.cue_out_ms) >= COALESCE(o.cue_in_ms, a.cue_in_ms) + ?
          ORDER BY t.id",
@@ -85,13 +89,14 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     }
     let tracks = rows
         .into_iter()
-        .map(|(id, title, album, length_ms)| Track {
+        .map(|(id, title, album, length_ms, ratio)| Track {
             id,
             title_key: title_key(title.as_deref()),
             album_key: title_key(album.as_deref()),
             artists: artists.remove(&id).unwrap_or_default(),
             categories: Vec::new(),
             length_ms: u32::try_from(length_ms).unwrap_or(0),
+            ratio: u8::try_from(ratio).unwrap_or(heron_rotation::ratio::FULL),
         })
         .collect();
 
@@ -193,6 +198,11 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
         settings::load_for(pool, station_id, RotationSettings::SETTINGS_NAME).await?;
     let station: StationSettings =
         settings::load_for(pool, station_id, StationSettings::SETTINGS_NAME).await?;
+    let counters: Vec<(u64, u8)> =
+        sqlx::query_as("SELECT track_id, counter FROM track_ratio_counters WHERE station_id = ?")
+            .bind(station_id)
+            .fetch_all(pool)
+            .await?;
     Ok(Library::new(
         LibraryParts {
             tracks,
@@ -204,6 +214,7 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
             schedules,
             settings,
             no_two_in_a_row,
+            counters: counters.into_iter().collect(),
         },
         station.time_zone(),
     ))
@@ -530,6 +541,29 @@ pub fn seed() -> u64 {
     u64::from_le_bytes(bytes)
 }
 
+/// Saves a station's play ratio counters moved by rotation; the last value
+/// of a track wins.
+pub async fn save_counters(
+    pool: &MySqlPool,
+    station_id: u64,
+    counters: &[(u64, u8)],
+) -> ApiResult<()> {
+    let latest: HashMap<u64, u8> = counters.iter().copied().collect();
+    if latest.is_empty() {
+        return Ok(());
+    }
+    let mut query =
+        QueryBuilder::new("INSERT INTO track_ratio_counters (station_id, track_id, counter) ");
+    query.push_values(&latest, |mut row, (track, counter)| {
+        row.push_bind(station_id)
+            .push_bind(*track)
+            .push_bind(*counter);
+    });
+    query.push(" ON DUPLICATE KEY UPDATE counter = VALUES(counter)");
+    query.build().execute(pool).await?;
+    Ok(())
+}
+
 /// Records a pick in the rotation log. `entry` is the engine's queue
 /// entry it became, with the engine's start time.
 pub async fn record_pick(
@@ -591,6 +625,8 @@ pub struct RotationPick {
     /// When it started; missing until then, or if it never played.
     pub played_at_unix_ms: Option<i64>,
     pub explanation: Explanation,
+    /// The tracks its play ratio held back (`explanation.held_by_ratio`).
+    pub held_tracks: Vec<TrackLabel>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -646,7 +682,8 @@ async fn list_picks(
         String,
     );
     let rows: Vec<Row> = sql.build_query_as().fetch_all(&state.pool).await?;
-    rows.into_iter()
+    let mut picks = rows
+        .into_iter()
         .map(
             |(id, track_id, artist, title, planned, played, explanation)| {
                 Ok(RotationPick {
@@ -658,11 +695,46 @@ async fn list_picks(
                     played_at_unix_ms: played,
                     explanation: serde_json::from_str(&explanation)
                         .map_err(|error| ApiError::Internal(format!("pick {id}: {error}")))?,
+                    held_tracks: Vec::new(),
                 })
             },
         )
-        .collect::<ApiResult<_>>()
-        .map(Json)
+        .collect::<ApiResult<Vec<_>>>()?;
+    let held: HashSet<u64> = picks
+        .iter()
+        .flat_map(|pick| &pick.explanation.held_by_ratio)
+        .map(|held| held.track_id)
+        .collect();
+    let labels = track_labels(&state.pool, &held.into_iter().collect::<Vec<_>>()).await?;
+    for pick in &mut picks {
+        pick.held_tracks = pick
+            .explanation
+            .held_by_ratio
+            .iter()
+            .filter_map(|held| labels.iter().find(|label| label.id == held.track_id))
+            .cloned()
+            .collect();
+    }
+    Ok(Json(picks))
+}
+
+/// The artist and title of `ids` (those that still exist), by ID.
+async fn track_labels(pool: &MySqlPool, ids: &[u64]) -> ApiResult<Vec<TrackLabel>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut query = QueryBuilder::new("SELECT id, artist, title FROM tracks WHERE id IN (");
+    let mut separated = query.separated(", ");
+    for id in ids {
+        separated.push_bind(*id);
+    }
+    query.push(") ORDER BY id");
+    let rows: Vec<(u64, Option<String>, Option<String>)> =
+        query.build_query_as().fetch_all(pool).await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, artist, title)| TrackLabel { id, artist, title })
+        .collect())
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -678,7 +750,7 @@ pub struct SimulationRequest {
     pub clock_id: Option<u64>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct TrackLabel {
     pub id: u64,
     pub artist: Option<String>,
@@ -741,21 +813,7 @@ async fn simulate(
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    let mut tracks = Vec::new();
-    if !ids.is_empty() {
-        let mut query = QueryBuilder::new("SELECT id, artist, title FROM tracks WHERE id IN (");
-        let mut separated = query.separated(", ");
-        for id in &ids {
-            separated.push_bind(*id);
-        }
-        query.push(") ORDER BY id");
-        let rows: Vec<(u64, Option<String>, Option<String>)> =
-            query.build_query_as().fetch_all(&state.pool).await?;
-        tracks = rows
-            .into_iter()
-            .map(|(id, artist, title)| TrackLabel { id, artist, title })
-            .collect();
-    }
+    let tracks = track_labels(&state.pool, &ids).await?;
     tracing::info!(
         user = %user.username,
         hours,
