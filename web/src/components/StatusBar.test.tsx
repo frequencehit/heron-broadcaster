@@ -57,6 +57,12 @@ describe("StatusBar", () => {
       ]),
     );
     expect(screen.getByText("Jamiroquai – Space Cowboy 2:31")).toBeTruthy();
+    // A line along the bottom of deck A shows how far the track has played; empty deck B has none.
+    const lines = document.querySelectorAll<HTMLElement>(".statusbar-deck-progress");
+    expect([...lines].map((line) => line.style.width)).toEqual(["62.92%"]);
+    // The decks open the On air page, the listeners the Statistics page.
+    const links = [...document.querySelectorAll<HTMLAnchorElement>(".statusbar a")];
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["/", "/", "/statistics"]);
     // What a screen reader gets, in place of the symbols.
     expect(screen.getByText("Deck B: empty")).toBeTruthy();
     expect(screen.getByText("Deck A: playing, Jamiroquai – Space Cowboy 2:31")).toBeTruthy();

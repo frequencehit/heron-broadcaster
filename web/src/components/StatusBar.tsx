@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { t } from "../i18n";
 import { useListenersNow } from "../lib/listeners";
 import { positionNow, useLive } from "../lib/live";
+import { Link } from "../lib/router";
 import { type DeckSummary, listenersText, summarizeDeck, summarizeSystem } from "../lib/statusbar";
 
 /** The time now, in the clock `positionNow` uses, moved on once a second. */
@@ -24,7 +25,8 @@ function Deck({ summary }: Readonly<{ summary: DeckSummary }>) {
   const state = t(`statusbar.${summary.status}`);
   const spoken = t("statusbar.deck", { deck: summary.letter, state });
   return (
-    <span
+    <Link
+      to="/"
       className={`statusbar-deck statusbar-deck-${summary.letter.toLowerCase()}${summary.onAir ? " statusbar-on-air" : ""}`}
     >
       {/* What the symbols and the cut title say, for screen readers. */}
@@ -40,7 +42,14 @@ function Deck({ summary }: Readonly<{ summary: DeckSummary }>) {
           {summary.text}
         </span>
       )}
-    </span>
+      {summary.progress !== null && (
+        <span
+          className="statusbar-deck-progress"
+          aria-hidden="true"
+          style={{ width: `${(summary.progress * 100).toFixed(2)}%` }}
+        />
+      )}
+    </Link>
   );
 }
 
@@ -71,9 +80,9 @@ export function StatusBar() {
           <Deck summary={deckSummary("B")} />
         </>
       )}
-      <span className="statusbar-part">
+      <Link to="/statistics" className="statusbar-part statusbar-link">
         {t("statusbar.listeners")} {listenersText(listeners.data?.total)}
-      </span>
+      </Link>
       {summary && (
         <span className="statusbar-part statusbar-system">
           <span className={`statusbar-${summary.cpuLevel}`}>cpu {summary.cpu}</span>

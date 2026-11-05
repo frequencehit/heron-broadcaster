@@ -31,6 +31,8 @@ export interface DeckSummary {
   /** The track, with its elapsed time while one is loaded; empty for an empty deck. */
   text: string;
   onAir: boolean;
+  /** How far the track has played, from 0 to 1; `null` for an empty deck or an unknown length. */
+  progress: number | null;
 }
 
 const SYMBOLS: Record<DeckStatus, string> = { playing: "▶", paused: "⏸", empty: "—" };
@@ -44,16 +46,19 @@ export function summarizeDeck(
 ): DeckSummary {
   const track = deck?.entry?.track;
   if (!deck || !track) {
-    return { letter, status: "empty", symbol: SYMBOLS.empty, text: "", onAir: false };
+    return { letter, status: "empty", symbol: SYMBOLS.empty, text: "", onAir: false, progress: null };
   }
   const status: DeckStatus = paused ? "paused" : "playing";
-  const elapsed = duration(positionMs ?? deck.position_ms);
+  const position = positionMs ?? deck.position_ms;
+  const elapsed = duration(position);
+  const progress = deck.length_ms > 0 ? Math.min(Math.max(position / deck.length_ms, 0), 1) : null;
   return {
     letter,
     status,
     symbol: SYMBOLS[status],
     text: `${trackName(track)} ${elapsed}`,
     onAir: deck.on_air,
+    progress,
   };
 }
 
