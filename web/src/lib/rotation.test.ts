@@ -52,8 +52,9 @@ describe("windows", () => {
     expect(describeOverrides({ track_min: 90, artist_min: 0 })).toBe("artist off, track 90 min");
     expect(describeOverrides({ title_min: 120 })).toBe("title 2 h");
     expect(describeOverrides({})).toBe("");
-    expect(describeOverrides({ track_min: 90, dayparts: 2 })).toBe("track 90 min, dayparts 2");
-    expect(describeOverrides({ dayparts: 0 })).toBe("dayparts off");
+    // The daypart separation has its own column.
+    expect(describeOverrides({ track_min: 90, dayparts: 2 })).toBe("track 90 min");
+    expect(describeOverrides({ dayparts: 0 })).toBe("");
   });
 
   it("lists every applied one", () => {

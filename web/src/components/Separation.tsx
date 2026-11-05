@@ -3,7 +3,7 @@
 // Separation windows overridden by a category or a clock slot: each one
 // either inherited or set here.
 
-import type { SeparationOverrides, Windows } from "../api";
+import type { SeparationOverrides, StationWindows } from "../api";
 import { type PlainKey, number, t } from "../i18n";
 import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
 import { NumberInput } from "./ui";
@@ -26,7 +26,7 @@ export function SeparationEditor({
 }: {
   value: SeparationOverrides;
   /** What applies where this does not override. */
-  inherited: Windows | undefined;
+  inherited: StationWindows | undefined;
   onChange: (value: SeparationOverrides) => void;
   disabled?: boolean;
 }) {
@@ -84,14 +84,12 @@ export function SeparationEditor({
   );
 }
 
-/** `base` with `overrides` applied. */
-export function applyOverrides(base: Windows, overrides: SeparationOverrides | undefined): Windows {
+/** `base` with `overrides` applied, in minutes (daypart separation aside). */
+export function applyOverrides(base: StationWindows, overrides: SeparationOverrides | undefined): StationWindows {
   return {
     album_min: overrides?.album_min ?? base.album_min,
     artist_min: overrides?.artist_min ?? base.artist_min,
     title_min: overrides?.title_min ?? base.title_min,
     track_min: overrides?.track_min ?? base.track_min,
-    // Clock slots never override it: only the category's counts.
-    dayparts: overrides?.dayparts ?? base.dayparts,
   };
 }
