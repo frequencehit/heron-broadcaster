@@ -25071,7 +25071,6 @@
         ],
         "properties": {
           "credential": {
-            "type": "object",
             "description": "What `navigator.credentials` answered, as JSON (binary fields in\nbase64url)."
           }
         },
@@ -25084,9 +25083,7 @@
           "publicKey"
         ],
         "properties": {
-          "publicKey": {
-            "type": "object"
-          }
+          "publicKey": {}
         }
       },
       "WebhookEvent": {

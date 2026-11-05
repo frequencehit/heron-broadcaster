@@ -700,7 +700,6 @@ async fn remove_totp(
 #[derive(Serialize, ToSchema)]
 pub struct WebauthnOptions {
     #[serde(rename = "publicKey")]
-    #[schema(value_type = Object)]
     pub public_key: Value,
 }
 
@@ -771,7 +770,6 @@ async fn start_passkey(
 pub struct WebauthnCredential {
     /// What `navigator.credentials` answered, as JSON (binary fields in
     /// base64url).
-    #[schema(value_type = Object)]
     pub credential: Value,
 }
 

@@ -9199,14 +9199,14 @@ export interface components {
              * @description What `navigator.credentials` answered, as JSON (binary fields in
              *     base64url).
              */
-            credential: Record<string, never>;
+            credential: unknown;
         };
         /**
          * @description What the browser needs to create or use a passkey, for
          *     `navigator.credentials.create()` or `.get()`: binary fields in base64url.
          */
         WebauthnOptions: {
-            publicKey: Record<string, never>;
+            publicKey: unknown;
         };
         /**
          * @description What a delivery reports.
