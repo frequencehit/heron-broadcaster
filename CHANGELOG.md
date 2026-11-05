@@ -22,6 +22,8 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Daypart separation:** a track played in a daypart (4 of 6 hours or 6 of 4 hours, in the station's time zone) does not play in the dayparts that follow it, across midnight too. Off by default and set per category (the station sets its division of the day), relaxed between album and artist separation, and shown in the rotation log ([Rotation – Daypart separation](docs/rotation.md#daypart-separation)).
 - **When a track played**, on its page: its plays of the last 30 days week by week, and the hours of the week it played in over 30, 90 or 365 days, for one station or all of them, all plays or rotation only. Hovering a day or an hour gives the plays; a click on a day opens the history at that day, for that track ([Web UI – Plays by day and hour](docs/web.md#plays-by-day-and-hour)).
 
+- **Two-factor authentication:** an authenticator app (TOTP) and passkeys or security keys (WebAuthn), several per user, asked after the password at sign-in; 10 recovery codes, each used once; an admin can require it per role, and a user who must have it sets it up before anything else. `heron-api user reset-2fa <name>` removes a user's second factors. API tokens are not concerned ([API – Two-factor authentication](docs/api.md#two-factor-authentication)).
+
 ### Changed
 
 - **Relaxation steps** are numbered 0 to 12: daypart separation comes in at steps 3 and 4, so artist, title, track and the fallback category moved two steps. The picks already logged were renumbered.
