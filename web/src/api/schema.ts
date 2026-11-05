@@ -4774,6 +4774,12 @@ export interface components {
              * @description By daypart separation. Missing in picks logged before it.
              */
             daypart?: number;
+            /**
+             * Format: int32
+             * @description By the same daypart on the following days (and not by daypart
+             *     separation). Missing in picks logged before it.
+             */
+            daypart_days?: number;
             /** Format: int32 */
             title: number;
             /** Format: int32 */
@@ -5154,6 +5160,13 @@ export interface components {
              * @description The pick's daypart, from 0 (A).
              */
             daypart: number;
+            /**
+             * Format: int32
+             * @description The days the same daypart is kept out on after a play, from the
+             *     slot's category, before relaxation; `windows.daypart_days` is the
+             *     one applied. Missing in picks logged before it.
+             */
+            days?: number;
             /**
              * Format: int32
              * @description The daypart the picked track last played in, from 0; missing if
@@ -7901,6 +7914,12 @@ export interface components {
             artist_min?: number | null;
             /**
              * Format: int32
+             * @description The same daypart on the following days: a category's own (none or
+             *     0: off), never a clock slot's.
+             */
+            daypart_days?: number | null;
+            /**
+             * Format: int32
              * @description Daypart separation: a category's own (none or 0: off), never a
              *     clock slot's.
              */
@@ -7914,7 +7933,7 @@ export interface components {
          * @description A separation rule.
          * @enum {string}
          */
-        SeparationRule: "track" | "title" | "artist" | "album" | "daypart";
+        SeparationRule: "track" | "title" | "artist" | "album" | "daypart" | "daypart_days";
         ServiceConfig: {
             instance?: string | null;
             items: components["schemas"]["ConfigItem"][];
@@ -9179,6 +9198,18 @@ export interface components {
             kind: "daypart";
             /** Format: int32 */
             pick: number;
+        } | {
+            /** Format: int32 */
+            days: number;
+            /**
+             * Format: int64
+             * @description The track's play in that daypart.
+             */
+            earlier_unix_ms: number;
+            /** @enum {string} */
+            kind: "daypart_days";
+            /** Format: int32 */
+            pick: number;
         };
         Waveform: {
             /**
@@ -9281,6 +9312,14 @@ export interface components {
              * @default 120
              */
             artist_min: number;
+            /**
+             * Format: int32
+             * @description The same daypart on the following days: a track played in a
+             *     daypart does not play in that daypart on this many days after
+             *     ([`crate::dayparts::holds_days`]), 0 to 7; 0: off.
+             * @default 0
+             */
+            daypart_days: number;
             /**
              * Format: int32
              * @description Daypart separation: a track played in a daypart does not play in

@@ -71,6 +71,14 @@ pub enum Violation {
         earlier_unix_ms: i64,
         dayparts: u8,
     },
+    /// Played in the daypart it played in on one of the days before, with
+    /// the days at its step.
+    DaypartDays {
+        pick: u32,
+        /// The track's play in that daypart.
+        earlier_unix_ms: i64,
+        days: u8,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -196,7 +204,8 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
 
 /// Checks each pick against the plays before it (`before`, then the
 /// earlier picks): separation as relaxed at its step (daypart separation
-/// against the track's last play), restrictions always,
+/// against the track's last play, the same daypart against its plays on
+/// the days before), restrictions always,
 /// and the play ratio always: the counters start from the library's and
 /// move with the tracks each pick lists as held back, then with the pick.
 pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec<Violation> {
@@ -303,6 +312,33 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
                 earlier_unix_ms: last.start_ms,
                 dayparts: windows.dayparts,
             });
+        }
+        if windows.daypart_days > 0 {
+            let count = library.daypart_count();
+            let local = library.local(at).datetime();
+            let since =
+                at - i64::from(dayparts::days_lookback_min(count, windows.daypart_days)) * 60_000;
+            if let Some(earlier) = timeline
+                .iter()
+                .rev()
+                .filter(|p| p.start_ms <= at)
+                .take_while(|p| p.start_ms >= since)
+                .find(|p| {
+                    p.track == Some(track.id)
+                        && dayparts::holds_days(
+                            count,
+                            windows.daypart_days,
+                            library.local(p.start_ms).datetime(),
+                            local,
+                        )
+                })
+            {
+                violations.push(Violation::DaypartDays {
+                    pick: index,
+                    earlier_unix_ms: earlier.start_ms,
+                    days: windows.daypart_days,
+                });
+            }
         }
         let previous = timeline
             .iter()

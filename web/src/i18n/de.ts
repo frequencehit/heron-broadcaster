@@ -2373,6 +2373,14 @@ const de = {
   "dayparts.lastIn": "zuletzt in {part}, {time}",
   "dayparts.halved": "{from} → {to}: in {played} gespielt, in {part} erlaubt",
   "dayparts.pickPart": "Tageszeit {part}",
+  "dayparts.days": "Gleiche Tageszeit an den folgenden Tagen",
+  "dayparts.daysHint": "Am Montag in B gespielt, am Dienstag nicht in B (1 Tag); das B am Mittwoch ist frei. Mit oder ohne ausgeschlossene Tageszeiten.",
+  "dayparts.daysOption": { one: "{count} Tag", other: "{count} Tage" },
+  "dayparts.daysHalved": "gleiche Tageszeit {from} → {to} T",
+  "dayparts.followingDays": "Eine Kategorie kann einen Titel auch an den folgenden Tagen aus derselben Tageszeit ausschließen: am Montag in B gespielt, am Dienstag nicht in B.",
+  "rotation.window.daypartDays": "gleiche Tageszeit",
+  "rotationPage.blockedDaypartDays": { one: "{count} Titel wegen derselben Tageszeit an den Vortagen zurückgehalten", other: "{count} Titel wegen derselben Tageszeit an den Vortagen zurückgehalten" },
+  "categories.daypartDaysHint": "Gleiche Tageszeit an den folgenden Tagen ausgeschlossen",
 } satisfies Catalog;
 
 export default de;

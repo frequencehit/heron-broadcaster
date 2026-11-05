@@ -2373,6 +2373,14 @@ const es = {
   "dayparts.lastIn": "última en {part}, {time}",
   "dayparts.halved": "{from} → {to}: emitida en {played}, permitida en {part}",
   "dayparts.pickPart": "Franja {part}",
+  "dayparts.days": "Misma franja los días siguientes",
+  "dayparts.daysHint": "Emitida en B el lunes, no en B el martes (1 día); la B del miércoles está permitida. Con o sin franjas apartadas.",
+  "dayparts.daysOption": { one: "{count} día", other: "{count} días" },
+  "dayparts.daysHalved": "misma franja {from} → {to} d",
+  "dayparts.followingDays": "Una categoría también puede apartar una pista de la misma franja los días siguientes: emitida en B el lunes, no en B el martes.",
+  "rotation.window.daypartDays": "misma franja",
+  "rotationPage.blockedDaypartDays": { one: "{count} pista apartada por la misma franja de los días anteriores", other: "{count} pistas apartadas por la misma franja de los días anteriores" },
+  "categories.daypartDaysHint": "Misma franja apartada los días siguientes",
 } satisfies Catalog;
 
 export default es;

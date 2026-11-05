@@ -428,6 +428,77 @@ fn a_week_keeps_tracks_out_of_the_next_dayparts() {
     }
 }
 
+/// The same daypart on the following days over the same week: 1 day for
+/// Current (without daypart separation), 2 for Gold (with a daypart
+/// separation of 1). No pick plays in the daypart it played in on the days
+/// its category keeps out, unless it logged the rule relaxed.
+#[test]
+fn a_week_keeps_tracks_out_of_the_same_daypart_the_next_days() {
+    let mut station = station();
+    for category in &mut station.parts.categories {
+        (
+            category.separation.dayparts,
+            category.separation.daypart_days,
+        ) = match category.id {
+            CURRENT => (None, Some(1)),
+            GOLD => (Some(1), Some(2)),
+            _ => (None, None),
+        };
+    }
+    let library = Library::new(station.parts, paris());
+    let simulation = week(&library, 6);
+    assert!(
+        simulation.violations.is_empty(),
+        "{:?}",
+        &simulation.violations[..simulation.violations.len().min(10)]
+    );
+    let held: u32 = simulation
+        .picks
+        .iter()
+        .map(|pick| pick.explanation.blocked.daypart_days)
+        .sum();
+    assert!(held > 0, "nothing held back");
+    // Checked again here, from the station times: (day, daypart).
+    let part = |ms: i64| {
+        let local = jiff::Timestamp::from_millisecond(ms)
+            .unwrap()
+            .to_zoned(paris());
+        let day = local
+            .date()
+            .since((jiff::Unit::Day, date(2026, 1, 1)))
+            .unwrap()
+            .get_days();
+        (i64::from(day), local.hour() / 6)
+    };
+    let mut plays: HashMap<u64, Vec<i64>> = HashMap::new();
+    let mut checked = 0;
+    for pick in &simulation.picks {
+        let explanation = &pick.explanation;
+        let own = match explanation.slot_category_id {
+            Some(CURRENT) => 1,
+            Some(GOLD) => 2,
+            _ => 0,
+        };
+        assert_eq!(explanation.daypart.unwrap().days, own, "{explanation:?}");
+        let (day, daypart) = part(pick.start_unix_ms);
+        let earlier = plays.entry(pick.track_id).or_default();
+        if explanation.enforce_rules && explanation.step < 3 {
+            assert_eq!(explanation.windows.daypart_days, own);
+            for (before, before_part) in earlier.iter().map(|ms| part(*ms)) {
+                assert!(
+                    before_part != daypart || !(1..=i64::from(own)).contains(&(day - before)),
+                    "track {} in the same daypart {} days after",
+                    pick.track_id,
+                    day - before
+                );
+            }
+            checked += 1;
+        }
+        earlier.push(pick.start_unix_ms);
+    }
+    assert!(checked > 500, "{checked}");
+}
+
 #[test]
 fn a_week_follows_the_play_ratios() {
     let mut station = station();

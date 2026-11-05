@@ -14166,6 +14166,12 @@
             "description": "By daypart separation. Missing in picks logged before it.",
             "minimum": 0
           },
+          "daypart_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "By the same daypart on the following days (and not by daypart\nseparation). Missing in picks logged before it.",
+            "minimum": 0
+          },
           "title": {
             "type": "integer",
             "format": "int32",
@@ -15055,6 +15061,12 @@
             "type": "integer",
             "format": "int32",
             "description": "The pick's daypart, from 0 (A).",
+            "minimum": 0
+          },
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The days the same daypart is kept out on after a play, from the\nslot's category, before relaxation; `windows.daypart_days` is the\none applied. Missing in picks logged before it.",
             "minimum": 0
           },
           "last_daypart": {
@@ -21336,6 +21348,15 @@
             "format": "int32",
             "minimum": 0
           },
+          "daypart_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The same daypart on the following days: a category's own (none or\n0: off), never a clock slot's.",
+            "minimum": 0
+          },
           "dayparts": {
             "type": [
               "integer",
@@ -21372,7 +21393,8 @@
           "title",
           "artist",
           "album",
-          "daypart"
+          "daypart",
+          "daypart_days"
         ]
       },
       "ServiceConfig": {
@@ -25036,6 +25058,39 @@
                 "minimum": 0
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Played in the daypart it played in on one of the days before, with\nthe days at its step.",
+            "required": [
+              "pick",
+              "earlier_unix_ms",
+              "days",
+              "kind"
+            ],
+            "properties": {
+              "days": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "earlier_unix_ms": {
+                "type": "integer",
+                "format": "int64",
+                "description": "The track's play in that daypart."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "daypart_days"
+                ]
+              },
+              "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
           }
         ]
       },
@@ -25254,6 +25309,13 @@
             "format": "int32",
             "description": "Do not play the same artist (or a similar one) within.",
             "default": 120,
+            "minimum": 0
+          },
+          "daypart_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The same daypart on the following days: a track played in a\ndaypart does not play in that daypart on this many days after\n([`crate::dayparts::holds_days`]), 0 to 7; 0: off.",
+            "default": 0,
             "minimum": 0
           },
           "dayparts": {

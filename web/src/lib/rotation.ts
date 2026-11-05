@@ -133,7 +133,7 @@ export function targetKind(target: Target): string {
 }
 
 /** The windows in minutes (daypart separation aside). */
-export type MinuteWindow = Exclude<keyof Windows, "dayparts">;
+export type MinuteWindow = Exclude<keyof Windows, "dayparts" | "daypart_days">;
 
 const WINDOW_NAMES: [MinuteWindow, PlainKey][] = [
   ["album_min", "rotation.window.album"],
@@ -173,13 +173,27 @@ function dayparts(value: number): string {
   });
 }
 
-/** Windows as applied: `album 1 h · artist 2 h · title 4 h · track 4 h`, and the dayparts when on. */
+/** The same daypart on the following days: `same daypart 2 d`. */
+function daypartDays(value: number): string {
+  return t("rotation.window", {
+    name: t("rotation.window.daypartDays"),
+    length: t("format.days", { count: value }),
+  });
+}
+
+/**
+ * Windows as applied: `album 1 h · artist 2 h · title 4 h · track 4 h`, and
+ * the dayparts and same daypart on the following days when on.
+ */
 export function describeWindows(windows: Windows): string {
   const described = WINDOW_NAMES.map(([key, name]) =>
     t("rotation.window", { name: t(name), length: minutes(windows[key]) }),
   );
   if (windows.dayparts) {
     described.push(dayparts(windows.dayparts));
+  }
+  if (windows.daypart_days) {
+    described.push(daypartDays(windows.daypart_days));
   }
   return described.join(" · ");
 }
