@@ -80,7 +80,7 @@ See [Several stations](stations.md) ([M13](roadmap/m13-several-stations.md)).
 | Table | Columns |
 |---|---|
 | `category_types` | id, name (unique): Song, Jingle, Ad from the start, and the station's own; no_two_in_a_row (rotation never plays two of its tracks in a row; Jingle's is on), sends_metadata (its tracks' artist and title go to the stream servers; off for Jingle and Ad) |
-| `categories` | id, name, color, type_id (none: no type), fx_player (the FX player's picker opens on it), separation (JSON: the windows it overrides and its `dayparts`, the [daypart separation](rotation.md#daypart-separation), off when left out; `NULL` for none) |
+| `categories` | id, name, color, type_id (none: no type), fx_player (the FX player's picker opens on it), separation (JSON: the windows it overrides and its `dayparts` and `daypart_days`, the [daypart separation](rotation.md#daypart-separation), off when left out; `NULL` for none) |
 | `track_categories` | track_id, category_id, weight |
 
 ## Artists
@@ -112,7 +112,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 | Table | Columns |
 |---|---|
 | `clocks` | id, name, looping (carries on across hours instead of starting over at each hour) |
-| `clock_slots` | clock_id, position, category_id, selection_method (least_recently_played, random, weighted), enforce_rules, separation (JSON: the windows it overrides; never `dayparts`) |
+| `clock_slots` | clock_id, position, category_id, selection_method (least_recently_played, random, weighted), enforce_rules, separation (JSON: the windows it overrides; never `dayparts` or `daypart_days`) |
 | `schedules` | id, station_id, name (unique for the station), is_default (one per station) — see [Rotation – Scheduling](rotation.md#scheduling) |
 | `schedule_periods` | id, schedule_id (not the default one), starts_at, ends_at (station time, on the hour, the end excluded), every_year (the years are ignored; the range may run over the new year) |
 | `clock_schedule` | schedule_id, day_of_week (ISO: 1 = Monday), hour (station time), clock_id |
