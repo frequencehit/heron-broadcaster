@@ -136,8 +136,8 @@ The layout works from phone width up: below 760 px the navigation moves to a men
 
 A line one character high stays at the bottom of every page, in the monospace font. From left to right:
 
-- **Decks A and B:** the state (`▶` playing, `⏸` paused, `—` empty), then the artist and title with the elapsed time. The deck the listeners hear (on air) is brighter, with a red `▶`. Titles that do not fit are cut with an ellipsis. `engine ?` replaces both while the engine is unreachable.
-- **Listeners:** the total of the current station, read like the [Statistics](statistics.md) page's: at most a minute old, and `–` when no server could be read (never `0`).
+- **Decks A and B:** the state (`▶` playing, `⏸` paused, `—` empty), then the artist and title with the elapsed time. The deck the listeners hear (on air) is brighter, with a red `▶`. Titles that do not fit are cut with an ellipsis. A line one pixel high along the bottom of each deck's part shows how far its track has played, in the deck's colour. A click on a deck opens the On air page. `engine ?` replaces both while the engine is unreachable.
+- **Listeners:** the total of the current station, read like the [Statistics](statistics.md) page's: at most a minute old, and `–` when no server could be read (never `0`). A click opens the Statistics page.
 - **System** (operators and admins): `cpu 12% mem 41% load 0.4 0.5 0.6`. The CPU and memory turn to the warning colour from 80 % and to the alert colour from 95 %. Viewers do not get this part.
 
 While the live connection is down the bar greys out and says `offline`. Below 760 px the system part goes first, then the titles shrink to the deck letter and its state. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
