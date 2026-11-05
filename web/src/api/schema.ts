@@ -4517,6 +4517,11 @@ export interface components {
             album: number;
             /** Format: int32 */
             artist: number;
+            /**
+             * Format: int32
+             * @description By daypart separation. Missing in picks logged before it.
+             */
+            daypart?: number;
             /** Format: int32 */
             title: number;
             /** Format: int32 */
@@ -4882,6 +4887,31 @@ export interface components {
             /** @description `SELECT VERSION()`, e.g. `12.3.1-MariaDB`. */
             version?: string | null;
         };
+        /** @description The dayparts at a pick, for the rotation log. */
+        DaypartLog: {
+            /**
+             * Format: int32
+             * @description The station's division of the day: 4 or 6 dayparts.
+             */
+            count: number;
+            /**
+             * Format: int32
+             * @description The pick's daypart, from 0 (A).
+             */
+            daypart: number;
+            /**
+             * Format: int32
+             * @description The daypart the picked track last played in, from 0; missing if
+             *     never.
+             */
+            last_daypart?: number | null;
+            /**
+             * Format: int32
+             * @description The daypart separation of the slot's category, before relaxation;
+             *     `windows.dayparts` is the one applied.
+             */
+            separation: number;
+        };
         /** @description One deck EQ. Flat and bypassed by default. */
         DeckEq: {
             /** @default false */
@@ -5242,6 +5272,7 @@ export interface components {
              *     to 1. Missing in picks logged before play ratios.
              */
             counter?: number | null;
+            daypart?: components["schemas"]["DaypartLog"] | null;
             enforce_rules: boolean;
             /**
              * @description Tracks offered before this one and held back by their play ratio,
@@ -5278,7 +5309,7 @@ export interface components {
             slot_category_id?: components["schemas"]["u64"] | null;
             /**
              * Format: int32
-             * @description Relaxation step, 0 (none) to 10.
+             * @description Relaxation step, 0 (none) to 12.
              */
             step: number;
             step_description: string;
@@ -7297,6 +7328,13 @@ export interface components {
              *     }
              */
             across: components["schemas"]["AcrossStations"];
+            /**
+             * Format: int32
+             * @description The station's division of the day for daypart separation: 4
+             *     dayparts of 6 hours, or 6 of 4 hours.
+             * @default 4
+             */
+            daypart_count: number;
             /** @default null */
             fallback_category_id: components["schemas"]["u64"] | null;
             /**
@@ -7310,6 +7348,7 @@ export interface components {
              * @default {
              *       "album_min": 60,
              *       "artist_min": 120,
+             *       "dayparts": 0,
              *       "title_min": 240,
              *       "track_min": 240
              *     }
@@ -7505,6 +7544,11 @@ export interface components {
             album_min?: number | null;
             /** Format: int32 */
             artist_min?: number | null;
+            /**
+             * Format: int32
+             * @description Daypart separation; categories only, never clock slots.
+             */
+            dayparts?: number | null;
             /** Format: int32 */
             title_min?: number | null;
             /** Format: int32 */
@@ -7514,7 +7558,7 @@ export interface components {
          * @description A separation rule.
          * @enum {string}
          */
-        SeparationRule: "track" | "title" | "artist" | "album";
+        SeparationRule: "track" | "title" | "artist" | "album" | "daypart";
         ServiceConfig: {
             instance?: string | null;
             items: components["schemas"]["ConfigItem"][];
@@ -7584,7 +7628,7 @@ export interface components {
             /** Format: int64 */
             start_unix_ms: number;
             /**
-             * @description Picks per relaxation step, 0 to 10: every pick past step 0 is a
+             * @description Picks per relaxation step, 0 to 12: every pick past step 0 is a
              *     logged relaxation.
              */
             steps: number[];
@@ -8684,6 +8728,18 @@ export interface components {
             pick: number;
             /** Format: int32 */
             ratio: number;
+        } | {
+            /** Format: int32 */
+            dayparts: number;
+            /**
+             * Format: int64
+             * @description The track's last play before it.
+             */
+            earlier_unix_ms: number;
+            /** @enum {string} */
+            kind: "daypart";
+            /** Format: int32 */
+            pick: number;
         };
         Waveform: {
             /**
@@ -8772,6 +8828,13 @@ export interface components {
              * @default 120
              */
             artist_min: number;
+            /**
+             * Format: int32
+             * @description Daypart separation: a track played in a daypart does not play in
+             *     this many dayparts after it ([`crate::dayparts`]); 0: off.
+             * @default 0
+             */
+            dayparts: number;
             /**
              * Format: int32
              * @description Do not play the same title (any version) within.

@@ -25,7 +25,7 @@ These decisions are fixed. If one looks wrong, stop and ask instead of working a
 | Encoder selection | The user **selects the encoder** per profile: MP3, AAC-LC, Opus, Vorbis (built in) or external FFmpeg. This replaces the generic "pipe to ffmpeg" approach for encoding. |
 | AAC | **Built-in AAC-LC without HE is sufficient.** fdk-aac (HE-AAC) is only available when the user provides their own fdk-aac-enabled `ffmpeg` binary; Heron does not ship it. |
 | HLS | Heron has an **HLS output** (segments + playlist). |
-| Rotation relaxation | Album → artist → title → track separation, each halved before being dropped (track only reduced to a quarter, never dropped), then the fallback category. See [Rotation](rotation.md#rule-relaxation). |
+| Rotation relaxation | Album → artist → title → track separation, each halved before being dropped (track only reduced to a quarter, never dropped), then the fallback category. *(Revised for daypart separation: it is relaxed between album and artist separation.)* See [Rotation](rotation.md#rule-relaxation). |
 | Default encoder profiles | `MP3 128k` (CBR, 44.1 kHz, stereo) and `AAC 96k` (AAC-LC, 48 kHz, stereo). Opus is optional. See [Encoders and outputs](outputs.md#default-profiles). |
 | UI theme | The web UI has light and dark themes and **follows the system setting** by default. |
 | Platforms | Heron must **run on a Raspberry Pi**. Every image is built for **amd64 and arm64**, and CI tests both natively. Defaults leave CPU headroom for the engine (the analyzer uses CPUs − 1 workers). |

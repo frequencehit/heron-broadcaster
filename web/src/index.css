@@ -1294,6 +1294,121 @@ a.badge-link:hover {
   gap: 0.35rem;
 }
 
+/* Dayparts: the settings' example and the log's badges ------------------- */
+
+fieldset.dayparts .segmented {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.daypart-days {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: 0.4rem 0.75rem;
+  align-items: center;
+}
+
+.daypart-strip {
+  display: flex;
+  gap: 3px;
+}
+
+.daypart {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 3.1rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0.2rem;
+}
+
+button.daypart {
+  cursor: pointer;
+}
+
+.daypart b {
+  font-size: 1rem;
+}
+
+.daypart small {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.daypart.played,
+.daypart-dot.played {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.daypart.played small {
+  color: var(--accent-fg);
+}
+
+.daypart.kept,
+.daypart-dot.kept {
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  color: var(--warn);
+}
+
+.daypart.free,
+.daypart-dot.free {
+  background: color-mix(in srgb, var(--good) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+  color: var(--good);
+}
+
+.daypart-dot {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  display: inline-block;
+  border: 1px solid var(--border);
+}
+
+.daypart-hours {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.daypart-planned {
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+}
+
+.badge.daypart-badge {
+  font-variant-numeric: tabular-nums;
+  min-width: 1.4rem;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .daypart-days {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .daypart small {
+    display: none;
+  }
+}
+
 /* Dialogs and toasts ----------------------------------------------------- */
 
 dialog.modal {

@@ -21,6 +21,33 @@ Separation windows can be overridden per category (a power rotation category rep
 
 Artist separation compares **artists, not names**: see [Artists with several names](#artists-with-several-names).
 
+### Daypart separation
+
+The windows count minutes since a play: they do not say where in the day it was, and a track heard in the morning show can come back in the afternoon. **Daypart separation** keeps a track out of the dayparts that follow the one it played in, so the listeners of each part of the day hear it at a different time.
+
+- A station divides its day into **dayparts**, in its time zone, named A, B, C…: **4 dayparts of 6 hours** (the default) or **6 of 4 hours** (`daypart_count` in the `rotation` settings, 4 or 6).
+
+  | Division | A | B | C | D | E | F |
+  |---|---|---|---|---|---|---|
+  | 4 dayparts | 00:00–05:59 | 06:00–11:59 | 12:00–17:59 | 18:00–23:59 | | |
+  | 6 dayparts | 00:00–03:59 | 04:00–07:59 | 08:00–11:59 | 12:00–15:59 | 16:00–19:59 | 20:00–23:59 |
+
+- **Daypart separation N** (`separation.dayparts`): a track played in a daypart does not play in the N dayparts that follow it. 0 turns it off, the default. With 4 dayparts, a track played in A:
+
+  | Separation | Kept out of | Can play again in |
+  |---|---|---|
+  | 1 | B | C or D |
+  | 2 | B, C | D |
+  | 3 | B, C, D | the next day's A |
+
+- Dayparts follow one another **across midnight**: the next day's A follows D. N goes up to **6 with 4 dayparts and 10 with 6**, so the rule can run into the next days: with 4 dayparts and a separation of 6, a track played in A is kept out of B, C, D, then the next day's A, B and C, and can play again from the next day's D, at least 36 hours later.
+- **The daypart it played in is not kept out**: whether the track plays again later in the same daypart is for the track separation to decide.
+- It compares the **track itself**, not its title, artist or album, with its last play on the station (or its planned start, when it waits in the queue). Plays on other stations do not count: the [rules across stations](#rules-across-stations) are for that.
+- It is set for the station, and **overridden per category** like the windows (`dayparts` in the category's separation): a power rotation can come back sooner than a gold category. Clock slots do not override it. Categories are shared by the stations: a category's value counts in each station's own dayparts, and is cut to that station's maximum (6 with 4 dayparts).
+- **Clock changes:** times are the station's. When the clocks go back, the repeated hour stays in its daypart (02:00 is in A both times); when they go forward, the daypart holding the skipped hour is an hour shorter.
+- It is a **separation rule**: it is relaxed like the others when a slot finds no candidate, halved (rounded down) then dropped, after album separation and before artist separation ([Rule relaxation](#rule-relaxation)). It is not one of the dayparting [restrictions](#restrictions), which allow or ban a track in some hours and are never relaxed.
+- The rotation log gives each pick's daypart and the daypart the track last played in, and counts the tracks the rule held back (`blocked.daypart`).
+
 ### Artists with several names
 
 The same artist often appears under several names: solo name, band, side projects, spellings (`Neal Morse`, `The Neal Morse Band`). Comparing tag strings would play them back to back. So:
@@ -118,34 +145,38 @@ When no track satisfies the rules, relax them step by step, then fall back to a 
 
 The rule listeners notice least is relaxed first, and each rule is **halved before it is dropped**, so a small library gets "a bit less separation" rather than losing a rule outright.
 
-| Step | Relaxation | With the default windows |
+| Step | Relaxation | With the default windows, and a daypart separation of 3 |
 |---|---|---|
-| 0 | All rules as configured | album 60, artist 120, title 240, track 240 min |
+| 0 | All rules as configured | album 60, dayparts 3, artist 120, title 240, track 240 min |
 | 1 | Album separation halved | album 30 |
 | 2 | Album separation dropped | album off |
-| 3 | Artist separation halved | artist 60 |
-| 4 | Artist separation dropped | artist off |
-| 5 | Title separation halved | title 120 |
-| 6 | Title separation dropped | title off |
-| 7 | Track separation halved | track 120 |
-| 8 | Track separation quartered | track 60 |
-| 9 | Fallback category, track separation still at a quarter | |
-| 10 | Fallback category, least recently played track, no rules | |
+| 3 | Daypart separation halved, rounded down | dayparts 1 |
+| 4 | Daypart separation dropped | dayparts off |
+| 5 | Artist separation halved | artist 60 |
+| 6 | Artist separation dropped | artist off |
+| 7 | Title separation halved | title 120 |
+| 8 | Title separation dropped | title off |
+| 9 | Track separation halved | track 120 |
+| 10 | Track separation quartered | track 60 |
+| 11 | Fallback category, track separation still at a quarter | |
+| 12 | Fallback category, least recently played track, no rules | |
 
 - Rotation tries the steps in order, stops at the first one that yields at least one candidate, then applies the slot's selection method to those candidates.
 - Track separation is never dropped inside the slot's own category: playing the exact same recording again is the most audible repeat.
-- Step 10 cannot fail while the fallback category has a track; picking the least recently played one still avoids an immediate repeat. If the fallback category is empty, the engine's fallback directory takes over.
-- Slots with **enforce rules** off skip the separation rules entirely (step 0 without rules, then steps 9 and 10 only if restrictions leave nothing). Restrictions still apply.
-- Windows are those of the station (`rotation` settings), overridden by the slot's category, then by the slot; steps 1 to 8 relax those. Steps 9 and 10 use the fallback category's windows; without a fallback category set, the station's library is the fallback.
+- Step 12 cannot fail while the fallback category has a track; picking the least recently played one still avoids an immediate repeat. If the fallback category is empty, the engine's fallback directory takes over.
+- Slots with **enforce rules** off skip the separation rules entirely (step 0 without rules, then steps 11 and 12 only if restrictions leave nothing). Restrictions still apply.
+- Windows are those of the station (`rotation` settings), overridden by the slot's category, then by the slot (the daypart separation by the category only); steps 1 to 10 relax those. Steps 11 and 12 use the fallback category's windows; without a fallback category set, the station's library is the fallback.
 - Every relaxed pick records its step in `play_history.relaxation_applied` and in the rotation log.
 
-**Why artist before title** (the handoff proposed title first): repeating an artist within two hours is common and accepted on radio, while hearing the same song again, even in another version, is a clear repeat to listeners.
+**Why artist before title** (the handoff proposed title first): repeating an artist within two hours is common and accepted on radio, while hearing the same song again, even in another version, is a clear repeat to listeners. **Dayparts before the artist:** listeners notice a track coming back in the next daypart less than an artist repeated within the hour.
+
+The steps were numbered 0 to 10 before daypart separation; a migration renumbered the steps of the picks already logged (`rotation_picks` and `play_history.relaxation_applied`), so the log reads the same.
 
 ### Rules across stations
 
 With [several stations](stations.md#rules-across-stations), a station can also keep the artists, titles and tracks it plays apart from what other stations played or will play, each within its own window (`across` in the `rotation` settings: `artist_min`, `title_min`, `track_min`, 0 for off, and `station_ids`, the stations it looks at, all the others when empty). The window looks both ways: plays of the other stations before the pick, and their queued tracks at their planned times, before or after it.
 
-They are relaxed with the station's own rule of the same kind: artist halved at step 3 and dropped at step 4, title at 5 and 6, track at 7 and 8; they are off in the fallback category (steps 9 and 10) and in slots with enforce rules off. The rotation log counts the tracks they held back (`blocked.across`) and names, for the least recently played of them, the station and the play or planned track that held it back (`held_elsewhere`). A simulation takes the other stations' history and queues as they are, and its audit checks the picks against them too (`across_stations` violations).
+They are relaxed with the station's own rule of the same kind: artist halved at step 5 and dropped at step 6, title at 7 and 8, track at 9 and 10; they are off in the fallback category (steps 11 and 12) and in slots with enforce rules off. The rotation log counts the tracks they held back (`blocked.across`) and names, for the least recently played of them, the station and the play or planned track that held it back (`held_elsewhere`). A simulation takes the other stations' history and queues as they are, and its audit checks the picks against them too (`across_stations` violations).
 
 ### Scheduling
 
@@ -164,5 +195,5 @@ A station has **several schedules** ([M14](roadmap/m14-schedules.md)), each a we
 
 - Rotation is a **pure function** of (library, play history, rules, current clock, current time), in the `heron-rotation` crate. The library carries the station's ratio counters; the caller moves them after each pick (`Library::count_down`) and saves them.
 - The history is what played on the decks (on the FX player, only the jingles rotation picked to play over an intro) as far back as the longest window looks, followed by the queue at its planned times: the queue manager picks each new track for when it should start.
-- It returns the next track plus an **explanation**: which clock and slot, the windows applied, the relaxation step, how many tracks each rule held back or restrictions forbade, how many were left to choose from. Each pick is kept in the **rotation log** (`rotation_picks`); its play is linked to it and carries its step (`play_history.relaxation_applied`).
-- This makes it possible to **simulate** days of programming offline and test it without audio. A simulation is **audited** without trusting the log: each pick's windows are recomputed from its slot and step, and the pick is compared with every play before it, one by one; restrictions are checked again, and so is the play ratio: the counters are replayed from the station's, and a pick whose counter was in its held-back steps is a violation (tracks held back are not picks, so they are never flagged). Simulations run from the API (`POST /rotation/simulate`) and the web UI, and in the tests on a synthetic station over a week that crosses a daylight saving change.
+- It returns the next track plus an **explanation**: which clock and slot, the windows applied, the relaxation step, how many tracks each rule held back or restrictions forbade, how many were left to choose from, and the dayparts (`daypart`: the station's `count`, the pick's `daypart` from 0 for A, the daypart `separation` before relaxation, and `last_daypart`, where the track last played). Each pick is kept in the **rotation log** (`rotation_picks`); its play is linked to it and carries its step (`play_history.relaxation_applied`).
+- This makes it possible to **simulate** days of programming offline and test it without audio. A simulation is **audited** without trusting the log: each pick's windows are recomputed from its slot and step, and the pick is compared with every play before it, one by one, daypart separation included (a `daypart` violation names the earlier play); restrictions are checked again, and so is the play ratio: the counters are replayed from the station's, and a pick whose counter was in its held-back steps is a violation (tracks held back are not picks, so they are never flagged). Simulations run from the API (`POST /rotation/simulate`) and the web UI, and in the tests on a synthetic station over a week that crosses a daylight saving change.

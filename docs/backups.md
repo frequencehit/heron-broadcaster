@@ -17,10 +17,10 @@ The configuration file is what a station restores after a bad change or a lost d
 
 | Saved | Left out |
 |---|---|
-| Stations (name, code, enabled, order) and every settings group, shared and per station | Tracks themselves, their analysis, waveforms, fingerprints and identification: the scan rebuilds them |
+| Stations (name, code, enabled, order) and every settings group, shared and per station (the rotation settings with their dayparts) | Tracks themselves, their analysis, waveforms, fingerprints and identification: the scan rebuilds them |
 | Encoder profiles and outputs, with their passwords and statistics credentials | The play history, the rotation log, listener statistics: in the database dump |
 | EQ and AGC presets | Library tasks, import batches, the trash journal |
-| Category types, categories and their stations | The buffer zone |
+| Category types, categories (their separation overrides, daypart separation included) and their stations | The buffer zone |
 | Clocks and their slots, every station's schedules, their periods and hours | Webhook deliveries |
 | Restrictions and their stations | Sessions (everyone signs in again after a restore) |
 | Labels | Rendered medley files: they are in the library, under `medleys/` |

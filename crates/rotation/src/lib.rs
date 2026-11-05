@@ -14,6 +14,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
+pub mod dayparts;
 pub mod names;
 pub mod ratio;
 pub mod restrict;
@@ -23,6 +24,7 @@ pub mod schedule;
 mod select;
 mod sim;
 
+pub use dayparts::DaypartLog;
 pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
@@ -98,11 +100,14 @@ pub const MIN_WEIGHT: f64 = 0.1;
 pub const MAX_WEIGHT: f64 = 10.0;
 
 /// Station-wide rotation settings, stored under the `rotation` settings name.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct RotationSettings {
     pub separation: Windows,
+    /// The station's division of the day for daypart separation: 4
+    /// dayparts of 6 hours, or 6 of 4 hours.
+    pub daypart_count: u8,
     /// Where relaxation ends (steps 9 and 10). The station's library when
     /// unset.
     pub fallback_category_id: Option<CategoryId>,
@@ -113,6 +118,19 @@ pub struct RotationSettings {
     pub weights: WeightSettings,
     /// Rules across stations: off by default.
     pub across: AcrossStations,
+}
+
+impl Default for RotationSettings {
+    fn default() -> Self {
+        Self {
+            separation: Windows::default(),
+            daypart_count: dayparts::DEFAULT_COUNT,
+            fallback_category_id: None,
+            kept_out_category_ids: Vec::new(),
+            weights: WeightSettings::default(),
+            across: AcrossStations::default(),
+        }
+    }
 }
 
 /// What a station keeps apart from the other stations' plays and queues.
@@ -145,6 +163,16 @@ impl RotationSettings {
 
     pub fn check(&self) -> Result<(), String> {
         self.separation.check()?;
+        if !dayparts::COUNTS.contains(&self.daypart_count) {
+            return Err("daypart_count is 4 or 6".to_owned());
+        }
+        let max = dayparts::max_separation(self.daypart_count);
+        if self.separation.dayparts > max {
+            return Err(format!(
+                "daypart separation is at most {max} with {} dayparts",
+                self.daypart_count
+            ));
+        }
         self.across.windows().check()?;
         let weights = &self.weights;
         if !(0.5..=1.0).contains(&weights.play_factor) {
@@ -403,21 +431,52 @@ impl Library {
         }
     }
 
+    /// The station's division of the day: 4 or 6 dayparts.
+    pub fn daypart_count(&self) -> u8 {
+        dayparts::count(self.settings.daypart_count)
+    }
+
+    /// The station's windows, overridden by a category, then by a clock
+    /// slot. A slot never overrides the daypart separation, and it is cut
+    /// to the longest the station's division allows.
+    pub fn windows(
+        &self,
+        category: Option<&SeparationOverrides>,
+        slot: Option<&SeparationOverrides>,
+    ) -> Windows {
+        let mut windows = self.settings.separation;
+        if let Some(category) = category {
+            windows = windows.with(category);
+        }
+        if let Some(slot) = slot {
+            windows = windows.with(&SeparationOverrides {
+                dayparts: None,
+                ..*slot
+            });
+        }
+        windows.dayparts = windows
+            .dayparts
+            .min(dayparts::max_separation(self.daypart_count()));
+        windows
+    }
+
     /// How far back separation can look, in ms: the longest window the
-    /// settings, a category or a slot uses (an hour at least).
+    /// settings, a category or a slot uses (an hour at least), or the
+    /// dayparts the longest daypart separation covers.
     pub fn horizon_ms(&self) -> i64 {
-        let base = self.settings.separation;
-        let mut longest = base.longest_min();
+        let count = self.daypart_count();
+        let reach = |windows: Windows| {
+            windows
+                .longest_min()
+                .max(dayparts::lookback_min(count, windows.dayparts))
+        };
+        let mut longest = reach(self.windows(None, None));
         for category in self.categories.values() {
-            longest = longest.max(base.with(&category.separation).longest_min());
+            longest = longest.max(reach(self.windows(Some(&category.separation), None)));
         }
         for slot in self.clocks.values().flat_map(|clock| &clock.slots) {
-            let category = self
-                .categories
-                .get(&slot.category)
-                .map(|c| c.separation)
-                .unwrap_or_default();
-            longest = longest.max(base.with(&category).with(&slot.separation).longest_min());
+            let category = self.categories.get(&slot.category).map(|c| &c.separation);
+            longest = longest.max(reach(self.windows(category, Some(&slot.separation))));
         }
         i64::from(longest.max(60)) * 60_000
     }

@@ -19,9 +19,11 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Spanish and German** web interface, next to English and French.
 - **Rotation:** hours without a clock rotate the station's library.
 - **Play ratio** per track: an exact quota of plays, from 0.1 to 1 (2 times out of 10 at 0.2), with a counter per station, shown on the track's page and in the rotation log. 0 disables the track; re-enabling it asks for its ratio. A column, a filter and a bulk edit in the track list ([Rotation – Play ratio](docs/rotation.md#play-ratio)).
+- **Daypart separation:** a track played in a daypart (4 of 6 hours or 6 of 4 hours, in the station's time zone) does not play in the dayparts that follow it, across midnight too. Off by default, set per station and overridden per category, relaxed between album and artist separation, and shown in the rotation log ([Rotation – Daypart separation](docs/rotation.md#daypart-separation)).
 
 ### Changed
 
+- **Relaxation steps** are numbered 0 to 12: daypart separation comes in at steps 3 and 4, so artist, title, track and the fallback category moved two steps. The picks already logged were renumbered.
 - **A disabled track does not play at all** any more: it cannot be queued by hand, and the queue manager takes it out of the queue. Before, it was only left out of rotation.
 - **Clearer page names**, in all four languages: *Buffer* is now **Import music**, *Import* is **Migrate**, *Review & organize* is **To organize**, *Selection log* is **Rotation log** and *AGC* is **Processing**. Their addresses changed with them (`/import-music`, `/migrate`, `/to-organize`, `/rotation-log`, `/processing`) and the old ones are not redirected: update any bookmark. The API is unchanged.
 - **Several stations** (M13) is finished: two stations never share an engine, a station's schedules are under its routes, and `scripts/upgrade.sh` hands over each station's engine, so a second station no longer restarts cold.

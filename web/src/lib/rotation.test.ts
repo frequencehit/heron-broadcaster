@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from "vitest";
-import { daysLabel, describeOverrides, describeRule, describeWindows, hourLabel } from "./rotation";
+import { daysLabel, describeOverrides, describeRule, describeWindows, hourLabel, stepLabel } from "./rotation";
 
 describe("days", () => {
   it("reads as ranges", () => {
@@ -52,11 +52,23 @@ describe("windows", () => {
     expect(describeOverrides({ track_min: 90, artist_min: 0 })).toBe("artist off, track 90 min");
     expect(describeOverrides({ title_min: 120 })).toBe("title 2 h");
     expect(describeOverrides({})).toBe("");
+    expect(describeOverrides({ track_min: 90, dayparts: 2 })).toBe("track 90 min, dayparts 2");
+    expect(describeOverrides({ dayparts: 0 })).toBe("dayparts off");
   });
 
   it("lists every applied one", () => {
-    expect(describeWindows({ album_min: 60, artist_min: 120, title_min: 0, track_min: 240 })).toBe(
+    expect(describeWindows({ album_min: 60, artist_min: 120, title_min: 0, track_min: 240, dayparts: 0 })).toBe(
       "album 1 h · artist 2 h · title off · track 4 h",
     );
+    expect(describeWindows({ album_min: 0, artist_min: 120, title_min: 0, track_min: 240, dayparts: 1 })).toBe(
+      "album off · artist 2 h · title off · track 4 h · dayparts 1",
+    );
+  });
+
+  it("names every relaxation step", () => {
+    expect(stepLabel(3)).toBe("daypart separation halved");
+    expect(stepLabel(4)).toBe("daypart separation dropped");
+    expect(stepLabel(5)).toBe("artist separation halved");
+    expect(stepLabel(12)).toBe("fallback category, least recently played, no rules");
   });
 });

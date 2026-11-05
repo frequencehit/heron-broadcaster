@@ -5919,7 +5919,7 @@ async fn rules_across_stations_and_plays_per_station() {
         explanation["blocked"]["across"].as_u64() > Some(0),
         "{explanation}"
     );
-    // Relaxed with the station's own track rule: halved at step 7.
+    // Relaxed with the station's own track rule: halved at step 9.
     let relaxed = eventually("a relaxed pick", Duration::from_secs(20), || async {
         let picks = admin
             .get(&format!("/stations/{second}/rotation/picks"))
@@ -5928,7 +5928,7 @@ async fn rules_across_stations_and_plays_per_station() {
             .as_array()
             .unwrap()
             .iter()
-            .find(|pick| pick["explanation"]["step"].as_u64() >= Some(7))
+            .find(|pick| pick["explanation"]["step"].as_u64() >= Some(9))
             .cloned()
     })
     .await;
@@ -6453,6 +6453,8 @@ async fn a_backup_restores_onto_an_empty_database() {
     // Settings, shared and per station, and a second station.
     let mut rotation = admin.get("/settings/rotation").await;
     rotation["separation"]["artist_min"] = json!(45);
+    rotation["separation"]["dayparts"] = json!(8);
+    rotation["daypart_count"] = json!(6);
     let (status, body) = admin
         .send(Method::PUT, "/settings/rotation", rotation)
         .await;
@@ -6470,7 +6472,7 @@ async fn a_backup_restores_onto_an_empty_database() {
         .send(
             Method::POST,
             "/categories",
-            json!({"name": "Gold", "color": "#AA8800"}),
+            json!({"name": "Gold", "color": "#AA8800", "separation": {"dayparts": 3}}),
         )
         .await;
     let gold = gold["id"].as_u64().unwrap();
@@ -7192,5 +7194,142 @@ async fn tracks_have_their_lowest_and_highest_level() {
     let detail = admin.get(&format!("/tracks/{}", t[1])).await;
     assert_eq!(detail["level_min_db"], Value::Null, "{detail}");
     assert_eq!(detail["level_max_db"], Value::Null);
+    station.stop().await;
+}
+
+/// Daypart separation: the station's division and separation in the
+/// rotation settings, a category's own value, never a clock slot's; the
+/// simulation follows it and logs each pick's daypart.
+#[tokio::test(flavor = "multi_thread")]
+async fn daypart_separation_is_set_per_station_and_per_category() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+
+    // Off by default, with 4 dayparts.
+    let mut rotation = admin.get("/settings/rotation").await;
+    assert_eq!(rotation["daypart_count"], 4, "{rotation}");
+    assert_eq!(rotation["separation"]["dayparts"], 0);
+    // Only daypart separation, for the simulation below.
+    for window in ["album_min", "artist_min", "title_min", "track_min"] {
+        rotation["separation"][window] = json!(0);
+    }
+    // Up to 6 with 4 dayparts, 10 with 6; 4 or 6 dayparts only.
+    for (count, dayparts, expected) in [
+        (4, 7, StatusCode::UNPROCESSABLE_ENTITY),
+        (5, 1, StatusCode::UNPROCESSABLE_ENTITY),
+        (6, 11, StatusCode::UNPROCESSABLE_ENTITY),
+        (4, 6, StatusCode::OK),
+        (6, 10, StatusCode::OK),
+        (6, 1, StatusCode::OK),
+    ] {
+        rotation["daypart_count"] = json!(count);
+        rotation["separation"]["dayparts"] = json!(dayparts);
+        let (status, body) = admin
+            .send(Method::PUT, "/settings/rotation", rotation.clone())
+            .await;
+        assert_eq!(status, expected, "{count} dayparts, {dayparts}: {body}");
+    }
+    let saved = admin.get("/settings/rotation").await;
+    assert_eq!(
+        (&saved["daypart_count"], &saved["separation"]["dayparts"]),
+        (&json!(6), &json!(1))
+    );
+
+    // A category's own value, then the station's again.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Power", "separation": {"dayparts": 11}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, power) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Power", "separation": {"dayparts": 0}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{power}");
+    assert_eq!(power["separation"], json!({"dayparts": 0}));
+    let id = power["id"].as_u64().unwrap();
+    let (status, power) = admin
+        .send(
+            Method::PUT,
+            &format!("/categories/{id}"),
+            json!({"name": "Power", "separation": {"dayparts": 3, "track_min": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{power}");
+    assert_eq!(
+        admin.get(&format!("/categories/{id}")).await["separation"]["dayparts"],
+        3
+    );
+    let (status, power) = admin
+        .send(
+            Method::PUT,
+            &format!("/categories/{id}"),
+            json!({"name": "Power", "separation": {"track_min": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{power}");
+    assert!(power["separation"].get("dayparts").is_none(), "{power}");
+
+    // Never on a clock slot.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Hour", "slots": [
+                {"category_id": id, "method": "random", "separation": {"dayparts": 1}},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    // Eight hours of the station's library (no clock), all in Power: a handful
+    // of tracks, so the rule holds them back and is relaxed, and the audit
+    // finds nothing.
+    for track in &station.tracks {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": id}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, report) = admin
+        .send(
+            Method::POST,
+            "/rotation/simulate",
+            json!({"hours": 8, "seed": 4}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let simulation = &report["simulation"];
+    assert!(
+        simulation["violations"].as_array().unwrap().is_empty(),
+        "{}",
+        simulation["violations"]
+    );
+    let picks = simulation["picks"].as_array().unwrap();
+    assert!(!picks.is_empty());
+    for pick in picks {
+        let daypart = &pick["explanation"]["daypart"];
+        assert_eq!(daypart["count"], 6, "{pick}");
+        assert_eq!(daypart["separation"], 1);
+        assert!(daypart["daypart"].as_u64().unwrap() < 6);
+    }
+    assert!(
+        picks
+            .iter()
+            .any(|pick| pick["explanation"]["blocked"]["daypart"].as_u64() > Some(0)),
+        "nothing held back by its daypart"
+    );
     station.stop().await;
 }

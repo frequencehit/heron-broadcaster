@@ -347,6 +347,77 @@ fn a_week_breaks_no_rule_outside_logged_relaxations() {
     }
 }
 
+/// Daypart separation over a week that crosses the clocks going back
+/// (Sunday 25 October 2026 in Paris): 1 for the station, 2 for Current, 4
+/// or 6 dayparts. No pick plays in a daypart its last play keeps it out of,
+/// unless it logged the rule relaxed (step 3 halves it, 4 drops it).
+#[test]
+fn a_week_keeps_tracks_out_of_the_next_dayparts() {
+    for count in [4u8, 6] {
+        let mut station = station();
+        station.parts.settings.daypart_count = count;
+        station.parts.settings.separation.dayparts = 1;
+        for category in &mut station.parts.categories {
+            if category.id == CURRENT {
+                category.separation.dayparts = Some(2);
+            }
+        }
+        let library = Library::new(station.parts, paris());
+        let simulation = week(&library, 5);
+        assert!(
+            simulation.violations.is_empty(),
+            "{count} dayparts: {:?}",
+            &simulation.violations[..simulation.violations.len().min(10)]
+        );
+        let held: u32 = simulation
+            .picks
+            .iter()
+            .map(|pick| pick.explanation.blocked.daypart)
+            .sum();
+        assert!(held > 0, "{count} dayparts: nothing held back");
+        // Checked again here, from the station times: hours / (24 / count),
+        // days apart.
+        let daypart = |ms: i64| {
+            let local = jiff::Timestamp::from_millisecond(ms)
+                .unwrap()
+                .to_zoned(paris());
+            let days = local
+                .date()
+                .since((jiff::Unit::Day, date(2026, 1, 1)))
+                .unwrap()
+                .get_days();
+            i64::from(days) * i64::from(count) + i64::from(local.hour()) / (24 / i64::from(count))
+        };
+        let mut last: HashMap<u64, i64> = HashMap::new();
+        let mut checked = 0;
+        for pick in &simulation.picks {
+            let explanation = &pick.explanation;
+            let log = explanation.daypart.unwrap();
+            assert_eq!(log.count, count);
+            assert_eq!(
+                i64::from(log.daypart),
+                daypart(pick.start_unix_ms).rem_euclid(i64::from(count))
+            );
+            if let Some(previous) = last.insert(pick.track_id, pick.start_unix_ms) {
+                assert_eq!(
+                    log.last_daypart.map(i64::from),
+                    Some(daypart(previous).rem_euclid(i64::from(count)))
+                );
+                let after = daypart(pick.start_unix_ms) - daypart(previous);
+                if explanation.enforce_rules && explanation.step < 3 {
+                    assert!(
+                        !(1..=i64::from(explanation.windows.dayparts)).contains(&after),
+                        "{count} dayparts: track {} {after} dayparts after its last play",
+                        pick.track_id
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 500, "{checked}");
+    }
+}
+
 #[test]
 fn a_week_follows_the_play_ratios() {
     let mut station = station();
@@ -435,7 +506,7 @@ fn a_week_never_breaks_a_restriction() {
         .collect();
     assert!(!christmas_slots.is_empty());
     for pick in christmas_slots {
-        assert!(pick.explanation.step >= 9);
+        assert!(pick.explanation.step >= 11);
         assert_eq!(pick.explanation.category_id, Some(GOLD));
         assert_eq!(pick.explanation.restricted, 30);
     }
@@ -459,9 +530,9 @@ fn names_of_an_artist_and_similar_artists_keep_their_distance() {
             }
         };
         for (index, pick) in simulation.picks.iter().enumerate() {
-            // Steps 3 and up relax artist separation, and are logged; a
+            // Steps 5 and up relax artist separation, and are logged; a
             // slot can be set not to enforce the rules.
-            if pick.explanation.step >= 3 || !pick.explanation.enforce_rules {
+            if pick.explanation.step >= 5 || !pick.explanation.enforce_rules {
                 continue;
             }
             let track = &library.tracks[&pick.track_id];
@@ -542,7 +613,7 @@ fn a_small_library_relaxes_step_by_step_and_logs_it() {
     assert!(relaxed > 0, "{:?}", simulation.steps);
     // Track separation is never dropped inside the slot's category.
     for pick in &simulation.picks {
-        if pick.explanation.step < 9 {
+        if pick.explanation.step < 11 {
             assert!(pick.explanation.windows.track_min > 0);
         }
         assert!(!pick.explanation.step_description.is_empty());

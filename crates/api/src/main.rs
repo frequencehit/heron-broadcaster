@@ -731,4 +731,72 @@ mod tests {
             .await
             .unwrap();
     }
+
+    /// Daypart separation takes relaxation steps 3 and 4: the picks logged
+    /// before it, and their plays, move from step 3 on two places.
+    #[tokio::test]
+    async fn logged_relaxation_steps_make_room_for_daypart_separation() {
+        const DAYPARTS: i64 = 20261128000000;
+        let Ok(admin_url) = std::env::var("HERON_TEST_DATABASE_URL") else {
+            return;
+        };
+        let admin_url = admin_url.trim_end_matches('/').to_owned();
+        let name = format!("heron_dayparts_{}", std::process::id());
+        let admin = sqlx::MySqlPool::connect(&admin_url).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+        let pool = sqlx::MySqlPool::connect(&format!("{admin_url}/{name}"))
+            .await
+            .unwrap();
+        MIGRATOR.run_to(DAYPARTS - 1, &pool).await.unwrap();
+        for step in [0u8, 2, 3, 10] {
+            let explanation = format!(r#"{{"step": {step}, "step_description": "logged"}}"#);
+            let pick: u64 = sqlx::query(
+                "INSERT INTO rotation_picks (station_id, planned_at, step, explanation)
+                 VALUES (1, NOW(6), ?, ?)",
+            )
+            .bind(step)
+            .bind(&explanation)
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+            let relaxation = (step > 0).then(|| {
+                format!(r#"{{"pick_id": {pick}, "step": {step}, "description": "logged"}}"#)
+            });
+            sqlx::query(
+                "INSERT INTO play_history (station_id, title, started_at, deck, source, relaxation_applied)
+                 VALUES (1, 'Song', NOW(6), 'a', 'rotation', ?)",
+            )
+            .bind(relaxation)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        MIGRATOR.run(&pool).await.unwrap();
+        let picks: Vec<(u8, i64)> = sqlx::query_as(
+            "SELECT step, CAST(JSON_VALUE(explanation, '$.step') AS SIGNED)
+             FROM rotation_picks ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(picks, [(0, 0), (2, 2), (5, 5), (12, 12)]);
+        let plays: Vec<Option<i64>> = sqlx::query_scalar(
+            "SELECT CAST(JSON_VALUE(relaxation_applied, '$.step') AS SIGNED)
+             FROM play_history ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(plays, [None, Some(2), Some(5), Some(12)]);
+
+        pool.close().await;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+    }
 }

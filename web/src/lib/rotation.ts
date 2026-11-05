@@ -74,11 +74,13 @@ const STEPS: PlainKey[] = [
   "rotation.step.8",
   "rotation.step.9",
   "rotation.step.10",
+  "rotation.step.11",
+  "rotation.step.12",
 ];
 
 /** What a relaxation step relaxes: `artist separation halved`. */
 export function stepLabel(step: number): string {
-  return t(STEPS[Math.min(step, STEPS.length - 1)] ?? "rotation.step.10");
+  return t(STEPS[Math.min(step, STEPS.length - 1)] ?? "rotation.step.12");
 }
 
 export const METHODS_LIST = Object.keys(METHODS) as Method[];
@@ -130,7 +132,10 @@ export function targetKind(target: Target): string {
   return t(kinds[target.kind]);
 }
 
-const WINDOW_NAMES: [keyof Windows, PlainKey][] = [
+/** The windows in minutes (daypart separation aside). */
+export type MinuteWindow = Exclude<keyof Windows, "dayparts">;
+
+const WINDOW_NAMES: [MinuteWindow, PlainKey][] = [
   ["album_min", "rotation.window.album"],
   ["artist_min", "rotation.window.artist"],
   ["title_min", "rotation.window.title"],
@@ -154,12 +159,30 @@ export function describeOverrides(overrides: SeparationOverrides | undefined): s
   if (!overrides) {
     return "";
   }
-  return WINDOW_NAMES.filter(([key]) => overrides[key] !== undefined && overrides[key] !== null)
-    .map(([key, name]) => t("rotation.window", { name: t(name), length: minutes(overrides[key] ?? 0) }))
-    .join(", ");
+  const described = WINDOW_NAMES.filter(([key]) => overrides[key] !== undefined && overrides[key] !== null).map(
+    ([key, name]) => t("rotation.window", { name: t(name), length: minutes(overrides[key] ?? 0) }),
+  );
+  if (overrides.dayparts !== undefined && overrides.dayparts !== null) {
+    described.push(dayparts(overrides.dayparts));
+  }
+  return described.join(", ");
 }
 
-/** Windows as applied: `album 1 h · artist 2 h · title 4 h · track 4 h`. */
+/** Daypart separation: `dayparts 2`, `dayparts off`. */
+function dayparts(value: number): string {
+  return t("rotation.window", {
+    name: t("rotation.window.dayparts"),
+    length: value === 0 ? t("rotation.off") : number(value),
+  });
+}
+
+/** Windows as applied: `album 1 h · artist 2 h · title 4 h · track 4 h`, and the dayparts when on. */
 export function describeWindows(windows: Windows): string {
-  return WINDOW_NAMES.map(([key, name]) => t("rotation.window", { name: t(name), length: minutes(windows[key]) })).join(" · ");
+  const described = WINDOW_NAMES.map(([key, name]) =>
+    t("rotation.window", { name: t(name), length: minutes(windows[key]) }),
+  );
+  if (windows.dayparts) {
+    described.push(dayparts(windows.dayparts));
+  }
+  return described.join(" · ");
 }
