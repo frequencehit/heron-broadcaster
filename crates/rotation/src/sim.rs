@@ -483,7 +483,7 @@ mod tests {
                 enforce_rules: true,
                 step,
                 step_description: String::new(),
-                windows: library.settings.separation,
+                windows: library.settings.separation.into(),
                 pool: 3,
                 restricted: 0,
                 blocked: crate::Blocked::default(),
@@ -736,10 +736,8 @@ mod tests {
     #[test]
     fn catches_a_track_back_in_a_daypart_kept_out() {
         let mut library = library();
-        library.settings.separation = Windows {
-            dayparts: 1,
-            ..Windows::OFF
-        };
+        library.settings.separation = Windows::OFF.into();
+        library.categories.get_mut(&1).unwrap().separation.dayparts = Some(1);
         let hour = 60 * MIN;
         // Played in A at 01:00, again in B at 07:00.
         let again = |at, step| [pick(&library, 1, hour, 0), pick(&library, 1, at, step)];

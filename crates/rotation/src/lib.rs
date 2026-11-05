@@ -28,7 +28,7 @@ pub use dayparts::DaypartLog;
 pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
-pub use rules::{AcrossWindows, SeparationOverrides, Windows};
+pub use rules::{AcrossWindows, SeparationOverrides, StationWindows, Windows};
 pub use schedule::{Period, Schedule, ScheduleId};
 pub use select::{
     Blocked, Explanation, Outcome, Pick, SeparationRule, SkipReason, SkippedSlot, next,
@@ -104,9 +104,10 @@ pub const MAX_WEIGHT: f64 = 10.0;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct RotationSettings {
-    pub separation: Windows,
+    pub separation: StationWindows,
     /// The station's division of the day for daypart separation: 4
-    /// dayparts of 6 hours, or 6 of 4 hours.
+    /// dayparts of 6 hours, or 6 of 4 hours. The separation itself is each
+    /// category's.
     pub daypart_count: u8,
     /// Where relaxation ends (steps 9 and 10). The station's library when
     /// unset.
@@ -123,7 +124,7 @@ pub struct RotationSettings {
 impl Default for RotationSettings {
     fn default() -> Self {
         Self {
-            separation: Windows::default(),
+            separation: StationWindows::default(),
             daypart_count: dayparts::DEFAULT_COUNT,
             fallback_category_id: None,
             kept_out_category_ids: Vec::new(),
@@ -162,16 +163,9 @@ impl RotationSettings {
     pub const SETTINGS_NAME: &str = "rotation";
 
     pub fn check(&self) -> Result<(), String> {
-        self.separation.check()?;
+        Windows::from(self.separation).check()?;
         if !dayparts::COUNTS.contains(&self.daypart_count) {
             return Err("daypart_count is 4 or 6".to_owned());
-        }
-        let max = dayparts::max_separation(self.daypart_count);
-        if self.separation.dayparts > max {
-            return Err(format!(
-                "daypart separation is at most {max} with {} dayparts",
-                self.daypart_count
-            ));
         }
         self.across.windows().check()?;
         let weights = &self.weights;
@@ -437,14 +431,14 @@ impl Library {
     }
 
     /// The station's windows, overridden by a category, then by a clock
-    /// slot. A slot never overrides the daypart separation, and it is cut
-    /// to the longest the station's division allows.
+    /// slot. The daypart separation is the category's only (none without
+    /// one), cut to the longest the station's division allows.
     pub fn windows(
         &self,
         category: Option<&SeparationOverrides>,
         slot: Option<&SeparationOverrides>,
     ) -> Windows {
-        let mut windows = self.settings.separation;
+        let mut windows = Windows::from(self.settings.separation);
         if let Some(category) = category {
             windows = windows.with(category);
         }

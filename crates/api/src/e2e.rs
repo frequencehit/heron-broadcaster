@@ -6505,7 +6505,6 @@ async fn a_backup_restores_onto_an_empty_database() {
     // Settings, shared and per station, and a second station.
     let mut rotation = admin.get("/settings/rotation").await;
     rotation["separation"]["artist_min"] = json!(45);
-    rotation["separation"]["dayparts"] = json!(8);
     rotation["daypart_count"] = json!(6);
     let (status, body) = admin
         .send(Method::PUT, "/settings/rotation", rotation)
@@ -7249,47 +7248,44 @@ async fn tracks_have_their_lowest_and_highest_level() {
     station.stop().await;
 }
 
-/// Daypart separation: the station's division and separation in the
-/// rotation settings, a category's own value, never a clock slot's; the
-/// simulation follows it and logs each pick's daypart.
+/// Daypart separation: the station's division of the day in the rotation
+/// settings, the separation a category's own, never the station's or a
+/// clock slot's; the simulation follows it and logs each pick's daypart.
 #[tokio::test(flavor = "multi_thread")]
-async fn daypart_separation_is_set_per_station_and_per_category() {
+async fn daypart_separation_is_set_per_category() {
     let Some(station) = Station::start().await else {
         return;
     };
     let admin = station.signed_in("admin").await;
 
-    // Off by default, with 4 dayparts.
+    // 4 dayparts by default; the station has no separation of its own.
     let mut rotation = admin.get("/settings/rotation").await;
     assert_eq!(rotation["daypart_count"], 4, "{rotation}");
-    assert_eq!(rotation["separation"]["dayparts"], 0);
+    assert!(
+        rotation["separation"].get("dayparts").is_none(),
+        "{rotation}"
+    );
     // Only daypart separation, for the simulation below.
     for window in ["album_min", "artist_min", "title_min", "track_min"] {
         rotation["separation"][window] = json!(0);
     }
-    // Up to 6 with 4 dayparts, 10 with 6; 4 or 6 dayparts only.
-    for (count, dayparts, expected) in [
-        (4, 7, StatusCode::UNPROCESSABLE_ENTITY),
-        (5, 1, StatusCode::UNPROCESSABLE_ENTITY),
-        (6, 11, StatusCode::UNPROCESSABLE_ENTITY),
-        (4, 6, StatusCode::OK),
-        (6, 10, StatusCode::OK),
-        (6, 1, StatusCode::OK),
-    ] {
+    let mut with_dayparts = rotation.clone();
+    with_dayparts["separation"]["dayparts"] = json!(1);
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", with_dayparts)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    // 4 or 6 dayparts only.
+    for (count, expected) in [(5, StatusCode::UNPROCESSABLE_ENTITY), (6, StatusCode::OK)] {
         rotation["daypart_count"] = json!(count);
-        rotation["separation"]["dayparts"] = json!(dayparts);
         let (status, body) = admin
             .send(Method::PUT, "/settings/rotation", rotation.clone())
             .await;
-        assert_eq!(status, expected, "{count} dayparts, {dayparts}: {body}");
+        assert_eq!(status, expected, "{count} dayparts: {body}");
     }
-    let saved = admin.get("/settings/rotation").await;
-    assert_eq!(
-        (&saved["daypart_count"], &saved["separation"]["dayparts"]),
-        (&json!(6), &json!(1))
-    );
+    assert_eq!(admin.get("/settings/rotation").await["daypart_count"], 6);
 
-    // A category's own value, then the station's again.
+    // A category's value: 0 to 10, off when left out.
     let (status, body) = admin
         .send(
             Method::POST,
@@ -7312,23 +7308,23 @@ async fn daypart_separation_is_set_per_station_and_per_category() {
         .send(
             Method::PUT,
             &format!("/categories/{id}"),
-            json!({"name": "Power", "separation": {"dayparts": 3, "track_min": 60}}),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK, "{power}");
-    assert_eq!(
-        admin.get(&format!("/categories/{id}")).await["separation"]["dayparts"],
-        3
-    );
-    let (status, power) = admin
-        .send(
-            Method::PUT,
-            &format!("/categories/{id}"),
             json!({"name": "Power", "separation": {"track_min": 60}}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{power}");
     assert!(power["separation"].get("dayparts").is_none(), "{power}");
+    let (status, power) = admin
+        .send(
+            Method::PUT,
+            &format!("/categories/{id}"),
+            json!({"name": "Power", "separation": {"dayparts": 1}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{power}");
+    assert_eq!(
+        admin.get(&format!("/categories/{id}")).await["separation"],
+        json!({"dayparts": 1})
+    );
 
     // Never on a clock slot.
     let (status, body) = admin
@@ -7341,10 +7337,19 @@ async fn daypart_separation_is_set_per_station_and_per_category() {
         )
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Hour", "slots": [{"category_id": id, "method": "random"}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    let clock_id = clock["id"].as_u64().unwrap();
 
-    // Eight hours of the station's library (no clock), all in Power: a handful
-    // of tracks, so the rule holds them back and is relaxed, and the audit
-    // finds nothing.
+    // Eight hours of the clock, every track in Power: a handful of tracks,
+    // so the rule holds them back and is relaxed, and the audit finds
+    // nothing.
     for track in &station.tracks {
         let (status, _) = admin
             .send(
@@ -7355,23 +7360,29 @@ async fn daypart_separation_is_set_per_station_and_per_category() {
             .await;
         assert_eq!(status, StatusCode::OK);
     }
-    let (status, report) = admin
-        .send(
-            Method::POST,
-            "/rotation/simulate",
-            json!({"hours": 8, "seed": 4}),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK, "{report}");
-    let simulation = &report["simulation"];
-    assert!(
-        simulation["violations"].as_array().unwrap().is_empty(),
-        "{}",
-        simulation["violations"]
-    );
-    let picks = simulation["picks"].as_array().unwrap();
+    let simulate = |clock: Option<u64>| {
+        let admin = &admin;
+        async move {
+            let (status, report) = admin
+                .send(
+                    Method::POST,
+                    "/rotation/simulate",
+                    json!({"hours": 8, "seed": 4, "clock_id": clock}),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK, "{report}");
+            let simulation = report["simulation"].clone();
+            assert!(
+                simulation["violations"].as_array().unwrap().is_empty(),
+                "{}",
+                simulation["violations"]
+            );
+            simulation["picks"].as_array().unwrap().clone()
+        }
+    };
+    let picks = simulate(Some(clock_id)).await;
     assert!(!picks.is_empty());
-    for pick in picks {
+    for pick in &picks {
         let daypart = &pick["explanation"]["daypart"];
         assert_eq!(daypart["count"], 6, "{pick}");
         assert_eq!(daypart["separation"], 1);
@@ -7382,6 +7393,70 @@ async fn daypart_separation_is_set_per_station_and_per_category() {
             .iter()
             .any(|pick| pick["explanation"]["blocked"]["daypart"].as_u64() > Some(0)),
         "nothing held back by its daypart"
+    );
+    // The station's library, without a clock: no daypart separation.
+    for pick in simulate(None).await {
+        assert_eq!(pick["explanation"]["daypart"]["separation"], 0, "{pick}");
+    }
+    station.stop().await;
+}
+
+/// A configuration file of a schema from before daypart separation was set
+/// per category: the station's value goes onto its Song categories without
+/// one when restored, as the migration does.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let mut ids = Vec::new();
+    for (name, type_id, separation) in [
+        ("Hits", json!(1), json!({"track_min": 60})),
+        ("Gold", json!(1), json!({"dayparts": 0})),
+        ("Jingles", json!(2), json!({})),
+        ("Untyped", Value::Null, json!({})),
+    ] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "type_id": type_id, "separation": separation}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        ids.push(category["id"].as_u64().unwrap());
+    }
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    file["schema"] = json!(20261128000000_i64);
+    let settings = file["tables"]["station_settings"].as_array_mut().unwrap();
+    settings.retain(|row| row["name"] != "rotation");
+    settings.push(json!({"station_id": 1, "name": "rotation",
+                         "value": {"separation": {"artist_min": 45, "dayparts": 2}}}));
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+
+    let admin = station.signed_in("admin").await;
+    let rotation = admin.get("/settings/rotation").await;
+    assert_eq!(
+        rotation["separation"],
+        json!({"album_min": 60, "artist_min": 45, "title_min": 240, "track_min": 240}),
+    );
+    let mut separations = Vec::new();
+    for id in &ids {
+        separations.push(admin.get(&format!("/categories/{id}")).await["separation"].clone());
+    }
+    assert_eq!(
+        separations,
+        [
+            json!({"track_min": 60, "dayparts": 2}),
+            json!({"dayparts": 0}),
+            json!({}),
+            json!({}),
+        ]
     );
     station.stop().await;
 }

@@ -750,7 +750,10 @@ mod tests {
     use jiff::tz::TimeZone;
 
     use super::*;
-    use crate::{Category, Clock, LibraryParts, Member, Play, Schedule, SeparationOverrides, Slot};
+    use crate::{
+        Category, Clock, LibraryParts, Member, Play, Schedule, SeparationOverrides, Slot,
+        StationWindows,
+    };
 
     const MIN: i64 = 60_000;
     const HOUR: i64 = 60 * MIN;
@@ -1178,16 +1181,22 @@ mod tests {
         }
     }
 
-    /// Only track separation (30 min) and daypart separation `dayparts`,
-    /// with `count` dayparts.
+    /// Only track separation (30 min) and category 1's daypart separation
+    /// `dayparts`, with `count` dayparts.
     fn daypart_library(count: u8, dayparts: u8) -> Library {
         let mut library = library(vec![slot(1, Method::LeastRecentlyPlayed)]);
         library.settings.daypart_count = count;
         library.settings.separation = Windows {
             track_min: 30,
-            dayparts,
             ..Windows::OFF
-        };
+        }
+        .into();
+        library.categories.get_mut(&1).unwrap().separation.dayparts = Some(dayparts);
+        // The clock every hour of the week: hours without one have no
+        // daypart separation.
+        library.schedule.hours = (1..=7)
+            .flat_map(|day| (0..24).map(move |hour| ((day, hour), 1)))
+            .collect();
         library
     }
 
@@ -1218,9 +1227,46 @@ mod tests {
         // Played in D (22:00): the next day's A follows it.
         assert!(held_by_daypart(&library, 22 * HOUR, 24 * HOUR + 30 * MIN));
         assert!(!held_by_daypart(&library, 22 * HOUR, 30 * HOUR));
-        // Off.
+        // Off: 0, or no value of its own.
         let off = daypart_library(4, 0);
         assert!(!held_by_daypart(&off, 30 * MIN, 6 * HOUR + 30 * MIN));
+        let mut none = daypart_library(4, 0);
+        none.categories.get_mut(&1).unwrap().separation.dayparts = None;
+        assert!(!held_by_daypart(&none, 30 * MIN, 6 * HOUR + 30 * MIN));
+    }
+
+    #[test]
+    fn daypart_separation_is_the_categorys_only() {
+        // The station has none: hours without a clock rotate the library
+        // without it, and a category without a value of its own has none.
+        let library = daypart_library(4, 3);
+        assert_eq!(library.windows(None, None).dayparts, 0);
+        assert_eq!(
+            library
+                .windows(Some(&SeparationOverrides::default()), None)
+                .dayparts,
+            0
+        );
+        assert_eq!(
+            library
+                .windows(Some(&library.categories[&1].separation), None)
+                .dayparts,
+            3
+        );
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 30 * MIN));
+        let mut unscheduled = library.clone();
+        unscheduled.schedule.hours.clear();
+        let pick = next(
+            &unscheduled,
+            &history,
+            6 * HOUR + 30 * MIN,
+            None,
+            &mut Rng::new(21),
+        )
+        .unwrap();
+        assert_eq!(pick.explanation.clock_id, None);
+        assert_eq!(pick.explanation.blocked.daypart, 0);
     }
 
     #[test]
@@ -1272,13 +1318,13 @@ mod tests {
     fn daypart_separation_is_relaxed_after_album_and_before_artist() {
         // Every track of the category played in A, artists 2 hours ago.
         let mut library = library(vec![slot(1, Method::Random)]);
-        library.settings.separation = Windows {
+        library.settings.separation = StationWindows {
             album_min: 600,
             artist_min: 120,
             title_min: 0,
             track_min: 30,
-            dayparts: 2,
         };
+        library.categories.get_mut(&1).unwrap().separation.dayparts = Some(2);
         let mut history = History::default();
         for id in 1..=5 {
             history.push(Play::of(&library.tracks[&id], (id as i64) * MIN));

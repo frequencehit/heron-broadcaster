@@ -192,8 +192,7 @@ async fn write_slots(
     for (position, slot) in slots.iter().enumerate() {
         if slot.separation.dayparts.is_some() {
             return Err(ApiError::Invalid(
-                "daypart separation is set for the station or a category, not a clock slot"
-                    .to_owned(),
+                "daypart separation is set for a category, not a clock slot".to_owned(),
             ));
         }
         let separation = separation_json(&slot.separation)?;
@@ -407,11 +406,7 @@ async fn preview_clock(
             .collect();
         let average_ms =
             (!lengths.is_empty()).then(|| lengths.iter().sum::<u64>() / lengths.len() as u64);
-        let windows = library
-            .settings
-            .separation
-            .with(&category.map(|c| c.separation).unwrap_or_default())
-            .with(&slot.separation);
+        let windows = library.windows(category.map(|c| &c.separation), Some(&slot.separation));
         slots.push(SlotPreview {
             category_id: slot.category,
             category_name: category.map(|c| c.name.clone()),
