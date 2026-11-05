@@ -40,6 +40,9 @@ services:
       MARIADB_USER: heron
       MARIADB_PASSWORD: ${HERON_DB_PASSWORD:?set HERON_DB_PASSWORD in .env}
       MARIADB_ROOT_PASSWORD: ${HERON_DB_ROOT_PASSWORD:?set HERON_DB_ROOT_PASSWORD in .env}
+      # Upgrades MariaDB's own tables when it starts on data of an older
+      # version: mariadb-dump (the backups' dump) fails on them otherwise.
+      MARIADB_AUTO_UPGRADE: "1"
     volumes:
       - mariadb-data:/var/lib/mysql
     healthcheck:
