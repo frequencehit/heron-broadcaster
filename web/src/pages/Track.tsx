@@ -2,7 +2,7 @@
 
 // One track: waveform with its cue and fade points, preview, per-track
 // overrides, play ratio, categories, programming details and labels,
-// analysis, file and plays, and its tags edited.
+// analysis, file and plays, when it played, and its tags edited.
 
 import { PlaysByStation, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioCounter, RatioScale, WeightOrRatio } from "../components/Ratio";
@@ -20,6 +20,7 @@ import {
   unwrap,
 } from "../api";
 import { FadeEditor } from "../components/FadeEditor";
+import { PlayGrids } from "../components/PlayGrids";
 import { NewCategory } from "../components/NewCategory";
 import { TaskState, useTask } from "../components/Task";
 import { TryTransition } from "../components/TryTransition";
@@ -687,6 +688,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
           <PlaysCard track={track} />
         </div>
       </div>
+      <PlayGrids trackId={track.id} />
       <TagsDialog
         open={editingTags}
         onClose={() => setEditingTags(false)}

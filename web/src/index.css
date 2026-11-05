@@ -2643,3 +2643,135 @@ ul.held {
     grid-template-columns: 1fr;
   }
 }
+
+/* When a track played: plays of the last 30 days, hours of the week. */
+.play-days,
+.play-hours {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  table-layout: fixed;
+}
+
+.play-hours {
+  border-spacing: 3px;
+}
+
+.play-days th,
+.play-hours th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+  padding: 0.1rem;
+}
+
+.play-days th.week {
+  text-align: left;
+  width: 5.5rem;
+}
+
+.play-days .total {
+  text-align: right;
+  font-weight: 600;
+  width: 3rem;
+  color: var(--muted);
+}
+
+.play-hours th.hour {
+  text-align: right;
+  width: 3rem;
+  padding-right: 0.3rem;
+}
+
+.play-day,
+.play-hour {
+  width: 100%;
+  border: 1px solid var(--border);
+  font: inherit;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.play-day {
+  height: 2.6rem;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.05;
+}
+
+.play-day small {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.play-hour {
+  height: 1.35rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.play-day.level-0,
+.play-hour.level-0 {
+  background: var(--surface);
+}
+
+.play-day.level-1,
+.play-hour.level-1 {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+.play-day.level-2,
+.play-hour.level-2 {
+  background: color-mix(in srgb, var(--accent) 30%, var(--surface));
+}
+
+.play-day.level-3,
+.play-hour.level-3 {
+  background: color-mix(in srgb, var(--accent) 50%, var(--surface));
+}
+
+.play-day.level-4,
+.play-hour.level-4 {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.play-day.level-4 small {
+  color: var(--accent-fg);
+}
+
+.play-day.out {
+  background: var(--surface-2);
+  opacity: 0.55;
+  cursor: default;
+}
+
+.play-day.today {
+  outline: 2px solid var(--fg);
+  outline-offset: 1px;
+}
+
+.play-day.shown,
+.play-hour.shown {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+.play-detail {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  min-height: 2.6rem;
+}
+
+.play-detail ul {
+  margin: 0.3rem 0;
+  padding-left: 1.1rem;
+}

@@ -10,22 +10,34 @@ import { t } from "../i18n";
 import { clockChange, clockTime, duration, fullDate } from "../lib/format";
 import { endingLabel, sourceLabel } from "../lib/labels";
 import { useLive } from "../lib/live";
-import { Link } from "../lib/router";
+import { historyFilter } from "../lib/playGrid";
+import { Link, useLocation } from "../lib/router";
 import { here } from "../lib/station";
 
 const PAGE = 100;
 
 export function History() {
   const [withFx, setWithFx] = useState(false);
+  // One track's plays over a span of time, from the track page's grids.
+  const filter = historyFilter(useLocation().search);
   // New plays appear as they start.
   const latest = useLive((live) => live.events[0]?.at_unix_ms);
   const plays = useInfiniteQuery({
-    queryKey: ["history", withFx, latest],
+    queryKey: ["history", withFx, latest, filter?.trackId, filter?.after, filter?.before],
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       unwrap(
         api.GET("/api/v1/stations/{station_id}/history", {
-          params: { path: here(), query: query({ before: pageParam, exclude_fx: !withFx, limit: PAGE }) },
+          params: {
+            path: here(),
+            query: query({
+              before: pageParam ?? filter?.before,
+              after: filter?.after,
+              track_id: filter?.trackId,
+              exclude_fx: !withFx,
+              limit: PAGE,
+            }),
+          },
         }),
       ),
     getNextPageParam: (last) => (last.length < PAGE ? undefined : last[last.length - 1]?.started_at_unix_ms),
@@ -48,6 +60,17 @@ export function History() {
           </label>
         }
       />
+      {filter && (
+        <p className="row">
+          <span className="badge accent">
+            {t("history.oneTrack", {
+              track: rows[0] ? [rows[0].artist, rows[0].title].filter(Boolean).join(" – ") : `#${filter.trackId}`,
+            })}
+          </span>
+          <Link to={`/library/${filter.trackId}`}>{t("history.backToTrack")}</Link>
+          <Link to="/history">{t("history.everyPlay")}</Link>
+        </p>
+      )}
       <Card flush>
         {plays.isPending && <Loading />}
         {plays.isError && <ErrorView error={plays.error} />}
