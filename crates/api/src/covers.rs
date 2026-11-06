@@ -628,7 +628,7 @@ async fn fetch_covers(
     user.require(Role::Operator)?;
     let track_ids = match &request.selection {
         Some(selection) => {
-            let ids = selection.resolve(&state, MAX_FETCH).await?;
+            let ids = selection.resolve(&state, &user, MAX_FETCH).await?;
             if ids.is_empty() {
                 return Err(ApiError::Invalid("the selection is empty".to_owned()));
             }

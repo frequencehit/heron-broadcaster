@@ -157,6 +157,26 @@ async fn on_station(
     }
 }
 
+impl CurrentUser {
+    /// Answers 404, as that station's routes do, unless the station exists
+    /// and the user sees it: for the shared routes given a station to look
+    /// at (`station_id` of the track list, categories, medleys…).
+    pub async fn require_station(&self, pool: &MySqlPool, station_id: u64) -> ApiResult<()> {
+        let not_found = || ApiError::NotFound(format!("station {station_id} not found"));
+        let exists: Option<u64> = sqlx::query_scalar("SELECT id FROM stations WHERE id = ?")
+            .bind(station_id)
+            .fetch_optional(pool)
+            .await?;
+        if exists.is_none() {
+            return Err(not_found());
+        }
+        if self.role != Role::Admin && station_role(pool, self.id, station_id).await?.is_none() {
+            return Err(not_found());
+        }
+        Ok(())
+    }
+}
+
 /// A user's role on a station; `None` for `none`, a shared admin's aside.
 pub async fn station_role(
     pool: &MySqlPool,

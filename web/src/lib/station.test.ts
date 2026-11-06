@@ -2,7 +2,15 @@
 
 import { describe, expect, it } from "vitest";
 import type { User } from "../api";
-import { chooseStation, codes, firstStation, here, stationRole, stationUrl } from "./station";
+import {
+  chooseStation,
+  codes,
+  firstStation,
+  here,
+  stationFilter,
+  stationRole,
+  stationUrl,
+} from "./station";
 
 describe("here", () => {
   it("adds the station the pages show to a route's path parameters", () => {
@@ -48,5 +56,18 @@ describe("stations", () => {
     expect(stationRole(user, 1)).toBeUndefined();
     expect(stationRole(user, null)).toBe("viewer");
     expect(stationRole({ ...user, role: "admin" }, 1)).toBe("admin");
+  });
+});
+
+describe("stationFilter", () => {
+  it("is the one kept, else the switcher's station", () => {
+    expect(stationFilter(null, [1, 2], 2)).toBe(2);
+    expect(stationFilter("1", [1, 2], 2)).toBe(1);
+    expect(stationFilter("all", [1, 2], 2)).toBe("all");
+    // A station no longer seen, or something unreadable.
+    expect(stationFilter("3", [1, 2], 2)).toBe(2);
+    expect(stationFilter("x", [1, 2], 1)).toBe(1);
+    expect(stationFilter(null, [1, 2], null)).toBe(1);
+    expect(stationFilter(null, [], null)).toBe("all");
   });
 });

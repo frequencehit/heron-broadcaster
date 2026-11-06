@@ -646,10 +646,13 @@ async fn current_tracks(pool: &MySqlPool, id: u64) -> ApiResult<HashSet<u64>> {
 #[utoipa::path(get, path = "/medleys", tag = "medleys", params(MedleysQuery),
     responses((status = 200, body = Vec<Medley>), (status = "4XX", body = ErrorBody)))]
 async fn list_medleys(
-    _user: CurrentUser,
+    user: CurrentUser,
     State(state): State<AppState>,
     Query(query): Query<MedleysQuery>,
 ) -> ApiResult<Json<Vec<Medley>>> {
+    if let Some(station_id) = query.station_id {
+        user.require_station(&state.pool, station_id).await?;
+    }
     let mut medleys = load(&state.pool, None).await?;
     if let Some(station_id) = query.station_id {
         medleys.retain(|medley| medley.station_ids.contains(&station_id));

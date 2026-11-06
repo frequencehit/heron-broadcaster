@@ -52,8 +52,14 @@ pub struct TrackSelection {
 }
 
 impl TrackSelection {
-    /// The selected tracks that exist, at most `max`.
-    pub async fn resolve(&self, state: &AppState, max: usize) -> ApiResult<Vec<u64>> {
+    /// The selected tracks that exist, at most `max`. Filters on a station
+    /// the user does not see answer 404.
+    pub async fn resolve(
+        &self,
+        state: &AppState,
+        user: &CurrentUser,
+        max: usize,
+    ) -> ApiResult<Vec<u64>> {
         match (&self.track_ids, &self.filters) {
             (Some(ids), None) => {
                 if ids.len() > max {
@@ -81,6 +87,7 @@ impl TrackSelection {
                 Ok(existing)
             }
             (None, Some(filters)) => {
+                filters.require_stations(&state.pool, user).await?;
                 ListContext::load(&state.pool)
                     .await?
                     .ids(&state.pool, filters, max)
@@ -208,7 +215,10 @@ async fn set_enabled(
             "play_ratio {ratio}: enabled tracks get a ratio of 1 to 10 (tenths)"
         )));
     }
-    let ids = change.selection.resolve(&state, MAX_SELECTION).await?;
+    let ids = change
+        .selection
+        .resolve(&state, &user, MAX_SELECTION)
+        .await?;
     let mut tx = state.pool.begin().await?;
     let mut changed = set_enabled_on(&mut tx, &ids, change.enabled).await?;
     if let Some(ratio) = change.play_ratio {
@@ -318,7 +328,10 @@ async fn apply_labels(
         ));
     }
     check_labels(&state.pool, &change.add, &change.remove).await?;
-    let ids = change.selection.resolve(&state, MAX_SELECTION).await?;
+    let ids = change
+        .selection
+        .resolve(&state, &user, MAX_SELECTION)
+        .await?;
     let mut tx = state.pool.begin().await?;
     let mut changed = 0;
     for chunk in ids.chunks(CHUNK) {
@@ -474,7 +487,10 @@ async fn apply_categories(
         return Err(ApiError::Invalid("no category to add or remove".to_owned()));
     }
     check_categories(&state.pool, &change.add, &change.remove).await?;
-    let ids = change.selection.resolve(&state, MAX_SELECTION).await?;
+    let ids = change
+        .selection
+        .resolve(&state, &user, MAX_SELECTION)
+        .await?;
     let mut tx = state.pool.begin().await?;
     let mut changed = 0;
     for chunk in ids.chunks(CHUNK) {
@@ -572,7 +588,10 @@ async fn apply_programming(
     if columns.is_empty() && change.play_ratio.is_none() {
         return Err(ApiError::Invalid("nothing to set".to_owned()));
     }
-    let ids = change.selection.resolve(&state, MAX_SELECTION).await?;
+    let ids = change
+        .selection
+        .resolve(&state, &user, MAX_SELECTION)
+        .await?;
     let mut tx = state.pool.begin().await?;
     let mut changed = 0;
     match change.play_ratio {
@@ -663,7 +682,7 @@ async fn edit_tags(
             "a field is set and written from the details at once".to_owned(),
         ));
     }
-    let track_ids = edit.selection.resolve(&state, MAX_TAG_EDIT).await?;
+    let track_ids = edit.selection.resolve(&state, &user, MAX_TAG_EDIT).await?;
     if track_ids.is_empty() {
         return Err(ApiError::Invalid("no track selected".to_owned()));
     }
@@ -750,7 +769,7 @@ async fn override_tags(
     if set.is_empty() {
         return Err(ApiError::Invalid("no field to set".to_owned()));
     }
-    let ids = edit.selection.resolve(&state, MAX_SELECTION).await?;
+    let ids = edit.selection.resolve(&state, &user, MAX_SELECTION).await?;
     let mut tx = state.pool.begin().await?;
     let mut changed = 0;
     for chunk in ids.chunks(CHUNK) {
@@ -820,7 +839,7 @@ async fn clear_tag_overrides(
     Json(clear): Json<TagOverridesClear>,
 ) -> ApiResult<Json<SelectionResult>> {
     user.require(Role::Operator)?;
-    let ids = clear.selection.resolve(&state, MAX_TAG_EDIT).await?;
+    let ids = clear.selection.resolve(&state, &user, MAX_TAG_EDIT).await?;
     let mut changed = 0;
     for chunk in ids.chunks(CHUNK) {
         let mut query = QueryBuilder::new(

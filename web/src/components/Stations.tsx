@@ -4,10 +4,19 @@
 // (docs/stations.md#web-ui).
 
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { api, unwrap } from "../api";
 import { t } from "../i18n";
 import { ago } from "../lib/format";
-import type { StationInfo } from "../lib/station";
+import {
+  type FilterPage,
+  type StationFilter as Filter,
+  type StationInfo,
+  keepFilter,
+  stationFilter,
+  storedFilter,
+  useStation,
+} from "../lib/station";
 
 /** The stations the user sees, by position. */
 export function useStations(): StationInfo[] {
@@ -106,5 +115,61 @@ export function PlaysByStation({ plays }: Readonly<{ plays: Plays | null | undef
         );
       })}
     </span>
+  );
+}
+
+/** A page's station filter (docs/web.md#station-filter). */
+export interface StationFilterState {
+  stations: StationInfo[];
+  value: Filter;
+  choose: (value: Filter) => void;
+  /** The station to filter on; none with all stations, or with one station. */
+  stationId: number | undefined;
+}
+
+/** The station filter of `page`: the one kept, else the switcher's station. */
+export function useStationFilter(page: FilterPage): StationFilterState {
+  const stations = useStations();
+  const switcher = useStation();
+  const [stored, setStored] = useState(() => storedFilter(page));
+  const value = stationFilter(
+    stored,
+    stations.map((station) => station.id),
+    switcher,
+  );
+  const choose = (next: Filter) => {
+    keepFilter(page, next);
+    setStored(String(next));
+  };
+  return {
+    stations,
+    value,
+    choose,
+    stationId: stations.length > 1 && value !== "all" ? value : undefined,
+  };
+}
+
+/** Picks a page's station filter; nothing shown with one station. */
+export function StationFilter({ filter, disabled }: Readonly<{ filter: StationFilterState; disabled?: boolean }>) {
+  if (filter.stations.length < 2) {
+    return null;
+  }
+  return (
+    <label className="row small">
+      <span className="muted">{t("stations.filter")}</span>
+      <select
+        className="input"
+        disabled={disabled}
+        value={disabled ? "all" : String(filter.value)}
+        onChange={(event) => filter.choose(event.target.value === "all" ? "all" : Number(event.target.value))}
+      >
+        {filter.stations.map((station) => (
+          <option key={station.id} value={station.id}>
+            {station.name}
+          </option>
+        ))}
+        <option value="all">{t("stations.filterAll")}</option>
+      </select>
+    </label>
   );
 }

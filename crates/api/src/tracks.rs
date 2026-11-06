@@ -101,6 +101,8 @@ pub struct TrackQuery {
     /// Words found in the title, artist, album, album artist, genre or path.
     pub q: Option<String>,
     pub category_id: Option<u64>,
+    /// Tracks in no category.
+    pub no_category: Option<bool>,
     #[param(inline)]
     pub filter: Option<TrackFilter>,
     /// Tracks with every one of these labels (IDs, comma-separated).
@@ -113,6 +115,10 @@ pub struct TrackQuery {
     /// sort, `never_played` and `not_played_days`. Every station's when
     /// left out.
     pub station_id: Option<u64>,
+    /// Only the tracks on this station: in one of its categories and in
+    /// none it keeps out of its library (`kept_out_category_ids` of its
+    /// `rotation` settings), what rotation can play there.
+    pub on_station_id: Option<u64>,
     /// Tracks never played.
     pub never_played: Option<bool>,
     /// Tracks not played for this many days (including those never played).
@@ -144,6 +150,20 @@ pub struct TrackQuery {
     /// 1 to 500, 50 by default.
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+}
+
+impl TrackQuery {
+    /// Answers 404 for a station given that the user does not see.
+    pub async fn require_stations(
+        &self,
+        pool: &sqlx::MySqlPool,
+        user: &CurrentUser,
+    ) -> ApiResult<()> {
+        for station_id in self.station_id.iter().chain(&self.on_station_id) {
+            user.require_station(pool, *station_id).await?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema, sqlx::FromRow)]
@@ -217,12 +237,14 @@ pub struct TrackPage {
     pub total: u64,
 }
 
-/// What the track list takes from the programming settings, and the
-/// station whose plays it counts (every station's when none).
+/// What the track list takes from the programming settings, the station
+/// whose plays it counts (every station's when none), and the categories
+/// kept out of the library of the station it lists (`on_station_id`).
 #[derive(Clone)]
 pub(crate) struct ListContext {
     settings: ProgrammingSettings,
     station_id: Option<u64>,
+    kept_out: Vec<u64>,
 }
 
 impl ListContext {
@@ -230,15 +252,30 @@ impl ListContext {
         Ok(Self {
             settings: settings::load(pool, ProgrammingSettings::SETTINGS_NAME).await?,
             station_id: None,
+            kept_out: Vec::new(),
         })
     }
 
-    /// Counting the plays of one station.
-    fn on_station(&self, station_id: Option<u64>) -> Self {
-        Self {
+    /// For the stations of `params`: the plays it counts, the library it
+    /// lists.
+    async fn for_params(&self, pool: &sqlx::MySqlPool, params: &TrackQuery) -> ApiResult<Self> {
+        let kept_out = match params.on_station_id {
+            Some(station_id) => {
+                let rotation: heron_rotation::RotationSettings = settings::load_for(
+                    pool,
+                    station_id,
+                    heron_rotation::RotationSettings::SETTINGS_NAME,
+                )
+                .await?;
+                rotation.kept_out_category_ids
+            }
+            None => Vec::new(),
+        };
+        Ok(Self {
             settings: self.settings.clone(),
-            station_id,
-        }
+            station_id: params.station_id,
+            kept_out,
+        })
     }
 
     /// `SELECT` and `FROM` of track summaries.
@@ -345,6 +382,30 @@ impl ListContext {
             query.push(" AND EXISTS (SELECT 1 FROM track_categories tc WHERE tc.track_id = t.id AND tc.category_id = ");
             query.push_bind(category_id);
             query.push(")");
+        }
+        if params.no_category == Some(true) {
+            query.push(
+                " AND NOT EXISTS (SELECT 1 FROM track_categories tc WHERE tc.track_id = t.id)",
+            );
+        }
+        if let Some(station_id) = params.on_station_id {
+            query.push(
+                " AND EXISTS (SELECT 1 FROM track_categories tc
+                              JOIN category_stations cs ON cs.category_id = tc.category_id
+                              WHERE tc.track_id = t.id AND cs.station_id = ",
+            );
+            query.push_bind(station_id).push(")");
+            if !self.kept_out.is_empty() {
+                query.push(
+                    " AND NOT EXISTS (SELECT 1 FROM track_categories tc
+                                      WHERE tc.track_id = t.id AND tc.category_id IN (",
+                );
+                let mut separated = query.separated(", ");
+                for id in &self.kept_out {
+                    separated.push_bind(*id);
+                }
+                query.push("))");
+            }
         }
         let condition = match params.filter {
             None => "",
@@ -551,7 +612,7 @@ impl ListContext {
 
     /// The tracks matching `params`, a page at a time.
     pub async fn page(&self, pool: &sqlx::MySqlPool, params: &TrackQuery) -> ApiResult<TrackPage> {
-        let context = self.on_station(params.station_id);
+        let context = self.for_params(pool, params).await?;
         context.page_on_station(pool, params).await
     }
 
@@ -618,7 +679,7 @@ impl ListContext {
         params: &TrackQuery,
         max: usize,
     ) -> ApiResult<Vec<u64>> {
-        let context = self.on_station(params.station_id);
+        let context = self.for_params(pool, params).await?;
         let mut query = QueryBuilder::new("SELECT t.id");
         context.push_from(&mut query);
         context.push_filters(&mut query, params)?;
@@ -694,10 +755,11 @@ fn like_pattern(word: &str) -> String {
     params(TrackQuery),
     responses((status = 200, body = TrackPage), (status = "4XX", body = ErrorBody)))]
 async fn list_tracks(
-    _user: CurrentUser,
+    user: CurrentUser,
     State(state): State<AppState>,
     Query(params): Query<TrackQuery>,
 ) -> ApiResult<Json<TrackPage>> {
+    params.require_stations(&state.pool, &user).await?;
     let context = ListContext::load(&state.pool).await?;
     Ok(Json(context.page(&state.pool, &params).await?))
 }

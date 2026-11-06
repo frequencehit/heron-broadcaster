@@ -5556,6 +5556,170 @@ async fn two_stations_play_at_once() {
     station.stop().await;
 }
 
+/// The track list on a station: the tracks of its categories, less those it
+/// keeps out of its library; selections follow the same filter, and tracks
+/// in no category show only without a station.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_track_list_shows_a_station_s_library() {
+    let Some(mut station) = Station::start().await else {
+        return;
+    };
+    let (_engine, _state_dir, second_url, grpc) = start_engine(station.library.path(), None).await;
+    station.tasks.push(grpc);
+    station.state.stations.set_engine("hits80", &second_url);
+    let admin = station.signed_in("admin").await;
+    let first = admin.get("/stations").await[0]["id"].as_u64().unwrap();
+    let (status, created) = admin
+        .send(
+            Method::POST,
+            "/stations",
+            json!({"name": "Hits 80", "code": "hits80"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let second = created["id"].as_u64().unwrap();
+
+    // Shared, the first's, the second's, and one the second keeps out.
+    let mut categories = Vec::new();
+    for (name, stations) in [
+        ("Shared", json!([first, second])),
+        ("First", json!([first])),
+        ("Second", json!([second])),
+        ("Aside", json!([second])),
+    ] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "color": null, "station_ids": stations}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let [shared, firsts, seconds, aside] = categories[..] else {
+        unreachable!()
+    };
+    let t = station.tracks.clone();
+    for (track, in_categories) in [
+        (t[0], vec![shared]),
+        (t[1], vec![firsts]),
+        (t[2], vec![seconds]),
+        (t[3], vec![seconds, aside]),
+    ] {
+        let body: Vec<Value> = in_categories
+            .iter()
+            .map(|id| json!({"category_id": id}))
+            .collect();
+        let (status, answer) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                Value::Array(body),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{answer}");
+    }
+    let listed = |page: Value| -> Vec<u64> {
+        let mut ids: Vec<u64> = page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|track| track["id"].as_u64().unwrap())
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(page["total"], ids.len(), "{page}");
+        ids
+    };
+    assert_eq!(listed(admin.get("/tracks").await), t);
+    assert_eq!(
+        listed(admin.get(&format!("/tracks?on_station_id={first}")).await),
+        [t[0], t[1]]
+    );
+    assert_eq!(
+        listed(admin.get(&format!("/tracks?on_station_id={second}")).await),
+        [t[0], t[2], t[3]]
+    );
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/stations/{second}/settings/rotation"),
+            json!({"kept_out_category_ids": [aside]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        listed(admin.get(&format!("/tracks?on_station_id={second}")).await),
+        [t[0], t[2]]
+    );
+    // With other filters, and with the plays of another station.
+    assert_eq!(
+        listed(
+            admin
+                .get(&format!(
+                    "/tracks?on_station_id={second}&station_id={first}&category_id={seconds}"
+                ))
+                .await
+        ),
+        [t[2]]
+    );
+    // No category: only without a station.
+    assert_eq!(listed(admin.get("/tracks?no_category=true").await), [t[4]]);
+    assert!(
+        listed(
+            admin
+                .get(&format!("/tracks?no_category=true&on_station_id={first}"))
+                .await
+        )
+        .is_empty()
+    );
+
+    // Every matching track of a selection follows the same filter.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/tracks/enabled",
+            json!({"selection": {"filters": {"on_station_id": second}}, "enabled": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["tracks"], 2, "{body}");
+
+    // The categories a station uses.
+    let ids = |categories: Value| -> Vec<u64> {
+        categories
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|category| category["id"].as_u64().unwrap())
+            .collect()
+    };
+    let mut on_second = ids(admin.get(&format!("/categories?station_id={second}")).await);
+    on_second.sort_unstable();
+    assert_eq!(on_second, [shared, seconds, aside]);
+
+    // A station that does not exist is not found.
+    for path in [
+        "/tracks?on_station_id=999".to_owned(),
+        "/tracks?station_id=999".to_owned(),
+        "/categories?station_id=999".to_owned(),
+        "/medleys?station_id=999".to_owned(),
+        format!("/tracks/{}/plays/grid?station_id=999", t[0]),
+    ] {
+        let (status, _) = admin.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/tracks/enabled",
+            json!({"selection": {"filters": {"on_station_id": 999}}, "enabled": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    station.stop().await;
+}
+
 /// Categories, restrictions and medleys are tagged with the stations they
 /// are used on: a station only offers its own, untagging a station that
 /// uses one is refused, and a medley's track follows its stations.
@@ -6323,14 +6487,29 @@ async fn roles_per_station() {
     let viewer = station.signed_in("viewer").await;
     let stations = viewer.get("/stations").await;
     assert_eq!(stations.as_array().unwrap().len(), 1, "{stations}");
+    // Nor on the shared routes that look at one station.
+    let track = station.tracks[0];
     for path in [
         format!("/stations/{second}/queue"),
         format!("/stations/{second}"),
+        format!("/tracks?station_id={second}"),
+        format!("/tracks?on_station_id={second}"),
+        format!("/categories?station_id={second}"),
+        format!("/medleys?station_id={second}"),
+        format!("/tracks/{track}/plays/grid?station_id={second}"),
     ] {
         let (status, _) = viewer.request(Method::GET, &path, None).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
     }
     viewer.get("/queue").await;
+    for path in [
+        format!("/tracks?station_id={first}&on_station_id={first}"),
+        format!("/categories?station_id={first}"),
+        format!("/medleys?station_id={first}"),
+        format!("/tracks/{track}/plays/grid?station_id={first}"),
+    ] {
+        viewer.get(&path).await;
+    }
 
     // Roles change with the user; a shared admin sees every station.
     let id = admin

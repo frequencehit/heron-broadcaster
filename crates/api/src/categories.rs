@@ -109,7 +109,7 @@ pub struct CategoryInput {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct CategoriesQuery {
-    /// Only the categories this station can use.
+    /// Only the categories this station uses.
     pub station_id: Option<u64>,
 }
 
@@ -187,10 +187,13 @@ fn conflict(error: sqlx::Error) -> ApiError {
 #[utoipa::path(get, path = "/categories", tag = "categories", params(CategoriesQuery),
     responses((status = 200, body = Vec<Category>), (status = "4XX", body = ErrorBody)))]
 async fn list_categories(
-    _user: CurrentUser,
+    user: CurrentUser,
     State(state): State<AppState>,
     Query(query): Query<CategoriesQuery>,
 ) -> ApiResult<Json<Vec<Category>>> {
+    if let Some(station_id) = query.station_id {
+        user.require_station(&state.pool, station_id).await?;
+    }
     let rows: Vec<CategoryRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "{SELECT}
          WHERE ? IS NULL OR EXISTS (SELECT 1 FROM category_stations cs
