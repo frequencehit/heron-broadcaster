@@ -55,9 +55,14 @@ impl Source {
     }
 
     pub fn parse(name: &str) -> Option<Self> {
-        [Self::CoverArtArchive, Self::File, Self::Embedded, Self::Hand]
-            .into_iter()
-            .find(|source| source.as_str() == name)
+        [
+            Self::CoverArtArchive,
+            Self::File,
+            Self::Embedded,
+            Self::Hand,
+        ]
+        .into_iter()
+        .find(|source| source.as_str() == name)
     }
 }
 
@@ -420,7 +425,10 @@ pub async fn from_file(
             }
         },
         (None, _) => {
-            if own.as_ref().is_some_and(|own| own.source == Source::Embedded) {
+            if own
+                .as_ref()
+                .is_some_and(|own| own.source == Source::Embedded)
+            {
                 drop_found_track_cover(connection, track_id).await?;
             }
         }
@@ -431,13 +439,10 @@ pub async fn from_file(
         return Ok(());
     };
     let wanted = match &album_key {
-        Some(_) => album.as_ref().is_none_or(|cover| cover.source < Source::File),
-        None => {
-            embedded.is_none()
-                && own
-                    .as_ref()
-                    .is_none_or(|own| own.source < Source::File)
-        }
+        Some(_) => album
+            .as_ref()
+            .is_none_or(|cover| cover.source < Source::File),
+        None => embedded.is_none() && own.as_ref().is_none_or(|own| own.source < Source::File),
     };
     if !wanted {
         return Ok(());
@@ -564,7 +569,13 @@ mod tests {
         let encoded = encode(&png(50, 50, true)).unwrap();
         let large = image::load_from_memory(&encoded.image).unwrap().to_rgb8();
         assert_eq!(large.dimensions(), (50, 50));
-        assert!(large.get_pixel(25, 25).0.iter().all(|&channel| channel > 240));
+        assert!(
+            large
+                .get_pixel(25, 25)
+                .0
+                .iter()
+                .all(|&channel| channel > 240)
+        );
     }
 
     #[test]
@@ -633,36 +644,69 @@ mod tests {
 
         // An image beside the file, then a cover embedded in it, which is better.
         std::fs::write(dir.path().join("cover.jpg"), &red).unwrap();
-        from_file(&mut connection, first, Some(&file), None).await.unwrap();
+        from_file(&mut connection, first, Some(&file), None)
+            .await
+            .unwrap();
         assert_eq!(shown(pool, second).await, Some((hash(&red), "file".into())));
-        from_file(&mut connection, first, Some(&file), Some(&green)).await.unwrap();
-        assert_eq!(shown(pool, second).await, Some((hash(&green), "embedded".into())));
+        from_file(&mut connection, first, Some(&file), Some(&green))
+            .await
+            .unwrap();
+        assert_eq!(
+            shown(pool, second).await,
+            Some((hash(&green), "embedded".into()))
+        );
         // Another embedded cover in the same album: the track's own.
-        from_file(&mut connection, second, Some(&file), Some(&blue)).await.unwrap();
-        assert_eq!(shown(pool, first).await, Some((hash(&green), "embedded".into())));
-        assert_eq!(shown(pool, second).await, Some((hash(&blue), "embedded".into())));
+        from_file(&mut connection, second, Some(&file), Some(&blue))
+            .await
+            .unwrap();
+        assert_eq!(
+            shown(pool, first).await,
+            Some((hash(&green), "embedded".into()))
+        );
+        assert_eq!(
+            shown(pool, second).await,
+            Some((hash(&blue), "embedded".into()))
+        );
         // Gone from the file: the album's again.
-        from_file(&mut connection, second, Some(&file), None).await.unwrap();
-        assert_eq!(shown(pool, second).await, Some((hash(&green), "embedded".into())));
+        from_file(&mut connection, second, Some(&file), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            shown(pool, second).await,
+            Some((hash(&green), "embedded".into()))
+        );
 
         // Set by hand for the album: it wins, over what the files have.
-        from_file(&mut connection, second, Some(&file), Some(&blue)).await.unwrap();
+        from_file(&mut connection, second, Some(&file), Some(&blue))
+            .await
+            .unwrap();
         let key = album_key(pool, first).await.unwrap().unwrap();
         let by_hand = Link {
             hash: store(&mut connection, red.clone()).await.unwrap(),
             source: Source::Hand,
             detail: None,
         };
-        set_album(&mut connection, &key, &by_hand, None).await.unwrap();
+        set_album(&mut connection, &key, &by_hand, None)
+            .await
+            .unwrap();
         assert_eq!(shown(pool, second).await, Some((hash(&red), "hand".into())));
-        from_file(&mut connection, first, Some(&file), Some(&green)).await.unwrap();
-        from_file(&mut connection, second, Some(&file), Some(&blue)).await.unwrap();
+        from_file(&mut connection, first, Some(&file), Some(&green))
+            .await
+            .unwrap();
+        from_file(&mut connection, second, Some(&file), Some(&blue))
+            .await
+            .unwrap();
         assert_eq!(shown(pool, first).await, Some((hash(&red), "hand".into())));
         assert_eq!(shown(pool, second).await, Some((hash(&red), "hand".into())));
 
         // A track without an album has its own.
-        from_file(&mut connection, loose, None, Some(&blue)).await.unwrap();
-        assert_eq!(shown(pool, loose).await, Some((hash(&blue), "embedded".into())));
+        from_file(&mut connection, loose, None, Some(&blue))
+            .await
+            .unwrap();
+        assert_eq!(
+            shown(pool, loose).await,
+            Some((hash(&blue), "embedded".into()))
+        );
 
         // Each image once; nothing pruned while in use.
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM covers")

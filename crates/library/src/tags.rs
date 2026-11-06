@@ -451,7 +451,10 @@ mod tests {
         write(&path, &full_tags(), Cover::Embed(b"\xff\xd8\xff\xe0fake")).unwrap();
         let embedded = read(&path).unwrap();
         assert!(embedded.has_cover);
-        assert_eq!(embedded.cover.as_deref(), Some(&b"\xff\xd8\xff\xe0fake"[..]));
+        assert_eq!(
+            embedded.cover.as_deref(),
+            Some(&b"\xff\xd8\xff\xe0fake"[..])
+        );
 
         write(&path, &previous, Cover::Remove).unwrap();
         let read = read(&path).unwrap();
@@ -465,7 +468,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let png = dir.path().join("cover.png");
         let made = std::process::Command::new("ffmpeg")
-            .args(["-v", "quiet", "-y", "-f", "lavfi", "-i", "color=c=red:s=32x32", "-frames:v", "1"])
+            .args([
+                "-v",
+                "quiet",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=32x32",
+                "-frames:v",
+                "1",
+            ])
             .arg(&png)
             .status()
             .is_ok_and(|status| status.success());

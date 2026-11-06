@@ -63,6 +63,23 @@ pub enum TaskRequest {
         medley_id: u64,
         parts: Vec<crate::medley::Part>,
     },
+    /// Looks the albums of `track_ids` up on the Cover Art Archive (every
+    /// album without a cover when empty); albums with a cover are left
+    /// out. With `candidates`, the results wait for an operator even when
+    /// one is sure.
+    FetchCovers {
+        #[serde(default)]
+        track_ids: Vec<u64>,
+        #[serde(default)]
+        candidates: bool,
+    },
+    /// Fetches the cover of a candidate picked by an operator, for its
+    /// album, or for `track_id` only.
+    ApplyCover {
+        candidate_id: u64,
+        #[serde(default)]
+        track_id: Option<u64>,
+    },
 }
 
 impl TaskRequest {
@@ -81,6 +98,8 @@ impl TaskRequest {
             Self::EmptyTrash => "empty_trash",
             Self::RenderMedley { .. } => "render_medley",
             Self::PreviewMedley { .. } => "preview_medley",
+            Self::FetchCovers { .. } => "fetch_covers",
+            Self::ApplyCover { .. } => "apply_cover",
         }
     }
 }
@@ -206,6 +225,21 @@ pub const MAX_FIELD_CHARS: usize = 512;
 
 /// Values of tag fields; `None` removes the field.
 pub type FieldValues = BTreeMap<TagField, Option<String>>;
+
+/// What a Cover Art Archive lookup did.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CoversReport {
+    /// Albums looked up.
+    pub albums: u64,
+    /// Albums given a cover.
+    pub found: u64,
+    /// Albums whose search was unsure: their candidates wait for review.
+    pub candidates: u64,
+    pub not_found: u64,
+    /// Lookups that failed (MusicBrainz or the Cover Art Archive unreachable).
+    pub failed: u64,
+}
 
 /// What a MusicBrainz details lookup did.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

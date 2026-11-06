@@ -2207,6 +2207,7 @@ dependencies = [
  "heron-library",
  "heron-service",
  "hound",
+ "image",
  "metrics",
  "notify",
  "reqwest",

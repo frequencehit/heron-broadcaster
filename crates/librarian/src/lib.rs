@@ -10,6 +10,7 @@
 //! It is the only service with write access to the library and the
 //! incoming folder.
 
+pub mod covers;
 pub mod edit;
 pub mod fsops;
 pub mod identify;

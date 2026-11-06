@@ -383,6 +383,54 @@ impl Identifier {
         }
     }
 
+    /// The address of a release's front cover thumbnail (250 px), for
+    /// people to look at.
+    pub fn cover_thumbnail_url(&self, release_id: &str) -> String {
+        format!(
+            "{}/release/{release_id}/front-250",
+            self.endpoints.cover_art
+        )
+    }
+
+    /// Searches MusicBrainz for releases titled `album` by `artist`, best
+    /// first, with MusicBrainz's score (0 to 100).
+    pub async fn search_releases(
+        &self,
+        album: &str,
+        artist: &str,
+    ) -> Result<Vec<ReleaseHit>, IdentifyError> {
+        let url = format!("{}/release", self.endpoints.musicbrainz);
+        let query = format!(
+            "release:{} AND artist:{}",
+            lucene_phrase(album),
+            lucene_phrase(artist)
+        );
+        let response = self
+            .send("MusicBrainz", &self.musicbrainz, || {
+                self.http.get(&url).query(&[
+                    ("query", query.as_str()),
+                    ("limit", "10"),
+                    ("fmt", "json"),
+                ])
+            })
+            .await?;
+        let found: MbReleaseSearch = response.json().await?;
+        let mut hits: Vec<ReleaseHit> = found
+            .releases
+            .into_iter()
+            .map(|release| ReleaseHit {
+                artist: credit_text(&release.artist_credit),
+                id: release.id,
+                title: release.title,
+                date: release.date.filter(|date| !date.is_empty()),
+                country: release.country.filter(|country| !country.is_empty()),
+                score: release.score.min(100) as u8,
+            })
+            .collect();
+        hits.sort_by(|a, b| b.score.cmp(&a.score));
+        Ok(hits)
+    }
+
     /// Sends a request in its rate-limit slot, retrying when the service
     /// asks to slow down.
     async fn send(
@@ -506,6 +554,50 @@ struct AcoustidMedium {
 #[derive(Debug, Deserialize)]
 struct AcoustidTrack {
     position: Option<u32>,
+}
+
+/// A release found by a MusicBrainz search.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleaseHit {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub date: Option<String>,
+    pub country: Option<String>,
+    /// 0 to 100.
+    pub score: u8,
+}
+
+/// A phrase for a Lucene query, quoted.
+fn lucene_phrase(text: &str) -> String {
+    let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
+}
+
+/// An artist credit as printed.
+fn credit_text(credits: &[MbCredit]) -> String {
+    credits
+        .iter()
+        .map(|credit| format!("{}{}", credit.name, credit.joinphrase))
+        .collect()
+}
+
+#[derive(Debug, Deserialize)]
+struct MbReleaseSearch {
+    #[serde(default)]
+    releases: Vec<MbSearchRelease>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MbSearchRelease {
+    id: String,
+    #[serde(default)]
+    score: u32,
+    title: String,
+    date: Option<String>,
+    country: Option<String>,
+    #[serde(rename = "artist-credit", default)]
+    artist_credit: Vec<MbCredit>,
 }
 
 // MusicBrainz release lookups (`inc=recordings artist-credits release-groups`).
@@ -801,6 +893,25 @@ impl MbRelease {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_phrases_are_quoted() {
+        assert_eq!(lucene_phrase(r#"Say "Hi" \ Bye"#), r#""Say \"Hi\" \\ Bye""#);
+    }
+
+    #[test]
+    fn search_results_are_read() {
+        let found: MbReleaseSearch = serde_json::from_str(
+            r#"{"created": "x", "count": 1, "offset": 0, "releases": [{
+                "id": "b84ee12a-09ef-421b-82de-0441a926375b", "score": 100,
+                "title": "Kind of Blue", "date": "1959-08-17", "country": "US",
+                "artist-credit": [{"name": "Miles Davis", "joinphrase": "",
+                                   "artist": {"id": "561d854a-6a28-4aa7-8c99-323e6ce46c2a"}}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(found.releases[0].score, 100);
+        assert_eq!(credit_text(&found.releases[0].artist_credit), "Miles Davis");
+    }
 
     #[test]
     fn release_details_by_recording() {
