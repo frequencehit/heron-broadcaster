@@ -357,6 +357,7 @@ const TABLES: &[Table] = &[
             Plain("selection_method"),
             Plain("enforce_rules"),
             Json("separation"),
+            Plain("linked_to_next"),
         ],
         Mode::Replace,
         &[],
@@ -834,7 +835,9 @@ pub async fn restore(
     for table in TABLES {
         let mut left_out = 0;
         let columns: Vec<&str> = table.cols.iter().map(|col| col.column()).collect();
-        let mut resolved: Vec<Vec<Value>> = Vec::new();
+        // `None`: a column the file does not have (written before it was
+        // added), which takes its default.
+        let mut resolved: Vec<Vec<Option<Value>>> = Vec::new();
         for row in rows_of(table) {
             if table.name == "settings"
                 && row
@@ -844,10 +847,13 @@ pub async fn restore(
             {
                 continue;
             }
-            let values: Option<Vec<Value>> = table
+            let values: Option<Vec<Option<Value>>> = table
                 .cols
                 .iter()
-                .map(|col| resolve(*col, row, &mut library))
+                .map(|col| match col {
+                    Col::Plain(name) if !row.contains_key(*name) => Some(None),
+                    _ => resolve(*col, row, &mut library).map(Some),
+                })
                 .collect();
             match values {
                 Some(values) => resolved.push(values),
@@ -862,7 +868,12 @@ pub async fn restore(
                 .into_iter()
                 .collect();
             let before = resolved.len();
-            resolved.retain(|values| values[0].as_u64().is_some_and(|id| kept.contains(&id)));
+            resolved.retain(|values| {
+                values[0]
+                    .as_ref()
+                    .and_then(Value::as_u64)
+                    .is_some_and(|id| kept.contains(&id))
+            });
             left_out += before - resolved.len();
         }
         for chunk in resolved.chunks(500) {
@@ -877,7 +888,12 @@ pub async fn restore(
                     if position > 0 {
                         query.push(", ");
                     }
-                    push_value(&mut query, *col, value.clone());
+                    match value {
+                        Some(value) => push_value(&mut query, *col, value.clone()),
+                        None => {
+                            query.push("DEFAULT");
+                        }
+                    }
                 }
                 query.push(")");
             }

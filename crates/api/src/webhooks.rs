@@ -1400,6 +1400,7 @@ mod tests {
                 over_intro: false,
                 intro_ms: None,
             },
+            linked_to: None,
         }
     }
 
@@ -1704,6 +1705,7 @@ mod delivery_tests {
                     over_intro: false,
                     intro_ms: None,
                 },
+                linked_to: None,
             },
             at_unix_ms: unix_ms(SystemTime::now()),
             resumed: false,

@@ -4980,6 +4980,12 @@ export interface components {
             category_id: number;
             /** @description Off, the slot skips the separation rules (restrictions still apply). */
             enforce_rules?: boolean;
+            /**
+             * @description Plays only if the next slot's track plays right after it (a jingle
+             *     announcing it); the next slot of the last one is the first. A
+             *     linked slot cannot be followed by another linked slot.
+             */
+            linked_to_next?: boolean;
             method?: components["schemas"]["Method"];
             /** @description Windows this slot overrides, over its category's. */
             separation?: components["schemas"]["SeparationOverrides"];
@@ -5553,6 +5559,11 @@ export interface components {
              * @description When the picked track last played; missing if never.
              */
             last_played_unix_ms?: number | null;
+            /**
+             * @description The slot is linked to the next one: the next pick is that slot's
+             *     track, picked with this one.
+             */
+            linked?: boolean;
             /** @description Applied: least recently played at step 10. */
             method: components["schemas"]["Method"];
             /**
@@ -7365,6 +7376,13 @@ export interface components {
              *     saved queue with the same IDs and goes on from there.
              */
             entry_id: number;
+            /**
+             * Format: int64
+             * @description A jingle of a clock slot linked to the next one: the entry of the
+             *     track it announces, right after it. Removing that track removes the
+             *     jingle, and moving either moves both.
+             */
+            linked_to?: number | null;
             track: components["schemas"]["QueuedTrack"];
         };
         /**
@@ -8042,7 +8060,7 @@ export interface components {
          * @description Why a slot was passed over.
          * @enum {string}
          */
-        SkipReason: "nothing_allowed" | "same_type_in_a_row";
+        SkipReason: "nothing_allowed" | "same_type_in_a_row" | "linked_track_after_hour" | "linked_track_not_found";
         SkippedFile: {
             path: string;
             reason: string;
