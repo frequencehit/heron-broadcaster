@@ -176,6 +176,7 @@ const KNOWN_ERRORS: Record<string, PlainKey> = {
   forbidden: "error.forbidden",
   too_many_requests: "error.too_many_requests",
   engine_unavailable: "error.engine_unavailable",
+  module_off: "error.module_off",
   internal: "error.internal",
 };
 

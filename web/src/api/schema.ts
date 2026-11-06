@@ -1766,6 +1766,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The installation's modules. */
+        get: operations["get_modules"];
+        /**
+         * Turns modules on or off for the installation (a module left out is
+         *     on). Admins only.
+         */
+        put: operations["put_modules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/outputs": {
         parameters: {
             query?: never;
@@ -2802,6 +2823,27 @@ export interface paths {
          *     station.
          */
         delete: operations["delete_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{id}/modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A station's modules: the installation's, its own, and what is on. */
+        get: operations["get_station_modules"];
+        /**
+         * Turns modules on or off for a station (a module left out is on). A
+         *     module off for the installation stays off. Admins of the station.
+         */
+        put: operations["put_station_modules"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5761,7 +5803,7 @@ export interface components {
         ErrorBody: {
             /**
              * @description Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,
-             *     `two_factor_required`, `not_found`, `conflict`, `invalid`, `too_many_requests`,
+             *     `two_factor_required`, `not_found`, `module_off`, `conflict`, `invalid`, `too_many_requests`,
              *     `engine_unavailable` or `internal`.
              */
             error: string;
@@ -6981,6 +7023,22 @@ export interface components {
         };
         /** @enum {string} */
         Mode: "allow" | "ban";
+        /**
+         * @description Which modules are on. Stored as the `modules` settings (the
+         *     installation) and the `station_modules` settings of each station; a
+         *     module never stored takes its default: the modules that existed before
+         *     they could be turned off are on.
+         */
+        Modules: {
+            /** @default true */
+            cover_art: boolean;
+            /** @default true */
+            listener_statistics: boolean;
+            /** @default true */
+            medleys: boolean;
+            /** @default true */
+            webhooks: boolean;
+        };
         MoveName: {
             /**
              * Format: int64
@@ -8339,7 +8397,7 @@ export interface components {
          * @description Why a slot was passed over.
          * @enum {string}
          */
-        SkipReason: "nothing_allowed" | "same_type_in_a_row" | "linked_track_after_hour" | "linked_track_not_found";
+        SkipReason: "nothing_allowed" | "same_type_in_a_row" | "module_off" | "linked_track_after_hour" | "linked_track_not_found";
         SkippedFile: {
             path: string;
             reason: string;
@@ -8554,6 +8612,15 @@ export interface components {
             name: string;
             /** Format: int32 */
             position: number;
+        };
+        /** @description A station's modules. */
+        StationModules: {
+            /** @description The installation's switches: off here is off for every station. */
+            installation: components["schemas"]["Modules"];
+            /** @description What is on for the station: on at both levels. */
+            on: components["schemas"]["Modules"];
+            /** @description The station's own switches. */
+            station: components["schemas"]["Modules"];
         };
         StationPlays: {
             /** Format: int64 */
@@ -13362,6 +13429,64 @@ export interface operations {
             };
         };
     };
+    get_modules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Modules"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_modules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Modules"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Modules"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_outputs: {
         parameters: {
             query?: never;
@@ -15875,6 +16000,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_station_modules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationModules"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_station_modules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Modules"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationModules"];
+                };
             };
             "4XX": {
                 headers: {

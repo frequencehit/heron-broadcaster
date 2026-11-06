@@ -5,6 +5,7 @@
 
 import type { IconName } from "../components/ui";
 import type { PlainKey } from "../i18n";
+import type { ModuleKey } from "./modules";
 
 export interface Page {
   path: string;
@@ -15,17 +16,19 @@ export interface Page {
   admin?: boolean;
   /** One of a station's pages: it shows the chosen station, and its actions follow the role there. */
   station?: boolean;
+  /** The page of a module: hidden while the module is off for the station shown (docs/modules.md). */
+  module?: ModuleKey;
 }
 
 export const PAGES: Page[] = [
   { path: "/", label: "nav.onAir", icon: "air", station: true },
   { path: "/queue", label: "nav.queue", icon: "queue", station: true },
   { path: "/history", label: "nav.history", icon: "history", station: true },
-  { path: "/statistics", label: "nav.statistics", icon: "chart", station: true },
+  { path: "/statistics", label: "nav.statistics", icon: "chart", station: true, module: "listener_statistics" },
   { path: "/library", label: "nav.tracks", icon: "library", section: "nav.library" },
   { path: "/import-music", label: "nav.buffer", icon: "upload" },
   { path: "/labels", label: "nav.labels", icon: "label" },
-  { path: "/medleys", label: "nav.medleys", icon: "queue" },
+  { path: "/medleys", label: "nav.medleys", icon: "queue", module: "medleys" },
   { path: "/artists", label: "nav.artists", icon: "mic" },
   { path: "/to-organize", label: "nav.review", icon: "review" },
   { path: "/trash", label: "nav.trash", icon: "trash" },
@@ -40,10 +43,11 @@ export const PAGES: Page[] = [
   { path: "/processing", label: "nav.agc", icon: "agc", station: true },
   { path: "/outputs", label: "nav.outputs", icon: "output", station: true },
   { path: "/settings", label: "nav.settings", icon: "settings", station: true },
-  { path: "/webhooks", label: "nav.webhooks", icon: "bolt", admin: true, station: true },
+  { path: "/webhooks", label: "nav.webhooks", icon: "bolt", admin: true, station: true, module: "webhooks" },
   { path: "/stations", label: "nav.stations", icon: "air", admin: true },
   { path: "/users", label: "nav.users", icon: "users", admin: true },
   { path: "/backups", label: "nav.backups", icon: "download", admin: true },
+  { path: "/modules", label: "nav.modules", icon: "settings", section: "nav.administration", admin: true },
 ];
 
 /** Whether `pathname` is the page at `page`, or a page inside it. */

@@ -207,13 +207,21 @@ impl Collector {
         Ok(targets)
     }
 
-    /// Reads every station's servers and records the minute of `now_ms`.
+    /// Reads the servers of every station with listener statistics on,
+    /// and records the minute of `now_ms`.
     pub async fn poll(&self, now_ms: i64) -> ApiResult<()> {
         let statistics: StatisticsSettings =
             settings::load(&self.pool, StatisticsSettings::SETTINGS_NAME).await?;
         let mut last = Vec::new();
         let mut earliest_today: Option<Date> = None;
         for station_id in station_ids(&self.pool).await? {
+            // Turned off: its servers are not read (docs/modules.md).
+            if !crate::modules::on_for(&self.pool, station_id)
+                .await?
+                .listener_statistics
+            {
+                continue;
+            }
             let today = self
                 .poll_station(station_id, now_ms, &statistics, &mut last)
                 .await?;

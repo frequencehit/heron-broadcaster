@@ -61,6 +61,18 @@ pub fn target(kind: &str, id: u64) -> Option<Target> {
 /// A station's library as its rotation sees it: the tracks, its clocks,
 /// schedule and rotation settings.
 pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Library> {
+    // Medleys turned off: no medley track plays, and the slots calling
+    // the medley category are passed over (docs/modules.md).
+    let medleys = crate::modules::on_for(pool, station_id).await?.medleys;
+    let modules_off = if medleys {
+        Vec::new()
+    } else {
+        crate::medleys::categories_of(pool, station_id)
+            .await?
+            .category_id
+            .into_iter()
+            .collect()
+    };
     // ID, title, album, playable length, play ratio.
     type Row = (u64, Option<String>, Option<String>, i64, u64);
     let rows: Vec<Row> = sqlx::query_as(
@@ -74,9 +86,11 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
          LEFT JOIN track_programming p ON p.track_id = t.id
          WHERE t.enabled AND t.missing_since IS NULL
            AND COALESCE(o.cue_out_ms, a.cue_out_ms) >= COALESCE(o.cue_in_ms, a.cue_in_ms) + ?
+           AND (? OR NOT EXISTS (SELECT 1 FROM medleys md WHERE md.track_id = t.id))
          ORDER BY t.id",
     )
     .bind(SILENT_MS)
+    .bind(medleys)
     .fetch_all(pool)
     .await?;
     let mut artists: HashMap<u64, Vec<u64>> = HashMap::new();
@@ -216,6 +230,7 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
             settings,
             no_two_in_a_row,
             counters: counters.into_iter().collect(),
+            modules_off,
         },
         station.time_zone(),
     ))

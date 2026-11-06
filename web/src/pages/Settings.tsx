@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type Schemas, api, done, unwrap } from "../api";
 import { CoverImage, sendImage } from "../components/Cover";
+import { ModuleSwitches } from "../components/Modules";
 import { DaypartSettings } from "../components/Dayparts";
 import { Card, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
 import { type PlainKey, number, rich, t } from "../i18n";
@@ -17,17 +18,21 @@ import { useStations } from "../components/Stations";
 import { here, stationUrl, useStation } from "../lib/station";
 import { DuckPlaceSelect, FadeCurveSelect, useMedleySettings } from "./Medleys";
 import { useAction, useCan } from "../lib/session";
+import { moduleKey, useModule, useStationModules } from "../lib/modules";
 
 export function Settings() {
+  const medleys = useModule("medleys");
+  const statistics = useModule("listener_statistics");
   return (
     <>
       <PageHead title={t("nav.settings")} description={t("settings.description")} />
       <QueueCard />
       <RotationCard />
       <StationCard />
+      <StationModulesCard />
       <ProgrammingCard />
-      <MedleysCard />
-      <StatisticsCard />
+      {medleys && <MedleysCard />}
+      {statistics && <StatisticsCard />}
       <LibraryCard />
       <AnalysisCard />
     </>
@@ -618,6 +623,7 @@ function timeZones(): string[] {
 
 function StationCard() {
   const isAdmin = useCan("admin");
+  const coverArt = useModule("cover_art");
   const settings = useQuery({
     queryKey: ["settings", "station"],
     queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/station", { params: { path: here() } })),
@@ -667,10 +673,44 @@ function StationCard() {
               onChange={(e) => set({ public_url: e.target.value.trim() === "" ? null : e.target.value })}
             />
           </Field>
-          <StationLogo canEdit={isAdmin} />
+          {coverArt && <StationLogo canEdit={isAdmin} />}
         </>
       )}
     </SettingsCard>
+  );
+}
+
+/** The station's modules: those on for the installation can be turned off here. */
+function StationModulesCard() {
+  const isAdmin = useCan("admin");
+  const station = useStation();
+  const modules = useStationModules();
+  const save = useAction(
+    (body: Schemas["Modules"]) =>
+      unwrap(api.PUT("/api/v1/stations/{id}/modules", { params: { path: { id: station ?? 0 } }, body })),
+    { success: t("categories.saved"), invalidate: [moduleKey(station)] },
+  );
+  if (modules.isPending) {
+    return <Loading />;
+  }
+  if (modules.isError) {
+    return <ErrorView error={modules.error} />;
+  }
+  return (
+    <Card title={t("nav.modules")}>
+      <div className="stack">
+        <p className="muted small" style={{ margin: 0 }}>
+          {t("modules.stationHelp")}
+        </p>
+        <ModuleSwitches
+          value={modules.data.station}
+          installation={modules.data.installation}
+          canEdit={isAdmin}
+          saving={save.isPending}
+          onChange={(value) => save.mutate(value)}
+        />
+      </div>
+    </Card>
   );
 }
 
@@ -991,6 +1031,7 @@ function ProgrammingCard() {
 
 function LibraryCard() {
   const isAdmin = useCan("admin");
+  const coverArt = useModule("cover_art");
   const canFetch = useCan("operator");
   const findCovers = useAction(() => unwrap(api.POST("/api/v1/covers/fetch", { body: {} })), {
     success: t("library.findCoversQueued"),
@@ -1085,30 +1126,32 @@ function LibraryCard() {
               </label>
               <span className="muted small">{t("settings.writeTagsHint")}</span>
             </div>
-            <div className="stack" style={{ gap: "0.2rem" }}>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={draft.fetch_covers}
-                  disabled={!isAdmin}
-                  onChange={(e) => set({ fetch_covers: e.target.checked })}
-                />
-                {t("settings.fetchCovers")}
-              </label>
-              <span className="muted small">{t("settings.fetchCoversHint")}</span>
-              {canFetch && (
-                <div className="row">
-                  <button
-                    type="button"
-                    className="btn small"
-                    disabled={findCovers.isPending}
-                    onClick={() => findCovers.mutate(undefined)}
-                  >
-                    <Icon name="image" /> {t("settings.findMissingCovers")}
-                  </button>
-                </div>
-              )}
-            </div>
+            {coverArt && (
+              <div className="stack" style={{ gap: "0.2rem" }}>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={draft.fetch_covers}
+                    disabled={!isAdmin}
+                    onChange={(e) => set({ fetch_covers: e.target.checked })}
+                  />
+                  {t("settings.fetchCovers")}
+                </label>
+                <span className="muted small">{t("settings.fetchCoversHint")}</span>
+                {canFetch && (
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn small"
+                      disabled={findCovers.isPending}
+                      onClick={() => findCovers.mutate(undefined)}
+                    >
+                      <Icon name="image" /> {t("settings.findMissingCovers")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="form-grid">
               <Field label={t("settings.maxUpload")} hint={t("settings.maxUploadHint")}>
                 <NumberInput

@@ -3,6 +3,8 @@
 // Library management through heron-librarian: identifications to review,
 // organizing the library after a dry run, and undoing batches.
 
+import { ModuleOff } from "../components/Modules";
+import { useModule } from "../lib/modules";
 import { CoverCandidates } from "../components/Cover";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -29,6 +31,7 @@ type Tab = "review" | "covers" | "organize" | "batches";
 export function Review() {
   const { search } = useLocation();
   const tab = (search.get("tab") ?? "review") as Tab;
+  const coverArt = useModule("cover_art");
   return (
     <>
       <PageHead
@@ -43,7 +46,9 @@ export function Review() {
             ["organize", "review.tab.organize"],
             ["batches", "review.tab.changes"],
           ] as const satisfies readonly (readonly [Tab, PlainKey])[]
-        ).map(([value, label]) => (
+        )
+          .filter(([value]) => coverArt || value !== "covers")
+          .map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -55,7 +60,7 @@ export function Review() {
         ))}
       </nav>
       {tab === "review" && <Identifications />}
-      {tab === "covers" && <CoversToCheck />}
+      {tab === "covers" && (coverArt ? <CoversToCheck /> : <ModuleOff module="cover_art" />)}
       {tab === "organize" && <Organize />}
       {tab === "batches" && <Batches />}
     </>

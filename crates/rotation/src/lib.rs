@@ -8,7 +8,7 @@
 //! picked. Nothing here touches the database, so days of programming can be
 //! simulated offline ([`simulate`]) and checked ([`audit`]).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -265,6 +265,10 @@ pub struct Library {
     /// The station's play ratio counters, 10 down to 1; a track missing
     /// here is at 10.
     pub counters: HashMap<TrackId, u8>,
+    /// Categories of a module turned off for the station (its medley
+    /// category, while medleys are off): clock slots calling them are
+    /// passed over, never relaxed.
+    pub modules_off: HashSet<CategoryId>,
 }
 
 /// Library pieces, before [`Library::new`] ties them together.
@@ -285,6 +289,8 @@ pub struct LibraryParts {
     pub no_two_in_a_row: Vec<(CategoryId, TypeId)>,
     /// The station's play ratio counters.
     pub counters: HashMap<TrackId, u8>,
+    /// Categories of a module turned off for the station.
+    pub modules_off: Vec<CategoryId>,
 }
 
 impl Library {
@@ -335,6 +341,7 @@ impl Library {
             time_zone,
             no_two_in_a_row: parts.no_two_in_a_row.into_iter().collect(),
             counters: parts.counters,
+            modules_off: parts.modules_off.into_iter().collect(),
         }
     }
 

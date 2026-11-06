@@ -495,6 +495,8 @@ function skippedSlot(slot: Schemas["SkippedSlot"]): string {
       return t("rotationPage.slotLinkedAfterHour", { slot: number });
     case "linked_track_not_found":
       return t("rotationPage.slotLinkedNotFound", { slot: number });
+    case "module_off":
+      return t("rotationPage.slotModuleOff", { slot: number });
     default:
       return t("rotationPage.slot", { slot: number });
   }

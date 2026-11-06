@@ -315,7 +315,11 @@ pub struct PublicCovers {
 }
 
 impl PublicCovers {
+    /// None while cover art is turned off for the station.
     pub async fn load(pool: &MySqlPool, station_id: u64, track_ids: &[u64]) -> ApiResult<Self> {
+        if !crate::modules::on_for(pool, station_id).await?.cover_art {
+            return Ok(Self::default());
+        }
         let settings: StationSettings =
             settings::load_for(pool, station_id, StationSettings::SETTINGS_NAME).await?;
         let base = settings

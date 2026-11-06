@@ -120,6 +120,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(crate::two_factor::router())
         .merge(crate::backups::router())
         .merge(stations::router())
+        .merge(crate::modules::router())
         .merge(player::router())
         .merge(tracks::router())
         .merge(crate::covers::router())
@@ -229,6 +230,10 @@ pub fn router(state: AppState) -> Router {
                 async move { Json(document.as_ref().clone()) }
             }),
         )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::modules::guard,
+        ))
         .with_state(state)
         .layer(axum::middleware::map_response(
             crate::error::json_client_errors,

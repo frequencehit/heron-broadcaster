@@ -30,6 +30,7 @@ mod library;
 mod listeners;
 mod live;
 mod medleys;
+mod modules;
 mod outputs;
 mod play_grid;
 mod player;
