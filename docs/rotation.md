@@ -114,7 +114,8 @@ An ordered list of slots. Each slot **calls a category**, and how it calls it ma
 - a **category**;
 - a **selection method**: least recently played, random or weighted;
 - an **enforce rules** flag;
-- separation overrides for this slot (see [Separation rules](#separation-rules)).
+- separation overrides for this slot (see [Separation rules](#separation-rules));
+- a **linked to the next slot** flag, for a jingle that announces the next slot's track (see [Linked slots](#linked-slots)).
 
 Building good clocks has to be easy: the editor shows each hour as it will sound (slots, expected starts from the categories' average lengths, categories running short of tracks for their track separation), and a clock can be simulated before it goes on air. A category running short (a few jingles for a slot every quarter of an hour) only plays with its rules relaxed; the editor offers to turn *enforce rules* off on the slots calling it instead, which stops the separation rules there and keeps the restrictions.
 
@@ -126,6 +127,26 @@ How a clock runs:
 - Hours without a clock rotate the **station's library**: least recently played, rules enforced. The station's library is the tracks of the categories tagged with the station, except those also in a category it **keeps out** (`kept_out_category_ids` in the `rotation` settings: a category of tracks set aside, say). A track kept out does not play there even if another of its categories is the station's, and a track in none of the station's categories does not play there without a clock. A station with no category yet rotates the whole library, so a new Heron plays as soon as its music is imported.
 
 Clockwheels are data stored in the database and edited in the UI. There is no scripting language (see [Locked decisions](decisions.md)).
+
+#### Linked slots
+
+A clock often announces a track with a jingle of its kind: *jingle 90s*, then a 90s track. A slot **linked to the next slot** plays only if the next slot's track plays right after it:
+
+- Rotation picks the two together: the linked slot's track, then the next slot's track for when the first one ends. Both go to the rotation log; the first one says it is linked.
+- **End of the hour:** when the next slot's track would start after the end of the hour, neither plays. Both slots are passed over, and the clock goes on with the slot after them, as long as it starts within the hour; the new hour starts with its own clock. A looping clock carries on across hours: the pair plays when the next hour runs the same clock.
+- **Nothing found:** when the next slot finds nothing, even relaxed and with the fallback category (or is passed over as the same type twice in a row), the linked slot is passed over too.
+- The rotation log says why: *its linked track would start after the hour*, or *its linked track found nothing*.
+- The **last slot** can be linked: its next slot is the first one, when the clock starts over within the hour (or carries on, looping). At the end of the hour the new hour's clock does not count: the jingle is dropped.
+- **No chains:** a linked slot cannot be followed by another linked slot (the clock is refused), so a clock of one slot cannot link it.
+- The clock editor marks a linked slot as after the hour when its next slot's track is expected after the hour.
+
+In the queue, the jingle's entry is linked to its track's entry (`linked_to`). The engine keeps the link with its queue, across restarts and handovers:
+
+- **Removing the track** removes its jingle, by hand or when the queue manager takes the track out. A jingle already playing plays on.
+- **Removing the jingle** keeps the track: a track without its jingle misleads nobody.
+- **Moving** the track, or the jingle, moves both: the jingle stays right before its track.
+- **Nothing goes between them:** a track queued or moved there goes before the jingle.
+- Skipping is unchanged. Tracks queued by hand are never linked.
 
 ### Weights
 

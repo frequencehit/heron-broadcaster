@@ -5,7 +5,8 @@
 //! - Builds the tracks the engine plays from the database: path, tags, cue
 //!   points and crossfade point from the analysis, per-track overrides.
 //! - Keeps the queue from running dry (`queue.autofill`) with the tracks
-//!   rotation picks (`heron-rotation`), each recorded in the rotation log.
+//!   rotation picks (`heron-rotation`), each recorded in the rotation log;
+//!   a jingle of a linked clock slot is queued linked to its track.
 //! - Follows the library: queued tracks whose file the librarian moved, or
 //!   whose cue points were changed, are updated; tracks whose file
 //!   disappeared are taken out of the queue.
@@ -357,24 +358,39 @@ impl QueueManager {
         let mut last = rotation::last_position(&self.pool, self.station_id).await?;
         let mut rng = Rng::new(rotation::seed());
         let mut picks = Vec::new();
+        // Indices of the picks linked to the pick after them (a jingle and
+        // the track of its clock's next slot).
+        let mut linked = Vec::new();
         // Play ratio counters moved by these picks, saved once queued.
         let mut counters = Vec::new();
-        for _ in 0..missing {
+        'picking: for _ in 0..missing {
             let outcome =
                 heron_rotation::next_outcome(&library, &history, at, last.as_ref(), &mut rng);
             counters.extend(library.count_down(outcome.offered()));
             let Some(pick) = outcome.pick else {
                 break;
             };
-            let Some(track) = library.tracks.get(&pick.track) else {
+            let group = pick.into_picks();
+            if group
+                .iter()
+                .any(|pick| !library.tracks.contains_key(&pick.track))
+            {
                 break;
-            };
-            history.push(Play::of(track, at));
-            at += i64::from(track.length_ms);
-            if pick.position.is_some() {
-                last = pick.position;
             }
-            picks.push(pick);
+            for pick in group {
+                let Some(track) = library.tracks.get(&pick.track) else {
+                    break 'picking;
+                };
+                history.push(Play::of(track, at));
+                at += i64::from(track.length_ms);
+                if pick.position.is_some() {
+                    last = pick.position;
+                }
+                if pick.explanation.linked {
+                    linked.push(u32::try_from(picks.len()).unwrap_or(u32::MAX));
+                }
+                picks.push(pick);
+            }
         }
         if picks.is_empty() {
             // Tracks held back by their ratio moved: they play sooner.
@@ -392,7 +408,7 @@ impl QueueManager {
         }
         let ids: Vec<u64> = picks.iter().map(|pick| pick.track).collect();
         let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
-        let entry_ids = self.engine.enqueue(tracks, None).await?;
+        let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
         for (pick, entry_id) in picks.iter().zip(&entry_ids) {
             let entry = (state.engine_started_at_unix_ms, *entry_id);
             rotation::record_pick(&self.pool, self.station_id, pick, Some(entry)).await?;

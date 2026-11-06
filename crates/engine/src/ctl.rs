@@ -148,6 +148,7 @@ async fn execute(args: Args, library_dir: &Path) -> anyhow::Result<()> {
                 .enqueue(pb::EnqueueRequest {
                     tracks,
                     position: next.then_some(0),
+                    linked: Vec::new(),
                 })
                 .await?
                 .into_inner();
@@ -493,11 +494,13 @@ async fn autofill(
                 let text = describe(Some(&pb::QueueEntry {
                     entry_id: 0,
                     track: Some(track.clone()),
+                    linked_to: None,
                 }));
                 client
                     .enqueue(pb::EnqueueRequest {
                         tracks: vec![track],
                         position: None,
+                        linked: Vec::new(),
                     })
                     .await?;
                 println!("queued {text}");

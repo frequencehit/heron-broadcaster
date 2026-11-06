@@ -15569,6 +15569,10 @@
             "type": "boolean",
             "description": "Off, the slot skips the separation rules (restrictions still apply)."
           },
+          "linked_to_next": {
+            "type": "boolean",
+            "description": "Plays only if the next slot's track plays right after it (a jingle\nannouncing it); the next slot of the last one is the first. A\nlinked slot cannot be followed by another linked slot."
+          },
           "method": {
             "$ref": "#/components/schemas/Method"
           },
@@ -16994,6 +16998,10 @@
             ],
             "format": "int64",
             "description": "When the picked track last played; missing if never."
+          },
+          "linked": {
+            "type": "boolean",
+            "description": "The slot is linked to the next one: the next pick is that slot's\ntrack, picked with this one."
           },
           "method": {
             "$ref": "#/components/schemas/Method",
@@ -21247,6 +21255,15 @@
             "description": "Assigned by the engine. Never reused: a restarted engine resumes its\nsaved queue with the same IDs and goes on from there.",
             "minimum": 0
           },
+          "linked_to": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "A jingle of a clock slot linked to the next one: the entry of the\ntrack it announces, right after it. Removing that track removes the\njingle, and moving either moves both.",
+            "minimum": 0
+          },
           "track": {
             "$ref": "#/components/schemas/QueuedTrack"
           }
@@ -22814,7 +22831,9 @@
         "enum": [
           "nothing_allowed",
           "same_type_in_a_row",
-          "module_off"
+          "module_off",
+          "linked_track_after_hour",
+          "linked_track_not_found"
         ]
       },
       "SkippedFile": {

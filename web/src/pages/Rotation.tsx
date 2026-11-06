@@ -218,13 +218,7 @@ function Details({ explanation }: { explanation: Explanation }) {
           <dd>
             {t("rotationPage.skippedSlots", {
               slots: explanation.skipped_slots
-                .map((slot) =>
-                  slot.reason === "same_type_in_a_row"
-                    ? t("rotationPage.slotInARow", { slot: slot.slot + 1 })
-                    : slot.reason === "module_off"
-                      ? t("rotationPage.slotModuleOff", { slot: slot.slot + 1 })
-                      : t("rotationPage.slot", { slot: slot.slot + 1 }),
-                )
+                .map((slot) => skippedSlot(slot))
                 .join(", "),
             })}
           </dd>
@@ -489,4 +483,21 @@ function SimulationSummary({ report }: { report: SimulationReport }) {
       )}
     </div>
   );
+}
+
+/** A slot passed over, and why when it was not for lack of tracks. */
+function skippedSlot(slot: Schemas["SkippedSlot"]): string {
+  const number = slot.slot + 1;
+  switch (slot.reason) {
+    case "same_type_in_a_row":
+      return t("rotationPage.slotInARow", { slot: number });
+    case "linked_track_after_hour":
+      return t("rotationPage.slotLinkedAfterHour", { slot: number });
+    case "linked_track_not_found":
+      return t("rotationPage.slotLinkedNotFound", { slot: number });
+    case "module_off":
+      return t("rotationPage.slotModuleOff", { slot: number });
+    default:
+      return t("rotationPage.slot", { slot: number });
+  }
 }

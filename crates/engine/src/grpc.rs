@@ -50,10 +50,11 @@ impl EngineRpc for EngineService {
             .map(track_from_proto)
             .collect::<Result<Vec<_>, _>>()?;
         let position = request.position.map(|position| position as usize);
+        let linked: Vec<usize> = request.linked.iter().map(|index| *index as usize).collect();
         let entry_ids = self
             .engine
             .player()
-            .enqueue(tracks, position)
+            .enqueue_linked(tracks, position, &linked)
             .map_err(player_status)?;
         Ok(Response::new(pb::EnqueueResponse { entry_ids }))
     }
@@ -415,6 +416,7 @@ fn entry_to_proto(entry: QueueEntry) -> pb::QueueEntry {
     pb::QueueEntry {
         entry_id: entry.entry_id,
         track: Some(track_to_proto(entry.track)),
+        linked_to: entry.linked_to,
     }
 }
 

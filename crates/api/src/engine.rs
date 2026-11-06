@@ -74,6 +74,10 @@ pub struct QueueEntry {
     /// saved queue with the same IDs and goes on from there.
     pub entry_id: u64,
     pub track: QueuedTrack,
+    /// A jingle of a clock slot linked to the next one: the entry of the
+    /// track it announces, right after it. Removing that track removes the
+    /// jingle, and moving either moves both.
+    pub linked_to: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -446,14 +450,21 @@ impl EngineLink {
         })
     }
 
+    /// Queues `tracks` at `position`, those at the indices of `linked`
+    /// linked to the track after them.
     pub async fn enqueue(
         &self,
         tracks: Vec<pb::Track>,
         position: Option<u32>,
+        linked: Vec<u32>,
     ) -> ApiResult<Vec<u64>> {
         let mut client = self.client.clone();
         let response = self
-            .call(client.enqueue(pb::EnqueueRequest { tracks, position }))
+            .call(client.enqueue(pb::EnqueueRequest {
+                tracks,
+                position,
+                linked,
+            }))
             .await?;
         self.refresh().await;
         Ok(response.entry_ids)
@@ -624,6 +635,7 @@ fn entry(entry: pb::QueueEntry) -> QueueEntry {
             over_intro: track.over_intro,
             intro_ms: track.intro_ms,
         },
+        linked_to: entry.linked_to,
     }
 }
 

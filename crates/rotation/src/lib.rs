@@ -217,6 +217,9 @@ pub struct Slot {
     pub method: Method,
     pub enforce_rules: bool,
     pub separation: SeparationOverrides,
+    /// Plays only if the next slot's track plays right after it (a jingle
+    /// announcing it): picked together, or not at all.
+    pub linked_to_next: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -227,6 +230,18 @@ pub struct Clock {
     /// Loops across hours: carries on from its last slot instead of
     /// starting over at each hour (SAM Broadcaster's clockwheel).
     pub looping: bool,
+}
+
+impl Clock {
+    /// Whether the slot at `index` is linked to the slot after it (the
+    /// first one after the last). A linked slot followed by another linked
+    /// slot is not: the API refuses such chains.
+    pub fn linked(&self, index: usize) -> bool {
+        let count = self.slots.len();
+        count > 1
+            && self.slots[index].linked_to_next
+            && !self.slots[(index + 1) % count].linked_to_next
+    }
 }
 
 /// Everything rotation needs to know about the station.

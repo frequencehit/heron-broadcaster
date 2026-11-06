@@ -369,6 +369,7 @@ mod tests {
                 over_intro: false,
                 intro_ms: None,
             },
+            linked_to: None,
         }
     }
 

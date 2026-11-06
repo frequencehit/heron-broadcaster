@@ -15,7 +15,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -30,6 +29,7 @@ import { positionNow, useLive } from "../lib/live";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { jingleStart } from "../lib/intro";
+import { type LinkRole, linkRoles, moveEntries } from "../lib/queue";
 import { CategoryChips, type CategoryRef, useTrackCategories } from "./TrackCategories";
 import { Empty, Icon } from "./ui";
 import { here } from "../lib/station";
@@ -120,6 +120,7 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
       : null;
   const starts = startTimes(entries, firstStart, player.cued_jingle?.entry_id ?? null);
   const shown = limit ? entries.slice(0, limit) : entries;
+  const links = linkRoles(entries);
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -131,7 +132,7 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
     if (from < 0 || to < 0) {
       return;
     }
-    setOrder(arrayMove(entries, from, to));
+    setOrder(moveEntries(entries, from, to));
     move.mutate({ entry: Number(active.id), position: to }, { onError: () => setOrder(waiting) });
   };
 
@@ -147,6 +148,7 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
               key={entry.entry_id}
               entry={entry}
               index={index}
+              link={links[index] ?? null}
               start={starts[index] ?? null}
               cued={player.cued?.entry_id === entry.entry_id}
               overIntro={player.cued_jingle?.entry_id === entry.entry_id}
@@ -158,7 +160,7 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
               }
               canEdit={canEdit}
               onNext={() => {
-                setOrder(arrayMove(entries, index, 0));
+                setOrder(moveEntries(entries, index, 0));
                 move.mutate(
                   { entry: entry.entry_id, position: 0 },
                   { onError: () => setOrder(waiting) },
@@ -182,6 +184,7 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
 function Item({
   entry,
   index,
+  link,
   start,
   cued,
   overIntro,
@@ -193,6 +196,8 @@ function Item({
 }: Readonly<{
   entry: QueueEntry;
   index: number;
+  /** In a linked pair: the jingle, or the track it announces. */
+  link: LinkRole;
   start: number | null;
   cued: boolean;
   overIntro: boolean;
@@ -212,7 +217,7 @@ function Item({
   return (
     <li
       ref={setNodeRef}
-      className={isDragging ? "queue-item dragging" : "queue-item"}
+      className={`queue-item${isDragging ? " dragging" : ""}${link ? ` linked linked-${link}` : ""}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       {canEdit && (
@@ -234,6 +239,11 @@ function Item({
         </div>
         <div className="row small muted" style={{ gap: "0.4rem" }}>
           {cued && <span className="badge accent">{t("queue.cued")}</span>}
+          {link === "jingle" && (
+            <span className="badge" title={t("queue.linkedHint")}>
+              <Icon name="link" size={12} /> {t("queue.linked")}
+            </span>
+          )}
           {overIntro && (
             <span className="badge accent" title={t("queue.overIntroHint")}>
               {jingleAt !== null && jingleAt !== undefined

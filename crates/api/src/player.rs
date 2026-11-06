@@ -188,7 +188,10 @@ async fn enqueue(
         .queue
         .tracks(&request.track_ids, PlaySource::Manual)
         .await?;
-    let entry_ids = station.engine.enqueue(tracks, request.position).await?;
+    let entry_ids = station
+        .engine
+        .enqueue(tracks, request.position, Vec::new())
+        .await?;
     tracing::info!(user = %user.username, tracks = ?request.track_ids, "queued");
     Ok(Json(EnqueueResponse { entry_ids }))
 }

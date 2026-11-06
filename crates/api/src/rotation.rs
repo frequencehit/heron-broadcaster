@@ -144,9 +144,9 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
         .collect();
 
     let mut slots: HashMap<u64, Vec<Slot>> = HashMap::new();
-    let rows: Vec<(u64, u64, String, bool, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(u64, u64, String, bool, Option<String>, bool)> = sqlx::query_as(
         "SELECT s.clock_id, s.category_id, CAST(s.selection_method AS CHAR), s.enforce_rules,
-                CAST(s.separation AS CHAR)
+                CAST(s.separation AS CHAR), s.linked_to_next
          FROM clock_slots s JOIN clocks c ON c.id = s.clock_id
          WHERE c.station_id = ?
          ORDER BY s.clock_id, s.position",
@@ -154,12 +154,13 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     .bind(station_id)
     .fetch_all(pool)
     .await?;
-    for (clock, category, method, enforce_rules, separation) in rows {
+    for (clock, category, method, enforce_rules, separation, linked_to_next) in rows {
         slots.entry(clock).or_default().push(Slot {
             category,
             method: Method::parse(&method).unwrap_or_default(),
             enforce_rules,
             separation: overrides(separation.as_deref()),
+            linked_to_next,
         });
     }
     let rows: Vec<(u64, String, bool)> =

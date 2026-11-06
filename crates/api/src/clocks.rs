@@ -49,6 +49,11 @@ pub struct ClockSlot {
     /// Windows this slot overrides, over its category's.
     #[serde(default)]
     pub separation: SeparationOverrides,
+    /// Plays only if the next slot's track plays right after it (a jingle
+    /// announcing it); the next slot of the last one is the first. A
+    /// linked slot cannot be followed by another linked slot.
+    #[serde(default)]
+    pub linked_to_next: bool,
 }
 
 fn yes() -> bool {
@@ -89,8 +94,24 @@ impl ClockInput {
                 "a clock has at most {MAX_SLOTS} slots"
             )));
         }
+        check_links(&self.slots)?;
         Ok(name.to_owned())
     }
+}
+
+/// Refuses chains: a slot linked to the next one followed by another
+/// linked slot (the first slot follows the last one).
+fn check_links(slots: &[ClockSlot]) -> ApiResult<()> {
+    for (index, slot) in slots.iter().enumerate() {
+        let next = &slots[(index + 1) % slots.len()];
+        if slot.linked_to_next && next.linked_to_next {
+            return Err(ApiError::Invalid(format!(
+                "slot {} is linked to the next slot, which cannot be linked to its own next slot",
+                index + 1
+            )));
+        }
+    }
+    Ok(())
 }
 
 async fn clocks(state: &AppState, station: &Station, id: Option<u64>) -> ApiResult<Vec<ClockView>> {
@@ -104,9 +125,9 @@ async fn clocks(state: &AppState, station: &Station, id: Option<u64>) -> ApiResu
     .bind(id)
     .fetch_all(&state.pool)
     .await?;
-    let slots: Vec<(u64, u64, String, bool, Option<String>)> = sqlx::query_as(
+    let slots: Vec<(u64, u64, String, bool, Option<String>, bool)> = sqlx::query_as(
         "SELECT s.clock_id, s.category_id, CAST(s.selection_method AS CHAR), s.enforce_rules,
-                CAST(s.separation AS CHAR)
+                CAST(s.separation AS CHAR), s.linked_to_next
          FROM clock_slots s JOIN clocks c ON c.id = s.clock_id
          WHERE c.station_id = ? AND (? IS NULL OR s.clock_id = ?)
          ORDER BY s.clock_id, s.position",
@@ -117,12 +138,13 @@ async fn clocks(state: &AppState, station: &Station, id: Option<u64>) -> ApiResu
     .fetch_all(&state.pool)
     .await?;
     let mut by_clock: HashMap<u64, Vec<ClockSlot>> = HashMap::new();
-    for (clock, category_id, method, enforce_rules, separation) in slots {
+    for (clock, category_id, method, enforce_rules, separation, linked_to_next) in slots {
         by_clock.entry(clock).or_default().push(ClockSlot {
             category_id,
             method: Method::parse(&method).unwrap_or_default(),
             enforce_rules,
             separation: overrides(separation.as_deref()),
+            linked_to_next,
         });
     }
     Ok(rows
@@ -198,8 +220,9 @@ async fn write_slots(
         let separation = separation_json(&slot.separation)?;
         sqlx::query(
             "INSERT INTO clock_slots
-                 (clock_id, position, category_id, selection_method, enforce_rules, separation)
-             VALUES (?, ?, ?, ?, ?, ?)",
+                 (clock_id, position, category_id, selection_method, enforce_rules, separation,
+                  linked_to_next)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(clock)
         .bind(u32::try_from(position).unwrap_or(u32::MAX))
@@ -207,6 +230,7 @@ async fn write_slots(
         .bind(slot.method.as_str())
         .bind(slot.enforce_rules)
         .bind(separation)
+        .bind(slot.linked_to_next)
         .execute(&mut *tx)
         .await
         .map_err(|error| {
@@ -370,6 +394,7 @@ async fn preview_clock(
             "a clock has at most {MAX_SLOTS} slots"
         )));
     }
+    check_links(&request.slots)?;
     let library = rotation::load_library(&state.pool, station.id()).await?;
     let clock = heron_rotation::Clock {
         id: 0,
@@ -382,6 +407,7 @@ async fn preview_clock(
                 method: slot.method,
                 enforce_rules: slot.enforce_rules,
                 separation: slot.separation,
+                linked_to_next: slot.linked_to_next,
             })
             .collect(),
         looping: request.looping,
@@ -424,6 +450,18 @@ async fn preview_clock(
         at += average_ms.unwrap_or(210_000);
     }
     let duration_ms = at;
+    // A linked slot does not play when its next slot's track is expected
+    // after the hour (the next run's first slot, for the last one).
+    if !clock.looping {
+        for index in (0..slots.len()).filter(|index| clock.linked(*index)) {
+            let next_start = slots
+                .get(index + 1)
+                .map_or(duration_ms, |next| next.expected_start_ms);
+            if next_start >= HOUR_MS {
+                slots[index].beyond_hour = true;
+            }
+        }
+    }
     let runs_per_hour = if duration_ms > 0 && (duration_ms < HOUR_MS || clock.looping) {
         HOUR_MS as f64 / duration_ms as f64
     } else {
@@ -460,11 +498,31 @@ mod tests {
         assert_eq!(slot.method, Method::LeastRecentlyPlayed);
         assert!(slot.enforce_rules);
         assert!(slot.separation.is_empty());
+        assert!(!slot.linked_to_next);
         let input = ClockInput {
             name: " ".to_owned(),
             looping: false,
             slots: vec![],
         };
         assert!(input.check().is_err());
+    }
+
+    #[test]
+    fn linked_slots_cannot_chain() {
+        let slot = |linked_to_next| ClockSlot {
+            category_id: 1,
+            method: Method::Random,
+            enforce_rules: true,
+            separation: SeparationOverrides::default(),
+            linked_to_next,
+        };
+        assert!(check_links(&[slot(true), slot(false)]).is_ok());
+        assert!(check_links(&[slot(false), slot(true)]).is_ok());
+        assert!(check_links(&[slot(true), slot(true), slot(false)]).is_err());
+        // The first slot follows the last one.
+        assert!(check_links(&[slot(true), slot(false), slot(true)]).is_err());
+        // One slot is its own next slot.
+        assert!(check_links(&[slot(true)]).is_err());
+        assert!(check_links(&[]).is_ok());
     }
 }

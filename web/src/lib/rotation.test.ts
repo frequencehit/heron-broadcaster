@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from "vitest";
-import { daysLabel, describeOverrides, describeRule, describeWindows, hourLabel, stepLabel } from "./rotation";
+import { daysLabel, describeOverrides, describeRule, describeWindows, hourLabel, linkBlocked, stepLabel } from "./rotation";
 
 describe("days", () => {
   it("reads as ranges", () => {
@@ -76,5 +76,23 @@ describe("windows", () => {
     expect(stepLabel(4)).toBe("daypart separation dropped");
     expect(stepLabel(5)).toBe("artist separation halved");
     expect(stepLabel(12)).toBe("fallback category, least recently played, no rules");
+  });
+});
+
+describe("linked slots", () => {
+  const slot = (linked_to_next: boolean) => ({ category_id: 1, linked_to_next });
+
+  it("never chain", () => {
+    const slots = [slot(true), slot(false), slot(false)];
+    expect(linkBlocked(slots, 0)).toBe(false);
+    // Next to a linked slot: the second one, and the last one (the first
+    // slot follows it).
+    expect(linkBlocked(slots, 1)).toBe(true);
+    expect(linkBlocked(slots, 2)).toBe(true);
+    expect(linkBlocked([slot(false), slot(false), slot(false)], 1)).toBe(false);
+    // A clock of one slot cannot link it.
+    expect(linkBlocked([slot(false)], 0)).toBe(true);
+    // A linked slot can always be unlinked.
+    expect(linkBlocked([slot(true)], 0)).toBe(false);
   });
 });

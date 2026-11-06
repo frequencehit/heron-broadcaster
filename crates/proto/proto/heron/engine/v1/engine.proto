@@ -87,13 +87,21 @@ message QueueEntry {
   // resumes it, IDs included, after a restart.
   uint64 entry_id = 1;
   Track track = 2;
+  // A jingle linked to the entry right after it (a clock slot linked to
+  // the next one): removing that entry removes this one, moving either
+  // moves both, and nothing goes between them.
+  optional uint64 linked_to = 3;
 }
 
 message EnqueueRequest {
   repeated Track tracks = 1;
   // Where to insert among the waiting tracks (the cued one, then the
-  // queue), 0 being next. Appended when missing.
+  // queue), 0 being next. Appended when missing. A position between a
+  // linked entry and the one it is linked to puts the tracks before the
+  // linked entry.
   optional uint32 position = 2;
+  // Indices of the tracks linked to the track after them in this request.
+  repeated uint32 linked = 3;
 }
 
 message EnqueueResponse {
