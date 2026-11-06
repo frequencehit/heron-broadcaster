@@ -427,7 +427,7 @@ impl Identifier {
                 score: release.score.min(100) as u8,
             })
             .collect();
-        hits.sort_by(|a, b| b.score.cmp(&a.score));
+        hits.sort_by_key(|hit| std::cmp::Reverse(hit.score));
         Ok(hits)
     }
 

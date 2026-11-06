@@ -652,7 +652,8 @@ async fn list_cover_candidates(
     _user: CurrentUser,
     State(state): State<AppState>,
 ) -> ApiResult<Json<Vec<CandidateAlbum>>> {
-    let rows: Vec<(String, u64, u64, Option<String>, Option<String>)> = sqlx::query_as(
+    type Row = (String, u64, u64, Option<String>, Option<String>);
+    let rows: Vec<Row> = sqlx::query_as(
         "SELECT t.album_key, MIN(t.id), CAST(COUNT(*) AS UNSIGNED), MAX(t.album),
                 MAX(COALESCE(NULLIF(TRIM(t.album_artist), ''), t.artist))
          FROM tracks t

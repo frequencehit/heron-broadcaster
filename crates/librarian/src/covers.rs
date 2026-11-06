@@ -142,8 +142,8 @@ async fn albums_to_look_up(
     if let Some(limit) = limit {
         query.push(" LIMIT ").push_bind(limit as u64);
     }
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>)> =
-        query.build_query_as().fetch_all(pool).await?;
+    type Row = (String, Option<String>, Option<String>, Option<String>);
+    let rows: Vec<Row> = query.build_query_as().fetch_all(pool).await?;
     Ok(rows
         .into_iter()
         .map(|(key, release_id, album, artist)| Album {
