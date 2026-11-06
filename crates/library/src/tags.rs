@@ -97,6 +97,9 @@ pub struct FileTags {
     pub properties: AudioProperties,
     /// The file has embedded cover art.
     pub has_cover: bool,
+    /// The embedded cover: the front cover, else the first picture (at
+    /// most [`crate::covers::MAX_BYTES`]).
+    pub cover: Option<Vec<u8>>,
 }
 
 /// Reads the tags, duration and audio properties of `path`.
@@ -145,7 +148,22 @@ pub fn read(path: &Path) -> Result<FileTags, TagError> {
             picture.pic_type() == PictureType::CoverFront
                 || picture.pic_type() == PictureType::Other
         }),
+        cover: embedded_cover(tag),
     })
+}
+
+/// The front cover, else the first picture.
+fn embedded_cover(tag: &Tag) -> Option<Vec<u8>> {
+    let pictures = tag.pictures();
+    let usable = |picture: &&Picture| {
+        !picture.data().is_empty() && picture.data().len() <= crate::covers::MAX_BYTES
+    };
+    pictures
+        .iter()
+        .filter(usable)
+        .find(|picture| picture.pic_type() == PictureType::CoverFront)
+        .or_else(|| pictures.iter().find(usable))
+        .map(|picture| picture.data().to_vec())
 }
 
 /// What to do with embedded cover art when writing tags.
@@ -431,12 +449,43 @@ mod tests {
         };
         write(&path, &previous, Cover::Keep).unwrap();
         write(&path, &full_tags(), Cover::Embed(b"\xff\xd8\xff\xe0fake")).unwrap();
-        assert!(read(&path).unwrap().has_cover);
+        let embedded = read(&path).unwrap();
+        assert!(embedded.has_cover);
+        assert_eq!(embedded.cover.as_deref(), Some(&b"\xff\xd8\xff\xe0fake"[..]));
 
         write(&path, &previous, Cover::Remove).unwrap();
         let read = read(&path).unwrap();
         assert_eq!(read.tags, previous);
         assert!(!read.has_cover);
+        assert!(read.cover.is_none());
+    }
+
+    #[test]
+    fn flac_pictures_are_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("cover.png");
+        let made = std::process::Command::new("ffmpeg")
+            .args(["-v", "quiet", "-y", "-f", "lavfi", "-i", "color=c=red:s=32x32", "-frames:v", "1"])
+            .arg(&png)
+            .status()
+            .is_ok_and(|status| status.success());
+        let Some(flac) = flac_fixture().filter(|_| made) else {
+            return;
+        };
+        let path = dir.path().join("with-cover.flac");
+        let made = std::process::Command::new("ffmpeg")
+            .args(["-v", "quiet", "-y", "-i"])
+            .arg(&flac)
+            .arg("-i")
+            .arg(&png)
+            .args(["-map", "0", "-map", "1", "-c:a", "copy", "-c:v", "png"])
+            .args(["-disposition:v", "attached_pic"])
+            .arg(&path)
+            .status()
+            .is_ok_and(|status| status.success());
+        assert!(made);
+        let cover = read(&path).unwrap().cover.expect("the FLAC picture");
+        assert_eq!(cover, std::fs::read(&png).unwrap());
     }
 
     #[test]

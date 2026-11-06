@@ -3,6 +3,7 @@
 //! Library files, shared by the scanner in `heron-api` (read-only) and
 //! `heron-librarian`, the only service that moves files and writes tags.
 //!
+//! - [`covers`]: cover art kept in Heron's database.
 //! - [`details`]: the track columns read from a file.
 //! - [`files`]: which files are audio, and how their content is identified.
 //! - [`tags`]: the tags Heron reads and writes.
@@ -12,6 +13,7 @@
 //!   working on the library at the same time.
 //! - [`watch`]: watching a folder for changes, ignoring reads.
 
+pub mod covers;
 pub mod details;
 pub mod files;
 pub mod layout;

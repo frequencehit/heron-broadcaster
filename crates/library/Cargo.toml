@@ -12,12 +12,16 @@ publish = false
 [dependencies]
 blake3.workspace = true
 heron-core.workspace = true
+# Cover art: read, resized and re-encoded as JPEG.
+image.workspace = true
 lofty.workspace = true
 notify.workspace = true
 serde.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+# Covers are decoded off the async threads.
+tokio = { workspace = true, features = ["rt"] }
 
 [dev-dependencies]
 heron-service = { workspace = true, features = ["test-util"] }

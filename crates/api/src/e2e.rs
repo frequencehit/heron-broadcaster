@@ -2756,7 +2756,7 @@ async fn track_details_labels_programming_and_tags() {
     // The scanner reading the file again keeps them.
     let read = heron_library::tags::read(&file).unwrap();
     let mut connection = pool.acquire().await.unwrap();
-    heron_library::details::save(&mut connection, track, &read)
+    heron_library::details::save(&mut connection, track, &read, None)
         .await
         .unwrap();
     drop(connection);
