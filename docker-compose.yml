@@ -79,6 +79,9 @@ services:
       HERON_COVERS_DIR: /var/lib/heron/covers
       HERON_SCAN_INTERVAL: ${HERON_SCAN_INTERVAL:-3600}
       HERON_LIBRARY_WATCH: ${HERON_LIBRARY_WATCH:-true}
+      # The token heron-public sends; the gateway routes refuse it when
+      # empty (docs/listener-interaction.md).
+      HERON_PUBLIC_TOKEN: ${HERON_PUBLIC_TOKEN:-}
     volumes:
       # Read-only: only heron-librarian writes to the library.
       - ${HERON_MUSIC_DIR:-./data/music}:/music:ro
@@ -248,6 +251,32 @@ services:
     volumes:
       - ./docker/icecast/fallback-source.sh:/fallback-source.sh:ro
       - ${HERON_FALLBACK_STREAM_DIR:-./data/fallback-stream}:/fallback:ro
+
+  # The public gateway of the shows (docs/listener-interaction.md): the only
+  # service listeners reach, from the station's website. No database: it
+  # calls heron-api with HERON_PUBLIC_TOKEN. /healthz and /metrics are on
+  # 8085, kept off the published port. Started with the `public` profile:
+  # `docker compose --profile public up -d`.
+  heron-public:
+    profiles: [public]
+    build:
+      context: .
+      dockerfile: docker/rust.Dockerfile
+      target: heron-public
+      args:
+        HERON_REVISION: ${HERON_REVISION:-}
+        HERON_BUILD_DATE: ${HERON_BUILD_DATE:-}
+    image: ${HERON_REGISTRY:-ghcr.io/dehy}/heron-public:${HERON_VERSION:-latest}
+    restart: unless-stopped
+    cpu_shares: 1024
+    environment:
+      <<: *rust-env
+      HERON_PUBLIC_API_URL: http://heron-api:8080
+      HERON_PUBLIC_TOKEN: ${HERON_PUBLIC_TOKEN:-}
+      HERON_PUBLIC_ALLOWED_ORIGINS: ${HERON_PUBLIC_ALLOWED_ORIGINS:-}
+      HERON_PUBLIC_CLIENT_IP_HEADER: ${HERON_PUBLIC_CLIENT_IP_HEADER:-}
+    ports:
+      - "${HERON_PUBLIC_PORT:-8001}:8084"
 
   heron-web:
     build:
