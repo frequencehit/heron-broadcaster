@@ -7,7 +7,7 @@
 import { CoverCard } from "../components/Cover";
 import { PlaysByStation, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioCounter, RatioScale, WeightOrRatio } from "../components/Ratio";
-import { effectiveRatio, nextText, ratioLabel, ratioSummary } from "../lib/ratio";
+import { RATIOS, disabledText, effectiveRatio, nextText, ratioLabel, ratioSummary } from "../lib/ratio";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -53,9 +53,9 @@ import { ago, bytes, dateTime, db, duration, parseDuration, trackName } from "..
 import { endingLabel } from "../lib/labels";
 import { withNextStart } from "../lib/nextStart";
 import { Link } from "../lib/router";
-import { useAction, useCan } from "../lib/session";
+import { useAction, useCan, useCanOn } from "../lib/session";
 import { DeleteQuestion, bitrate } from "./Library";
-import { currentStation, here } from "../lib/station";
+import { type StationInfo, currentStation, here } from "../lib/station";
 import { levelAt, levelText } from "../lib/level";
 
 /** Whether overrides change anything (every field unset). */
@@ -466,7 +466,11 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
         </Banner>
       )}
       {track.silent && <Banner kind="bad">{t("track.silent")}</Banner>}
-      {!track.enabled && <Banner kind="warn">{t("track.disabled")}</Banner>}
+      {!track.enabled && (
+        <Banner kind="warn">
+          {t("track.disabled")} {disabledText(track.disabled_by, track.disabled_at_unix_ms)}
+        </Banner>
+      )}
       {track.tag_overrides.length > 0 && (
         <Banner kind="warn">
           {t("track.tagOverrides", {
@@ -731,20 +735,19 @@ function useEnabled(id: number) {
   );
 }
 
-/** The play ratio: set, each station's counter, reset to 10. */
+/** The play ratio: the default, each station's (its own, or disabled
+ * there) with its counter, reset to 10, and who disabled the track. */
 function RatioCard({ track, canEdit }: { track: TrackDetail; canEdit: boolean }) {
-  const saved = effectiveRatio(track);
+  const saved = track.enabled ? track.play_ratio : 0;
   const [draft, setDraft] = useState(saved);
   useEffect(() => setDraft(saved), [saved]);
   const [asking, setAsking] = useState<"disable" | "enable" | null>(null);
   const patch = useEnabled(track.id);
   const stations = useStations();
+  const canOn = useCanOn("operator");
   const name = track.title ?? trackName(track);
   // The counters drawn with the ratio being chosen; the saved one at 0.
   const shown = draft > 0 ? draft : track.play_ratio;
-  const stationId = currentStation();
-  const counterHere = track.ratio_counters.find((c) => c.station_id === stationId) ?? track.ratio_counters[0];
-  const stationHere = stations.find((station) => station.id === counterHere?.station_id);
   const save = () => {
     if (draft === 0) {
       setAsking("disable");
@@ -774,26 +777,30 @@ function RatioCard({ track, canEdit }: { track: TrackDetail; canEdit: boolean })
           {t("ratio.introNote")}
         </p>
         <div className="field">
-          <span>{t("ratio.short")}</span>
+          <span>{t("ratio.default")}</span>
           <RatioScale value={draft} onChange={setDraft} withZero disabled={!canEdit} />
-          <span className="hint">{ratioSummary(draft)}</span>
+          <span className="hint">
+            {ratioSummary(draft)} {t("ratio.defaultHelp")}
+          </span>
+          {!track.enabled && (
+            <span className="hint">{disabledText(track.disabled_by, track.disabled_at_unix_ms)}</span>
+          )}
         </div>
-        {track.ratio_counters.length > 0 && (
+        {track.station_ratios.length > 0 && (
           <div className="field">
-            <span>{t("ratio.counters")}</span>
-            <div className="stack" style={{ gap: "0.6rem" }}>
-              {track.ratio_counters.map((counter) => {
-                const station = stations.find((s) => s.id === counter.station_id);
-                return (
-                  <div key={counter.station_id} className="station-counter">
-                    <span className="row">
-                      <span className="badge">{station?.code ?? `#${counter.station_id}`}</span>
-                      {station && <span className="small muted">{station.name}</span>}
-                    </span>
-                    <RatioCounter ratio={shown} counter={counter.counter} />
-                  </div>
-                );
-              })}
+            <span>{t("ratio.onEachStation")}</span>
+            <div className="stack" style={{ gap: "0.9rem" }}>
+              {track.station_ratios.map((on) => (
+                <StationRatioLine
+                  key={on.station_id}
+                  track={track}
+                  on={on}
+                  station={stations.find((s) => s.id === on.station_id)}
+                  shownDefault={shown}
+                  canEdit={canOn(on.station_id)}
+                  patch={patch}
+                />
+              ))}
             </div>
             <span className="hint">{t("ratio.countersHelp")}</span>
           </div>
@@ -809,14 +816,12 @@ function RatioCard({ track, canEdit }: { track: TrackDetail; canEdit: boolean })
         <div className="row between">
           <span className="muted small">
             {t("ratio.current", { ratio: saved === 0 ? t("ratio.offLabel") : ratioLabel(saved) })}
-            {counterHere &&
-              ` · ${stationHere ? `${stationHere.code}: ` : ""}${nextText(saved, counterHere.counter)}`}
           </span>
           {canEdit && (
             <button
               type="button"
               className="btn small"
-              disabled={patch.isPending || track.ratio_counters.every((c) => c.counter === 10)}
+              disabled={patch.isPending || track.station_ratios.every((on) => on.counter === 10)}
               onClick={() => patch.mutate({ reset_counters: true })}
             >
               {t("ratio.reset")}
@@ -846,6 +851,133 @@ function RatioCard({ track, canEdit }: { track: TrackDetail; canEdit: boolean })
         pending={patch.isPending}
       />
     </Card>
+  );
+}
+
+/** A station's line: its ratio for the track (the default, its own, or
+ * disabled there), its counter, and reset to 10. */
+function StationRatioLine({
+  track,
+  on,
+  station,
+  shownDefault,
+  canEdit,
+  patch,
+}: {
+  track: TrackDetail;
+  on: Schemas["StationRatio"];
+  station: StationInfo | undefined;
+  /** The default being chosen. */
+  shownDefault: number;
+  canEdit: boolean;
+  patch: ReturnType<typeof useEnabled>;
+}) {
+  const [asking, setAsking] = useState<"disable" | "enable" | null>(null);
+  const stationName = station?.name ?? `#${on.station_id}`;
+  const own = on.play_ratio ?? null;
+  // What rotation uses there, the default being chosen included.
+  const ratio = own ?? shownDefault;
+  const queuedHere = on.station_id === currentStation();
+  const change = (value: string) => {
+    if (value === "default") {
+      patch.mutate({ station_id: on.station_id, default_ratio: true });
+    } else if (value === "0") {
+      setAsking("disable");
+    } else {
+      patch.mutate({ station_id: on.station_id, play_ratio: Number(value) });
+    }
+  };
+  return (
+    <div className="station-counter">
+      <span className="stack" style={{ gap: "0.2rem" }}>
+        <span className="row">
+          <span className="badge">{station?.code ?? `#${on.station_id}`}</span>
+          {station && <span className="small muted">{station.name}</span>}
+        </span>
+        {on.enabled ? (
+          <label>
+            <span className="visually-hidden">{t("ratio.onStation", { station: stationName })}</span>
+            <select
+              className="input"
+              value={own === null ? "default" : String(own)}
+              disabled={!canEdit || patch.isPending}
+              onChange={(event) => change(event.target.value)}
+            >
+              <option value="default">{t("ratio.followsDefault", { ratio: ratioLabel(shownDefault) })}</option>
+              <option value="0">{t("ratio.offHere")}</option>
+              {RATIOS.map((tenths) => (
+                <option key={tenths} value={tenths}>
+                  {ratioLabel(tenths)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="stack" style={{ gap: "0.2rem" }}>
+            <span className="badge warn" title={disabledText(on.disabled_by, on.disabled_at_unix_ms)}>
+              {t("ratio.disabledHere")}
+            </span>
+            {canEdit && (
+              <button type="button" className="btn small" onClick={() => setAsking("enable")}>
+                {t("ratio.enableHere")}
+              </button>
+            )}
+          </span>
+        )}
+      </span>
+      <div className="stack" style={{ gap: "0.3rem" }}>
+        {on.enabled && track.enabled ? (
+          <RatioCounter ratio={ratio} counter={on.counter ?? 10} />
+        ) : (
+          <span className="muted small">
+            {on.enabled
+              ? t("ratio.disabledEverywhere")
+              : `${t("ratio.disabledHereLong")} ${disabledText(on.disabled_by, on.disabled_at_unix_ms)}`}
+          </span>
+        )}
+        <span className="row between small muted">
+          <span>{on.enabled && track.enabled ? nextText(ratio, on.counter ?? 10) : ""}</span>
+          {canEdit && (
+            <button
+              type="button"
+              className="btn small ghost"
+              disabled={patch.isPending || (on.counter ?? 10) === 10}
+              onClick={() => patch.mutate({ station_id: on.station_id, reset_counters: true })}
+            >
+              {t("ratio.resetHere")}
+            </button>
+          )}
+        </span>
+      </div>
+      <DisableDialog
+        open={asking === "disable"}
+        onClose={() => setAsking(null)}
+        onConfirm={() => patch.mutate({ station_id: on.station_id, play_ratio: 0 })}
+        name={track.title ?? trackName(track)}
+        count={1}
+        trackIds={queuedHere ? [track.id] : []}
+        previous={own ?? undefined}
+        station={stationName}
+      />
+      <EnableDialog
+        open={asking === "enable"}
+        onClose={() => setAsking(null)}
+        onConfirm={(play_ratio, reset_counters) =>
+          patch.mutate(
+            own === null && play_ratio === track.play_ratio
+              ? { station_id: on.station_id, default_ratio: true, reset_counters }
+              : { station_id: on.station_id, enabled: true, play_ratio, reset_counters },
+            { onSuccess: () => setAsking(null) },
+          )
+        }
+        name={track.title ?? trackName(track)}
+        count={1}
+        proposed={own}
+        fallback={track.play_ratio}
+        pending={patch.isPending}
+        station={stationName}
+      />
+    </div>
   );
 }
 

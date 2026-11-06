@@ -5,6 +5,7 @@
 // track plays while the counter is in its first `ratio` steps.
 
 import { number, t } from "../i18n";
+import { dateTime } from "./format";
 
 /** A full ratio, and the counter's first step. */
 export const FULL = 10;
@@ -22,9 +23,26 @@ export function plays(ratio: number, counter: number): boolean {
   return counter > FULL - Math.min(ratio, FULL);
 }
 
-/** A track's ratio as rotation sees it: 0 while it is disabled. */
-export function effectiveRatio(track: { enabled: boolean; play_ratio: number }): number {
+/** A track's ratio as rotation sees it: 0 while it is disabled. Listed on a
+ * station, its ratio there (its own, else the default; 0 when disabled
+ * there or everywhere). */
+export function effectiveRatio(track: {
+  enabled: boolean;
+  play_ratio: number;
+  station_ratio?: { ratio: number } | null;
+}): number {
+  if (track.station_ratio) {
+    return track.station_ratio.ratio;
+  }
   return track.enabled ? track.play_ratio : 0;
+}
+
+/** Who disabled a track, and when: `Disabled by admin, 6 Nov 2026, 10:12`. */
+export function disabledText(by: string | null | undefined, atUnixMs: number | null | undefined): string {
+  if (by) {
+    return atUnixMs ? t("ratio.disabledBy", { user: by, date: dateTime(atUnixMs) }) : t("ratio.disabledByUser", { user: by });
+  }
+  return atUnixMs ? t("ratio.disabledAt", { date: dateTime(atUnixMs) }) : "";
 }
 
 export interface Cell {

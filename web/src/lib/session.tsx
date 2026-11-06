@@ -43,6 +43,16 @@ export function useCan(needed: Role): boolean {
 }
 
 /**
+ * Whether the signed-in user can do what `needed` can on each station: their
+ * role on it (a shared admin is admin everywhere). For what a shared page
+ * changes on one station, a track's play ratio there.
+ */
+export function useCanOn(needed: Role): (stationId: number) => boolean {
+  const user = useContext(UserContext);
+  return (stationId) => (user ? can(stationRole(user, stationId), needed) : false);
+}
+
+/**
  * A mutation that shows a toast on success (when given a message) and on
  * failure, and refreshes the queries under `invalidate`.
  */
