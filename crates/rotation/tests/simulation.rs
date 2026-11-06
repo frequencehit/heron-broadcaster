@@ -179,6 +179,7 @@ fn station() -> Station {
         category,
         method,
         enforce_rules: true,
+        linked_to_next: false,
         separation: SeparationOverrides::default(),
     };
     let day = Clock {
@@ -215,6 +216,7 @@ fn station() -> Station {
             slot(BALLADS, Method::Random),
             Slot {
                 enforce_rules: false,
+                linked_to_next: false,
                 ..slot(LONG, Method::Random)
             },
             slot(GOLD, Method::Weighted),
@@ -668,12 +670,14 @@ fn a_small_library_relaxes_step_by_step_and_logs_it() {
                 category: POWER,
                 method: Method::LeastRecentlyPlayed,
                 enforce_rules: true,
+                linked_to_next: false,
                 separation: SeparationOverrides::default(),
             },
             Slot {
                 category: GOLD,
                 method: Method::Random,
                 enforce_rules: true,
+                linked_to_next: false,
                 separation: SeparationOverrides::default(),
             },
         ],
@@ -740,4 +744,52 @@ fn simulations_replay_with_their_seed() {
     let a = simulate(&library, History::default(), None, start(), DAY_MS, 11);
     let b = simulate(&library, History::default(), None, start(), DAY_MS, 11);
     assert_eq!(a, b);
+}
+
+#[test]
+fn a_linked_slot_always_plays_with_its_track_in_the_same_hour() {
+    // POWER announces GOLD: the pair plays in the same hour, or neither.
+    let mut parts = station().parts;
+    let slot = |category, linked_to_next| Slot {
+        category,
+        method: Method::Random,
+        enforce_rules: true,
+        linked_to_next,
+        separation: SeparationOverrides::default(),
+    };
+    parts.clocks = vec![Clock {
+        id: 1,
+        name: "Linked".into(),
+        looping: false,
+        slots: vec![slot(CURRENT, false), slot(POWER, true), slot(GOLD, false)],
+    }];
+    parts.schedule.hours = (1..=7)
+        .flat_map(|d| (0..24).map(move |h| ((d, h), 1)))
+        .collect();
+    let library = Library::new(parts, TimeZone::UTC);
+    let simulation = simulate(&library, History::default(), None, 0, 2 * DAY_MS, 11);
+    assert!(
+        simulation.violations.is_empty(),
+        "{:#?}",
+        simulation.violations
+    );
+    let hour = |ms: i64| ms / 3_600_000;
+    let mut pairs = 0;
+    for (index, pick) in simulation.picks.iter().enumerate() {
+        if pick.explanation.slot == Some(1) {
+            assert!(pick.explanation.linked);
+            let track = &simulation.picks[index + 1];
+            assert_eq!(track.explanation.slot, Some(2));
+            assert_eq!(hour(track.start_unix_ms), hour(pick.start_unix_ms));
+            pairs += 1;
+        }
+    }
+    assert!(pairs > 40, "{pairs}");
+    // Some hours ended on a dropped pair.
+    assert!(simulation.picks.iter().any(|pick| {
+        pick.explanation
+            .skipped_slots
+            .iter()
+            .any(|slot| slot.reason == heron_rotation::SkipReason::LinkedTrackAfterHour)
+    }));
 }
