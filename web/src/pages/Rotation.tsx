@@ -221,7 +221,9 @@ function Details({ explanation }: { explanation: Explanation }) {
                 .map((slot) =>
                   slot.reason === "same_type_in_a_row"
                     ? t("rotationPage.slotInARow", { slot: slot.slot + 1 })
-                    : t("rotationPage.slot", { slot: slot.slot + 1 }),
+                    : slot.reason === "module_off"
+                      ? t("rotationPage.slotModuleOff", { slot: slot.slot + 1 })
+                      : t("rotationPage.slot", { slot: slot.slot + 1 }),
                 )
                 .join(", "),
             })}

@@ -2,6 +2,7 @@
 
 // Encoder profiles and outputs, with each output's live state.
 
+import { useModule } from "../lib/modules";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type EncoderProfileView, type OutputView, type Schemas, api, done, unwrap } from "../api";
@@ -88,6 +89,7 @@ export function Outputs() {
   });
   const live = useLive((state) => state.player?.outputs);
   const listeners = useListenersNow();
+  const statistics = useModule("listener_statistics");
   const [editingOutput, setEditingOutput] = useState<OutputView | "new" | null>(null);
   const [editingProfile, setEditingProfile] = useState<EncoderProfileView | "new" | null>(null);
   const removeOutput = useAction(
@@ -149,7 +151,7 @@ export function Outputs() {
                   <th className="hide-narrow">{t("outputs.server")}</th>
                   <th className="hide-narrow">{t("outputs.encoding")}</th>
                   <th>{t("review.state")}</th>
-                  <th className="num">{t("statistics.listeners")}</th>
+                  {statistics && <th className="num">{t("statistics.listeners")}</th>}
                   <th>
                     <span className="visually-hidden">{t("library.actions")}</span>
                   </th>
@@ -180,12 +182,14 @@ export function Outputs() {
                         )}
                         {status?.error && <div className="bad small">{status.error}</div>}
                       </td>
-                      <td className="num">
-                        <ListenerCount
-                          now={listeners.data?.outputs.find((o) => o.output_id === output.id)}
-                          sessions={output.statistics.admin_password_set}
-                        />
-                      </td>
+                      {statistics && (
+                        <td className="num">
+                          <ListenerCount
+                            now={listeners.data?.outputs.find((o) => o.output_id === output.id)}
+                            sessions={output.statistics.admin_password_set}
+                          />
+                        </td>
+                      )}
                       <td className="actions">
                         {output.listen_url && <ListenLink url={output.listen_url} />}{" "}
                         {isAdmin && (
@@ -375,6 +379,7 @@ function OutputDialog({
   const [adminUser, setAdminUser] = useState(output?.statistics.admin_username ?? "");
   const [adminPassword, setAdminPassword] = useState("");
   const [removeAdmin, setRemoveAdmin] = useState(false);
+  const statistics = useModule("listener_statistics");
   const set = (key: string, value: unknown) => setConfig((c) => ({ ...c, [key]: value }));
 
   const save = useAction(
@@ -524,40 +529,42 @@ function OutputDialog({
           </fieldset>
         ) : null}
         {kind === "icecast" ? (
-          <fieldset>
-            <legend>{t("outputs.statistics")}</legend>
-            <p className="muted small" style={{ marginTop: 0 }}>
-              {t("outputs.statisticsHelp")}
-            </p>
-            <div className="form-grid">
-              <Field label={t("outputs.adminUser")}>
-                <input
-                  className="input"
-                  value={adminUser}
-                  placeholder="admin"
-                  autoComplete="off"
-                  onChange={(e) => setAdminUser(e.target.value)}
-                />
-              </Field>
-              <Field label={t("outputs.adminPassword")} hint={adminPasswordSet ? t("outputs.keepPassword") : undefined}>
-                <input
-                  className="input"
-                  type="password"
-                  autoComplete="new-password"
-                  value={adminPassword}
-                  placeholder={adminPasswordSet && !removeAdmin ? "••••••••" : ""}
-                  disabled={removeAdmin}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                />
-              </Field>
-            </div>
-            {adminPasswordSet && (
-              <label className="check" style={{ marginTop: "0.75rem" }}>
-                <input type="checkbox" checked={removeAdmin} onChange={(e) => setRemoveAdmin(e.target.checked)} />
-                {t("outputs.removeAdminPassword")}
-              </label>
-            )}
-          </fieldset>
+          statistics && (
+            <fieldset>
+              <legend>{t("outputs.statistics")}</legend>
+              <p className="muted small" style={{ marginTop: 0 }}>
+                {t("outputs.statisticsHelp")}
+              </p>
+              <div className="form-grid">
+                <Field label={t("outputs.adminUser")}>
+                  <input
+                    className="input"
+                    value={adminUser}
+                    placeholder="admin"
+                    autoComplete="off"
+                    onChange={(e) => setAdminUser(e.target.value)}
+                  />
+                </Field>
+                <Field label={t("outputs.adminPassword")} hint={adminPasswordSet ? t("outputs.keepPassword") : undefined}>
+                  <input
+                    className="input"
+                    type="password"
+                    autoComplete="new-password"
+                    value={adminPassword}
+                    placeholder={adminPasswordSet && !removeAdmin ? "••••••••" : ""}
+                    disabled={removeAdmin}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                  />
+                </Field>
+              </div>
+              {adminPasswordSet && (
+                <label className="check" style={{ marginTop: "0.75rem" }}>
+                  <input type="checkbox" checked={removeAdmin} onChange={(e) => setRemoveAdmin(e.target.checked)} />
+                  {t("outputs.removeAdminPassword")}
+                </label>
+              )}
+            </fieldset>
+          )
         ) : (
           <Field label={t("outputs.json")} hint={t("outputs.jsonHint")}>
             <textarea className="input" value={json} onChange={(e) => setJson(e.target.value)} rows={8} />
