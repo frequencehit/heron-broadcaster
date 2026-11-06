@@ -25,6 +25,8 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **When a track played**, on its page: its plays of the last 30 days week by week, and the hours of the week it played in over 30, 90 or 365 days, for one station or all of them, all plays or rotation only. Hovering a day or an hour gives the plays; a click on a day opens the history at that day, for that track ([Web UI – Plays by day and hour](docs/web.md#plays-by-day-and-hour)).
 - **Cover art:** each track's cover, kept in Heron (600 and 96 px, each image once, in backups when set by hand), per album with exceptions per track. Found embedded in the files, beside them (`cover.jpg`, `folder.jpg`, `front.jpg`) or on the Cover Art Archive (by `heron-librarian`, one request a second; unsure matches wait on *To organize* as candidates), or set by hand from the track's page (an image or its address). Shown in the track list (a column, a *No cover* filter, *Find covers* on a selection), on the track's page, On air, the queue and the history; `cover_url` in the API, the public endpoints and webhooks (`{{cover_url}}`), where the station's logo stands in for a missing cover ([Library management – Cover art](docs/library.md#cover-art)).
 
+- **Station filter** on the Tracks, Categories and Medleys pages: the switcher's station at first, another station or all of them, kept in the browser per page. On a station, the track list shows what rotation can play there: the tracks of its categories, less those it keeps out of its library. A *No category* choice in the track list's categories, and `on_station_id` and `no_category` on `GET /tracks` ([Web UI – Station filter](docs/web.md#station-filter)).
+
 - **Two-factor authentication:** an authenticator app (TOTP) and passkeys or security keys (WebAuthn), several per user, asked after the password at sign-in; 10 recovery codes, each used once; an admin can require it per role, and a user who must have it sets it up before anything else. `heron-api user reset-2fa <name>` removes a user's second factors. API tokens are not concerned ([API – Two-factor authentication](docs/api.md#two-factor-authentication)).
 
 ### Changed
@@ -39,6 +41,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 
 ### Fixed
 
+- The shared routes that take a station to look at (`GET /tracks?station_id=`, `GET /categories?station_id=`, `GET /medleys?station_id=`, `GET /tracks/{id}/plays/grid?station_id=`, and a selection's filters) answer `404` for a station the user does not see, as that station's routes do.
 - Backups have their database dump again after MariaDB moves to a new version: the Compose file has MariaDB upgrade its own tables when it starts (`MARIADB_AUTO_UPGRADE`). `mariadb-dump` failed on them before (*Column count of mysql.proc is wrong*).
 - A track resumed by a restarted engine, or by one taking over during an upgrade, is no longer reported as a new play: no second `track.started` webhook and no second row in the history.
 - A hot handover retried with a longer lead waits for its stop, instead of giving up after 2 s with the track still on air. An engine that handed over no longer removes its successor's socket.

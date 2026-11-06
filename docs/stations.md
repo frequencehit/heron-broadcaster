@@ -147,7 +147,7 @@ An existing user keeps their role, as their shared role and their role on the fi
 
 ## Web UI
 
-- A **station switcher** at the top of the menu, when there is more than one station the user can see: the On air, Queue, History, programming and station pages show the chosen station, kept per user. Library pages are shared and show the station badges.
+- A **station switcher** at the top of the menu, when there is more than one station the user can see: the On air, Queue, History, programming and station pages show the chosen station, kept per user. Library pages are shared and show the station badges; the Tracks, Categories and Medleys pages show the switcher's station at first, or another one, or all of them ([Web UI – Station filter](web.md#station-filter)).
 - **Stations** page (admins): create, rename, enable or disable, and see each station's engine variable and whether it is set.
 - **Users**: a role per station.
 - Track and artist pages show plays per station and in total. The track page's grids of plays by day and hour show one station or all of them added up.
