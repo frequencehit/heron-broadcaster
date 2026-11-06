@@ -52,6 +52,7 @@ enum Outcome {
 /// are looked up too.
 pub async fn look_up(
     pool: &MySqlPool,
+    files: &covers::Files,
     identifier: &Identifier,
     albums: Albums<'_>,
     candidates: bool,
@@ -62,7 +63,7 @@ pub async fn look_up(
         match outcome(identifier, &album, candidates).await {
             Ok(Outcome::Found { release_id, jpeg }) => {
                 let mut connection = pool.acquire().await?;
-                match covers::store(&mut connection, jpeg).await {
+                match covers::store(&mut connection, files, jpeg).await {
                     Ok(hash) => {
                         let link = Link {
                             hash,
@@ -254,6 +255,7 @@ async fn save_candidates(
 /// fetched for an import, when they have none from a better source.
 pub async fn keep_release_cover(
     pool: &MySqlPool,
+    files: &covers::Files,
     release_id: &str,
     jpeg: &[u8],
 ) -> Result<(), sqlx::Error> {
@@ -268,7 +270,7 @@ pub async fn keep_release_cover(
         return Ok(());
     }
     let mut connection = pool.acquire().await?;
-    let hash = match covers::store(&mut connection, jpeg.to_vec()).await {
+    let hash = match covers::store(&mut connection, files, jpeg.to_vec()).await {
         Ok(hash) => hash,
         Err(covers::CoverError::Database(error)) => return Err(error),
         Err(error) => {
@@ -307,6 +309,7 @@ pub enum ApplyError {
 /// `track_id` only; the album's other candidates are refused.
 pub async fn apply(
     pool: &MySqlPool,
+    files: &covers::Files,
     identifier: &Identifier,
     candidate_id: u64,
     track_id: Option<u64>,
@@ -322,7 +325,7 @@ pub async fn apply(
         .await?
         .ok_or_else(|| ApplyError::NoCover(release_id.clone()))?;
     let mut connection = pool.acquire().await?;
-    let hash = covers::store(&mut connection, jpeg).await?;
+    let hash = covers::store(&mut connection, files, jpeg).await?;
     let link = Link {
         hash,
         source: Source::CoverArtArchive,

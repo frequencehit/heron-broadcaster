@@ -32,6 +32,7 @@ pub const DETAILS_VERSION: u8 = 2;
 /// given. A cover that cannot be read is logged, and left out.
 pub async fn save(
     connection: &mut MySqlConnection,
+    covers: &covers::Files,
     id: u64,
     read: &FileTags,
     file: Option<&Path>,
@@ -78,7 +79,7 @@ pub async fn save(
     .bind(id)
     .execute(&mut *connection)
     .await?;
-    match covers::from_file(connection, id, file, read.cover.as_deref()).await {
+    match covers::from_file(connection, covers, id, file, read.cover.as_deref()).await {
         Ok(()) => Ok(()),
         Err(covers::CoverError::Database(error)) => Err(error),
         Err(error) => {

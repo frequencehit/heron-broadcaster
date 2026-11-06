@@ -3,7 +3,7 @@
 //! Library files, shared by the scanner in `heron-api` (read-only) and
 //! `heron-librarian`, the only service that moves files and writes tags.
 //!
-//! - [`covers`]: cover art kept in Heron's database.
+//! - [`covers`]: cover art kept in Heron, its images in the covers folder.
 //! - [`details`]: the track columns read from a file.
 //! - [`files`]: which files are audio, and how their content is identified.
 //! - [`tags`]: the tags Heron reads and writes.

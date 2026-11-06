@@ -238,7 +238,16 @@ impl TaskRunner {
                 } else {
                     covers::Albums::Of(track_ids)
                 };
-                json(covers::look_up(&self.pool, &self.musicbrainz()?, albums, *candidates).await)
+                json(
+                    covers::look_up(
+                        &self.pool,
+                        &self.roots.covers,
+                        &self.musicbrainz()?,
+                        albums,
+                        *candidates,
+                    )
+                    .await,
+                )
             }
             TaskRequest::ApplyCover {
                 candidate_id,
@@ -246,7 +255,14 @@ impl TaskRunner {
             } => {
                 self.module_on(Module::CoverArt).await?;
                 json(
-                    covers::apply(&self.pool, &self.musicbrainz()?, *candidate_id, *track_id).await,
+                    covers::apply(
+                        &self.pool,
+                        &self.roots.covers,
+                        &self.musicbrainz()?,
+                        *candidate_id,
+                        *track_id,
+                    )
+                    .await,
                 )
             }
             TaskRequest::RenderMedley { medley_id } => {
@@ -313,6 +329,7 @@ impl TaskRunner {
         }
         covers::look_up(
             &self.pool,
+            &self.roots.covers,
             &self.musicbrainz()?,
             covers::Albums::NeverLookedUp(covers::BACKGROUND_ALBUMS),
             false,

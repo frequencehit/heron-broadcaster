@@ -76,6 +76,7 @@ services:
       HERON_LIBRARY_DIR: /music
       HERON_STAGING_DIR: /staging
       HERON_BACKUP_DIR: /var/lib/heron/backups
+      HERON_COVERS_DIR: /var/lib/heron/covers
       HERON_SCAN_INTERVAL: ${HERON_SCAN_INTERVAL:-3600}
       HERON_LIBRARY_WATCH: ${HERON_LIBRARY_WATCH:-true}
     volumes:
@@ -85,6 +86,9 @@ services:
       - ${HERON_STAGING_FOLDER:-./data/staging}:/staging
       # Backups: the configuration file and a database dump, every day.
       - ${HERON_BACKUP_FOLDER:-./data/backups}:/var/lib/heron/backups
+      # Cover images (docs/library.md#where-the-images-are), shared with
+      # heron-librarian.
+      - covers:/var/lib/heron/covers
     depends_on:
       mariadb:
         condition: service_healthy
@@ -142,12 +146,14 @@ services:
       HERON_LIBRARY_DIR: /music
       HERON_INCOMING_DIR: /incoming
       HERON_STAGING_DIR: /staging
+      HERON_COVERS_DIR: /var/lib/heron/covers
       HERON_INCOMING_WATCH: ${HERON_LIBRARY_WATCH:-true}
       HERON_NICE: ${HERON_NICE:-10}
     volumes:
       - ${HERON_MUSIC_DIR:-./data/music}:/music
       - ${HERON_INCOMING_FOLDER:-./data/incoming}:/incoming
       - ${HERON_STAGING_FOLDER:-./data/staging}:/staging
+      - covers:/var/lib/heron/covers
     depends_on:
       # Waits for the API so the schema is migrated first.
       heron-api:
@@ -263,5 +269,6 @@ services:
 
 volumes:
   mariadb-data:
+  covers:
   engine-state:
   engine-relay:

@@ -884,8 +884,14 @@ async fn clear_tag_overrides(
         for (id, absolute, read) in read {
             match read {
                 Ok(read) => {
-                    heron_library::details::save(&mut connection, id, &read, Some(&absolute))
-                        .await?
+                    heron_library::details::save(
+                        &mut connection,
+                        state.library.covers(),
+                        id,
+                        &read,
+                        Some(&absolute),
+                    )
+                    .await?
                 }
                 Err(error) => {
                     tracing::warn!(track = id, %error, "cannot read tags, read at the next scan");

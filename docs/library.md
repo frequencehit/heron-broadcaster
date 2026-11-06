@@ -20,8 +20,9 @@ Like iTunes' "Keep Music folder organized": new files, uploaded from the browser
 | Music library | `HERON_MUSIC_DIR` | `heron-librarian` read-write; `heron-api`, `heron-analyzer`, `heron-engine` read-only |
 | Incoming folder | `HERON_INCOMING_FOLDER` | `heron-librarian` only |
 | Buffer zone | `HERON_STAGING_FOLDER` | `heron-api` (writes uploads) and `heron-librarian`, read-write |
+| Cover images | The `covers` volume (`HERON_COVERS_DIR` in the containers, `/var/lib/heron/covers`) | `heron-api` and `heron-librarian`, read-write ([Cover art](#cover-art)) |
 
-`heron-librarian` and `heron-api` run as `HERON_LIBRARIAN_USER` (`uid:gid`), which must own the three folders: use the output of `id -u` and `id -g` for the owner of your music. The buffer zone is best on the library's file system, so imports are renames rather than copies.
+`heron-librarian` and `heron-api` run as `HERON_LIBRARIAN_USER` (`uid:gid`), which must own the three folders (the `covers` volume is created writable by any user): use the output of `id -u` and `id -g` for the owner of your music. The buffer zone is best on the library's file system, so imports are renames rather than copies.
 
 ## The incoming folder
 
@@ -135,7 +136,7 @@ The whole library is looked up on request (*Settings*, or `POST /api/v1/library/
 
 ## Cover art
 
-Heron keeps a copy of each track's cover in its database, sized for display, and shows it in the web UI, the API, the public endpoints and webhooks. The audio files are never changed for it (`save_cover` and `embed_cover` are about imports, [above](#identification)).
+Heron keeps a copy of each track's cover, sized for display, and shows it in the web UI, the API, the public endpoints and webhooks. The audio files are never changed for it (`save_cover` and `embed_cover` are about imports, [above](#identification)).
 
 **Per album, with exceptions per track.** The tracks of an album share its cover; a track can have its own (a single, a radio edit). An album is its MusicBrainz release ID when its tracks have one, else its album artist (or artist) and album, ignoring case and spaces around. A track without an album or a release ID can only have a cover of its own.
 
@@ -151,7 +152,16 @@ Heron keeps a copy of each track's cover in its database, sized for display, and
 - The scanner reads them when it reads a file's tags: for new and changed files, and once for every track after an upgrade to this version (the tags are read again, nothing is analyzed again).
 - An embedded cover becomes its album's when the album has none, or one from a lower source. A track whose embedded cover differs from its album's (also embedded) keeps its own, as an exception. An image beside the file is read only while the album has no cover from the file or by hand.
 - A cover set by hand for an album replaces the exceptions its tracks found in their files. Removing a cover (by hand or not) looks at the file and its folder again for the next source; a Cover Art Archive cover comes back only when it is asked for.
-- **Stored:** each image once, by its hash (BLAKE3 of the image as found), with its width and height, re-encoded as two JPEGs: 600 px and 96 px on their longest side (never enlarged). Images are decoded and re-encoded, never served as found or uploaded. JPEG, PNG and WebP are read, up to 10 MB and 10,000 px a side. Covers nothing uses any more are deleted after each scan.
+- **Stored:** each image once, by its hash (BLAKE3 of the image as found), re-encoded as two JPEGs: 600 px and 96 px on their longest side (never enlarged). Images are decoded and re-encoded, never served as found or uploaded. JPEG, PNG and WebP are read, up to 10 MB and 10,000 px a side. Covers nothing uses any more are deleted after each scan, their files too.
+
+### Where the images are
+
+The two JPEGs are **files**, in the covers folder (`HERON_COVERS_DIR`, `/var/lib/heron/covers` in the images; the `covers` volume of `docker-compose.yml`), shared by `heron-api` and `heron-librarian`, which both store covers. The database keeps what is known of each image (the `covers` table: its hash, width and height), not the image.
+
+- **Layout:** one folder per first two characters of the hash, then the hash and the size: `3f/3fa2…c9-600.jpg` and `3f/3fa2…c9-96.jpg`. At most 256 folders, so no folder holds too many files.
+- **Written** to a temporary file in the same folder, then renamed: a crash never leaves half an image under a cover's name. Both files are written before the cover's row is added, so a cover in the database always had its files.
+- **Served by the API**, as before: same addresses, same caching (`ETag`). An image whose file is missing (a volume lost or restored apart from the database) answers `404`, which the web interface shows as the placeholder, and is logged. Its files are written again whenever the same image is stored again: the scanner reading the file again, a Cover Art Archive lookup asked for, the same image set by hand, a restore of the configuration file.
+- **Backups:** the covers set by hand and the station logos are in the configuration file with their images; the others are found again ([Backups](backups.md#what-the-configuration-file-holds)). The database dump has no images.
 
 ### The Cover Art Archive
 
@@ -169,7 +179,7 @@ The candidates' thumbnails are loaded by the browser from the Cover Art Archive 
 
 ### The station logo
 
-Each station can have a logo (*Settings › Station*), stored like a cover. It stands in for a missing cover on the public side: the public endpoints and webhooks. Heron's own pages show a neutral placeholder instead.
+Each station can have a logo (*Settings › Station*), stored like a cover, in the covers folder. It stands in for a missing cover on the public side: the public endpoints and webhooks. Heron's own pages show a neutral placeholder instead.
 
 ## Layout
 

@@ -88,6 +88,7 @@ pub struct ScanOptions {
 pub struct Library {
     pool: MySqlPool,
     root: PathBuf,
+    covers: heron_library::covers::Files,
     last_scan: Mutex<Option<ScanReport>>,
 }
 
@@ -169,10 +170,11 @@ impl Library {
         })
     }
 
-    pub fn new(pool: MySqlPool, root: PathBuf) -> Self {
+    pub fn new(pool: MySqlPool, root: PathBuf, covers: heron_library::covers::Files) -> Self {
         Self {
             pool,
             root,
+            covers,
             last_scan: Mutex::new(None),
         }
     }
@@ -180,6 +182,11 @@ impl Library {
     /// The library root, as mounted in this container (read-only).
     pub fn root(&self) -> &std::path::Path {
         &self.root
+    }
+
+    /// The covers folder (`HERON_COVERS_DIR`).
+    pub fn covers(&self) -> &heron_library::covers::Files {
+        &self.covers
     }
 
     pub fn last_scan(&self) -> Option<ScanReport> {
@@ -346,7 +353,7 @@ impl Library {
         }
 
         report.enqueued += heron_analysis::jobs::enqueue_stale(&self.pool, &settings).await?;
-        if let Err(error) = heron_library::covers::prune(&self.pool).await {
+        if let Err(error) = heron_library::covers::prune(&self.pool, &self.covers).await {
             tracing::warn!(%error, "cannot delete the covers nothing uses");
         }
 
@@ -445,7 +452,7 @@ impl Library {
         .await?
         .last_insert_id();
         let absolute = file.path.resolve(&self.root);
-        details::save(&mut tx, id, &info.tags, Some(&absolute)).await?;
+        details::save(&mut tx, &self.covers, id, &info.tags, Some(&absolute)).await?;
         tx.commit().await
     }
 
@@ -469,7 +476,7 @@ impl Library {
         .execute(&mut *tx)
         .await?;
         let absolute = file.path.resolve(&self.root);
-        details::save(&mut tx, id, &info.tags, Some(&absolute)).await?;
+        details::save(&mut tx, &self.covers, id, &info.tags, Some(&absolute)).await?;
         // The file changed: its cue points may be wrong, analyze it again.
         if file_changed {
             sqlx::query("DELETE FROM track_analysis WHERE track_id = ?")
@@ -490,7 +497,7 @@ impl Library {
         match read {
             Ok(read) => {
                 let mut connection = self.pool.acquire().await?;
-                details::save(&mut connection, id, &read, Some(&file)).await?;
+                details::save(&mut connection, &self.covers, id, &read, Some(&file)).await?;
                 Ok(true)
             }
             Err(error) => {
@@ -597,6 +604,7 @@ fn now_us() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use heron_library::covers::Files;
     use heron_service::db::ScratchDatabase;
 
     fn write_wav(path: &Path, seconds: f64, freq: f64) {
@@ -643,7 +651,12 @@ mod tests {
         write_wav(&root.join("Artist/Album/._01 One.wav"), 0.1, 440.0);
         write_wav(&root.join(".hidden/secret.wav"), 0.1, 440.0);
         std::fs::write(root.join("Artist/Album/cover.jpg"), b"jpeg").unwrap();
-        let library = Library::new(db.pool.clone(), root.to_path_buf());
+        let covers = tempfile::tempdir().unwrap();
+        let library = Library::new(
+            db.pool.clone(),
+            root.to_path_buf(),
+            Files::new(covers.path()),
+        );
 
         let first = scan(&library).await;
         assert_eq!(
@@ -710,7 +723,12 @@ mod tests {
             .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
             .unwrap();
         std::fs::write(root.join("Band/Record/Folder.png"), &png).unwrap();
-        let library = Library::new(db.pool.clone(), root.to_path_buf());
+        let covers = tempfile::tempdir().unwrap();
+        let library = Library::new(
+            db.pool.clone(),
+            root.to_path_buf(),
+            Files::new(covers.path()),
+        );
         assert_eq!(scan(&library).await.added, 2);
         let covers: Vec<(String, Option<String>, i64)> = sqlx::query_as(
             "SELECT CAST(c.source AS CHAR), c.detail,
@@ -734,7 +752,12 @@ mod tests {
         };
         let dir = tempfile::tempdir().unwrap();
         write_wav(&dir.path().join("a.wav"), 1.0, 440.0);
-        let library = Library::new(db.pool.clone(), dir.path().to_path_buf());
+        let covers = tempfile::tempdir().unwrap();
+        let library = Library::new(
+            db.pool.clone(),
+            dir.path().to_path_buf(),
+            Files::new(covers.path()),
+        );
         scan(&library).await;
         let details: (Option<String>, Option<u32>, Option<u32>, Option<u8>) =
             sqlx::query_as("SELECT codec, bitrate_kbps, sample_rate, channels FROM tracks")
@@ -785,7 +808,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write_wav(&root.join("old/a.wav"), 1.0, 440.0);
-        let library = Library::new(db.pool.clone(), root.to_path_buf());
+        let covers = tempfile::tempdir().unwrap();
+        let library = Library::new(
+            db.pool.clone(),
+            root.to_path_buf(),
+            Files::new(covers.path()),
+        );
         scan(&library).await;
 
         // A copy landed at the new path, then the librarian crashed.
@@ -815,7 +843,12 @@ mod tests {
         };
         let dir = tempfile::tempdir().unwrap();
         write_wav(&dir.path().join("a.wav"), 0.5, 440.0);
-        let library = Library::new(db.pool.clone(), dir.path().to_path_buf());
+        let covers = tempfile::tempdir().unwrap();
+        let library = Library::new(
+            db.pool.clone(),
+            dir.path().to_path_buf(),
+            Files::new(covers.path()),
+        );
         scan(&library).await;
 
         std::fs::remove_file(dir.path().join("a.wav")).unwrap();
@@ -829,7 +862,12 @@ mod tests {
         let Some(db) = ScratchDatabase::create().await else {
             return;
         };
-        let library = Library::new(db.pool.clone(), PathBuf::from("/nonexistent/library"));
+        let covers = tempfile::tempdir().unwrap();
+        let library = Library::new(
+            db.pool.clone(),
+            PathBuf::from("/nonexistent/library"),
+            Files::new(covers.path()),
+        );
         assert!(matches!(
             library.scan(Duration::ZERO).await,
             Err(ScanError::Root { .. })

@@ -66,7 +66,7 @@ See [Library management – Cover art](library.md#cover-art).
 
 | Table | Columns |
 |---|---|
-| `covers` | hash (BLAKE3 of the image as found, the key: each image is stored once), width, height (of the image as found), image (600 px JPEG), thumbnail (96 px JPEG), created_at |
+| `covers` | hash (BLAKE3 of the image as found, the key: each image is stored once), width, height (of the image as found), created_at. The images (600 and 96 px JPEGs) are files in the covers folder ([Library management – Where the images are](library.md#where-the-images-are)) |
 | `album_covers` | album_key, cover_hash, source (hand, embedded, file, cover_art_archive), detail (the file's name for `file`, the release ID for `cover_art_archive`), updated_by, updated_at — the cover of an album |
 | `track_covers` | track_id, cover_hash, source, detail, updated_by, updated_at — a track's own cover, in place of its album's |
 | `cover_lookups` | album_key, status (found, candidates, not_found, failed), error, looked_up_at — albums looked up on the Cover Art Archive, not looked up again by themselves |
