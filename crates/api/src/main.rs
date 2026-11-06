@@ -15,6 +15,7 @@ mod backups;
 mod categories;
 mod category_types;
 mod clocks;
+mod covers;
 #[cfg(test)]
 mod e2e;
 mod engine;

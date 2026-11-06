@@ -912,6 +912,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/covers/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The albums whose Cover Art Archive search was unsure and that have no
+         *     cover, with their candidates.
+         */
+        get: operations["list_cover_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/covers/candidates/refuse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refuses every candidate of an album: it keeps no cover. Operators and
+         *     admins.
+         */
+        post: operations["refuse_cover_candidates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/covers/candidates/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Picks a candidate: a library task fetches it, for its album or for one
+         *     track, and refuses the album's other candidates. Operators and admins.
+         */
+        post: operations["accept_cover_candidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/covers/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Looks the albums of a selection up on the Cover Art Archive (every
+         *     album without a cover when there is none), as a library task.
+         *     Operators and admins.
+         */
+        post: operations["fetch_covers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encoder-profiles": {
         parameters: {
             query?: never;
@@ -1852,6 +1933,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/covers/{hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A cover or a station logo, by its hash. No sign-in; any origin. Its
+         *     address changes with the image: it is cached for a year.
+         */
+        get: operations["public_cover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/history": {
         parameters: {
             query?: never;
@@ -2381,6 +2482,28 @@ export interface paths {
         put: operations["put_station"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/station/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's logo as JPEG, 404 when it has none. */
+        get: operations["get_station_logo"];
+        /**
+         * Sets the station's logo (JPEG, PNG or WebP, at most 10 MB): it stands in
+         *     for a missing cover on the public side. Admins only.
+         */
+        put: operations["put_station_logo"];
+        post?: never;
+        /** Removes the station's logo. Admins only. */
+        delete: operations["delete_station_logo"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3376,6 +3499,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/settings/station/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's logo as JPEG, 404 when it has none. */
+        get: operations["get_station_logo_on_station"];
+        /**
+         * Sets the station's logo (JPEG, PNG or WebP, at most 10 MB): it stands in
+         *     for a missing cover on the public side. Admins only.
+         */
+        put: operations["put_station_logo_on_station"];
+        post?: never;
+        /** Removes the station's logo. Admins only. */
+        delete: operations["delete_station_logo_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/webhook-deliveries/{id}/retry": {
         parameters: {
             query?: never;
@@ -3798,6 +3943,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tracks/{id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The track's cover as JPEG, 404 when it has none. Its address stays the
+         *     same when the cover changes: it is revalidated (`ETag`).
+         */
+        get: operations["get_track_cover"];
+        /**
+         * Sets the track's cover by hand, for its album (the default) or for the
+         *     track only. The body is the image (JPEG, PNG or WebP, at most 10 MB),
+         *     or `{"url"}`: the API fetches it. Operators and admins.
+         */
+        put: operations["put_track_cover"];
+        post?: never;
+        /**
+         * Removes the album's cover (the default) or the track's own, whatever
+         *     its source; the file and its folder are looked at again for the next
+         *     source. Answers the cover the track shows now. Operators and admins.
+         */
+        delete: operations["delete_track_cover"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tracks/{id}/hook": {
         parameters: {
             query?: never;
@@ -4104,6 +4279,13 @@ export interface components {
             dependencies?: components["schemas"]["Dependencies"] | null;
             runtime?: components["schemas"]["Runtime"] | null;
             services: components["schemas"]["ServiceInfo"][];
+        };
+        AcceptRequest: {
+            /**
+             * Format: int64
+             * @description For this track only; for its album when left out.
+             */
+            track_id?: number | null;
         };
         /** @description What a station keeps apart from the other stations' plays and queues. */
         AcrossStations: {
@@ -4801,6 +4983,24 @@ export interface components {
              */
             min_free_bytes: number;
         };
+        /** @description An album whose search was unsure. */
+        CandidateAlbum: {
+            album?: string | null;
+            album_key: string;
+            artist?: string | null;
+            /** @description Best first. */
+            candidates: components["schemas"]["CoverCandidate"][];
+            /**
+             * Format: int64
+             * @description One of its tracks.
+             */
+            track_id: number;
+            /**
+             * Format: int64
+             * @description Its tracks.
+             */
+            tracks: number;
+        };
         CategoriesChange: {
             /**
              * @description Categories every selected track is put in (with this weight, also
@@ -5051,6 +5251,57 @@ export interface components {
              *     not be written.
              */
             left_in_clear: string[];
+        };
+        /** @description An image to fetch from an address. */
+        CoverAddress: {
+            /** @description `http` or `https`. */
+            url: string;
+        };
+        /** @description A release proposed by an unsure search. */
+        CoverCandidate: {
+            artist?: string | null;
+            country?: string | null;
+            date?: string | null;
+            /** Format: int64 */
+            id: number;
+            release_id: string;
+            /**
+             * Format: int32
+             * @description MusicBrainz's, 0 to 100.
+             */
+            score: number;
+            /** @description The release's front cover (250 px) on the Cover Art Archive. */
+            thumbnail_url: string;
+            title?: string | null;
+        };
+        /** @enum {string} */
+        CoverScope: "album" | "track";
+        /** @enum {string} */
+        CoverSource: "hand" | "embedded" | "file" | "cover_art_archive";
+        /** @description What a Cover Art Archive lookup did. */
+        CoversReport: {
+            /**
+             * Format: int64
+             * @description Albums looked up.
+             */
+            albums: number;
+            /**
+             * Format: int64
+             * @description Albums whose search was unsure: their candidates wait for review.
+             */
+            candidates: number;
+            /**
+             * Format: int64
+             * @description Lookups that failed (MusicBrainz or the Cover Art Archive unreachable).
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description Albums given a cover.
+             */
+            found: number;
+            /** Format: int64 */
+            not_found: number;
         };
         CreatedToken: {
             /** Format: int64 */
@@ -5617,6 +5868,14 @@ export interface components {
          * @enum {string}
          */
         FadeCurve: "linear" | "s_curve" | "logarithmic" | "exponential";
+        FetchRequest: {
+            /**
+             * @description Shows the results as candidates even when one is sure, and looks up
+             *     albums that have a cover too.
+             */
+            candidates?: boolean;
+            selection?: components["schemas"]["TrackSelection"] | null;
+        };
         FileSelection: {
             file_ids: number[];
         };
@@ -6314,6 +6573,11 @@ export interface components {
             /** @description The station's AcoustID application key; `null` removes it. */
             acoustid_key?: string | null;
             embed_cover?: boolean | null;
+            /**
+             * @description Look albums without a cover up on the Cover Art Archive in the
+             *     background.
+             */
+            fetch_covers?: boolean | null;
             /** @description See `docs/library.md#layout`. */
             layout?: string | null;
             /**
@@ -6345,6 +6609,11 @@ export interface components {
             /** @description Whether the station has set its AcoustID key (identification is off without one). */
             acoustid_key_set: boolean;
             embed_cover: boolean;
+            /**
+             * @description Albums without a cover are looked up on the Cover Art Archive in
+             *     the background.
+             */
+            fetch_covers: boolean;
             layout: string;
             /**
              * Format: int64
@@ -6394,6 +6663,7 @@ export interface components {
             tracks: number;
         };
         LibraryTask: {
+            covers?: components["schemas"]["CoversReport"] | null;
             /** Format: int64 */
             created_at_unix_ms: number;
             details?: components["schemas"]["DetailsReport"] | null;
@@ -7080,6 +7350,8 @@ export interface components {
         Play: {
             album?: string | null;
             artist?: string | null;
+            /** @description The track's cover, as in track summaries. */
+            cover_url?: string | null;
             deck: components["schemas"]["DeckName"];
             end_reason?: components["schemas"]["EndReason"] | null;
             /**
@@ -7309,6 +7581,8 @@ export interface components {
         PublicPlay: {
             album?: string | null;
             artist?: string | null;
+            /** @description Its cover, else the station's logo. */
+            cover_url?: string | null;
             /**
              * Format: int64
              * @description Missing while the track plays.
@@ -7328,6 +7602,8 @@ export interface components {
         PublicTrack: {
             album?: string | null;
             artist?: string | null;
+            /** @description Its cover, else the station's logo (docs/api.md#public-endpoints). */
+            cover_url?: string | null;
             /**
              * Format: int64
              * @description From the cue-in to the cue-out.
@@ -7545,6 +7821,9 @@ export interface components {
         RecoveryCodes: {
             /** @description Shown once. */
             recovery_codes: string[];
+        };
+        RefuseRequest: {
+            album_key: string;
         };
         /** @description What a MusicBrainz relationships lookup found. */
         RelationsReport: {
@@ -8290,6 +8569,12 @@ export interface components {
         /** @description The station itself. */
         StationSettings: {
             /**
+             * @description The address `heron-web` is reached at from outside
+             *     (`https://radio.example.org`): cover addresses of the public
+             *     endpoints and webhooks start with it. Paths only when missing.
+             */
+            public_url?: string | null;
+            /**
              * @description IANA time zone the clocks and restrictions follow, e.g.
              *     `Europe/Paris`. By default the server's (`TZ`), or UTC.
              */
@@ -8530,6 +8815,18 @@ export interface components {
             /** Format: int64 */
             medley_id: number;
             parts: components["schemas"]["Part"][];
+        } | {
+            candidates?: boolean;
+            /** @enum {string} */
+            kind: "fetch_covers";
+            track_ids?: number[];
+        } | {
+            /** Format: int64 */
+            candidate_id: number;
+            /** @enum {string} */
+            kind: "apply_cover";
+            /** Format: int64 */
+            track_id?: number | null;
         };
         /** @enum {string} */
         TaskStatus: "pending" | "running" | "done" | "failed";
@@ -8611,6 +8908,22 @@ export interface components {
             /** Format: double */
             weight: number;
         };
+        /** @description A track's cover, as its page shows it. */
+        TrackCover: {
+            /** @description The file's name (`file`), the release ID (`cover_art_archive`). */
+            detail?: string | null;
+            /** Format: int32 */
+            height: number;
+            scope: components["schemas"]["CoverScope"];
+            source: components["schemas"]["CoverSource"];
+            /** @description `/api/v1/public/covers/…`; `?size=96` for the thumbnail. */
+            url: string;
+            /**
+             * Format: int32
+             * @description Of the image as found.
+             */
+            width: number;
+        };
         TrackDetail: components["schemas"]["TrackSummary"] & {
             analysis?: components["schemas"]["TrackAnalysis"] | null;
             /**
@@ -8619,6 +8932,9 @@ export interface components {
              */
             bpm_by_hand?: number | null;
             categories: components["schemas"]["TrackCategory"][];
+            cover?: components["schemas"]["TrackCover"] | null;
+            /** @description Its album's Cover Art Archive candidates, waiting for an operator. */
+            cover_candidates: components["schemas"]["CoverCandidate"][];
             /**
              * Format: int64
              * @description In the trash since then (purged after `trash_days`).
@@ -8688,7 +9004,7 @@ export interface components {
             year_tag?: number | null;
         };
         /** @enum {string} */
-        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review";
+        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
         TrackIdentification: {
             /** @description Why the track needs review. */
             reason?: string | null;
@@ -8935,6 +9251,11 @@ export interface components {
             /** @description `MP3`, `AAC`, `FLAC`, … */
             codec?: string | null;
             /**
+             * @description Its cover (its own, else its album's), `/api/v1/public/covers/…`:
+             *     the address changes with the image. `?size=96` for a thumbnail.
+             */
+            cover_url?: string | null;
+            /**
              * Format: int64
              * @description Where it plays from and to in its file (cue points, overrides
              *     applied), for previews; none for the start or the end of the file.
@@ -9078,6 +9399,8 @@ export interface components {
         UpcomingTrack: {
             album?: string | null;
             artist?: string | null;
+            /** @description Its cover, else the station's logo; filled by [`fill_covers`]. */
+            cover_url?: string | null;
             /**
              * Format: int64
              * @description From the cue-in to the cue-out.
@@ -11337,6 +11660,126 @@ export interface operations {
             };
         };
     };
+    list_cover_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateAlbum"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refuse_cover_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefuseRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_cover_candidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptRequest"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryTask"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    fetch_covers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchRequest"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryTask"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_profiles: {
         parameters: {
             query?: never;
@@ -13313,6 +13756,44 @@ export interface operations {
             };
         };
     };
+    public_cover: {
+        parameters: {
+            query?: {
+                /** @description 600 (the default) or 96. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": number[];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     public_history: {
         parameters: {
             query?: {
@@ -14664,6 +15145,98 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StationSettings"];
                 };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_station_logo: {
+        parameters: {
+            query?: {
+                /** @description 600 (the default) or 96. */
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": number[];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_station_logo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": number[];
+                "image/png": number[];
+                "image/webp": number[];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_station_logo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": {
                 headers: {
@@ -17201,6 +17774,107 @@ export interface operations {
             };
         };
     };
+    get_station_logo_on_station: {
+        parameters: {
+            query?: {
+                /** @description 600 (the default) or 96. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": number[];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_station_logo_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": number[];
+                "image/png": number[];
+                "image/webp": number[];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_station_logo_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     retry_delivery_on_station: {
         parameters: {
             query?: never;
@@ -17600,7 +18274,7 @@ export interface operations {
                 /** @description Words found in the title, artist, album, album artist, genre or path. */
                 q?: string;
                 category_id?: number;
-                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review";
+                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
                 /** @description Tracks with every one of these labels (IDs, comma-separated). */
                 labels_all?: string;
                 /** @description Tracks with at least one of these labels. */
@@ -18070,6 +18744,115 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackCategory"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_track_cover: {
+        parameters: {
+            query?: {
+                /** @description 600 (the default) or 96. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": number[];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_track_cover: {
+        parameters: {
+            query?: {
+                /** @description The album's cover (the default), or the track's own. */
+                scope?: "album" | "track";
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverAddress"];
+                "image/jpeg": number[];
+                "image/png": number[];
+                "image/webp": number[];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackCover"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_track_cover: {
+        parameters: {
+            query?: {
+                /** @description The album's cover (the default), or the track's own. */
+                scope?: "album" | "track";
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackCover"] | null;
                 };
             };
             "4XX": {

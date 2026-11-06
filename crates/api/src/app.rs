@@ -122,6 +122,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(stations::router())
         .merge(player::router())
         .merge(tracks::router())
+        .merge(crate::covers::router())
         .merge(crate::play_grid::router())
         .merge(selection::router())
         .merge(labels::router())

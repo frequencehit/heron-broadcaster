@@ -14,7 +14,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use heron_core::LibrarySettings;
 use heron_core::library::{
-    BatchReport, DetailsReport, OrganizePlan, PurgeReport, RelationsReport, TRASH_DIR, TaskRequest,
+    BatchReport, CoversReport, DetailsReport, OrganizePlan, PurgeReport, RelationsReport,
+    TRASH_DIR, TaskRequest,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -72,6 +73,8 @@ pub struct LibraryTask {
     pub details: Option<DetailsReport>,
     /// What emptying the trash removed.
     pub purge: Option<PurgeReport>,
+    /// What a finished Cover Art Archive lookup did.
+    pub covers: Option<CoversReport>,
     pub requested_by: Option<String>,
     pub created_at_unix_ms: i64,
     pub started_at_unix_ms: Option<i64>,
@@ -109,8 +112,8 @@ fn task(
         _ => TaskStatus::Pending,
     };
     let result = result.as_deref().filter(|_| status == TaskStatus::Done);
-    let (mut plan, mut report, mut relations, mut details, mut purge) =
-        (None, None, None, None, None);
+    let (mut plan, mut report, mut relations, mut details, mut purge, mut covers) =
+        (None, None, None, None, None, None);
     match (&request, result) {
         (_, None) => {}
         (TaskRequest::OrganizePlan, Some(result)) => plan = serde_json::from_str(result).ok(),
@@ -121,6 +124,9 @@ fn task(
             details = serde_json::from_str(result).ok();
         }
         (TaskRequest::EmptyTrash, Some(result)) => purge = serde_json::from_str(result).ok(),
+        (TaskRequest::FetchCovers { .. } | TaskRequest::ApplyCover { .. }, Some(result)) => {
+            covers = serde_json::from_str(result).ok();
+        }
         (_, Some(result)) => report = serde_json::from_str(result).ok(),
     }
     Ok(LibraryTask {
@@ -133,6 +139,7 @@ fn task(
         relations,
         details,
         purge,
+        covers,
         requested_by,
         created_at_unix_ms: created,
         started_at_unix_ms: started,

@@ -2115,6 +2115,7 @@ dependencies = [
  "heron-service",
  "hmac 0.13.0",
  "hound",
+ "image",
  "jiff",
  "metrics",
  "notify",

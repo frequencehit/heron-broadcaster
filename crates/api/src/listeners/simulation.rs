@@ -193,6 +193,7 @@ async fn simulated_listeners_are_counted() {
         StationSettings::SETTINGS_NAME,
         &StationSettings {
             timezone: "UTC".to_owned(),
+            public_url: None,
         },
     )
     .await

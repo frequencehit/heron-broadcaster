@@ -689,6 +689,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn covers_beside_the_files_become_their_albums() {
+        let Some(db) = ScratchDatabase::create().await else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        for (name, freq) in [("01.wav", 440.0), ("02.wav", 550.0)] {
+            let path = root.join("Band/Record").join(name);
+            write_wav(&path, 1.0, freq);
+            let tags = heron_library::Tags {
+                artist: Some("Band".into()),
+                album: Some("Record".into()),
+                ..heron_library::Tags::default()
+            };
+            heron_library::tags::write(&path, &tags, heron_library::tags::Cover::Keep).unwrap();
+        }
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(40, 40))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        std::fs::write(root.join("Band/Record/Folder.png"), &png).unwrap();
+        let library = Library::new(db.pool.clone(), root.to_path_buf());
+        assert_eq!(scan(&library).await.added, 2);
+        let covers: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+            "SELECT CAST(c.source AS CHAR), c.detail,
+                    (SELECT COUNT(*) FROM tracks t WHERE t.album_key = c.album_key)
+             FROM album_covers c",
+        )
+        .fetch_all(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            covers,
+            [("file".to_owned(), Some("Folder.png".to_owned()), 2)]
+        );
+        db.drop().await;
+    }
+
+    #[tokio::test]
     async fn tracks_scanned_before_m5b_get_their_details_without_analysis() {
         let Some(db) = ScratchDatabase::create().await else {
             return;
