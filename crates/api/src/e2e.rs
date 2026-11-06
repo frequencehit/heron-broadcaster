@@ -4693,7 +4693,7 @@ async fn play_ratios_hold_tracks_back_and_disable_them_at_zero() {
     assert_eq!(status, StatusCode::OK, "{detail}");
     assert_eq!(detail["play_ratio"], 1);
     assert_eq!(detail["enabled"], true);
-    assert_eq!(detail["ratio_counters"].as_array().unwrap().len(), 2);
+    assert_eq!(detail["station_ratios"].as_array().unwrap().len(), 2);
     // Sorted by artist: Artist 2's track has the default ratio.
     assert_eq!(admin.get("/tracks").await["items"][1]["play_ratio"], 10);
     let below = admin.get("/tracks?ratio_max=9").await;
@@ -4752,7 +4752,7 @@ async fn play_ratios_hold_tracks_back_and_disable_them_at_zero() {
     }
     // A counter per station: the other one has not moved.
     let detail = admin.get(&track(t[0])).await;
-    let counters = detail["ratio_counters"].as_array().unwrap();
+    let counters = detail["station_ratios"].as_array().unwrap();
     let on = |id: u64| counters.iter().find(|c| c["station_id"] == id).unwrap()["counter"].clone();
     assert_eq!(on(other), 10);
 
@@ -4763,7 +4763,7 @@ async fn play_ratios_hold_tracks_back_and_disable_them_at_zero() {
         .await;
     assert_eq!(status, StatusCode::OK, "{detail}");
     assert!(
-        detail["ratio_counters"]
+        detail["station_ratios"]
             .as_array()
             .unwrap()
             .iter()
@@ -4778,7 +4778,7 @@ async fn play_ratios_hold_tracks_back_and_disable_them_at_zero() {
     let entry = body["entry_ids"][0].as_u64().unwrap();
     let detail = admin.get(&track(t[0])).await;
     assert!(
-        detail["ratio_counters"]
+        detail["station_ratios"]
             .as_array()
             .unwrap()
             .iter()
@@ -4873,6 +4873,428 @@ async fn play_ratios_hold_tracks_back_and_disable_them_at_zero() {
             (json!(true), json!(4))
         );
     }
+    station.stop().await;
+}
+
+/// Play ratios per station: a station's own ratio, a track disabled on
+/// one station only, who disabled it, bulk edits and a CSV import for the
+/// station shown, a station's counters reset, and the roles they take.
+#[tokio::test(flavor = "multi_thread")]
+async fn play_ratios_per_station() {
+    let Some(mut station) = Station::start().await else {
+        return;
+    };
+    let (_engine, _state_dir, second_url, grpc) = start_engine(station.library.path(), None).await;
+    station.tasks.push(grpc);
+    station.state.stations.set_engine("hits80", &second_url);
+    let admin = station.signed_in("admin").await;
+    let t = station.tracks.clone();
+    let track = |id: u64| format!("/tracks/{id}");
+    // Autofill off: only this test moves the counters.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    sqlx::query("DELETE FROM track_ratio_counters")
+        .execute(&station.db.pool)
+        .await
+        .unwrap();
+    let first = admin.get("/stations").await[0]["id"].as_u64().unwrap();
+    let first_code = admin.get("/stations").await[0]["code"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/stations",
+            json!({"name": "Hits 80", "code": "hits80"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let second = body["id"].as_u64().unwrap();
+    let (status, category) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Both", "color": null, "station_ids": [first, second]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{category}");
+    for id in &t {
+        let (status, body) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{id}/categories"),
+                json!([{"category_id": category["id"]}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    // A viewer of what is shared and of the first station, operator of
+    // the second.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/users",
+            json!({"username": "eighties", "password": "correct horse", "role": "viewer",
+                   "station_roles": [{"station_id": first, "role": "viewer"},
+                                     {"station_id": second, "role": "operator"}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let eighties = station.signed_in("eighties").await;
+    let viewer = station.signed_in("viewer").await;
+    let on = |detail: &Value, station_id: u64| -> Value {
+        detail["station_ratios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|on| on["station_id"] == station_id)
+            .unwrap()
+            .clone()
+    };
+
+    // Roles: the station's for its ratios, the shared one for the default.
+    for (client, patch, expected) in [
+        (
+            &eighties,
+            json!({"station_id": first, "play_ratio": 3}),
+            StatusCode::FORBIDDEN,
+        ),
+        (&eighties, json!({"play_ratio": 3}), StatusCode::FORBIDDEN),
+        (
+            &viewer,
+            json!({"station_id": second, "play_ratio": 3}),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            &admin,
+            json!({"default_ratio": true}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            &admin,
+            json!({"station_id": second, "default_ratio": true, "play_ratio": 3}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        let (status, body) = client.send(Method::PATCH, &track(t[0]), patch).await;
+        assert_eq!(status, expected, "{body}");
+    }
+    let (status, detail) = eighties
+        .send(
+            Method::PATCH,
+            &track(t[0]),
+            json!({"station_id": second, "play_ratio": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["play_ratio"], 10);
+    let there = on(&detail, second);
+    assert_eq!(
+        (&there["play_ratio"], &there["ratio"], &there["enabled"]),
+        (&json!(3), &json!(3), &json!(true))
+    );
+    let here = on(&detail, first);
+    assert_eq!(
+        (&here["play_ratio"], &here["ratio"]),
+        (&Value::Null, &json!(10))
+    );
+    // The list shows the station's ratio, and filters on it.
+    let page = admin
+        .get(&format!("/tracks?on_station_id={second}&ratio_max=3"))
+        .await;
+    assert_eq!(page["total"], 1, "{page}");
+    assert_eq!(page["items"][0]["station_ratio"]["ratio"], 3);
+    assert_eq!(
+        admin
+            .get(&format!("/tracks?on_station_id={first}&ratio_max=3"))
+            .await["total"],
+        0
+    );
+    assert_eq!(
+        admin.get("/tracks").await["items"][0]["station_ratio"],
+        Value::Null
+    );
+
+    // 0 on the first station disables it there only, and says who did.
+    let (status, detail) = admin
+        .send(
+            Method::PATCH,
+            &track(t[0]),
+            json!({"station_id": first, "play_ratio": 0}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["enabled"], true);
+    let here = on(&detail, first);
+    assert_eq!(
+        (&here["enabled"], &here["ratio"]),
+        (&json!(false), &json!(0))
+    );
+    assert_eq!(here["disabled_by"], "admin");
+    assert!(here["disabled_at_unix_ms"].as_i64().unwrap() > 0);
+    assert_eq!(on(&detail, second)["ratio"], 3);
+    let disabled = |station_id: u64| {
+        let admin = &admin;
+        async move {
+            admin
+                .get(&format!(
+                    "/tracks?filter=disabled&on_station_id={station_id}"
+                ))
+                .await["total"]
+                .clone()
+        }
+    };
+    assert_eq!(disabled(first).await, 1);
+    assert_eq!(disabled(second).await, 0);
+    assert_eq!(admin.get("/tracks?filter=disabled").await["total"], 0);
+    let listed = admin
+        .get(&format!("/tracks?on_station_id={first}&ratio_max=0"))
+        .await;
+    assert_eq!(listed["items"][0]["station_ratio"]["disabled_by"], "admin");
+    // Not queued by hand there, never picked by its rotation.
+    let (status, body) = admin
+        .send(Method::POST, "/queue", json!({"track_ids": [t[0]]}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("disabled on this station"),
+        "{body}"
+    );
+    let (status, report) = admin
+        .send(
+            Method::POST,
+            "/rotation/simulate",
+            json!({"hours": 1, "seed": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let picks = report["simulation"]["picks"].as_array().unwrap();
+    assert!(!picks.is_empty());
+    assert!(picks.iter().all(|pick| pick["track_id"] != t[0]));
+    assert!(
+        picks.iter().all(|pick| pick["explanation"]["ratio"] == 10),
+        "{}",
+        picks[0]
+    );
+    // Queued, then disabled on the station: it leaves the queue.
+    let (status, body) = admin
+        .send(Method::POST, "/queue", json!({"track_ids": [t[1]]}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let entry = body["entry_ids"][0].as_u64().unwrap();
+    let (status, body) = admin
+        .send(
+            Method::PATCH,
+            &track(t[1]),
+            json!({"station_id": first, "enabled": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    eventually(
+        "the track out of the queue",
+        Duration::from_secs(10),
+        || async {
+            let queue = admin.get("/queue").await;
+            (!queue
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["entry_id"] == entry))
+            .then_some(())
+        },
+    )
+    .await;
+    // Enabled again there at a ratio, then back to the default.
+    let (status, detail) = admin
+        .send(
+            Method::PATCH,
+            &track(t[0]),
+            json!({"station_id": first, "enabled": true, "play_ratio": 6}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    let here = on(&detail, first);
+    assert_eq!(
+        (&here["enabled"], &here["play_ratio"], &here["disabled_by"]),
+        (&json!(true), &json!(6), &Value::Null)
+    );
+    for id in [t[0], t[1]] {
+        let (status, detail) = admin
+            .send(
+                Method::PATCH,
+                &track(id),
+                json!({"station_id": first, "default_ratio": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{detail}");
+        let here = on(&detail, first);
+        assert_eq!(
+            (&here["enabled"], &here["play_ratio"], &here["ratio"]),
+            (&json!(true), &Value::Null, &json!(10))
+        );
+    }
+
+    // In bulk, for the station shown.
+    let selection = json!({"filters": {"on_station_id": second}});
+    let (status, body) = eighties
+        .send(
+            Method::POST,
+            "/tracks/programming",
+            json!({"selection": selection, "play_ratio": 2}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let (status, done) = eighties
+        .send(
+            Method::POST,
+            "/tracks/programming",
+            json!({"selection": selection, "play_ratio": 2, "station_id": second}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert_eq!(done["tracks"], 5);
+    let (status, done) = eighties
+        .send(
+            Method::POST,
+            "/tracks/enabled",
+            json!({"selection": {"track_ids": [t[3]]}, "enabled": false, "station_id": second}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert_eq!(done["changed"], 1);
+    let (status, _) = eighties
+        .send(
+            Method::POST,
+            "/tracks/enabled",
+            json!({"selection": {"track_ids": [t[3]]}, "enabled": false, "station_id": first}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let detail = admin.get(&track(t[3])).await;
+    assert_eq!(detail["play_ratio"], 10);
+    let there = on(&detail, second);
+    assert_eq!(
+        (
+            &there["enabled"],
+            &there["play_ratio"],
+            &there["disabled_by"]
+        ),
+        (&json!(false), &json!(2), &json!("eighties"))
+    );
+    assert_eq!(on(&detail, first)["ratio"], 10);
+
+    // Disabled everywhere: who and when, on its page and in the list.
+    let (status, detail) = admin
+        .send(Method::PATCH, &track(t[4]), json!({"enabled": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["disabled_by"], "admin");
+    assert!(detail["disabled_at_unix_ms"].as_i64().unwrap() > 0);
+    assert_eq!(on(&detail, second)["ratio"], 0);
+    let listed = admin.get("/tracks?filter=disabled").await;
+    assert_eq!(listed["items"][0]["disabled_by"], "admin");
+    let (status, detail) = admin
+        .send(
+            Method::PATCH,
+            &track(t[4]),
+            json!({"enabled": true, "play_ratio": 10}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["disabled_by"], Value::Null);
+
+    // A station's counters, all reset to 10.
+    for (station_id, id, counter) in [(first, t[2], 4), (first, t[3], 10), (second, t[2], 7)] {
+        sqlx::query(
+            "INSERT INTO track_ratio_counters (station_id, track_id, counter) VALUES (?, ?, ?)",
+        )
+        .bind(station_id)
+        .bind(id)
+        .bind(counter)
+        .execute(&station.db.pool)
+        .await
+        .unwrap();
+    }
+    let reset = |station_id: u64| format!("/stations/{station_id}/rotation/counters/reset");
+    let (status, _) = eighties.send(Method::POST, &reset(first), json!({})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, body) = admin.send(Method::POST, &reset(first), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["reset"], 1);
+    let detail = admin.get(&track(t[2])).await;
+    assert_eq!(on(&detail, first)["counter"], 10);
+    assert_eq!(on(&detail, second)["counter"], 7);
+    let (status, body) = eighties.send(Method::POST, &reset(second), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["reset"], 1);
+
+    // A CSV import: a dry run reports, then the values are written.
+    let csv = "path;hits80;nope\n\
+               Artist 1/Track 1.wav;0,5;x\n\
+               Artist 2/Track 2.wav;0;\n\
+               Gone/Gone.wav;0.3;\n\
+               Artist 3/Track 3.wav;0.25;\n";
+    let import = "/tracks/ratios/import";
+    let (status, report) = eighties
+        .post_bytes(&format!("{import}?dry_run=true"), csv.into(), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(
+        (
+            &report["rows"],
+            &report["matched"],
+            &report["values"],
+            &report["changed"]
+        ),
+        (&json!(4), &json!(3), &json!(2), &json!(0))
+    );
+    assert_eq!(report["columns"], json!(["hits80"]));
+    assert_eq!(report["unknown_columns"], json!(["nope"]));
+    assert_eq!(
+        report["unmatched"],
+        json!([{"line": 4, "name": "Gone/Gone.wav", "reason": "not_found"}])
+    );
+    assert_eq!(
+        report["invalid"],
+        json!([{"line": 5, "column": "hits80", "value": "0.25"}])
+    );
+    assert_eq!(on(&admin.get(&track(t[0])).await, second)["ratio"], 2);
+    let (status, report) = eighties.post_bytes(import, csv.into(), None).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(report["changed"], 2);
+    assert_eq!(on(&admin.get(&track(t[0])).await, second)["ratio"], 5);
+    let there = on(&admin.get(&track(t[1])).await, second);
+    assert_eq!(
+        (&there["enabled"], &there["ratio"]),
+        (&json!(false), &json!(0))
+    );
+    // The default, and the first station: the shared role, and a role on
+    // the first station.
+    let csv = format!("filename,{first_code},default\ntrack 3.WAV,0.4,0.7\n");
+    let (status, _) = eighties.post_bytes(import, csv.clone().into(), None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, report) = admin.post_bytes(import, csv.into(), None).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(report["matched_by"], "filename");
+    let detail = admin.get(&track(t[2])).await;
+    assert_eq!(detail["play_ratio"], 7);
+    assert_eq!(on(&detail, first)["ratio"], 4);
+    assert_eq!(on(&detail, second)["ratio"], 2);
+    let (status, body) = admin
+        .post_bytes(import, "title,hits80\nA,1\n".into(), None)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     station.stop().await;
 }
 
@@ -6758,13 +7180,11 @@ async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
         let mut detail = admin.get(&path).await;
         // What the scan and the plays give, not what was set; the play
         // ratio counters are state.
-        for key in [
-            "plays",
-            "created_at_unix_ms",
-            "updated_at_unix_ms",
-            "ratio_counters",
-        ] {
+        for key in ["plays", "created_at_unix_ms", "updated_at_unix_ms"] {
             detail.as_object_mut().unwrap().remove(key);
+        }
+        for on_station in detail["station_ratios"].as_array_mut().unwrap() {
+            on_station.as_object_mut().unwrap().remove("counter");
         }
         shown.insert(path, detail);
     }
@@ -6931,6 +7351,16 @@ async fn a_backup_restores_onto_an_empty_database() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    // A station's own ratio, and a track disabled on that station only.
+    for (id, patch) in [
+        (t[1], json!({"station_id": 1, "play_ratio": 3})),
+        (t[0], json!({"station_id": 1, "play_ratio": 0})),
+    ] {
+        let (status, body) = admin
+            .send(Method::PATCH, &format!("/tracks/{id}"), patch)
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
     // Programming.
     let (status, clock) = admin
         .send(
@@ -7067,6 +7497,33 @@ async fn a_backup_restores_onto_an_empty_database() {
         file["tables"]["track_programming"]
     );
     assert!(file["tables"].get("track_ratio_counters").is_none());
+    let own = file["tables"]["track_station_ratios"].as_array().unwrap();
+    assert_eq!(own.len(), 2, "{own:?}");
+    assert!(
+        own.iter().any(|row| row["track"] == "Artist 2/Track 2.wav"
+            && row["play_ratio"] == 3
+            && row["enabled"] == 1),
+        "{own:?}"
+    );
+    assert!(
+        own.iter().any(|row| row["track"] == "Artist 1/Track 1.wav"
+            && row["enabled"] == 0
+            && row["disabled_by"].is_u64()),
+        "{own:?}"
+    );
+    assert!(
+        file["disabled_by"]["Artist 4/Track 4.wav"]["user_id"].is_u64(),
+        "{}",
+        file["disabled_by"]
+    );
+    // What an older file restores: no ratios per station, no one who
+    // disabled a track.
+    let mut older = file.clone();
+    older["tables"]
+        .as_object_mut()
+        .unwrap()
+        .remove("track_station_ratios");
+    older.as_object_mut().unwrap().remove("disabled_by");
     station.stop().await;
     // A track the new library does not have.
     file["tables"]["track_categories"]
@@ -7173,6 +7630,27 @@ async fn a_backup_restores_onto_an_empty_database() {
         &mut different,
     );
     assert!(different.is_empty(), "{}", different.join("\n"));
+
+    // A file from before the ratios per station restores: every track on
+    // its default ratio, disabled tracks with no one recorded.
+    let (status, body) = admin.send(Method::POST, "/backups/restore", older).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let admin = other.signed_in("admin").await;
+    let o = other.tracks.clone();
+    let detail = admin.get(&format!("/tracks/{}", o[3])).await;
+    assert_eq!(detail["enabled"], false);
+    assert_eq!(detail["disabled_by"], Value::Null);
+    for id in [o[0], o[1]] {
+        let detail = admin.get(&format!("/tracks/{id}")).await;
+        assert!(
+            detail["station_ratios"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|on| on["play_ratio"].is_null() && on["enabled"] == true),
+            "{detail}"
+        );
+    }
     other.stop().await;
 }
 

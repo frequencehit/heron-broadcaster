@@ -289,20 +289,27 @@ pub struct LibraryParts {
     pub no_two_in_a_row: Vec<(CategoryId, TypeId)>,
     /// The station's play ratio counters.
     pub counters: HashMap<TrackId, u8>,
+    /// The station's own play ratios, in tenths, in place of the tracks'
+    /// defaults; 0 disables the track on the station
+    /// ([`ratio::on_station`]).
+    pub station_ratios: HashMap<TrackId, u8>,
     /// Categories of a module turned off for the station.
     pub modules_off: Vec<CategoryId>,
 }
 
 impl Library {
-    /// Ties the pieces together: categories keep only playable tracks, and
-    /// tracks learn their categories.
+    /// Ties the pieces together: tracks take the station's ratios and
+    /// those it disabled are left out, categories keep only playable
+    /// tracks, and tracks learn their categories.
     pub fn new(parts: LibraryParts, time_zone: TimeZone) -> Self {
         let mut tracks: HashMap<TrackId, Track> = parts
             .tracks
             .into_iter()
-            .map(|mut track| {
+            .filter_map(|mut track| {
                 track.categories.clear();
-                (track.id, track)
+                track.ratio =
+                    ratio::on_station(track.ratio, parts.station_ratios.get(&track.id).copied())?;
+                Some((track.id, track))
             })
             .collect();
         let mut categories = HashMap::new();

@@ -533,6 +533,7 @@ mod tests {
                 skipped_slots: vec![],
                 across: AcrossWindows::OFF,
                 held_elsewhere: None,
+                ratio: None,
                 counter: None,
                 held_by_ratio: vec![],
                 daypart: None,

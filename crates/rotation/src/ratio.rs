@@ -15,6 +15,17 @@ use crate::TrackId;
 /// A full ratio, and the counter's first step.
 pub const FULL: u8 = 10;
 
+/// A track's ratio on a station: the station's own (`station`, 0 when it
+/// disabled the track), else the track's `default`. `None`: the track does
+/// not play on that station.
+pub fn on_station(default: u8, station: Option<u8>) -> Option<u8> {
+    match station {
+        Some(0) => None,
+        Some(ratio) => Some(ratio.min(FULL)),
+        None => Some(default),
+    }
+}
+
 /// Whether a track of `ratio` tenths plays with its counter at `counter`.
 pub fn plays(ratio: u8, counter: u8) -> bool {
     counter > FULL - ratio.min(FULL)
@@ -52,6 +63,17 @@ mod tests {
         assert!((1..=FULL).all(|c| plays(FULL, c)));
         let played: Vec<u8> = (1..=FULL).rev().filter(|c| plays(1, *c)).collect();
         assert_eq!(played, [10]);
+    }
+
+    #[test]
+    fn a_station_ratio_replaces_the_default() {
+        assert_eq!(on_station(10, None), Some(10));
+        assert_eq!(on_station(2, None), Some(2));
+        assert_eq!(on_station(10, Some(3)), Some(3));
+        assert_eq!(on_station(3, Some(10)), Some(10));
+        // 0: disabled on that station.
+        assert_eq!(on_station(10, Some(0)), None);
+        assert_eq!(on_station(42, Some(42)), Some(FULL));
     }
 
     #[test]

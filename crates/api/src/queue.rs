@@ -78,6 +78,9 @@ struct TrackRow {
     /// Medleys are turned off for the station: a medley does not play.
     #[sqlx(skip)]
     medleys_off: bool,
+    /// Disabled on the station (a ratio of 0 there): does not play there.
+    #[sqlx(skip)]
+    disabled_here: bool,
 }
 
 const TRACK_COLUMNS: &str = "
@@ -154,10 +157,10 @@ impl TrackRow {
         base.with_overrides(overrides)
     }
 
-    /// Whether it may stay queued: in the library, enabled, and not a
-    /// medley while medleys are off.
+    /// Whether it may stay queued: in the library, enabled (on the
+    /// station too), and not a medley while medleys are off.
     fn plays(&self) -> bool {
-        self.enabled && !self.missing && !(self.medley && self.medleys_off)
+        self.enabled && !self.disabled_here && !self.missing && !(self.medley && self.medleys_off)
     }
 
     /// Why the track cannot be played, if it cannot.
@@ -167,6 +170,9 @@ impl TrackRow {
         }
         if !self.enabled {
             return Some(format!("track {}: it is disabled", self.id));
+        }
+        if self.disabled_here {
+            return Some(format!("track {}: it is disabled on this station", self.id));
         }
         if self.medley && self.medleys_off {
             return Some(format!(
@@ -260,6 +266,19 @@ impl QueueManager {
         }
         query.push(")");
         let mut rows: Vec<TrackRow> = query.build_query_as().fetch_all(&self.pool).await?;
+        let mut query = QueryBuilder::new(
+            "SELECT track_id FROM track_station_ratios WHERE NOT enabled AND station_id = ",
+        );
+        query.push_bind(self.station_id).push(" AND track_id IN (");
+        let mut separated = query.separated(", ");
+        for id in ids {
+            separated.push_bind(*id);
+        }
+        query.push(")");
+        let disabled: Vec<u64> = query.build_query_scalar().fetch_all(&self.pool).await?;
+        for row in &mut rows {
+            row.disabled_here = disabled.contains(&row.id);
+        }
         if rows.iter().any(|row| row.medley)
             && !crate::modules::on_for(&self.pool, self.station_id)
                 .await?
@@ -471,7 +490,8 @@ impl QueueManager {
                     Ok(()) => tracing::warn!(
                         entry = entry.entry_id,
                         path = %entry.track.path,
-                        "queued track left the library, was disabled or is a medley turned off: \
+                        "queued track left the library, was disabled (everywhere or on this \
+                         station) or is a medley turned off: \
                          removed from the queue"
                     ),
                     Err(ApiError::Invalid(_) | ApiError::NotFound(_)) => {}
@@ -512,6 +532,7 @@ mod tests {
             intro_ms: None,
             medley: false,
             medleys_off: false,
+            disabled_here: false,
         }
     }
 
@@ -573,5 +594,13 @@ mod tests {
         assert!(medley.unplayable().is_none() && medley.plays());
         medley.medleys_off = true;
         assert!(medley.unplayable().is_some() && !medley.plays());
+        let mut elsewhere = row();
+        elsewhere.disabled_here = true;
+        assert!(!elsewhere.plays());
+        assert!(
+            elsewhere
+                .unplayable()
+                .is_some_and(|reason| reason.contains("disabled on this station"))
+        );
     }
 }

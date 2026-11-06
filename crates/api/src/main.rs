@@ -36,6 +36,7 @@ mod play_grid;
 mod player;
 mod public;
 mod queue;
+mod ratios;
 mod restrictions;
 mod rotation;
 mod schedules;

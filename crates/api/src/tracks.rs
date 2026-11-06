@@ -220,15 +220,19 @@ pub struct TrackSummary {
     /// times rotation picks it. Kept while the track is disabled.
     #[sqlx(try_from = "u64")]
     pub play_ratio: u8,
+    /// Who disabled it everywhere (a username; none for a user since
+    /// deleted), while it is disabled.
+    pub disabled_by: Option<String>,
+    pub disabled_at_unix_ms: Option<i64>,
+    /// Listed on a station (`on_station_id`): its ratio there.
+    #[sqlx(skip)]
+    pub station_ratio: Option<crate::ratios::StationRatio>,
     /// Its cover (its own, else its album's), `/api/v1/public/covers/…`:
     /// the address changes with the image. `?size=96` for a thumbnail.
     pub cover_url: Option<String>,
     #[sqlx(skip)]
     pub labels: Vec<LabelRef>,
 }
-
-/// A track's play ratio as rotation sees it: 0 when disabled.
-const EFFECTIVE_RATIO: &str = "IF(t.enabled, COALESCE(p.play_ratio, 10), 0)";
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TrackPage {
@@ -244,6 +248,8 @@ pub struct TrackPage {
 pub(crate) struct ListContext {
     settings: ProgrammingSettings,
     station_id: Option<u64>,
+    /// The station listed, whose play ratios it gives.
+    on_station_id: Option<u64>,
     kept_out: Vec<u64>,
 }
 
@@ -252,6 +258,7 @@ impl ListContext {
         Ok(Self {
             settings: settings::load(pool, ProgrammingSettings::SETTINGS_NAME).await?,
             station_id: None,
+            on_station_id: None,
             kept_out: Vec::new(),
         })
     }
@@ -274,8 +281,19 @@ impl ListContext {
         Ok(Self {
             settings: self.settings.clone(),
             station_id: params.station_id,
+            on_station_id: params.on_station_id,
             kept_out,
         })
+    }
+
+    /// A track's play ratio as rotation sees it, on the station listed (its
+    /// own there, else the default): 0 when disabled, there or everywhere.
+    fn effective_ratio(&self) -> &'static str {
+        if self.on_station_id.is_some() {
+            "IF(t.enabled AND COALESCE(sr.enabled, TRUE), COALESCE(sr.play_ratio, p.play_ratio, 10), 0)"
+        } else {
+            "IF(t.enabled, COALESCE(p.play_ratio, 10), 0)"
+        }
     }
 
     /// `SELECT` and `FROM` of track summaries.
@@ -301,6 +319,10 @@ impl ListContext {
             " AS era, CAST(COALESCE(p.bpm, a.bpm) AS DOUBLE) AS bpm, p.mood, p.sound_code,
               CAST(l.min_db AS DOUBLE) AS level_min_db, CAST(l.max_db AS DOUBLE) AS level_max_db,
               CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED) AS play_ratio,
+              IF(t.enabled, NULL, (SELECT username FROM users WHERE id = t.disabled_by))
+                AS disabled_by,
+              IF(t.enabled, NULL, CAST(UNIX_TIMESTAMP(t.disabled_at) * 1000 AS SIGNED))
+                AS disabled_at_unix_ms,
               CONCAT('/api/v1/public/covers/',
                      LOWER(HEX(COALESCE(tcv.cover_hash, acv.cover_hash)))) AS cover_url ",
         );
@@ -318,8 +340,17 @@ impl ListContext {
               LEFT JOIN track_covers tcv ON tcv.track_id = t.id
               LEFT JOIN album_covers acv ON acv.album_key = t.album_key
               -- Levels of an earlier analysis are not the file's any more.
-              LEFT JOIN track_levels l ON l.track_id = t.id AND l.analyzed_at = a.analyzed_at
-              LEFT JOIN (SELECT track_id, COUNT(*) AS plays, MAX(started_at) AS last_played
+              LEFT JOIN track_levels l ON l.track_id = t.id AND l.analyzed_at = a.analyzed_at",
+        );
+        if let Some(station_id) = self.on_station_id {
+            query
+                .push(
+                    " LEFT JOIN track_station_ratios sr ON sr.track_id = t.id AND sr.station_id = ",
+                )
+                .push_bind(station_id);
+        }
+        query.push(
+            " LEFT JOIN (SELECT track_id, COUNT(*) AS plays, MAX(started_at) AS last_played
                          FROM play_history
                          WHERE track_id IS NOT NULL AND deck <> 'fx'",
         );
@@ -407,10 +438,18 @@ impl ListContext {
                 query.push("))");
             }
         }
+        let on_station = self.on_station_id.is_some();
         let condition = match params.filter {
             None => "",
+            Some(TrackFilter::Playable) if on_station => {
+                " AND t.enabled AND COALESCE(sr.enabled, TRUE) AND t.missing_since IS NULL
+                  AND a.cue_out_ms > a.cue_in_ms"
+            }
             Some(TrackFilter::Playable) => {
                 " AND t.enabled AND t.missing_since IS NULL AND a.cue_out_ms > a.cue_in_ms"
+            }
+            Some(TrackFilter::Disabled) if on_station => {
+                " AND NOT (t.enabled AND COALESCE(sr.enabled, TRUE))"
             }
             Some(TrackFilter::Missing) => " AND t.missing_since IS NOT NULL",
             Some(TrackFilter::Unanalyzed) => " AND a.track_id IS NULL",
@@ -512,12 +551,12 @@ impl ListContext {
         }
         if let Some(ratio) = params.ratio_min {
             query
-                .push(format!(" AND {EFFECTIVE_RATIO} >= "))
+                .push(format!(" AND {} >= ", self.effective_ratio()))
                 .push_bind(ratio);
         }
         if let Some(ratio) = params.ratio_max {
             query
-                .push(format!(" AND {EFFECTIVE_RATIO} <= "))
+                .push(format!(" AND {} <= ", self.effective_ratio()))
                 .push_bind(ratio);
         }
         Ok(())
@@ -582,7 +621,8 @@ impl ListContext {
                 direction(true)
             )),
             TrackSort::PlayRatio => query.push(format!(
-                " ORDER BY {EFFECTIVE_RATIO}{0}, t.artist, t.title",
+                " ORDER BY {}{}, t.artist, t.title",
+                self.effective_ratio(),
                 direction(true)
             )),
             TrackSort::Duration => query.push(format!(
@@ -643,6 +683,9 @@ impl ListContext {
         let mut items: Vec<TrackSummary> = query.build_query_as().fetch_all(pool).await?;
         add_labels(pool, &mut items).await?;
         hide_covers(pool, &mut items).await?;
+        if let Some(station_id) = self.on_station_id {
+            crate::ratios::add_to_summaries(pool, station_id, &mut items).await?;
+        }
         Ok(TrackPage {
             items,
             total: u64::try_from(total).unwrap_or(0),
@@ -859,22 +902,12 @@ pub struct TrackDetail {
     pub identification: Option<TrackIdentification>,
     /// Plays and last play in total and per station.
     pub plays: crate::history::Plays,
-    /// The play ratio counter on each station, in the stations' order.
-    pub ratio_counters: Vec<RatioCounter>,
+    /// Its play ratio and counter on each station, in the stations' order.
+    pub station_ratios: Vec<crate::ratios::StationRatio>,
     /// Its cover: where it comes from, the album's or its own.
     pub cover: Option<crate::covers::TrackCover>,
     /// Its album's Cover Art Archive candidates, waiting for an operator.
     pub cover_candidates: Vec<crate::covers::CoverCandidate>,
-}
-
-/// Where a track's play ratio counter is on a station.
-#[derive(Clone, Debug, Serialize, ToSchema, FromRow)]
-pub struct RatioCounter {
-    pub station_id: u64,
-    /// 10 down to 1: the next time rotation picks the track, it plays if
-    /// this is in its first `play_ratio` steps.
-    #[sqlx(try_from = "u64")]
-    pub counter: u8,
 }
 
 /// A track with its details, analysis, overrides, categories and
@@ -957,6 +990,8 @@ async fn get_track(
     let playout = station.queue.playout(id, None).await?;
     let settings: PlayoutSettings =
         settings::load_for(&state.pool, station.id(), PlayoutSettings::SETTINGS_NAME).await?;
+    let station_ratios =
+        crate::ratios::of_track(&state.pool, id, summary.enabled, summary.play_ratio).await?;
     Ok(Json(TrackDetail {
         summary,
         file,
@@ -976,15 +1011,7 @@ async fn get_track(
         categories,
         identification,
         plays: crate::history::plays(&state.pool, crate::history::PlaysOf::Track(id)).await?,
-        ratio_counters: sqlx::query_as(
-            "SELECT s.id AS station_id, CAST(COALESCE(c.counter, 10) AS UNSIGNED) AS counter
-             FROM stations s
-             LEFT JOIN track_ratio_counters c ON c.station_id = s.id AND c.track_id = ?
-             ORDER BY s.position, s.id",
-        )
-        .bind(id)
-        .fetch_all(&state.pool)
-        .await?,
+        station_ratios,
         cover,
         cover_candidates,
     }))
@@ -1044,10 +1071,19 @@ pub struct TrackPatch {
     /// Puts its play ratio counters back to 10 on every station.
     #[serde(default)]
     pub reset_counters: bool,
+    /// `enabled`, `play_ratio` and `reset_counters` apply to this station
+    /// only: its own ratio for the track, 0 disabling it there. Operators
+    /// and admins of the station.
+    pub station_id: Option<u64>,
+    /// With `station_id`: the station goes back to the track's default
+    /// ratio, and the track is enabled there.
+    #[serde(default)]
+    pub default_ratio: bool,
 }
 
 /// Enables or disables a track, sets its play ratio, resets its play
-/// ratio counters. Operators and admins.
+/// ratio counters: everywhere (operators and admins), or on one station
+/// (operators and admins of that station).
 #[utoipa::path(patch, path = "/tracks/{id}", tag = "library",
     params(("id" = u64, Path)), request_body = TrackPatch,
     responses((status = 200, body = TrackDetail), (status = "4XX", body = ErrorBody)))]
@@ -1058,8 +1094,21 @@ async fn patch_track(
     Path(id): Path<u64>,
     Json(patch): Json<TrackPatch>,
 ) -> ApiResult<Json<TrackDetail>> {
-    user.require(Role::Operator)?;
+    match patch.station_id {
+        Some(station_id) => {
+            user.require_on(&state.pool, station_id, Role::Operator)
+                .await?;
+        }
+        None if patch.default_ratio => {
+            return Err(ApiError::Invalid(
+                "default_ratio is for a station: give its station_id".to_owned(),
+            ));
+        }
+        None => user.require(Role::Operator)?,
+    }
     let enabled = crate::selection::check_ratio(patch.enabled, patch.play_ratio)?;
+    let on_station =
+        crate::ratios::StationChange::new(patch.enabled, patch.play_ratio, patch.default_ratio)?;
     let mut tx = state.pool.begin().await?;
     let exists: Option<u64> = sqlx::query_scalar("SELECT id FROM tracks WHERE id = ? FOR UPDATE")
         .bind(id)
@@ -1068,18 +1117,21 @@ async fn patch_track(
     if exists.is_none() {
         return Err(ApiError::not_found("track"));
     }
-    if let Some(enabled) = enabled {
-        sqlx::query("UPDATE tracks SET enabled = ? WHERE id = ?")
-            .bind(enabled)
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
-    }
-    if let Some(ratio) = patch.play_ratio.filter(|ratio| *ratio > 0) {
-        crate::selection::set_play_ratio(&mut tx, &[id], ratio).await?;
-    }
-    if patch.reset_counters {
-        crate::selection::reset_counters(&mut tx, &[id]).await?;
+    if let Some(station_id) = patch.station_id {
+        crate::ratios::change_on_station(&mut tx, &[id], station_id, on_station, user.id).await?;
+        if patch.reset_counters {
+            crate::ratios::reset_counters_on(&mut tx, &[id], station_id).await?;
+        }
+    } else {
+        if let Some(enabled) = enabled {
+            crate::selection::set_enabled_on(&mut tx, &[id], enabled, user.id).await?;
+        }
+        if let Some(ratio) = patch.play_ratio.filter(|ratio| *ratio > 0) {
+            crate::selection::set_play_ratio(&mut tx, &[id], ratio).await?;
+        }
+        if patch.reset_counters {
+            crate::selection::reset_counters(&mut tx, &[id]).await?;
+        }
     }
     tx.commit().await?;
     get_track(user, State(state), station, Path(id)).await

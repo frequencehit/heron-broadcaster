@@ -2190,6 +2190,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rotation/counters/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Puts every play ratio counter of the station back to 10. Operators and
+         *     admins of the station.
+         */
+        post: operations["reset_station_counters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rotation/picks": {
         parameters: {
             query?: never;
@@ -3300,6 +3320,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/rotation/counters/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Puts every play ratio counter of the station back to 10. Operators and
+         *     admins of the station.
+         */
+        post: operations["reset_station_counters_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/rotation/picks": {
         parameters: {
             query?: never;
@@ -3860,6 +3900,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tracks/ratios/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sets play ratios from a CSV file (the body, `text/csv`): a `path` or
+         *     `filename` column naming the track, a column per station code, and
+         *     `default`. A ratio is 0 to 1 in steps of 0.1 (`0.2` or `0,2`); 0
+         *     disables the track (on that station, or everywhere), another ratio sets
+         *     it and enables the track; an empty cell changes nothing. Operators of
+         *     every station named, and the shared role for `default`.
+         */
+        post: operations["import_ratios"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tracks/tag-overrides": {
         parameters: {
             query?: never;
@@ -3943,7 +4007,8 @@ export interface paths {
         head?: never;
         /**
          * Enables or disables a track, sets its play ratio, resets its play
-         *     ratio counters. Operators and admins.
+         *     ratio counters: everywhere (operators and admins), or on one station
+         *     (operators and admins of that station).
          */
         patch: operations["patch_track"];
         trace?: never;
@@ -5300,6 +5365,13 @@ export interface components {
              */
             left_in_clear: string[];
         };
+        CountersReset: {
+            /**
+             * Format: int64
+             * @description Counters that were not at 10.
+             */
+            reset: number;
+        };
         /** @description An image to fetch from an address. */
         CoverAddress: {
             /** @description `http` or `https`. */
@@ -5677,6 +5749,13 @@ export interface components {
             /** @description Puts their play ratio counters back to 10 on every station. */
             reset_counters?: boolean;
             selection: components["schemas"]["TrackSelection"];
+            /**
+             * Format: int64
+             * @description Disables or enables them on this station only: `play_ratio` is
+             *     their ratio there, and `reset_counters` resets their counter there.
+             *     Operators and admins of the station.
+             */
+            station_id?: number | null;
         };
         /** @enum {string} */
         EncoderKind: "mp3" | "aac" | "opus" | "vorbis" | "external_ffmpeg";
@@ -5864,6 +5943,13 @@ export interface components {
              * @description Tracks in the slot's category.
              */
             pool: number;
+            /**
+             * Format: int32
+             * @description The picked track's play ratio on the station, in tenths, as rotation
+             *     used it: the station's own, else the track's default. Missing in
+             *     picks logged before play ratios per station.
+             */
+            ratio?: number | null;
             /**
              * Format: int32
              * @description Of them, forbidden by restrictions.
@@ -6499,6 +6585,11 @@ export interface components {
              * @description Where the vocals start, in ms on the file's timeline; `null` removes it.
              */
             intro_ms?: number | null;
+        };
+        InvalidValue: {
+            column: string;
+            line: number;
+            value: string;
         };
         KeyRecord: {
             /** @description The public key, `age1…`. */
@@ -7609,6 +7700,12 @@ export interface components {
             selection: components["schemas"]["TrackSelection"];
             /** @description A value of the sound code scale, or `null` to clear it. */
             sound_code?: string | null;
+            /**
+             * Format: int64
+             * @description `play_ratio` is their ratio on this station (0 disables them there),
+             *     not their default. Operators and admins of the station.
+             */
+            station_id?: number | null;
         };
         /** @description What music programmers sort and separate tracks by. */
         ProgrammingSettings: {
@@ -7785,16 +7882,44 @@ export interface components {
             /** Format: int32 */
             start_ms: number;
         };
-        /** @description Where a track's play ratio counter is on a station. */
-        RatioCounter: {
+        /** @description What an import of ratios found, and did. */
+        RatioImport: {
             /**
-             * Format: int32
-             * @description 10 down to 1: the next time rotation picks the track, it plays if
-             *     this is in its first `play_ratio` steps.
+             * Format: int64
+             * @description Ratios set to another value, tracks disabled or enabled (none in a
+             *     dry run).
              */
-            counter: number;
+            changed: number;
+            /** @description The columns of ratios: station codes, and `default`. */
+            columns: string[];
+            dry_run: boolean;
+            /** @description The first 500. */
+            invalid: components["schemas"]["InvalidValue"][];
             /** Format: int64 */
-            station_id: number;
+            invalid_total: number;
+            /**
+             * Format: int64
+             * @description Rows matching one track.
+             */
+            matched: number;
+            /** @description `path` or `filename`. */
+            matched_by: string;
+            /**
+             * Format: int64
+             * @description Rows read, the header aside.
+             */
+            rows: number;
+            /** @description Columns that are neither a station's code nor `default`. */
+            unknown_columns: string[];
+            /** @description The first 500. */
+            unmatched: components["schemas"]["UnmatchedRow"][];
+            /** Format: int64 */
+            unmatched_total: number;
+            /**
+             * Format: int64
+             * @description Valid ratios in the rows matched.
+             */
+            values: number;
         };
         /** @description How a medley is built. */
         Recipe: {
@@ -8630,6 +8755,34 @@ export interface components {
             /** Format: int64 */
             station_id: number;
         };
+        /** @description A track's play ratio on a station. */
+        StationRatio: {
+            /**
+             * Format: int32
+             * @description Its counter there, 10 down to 1 (the track's page only).
+             */
+            counter?: number | null;
+            /** Format: int64 */
+            disabled_at_unix_ms?: number | null;
+            /** @description Who disabled it there (a username), while it is. */
+            disabled_by?: string | null;
+            /** @description Off: disabled on this station only. */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description The station's own, in tenths, 1 to 10, kept while the track is
+             *     disabled there; `null`: the track's default.
+             */
+            play_ratio?: number | null;
+            /**
+             * Format: int32
+             * @description What rotation uses there: 0 when the track is disabled there or
+             *     everywhere.
+             */
+            ratio: number;
+            /** Format: int64 */
+            station_id: number;
+        };
         StationRequest: {
             code: string;
             /**
@@ -9033,8 +9186,8 @@ export interface components {
             playout: components["schemas"]["EffectivePlayout"];
             /** @description Plays and last play in total and per station. */
             plays: components["schemas"]["Plays"];
-            /** @description The play ratio counter on each station, in the stations' order. */
-            ratio_counters: components["schemas"]["RatioCounter"][];
+            /** @description Its play ratio and counter on each station, in the stations' order. */
+            station_ratios: components["schemas"]["StationRatio"][];
             /**
              * @description Tags kept in Heron's database (library setting `write_tags` off),
              *     shown instead of the file's: `POST /tracks/tag-overrides/clear`
@@ -9215,6 +9368,11 @@ export interface components {
         };
         TrackPatch: {
             /**
+             * @description With `station_id`: the station goes back to the track's default
+             *     ratio, and the track is enabled there.
+             */
+            default_ratio?: boolean;
+            /**
              * @description Off: the track does not play at all (rotation, clocks, medleys,
              *     queued by hand), and leaves the queue.
              */
@@ -9226,6 +9384,13 @@ export interface components {
             play_ratio?: number | null;
             /** @description Puts its play ratio counters back to 10 on every station. */
             reset_counters?: boolean;
+            /**
+             * Format: int64
+             * @description `enabled`, `play_ratio` and `reset_counters` apply to this station
+             *     only: its own ratio for the track, 0 disabling it there. Operators
+             *     and admins of the station.
+             */
+            station_id?: number | null;
         };
         /**
          * @description Which tracks: the filters of `GET /tracks`, also used to select tracks
@@ -9357,6 +9522,13 @@ export interface components {
             cue_in_ms?: number | null;
             /** Format: int64 */
             cue_out_ms?: number | null;
+            /** Format: int64 */
+            disabled_at_unix_ms?: number | null;
+            /**
+             * @description Who disabled it everywhere (a username; none for a user since
+             *     deleted), while it is disabled.
+             */
+            disabled_by?: string | null;
             /** Format: int32 */
             duration_ms?: number | null;
             /** @description Disabled tracks are never picked by autofill or rotation. */
@@ -9395,6 +9567,7 @@ export interface components {
             play_ratio: number;
             silent: boolean;
             sound_code?: string | null;
+            station_ratio?: components["schemas"]["StationRatio"] | null;
             title?: string | null;
             /**
              * Format: int32
@@ -9488,6 +9661,18 @@ export interface components {
             recovery_codes_left: number;
             required_by?: components["schemas"]["Role"] | null;
             totp?: components["schemas"]["TotpView"] | null;
+        };
+        /**
+         * @description Why a row matches no track.
+         * @enum {string}
+         */
+        Unmatched: "not_found" | "several" | "empty";
+        UnmatchedRow: {
+            /** @description Its line in the file, from 1 (the header). */
+            line: number;
+            /** @description The path or file name it gives. */
+            name: string;
+            reason: components["schemas"]["Unmatched"];
         };
         /** @description A track waiting in the queue. */
         UpcomingTrack: {
@@ -14400,6 +14585,33 @@ export interface operations {
             };
         };
     };
+    reset_station_counters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountersReset"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_picks: {
         parameters: {
             query?: {
@@ -17246,6 +17458,36 @@ export interface operations {
             };
         };
     };
+    reset_station_counters_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountersReset"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_picks_on_station: {
         parameters: {
             query?: {
@@ -18741,6 +18983,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SelectionResult"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    import_ratios: {
+        parameters: {
+            query?: {
+                /** @description Checks the file and answers what it would change, writing nothing. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RatioImport"];
                 };
             };
             "4XX": {

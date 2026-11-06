@@ -94,6 +94,11 @@ pub struct Explanation {
     /// as configured, the least recently played, and what held it back.
     #[serde(default)]
     pub held_elsewhere: Option<HeldElsewhere>,
+    /// The picked track's play ratio on the station, in tenths, as rotation
+    /// used it: the station's own, else the track's default. Missing in
+    /// picks logged before play ratios per station.
+    #[serde(default)]
+    pub ratio: Option<u8>,
     /// The picked track's play ratio counter when it was picked, 10 down
     /// to 1. Missing in picks logged before play ratios.
     #[serde(default)]
@@ -631,6 +636,7 @@ fn fill(
             weight,
             skipped_slots: Vec::new(),
             held_elsewhere: held.map(|(_, held)| held),
+            ratio: Some(track.ratio),
             counter: Some(counter),
             held_by_ratio: Vec::new(),
             daypart: Some(DaypartLog {
@@ -1864,6 +1870,66 @@ mod tests {
         // Exactly 4 plays in 20 offers, at 10 and 9 of each turn.
         assert_eq!(played, [10, 9, 10, 9]);
         assert_eq!(library.counter(1), 10);
+    }
+
+    #[test]
+    fn each_station_plays_a_track_at_its_own_ratio() {
+        // The same tracks on three stations: track 1 at its default (1) on
+        // the first, at 0.2 on the second, disabled on the third. Its
+        // weight dwarfs the others': it is offered first at every pick.
+        let station = |station_ratios: HashMap<TrackId, u8>| {
+            let mut free = slot(1, Method::Weighted);
+            free.enforce_rules = false;
+            let mut category = category(1, &[1, 2, 3, 4, 5]);
+            for member in &mut category.members {
+                member.weight = if member.track == 1 { 1e9 } else { 1.0 };
+            }
+            Library::new(
+                LibraryParts {
+                    tracks: (1..=5).map(track).collect(),
+                    categories: vec![category],
+                    clocks: vec![Clock {
+                        id: 1,
+                        name: "Clock".into(),
+                        looping: false,
+                        slots: vec![free],
+                    }],
+                    schedule: Schedule {
+                        hours: HashMap::from_iter((0..24).map(|h| ((4, h), 1))),
+                        ..Schedule::default()
+                    },
+                    station_ratios,
+                    ..LibraryParts::default()
+                },
+                TimeZone::UTC,
+            )
+        };
+        let plays = |mut library: Library| {
+            let mut rng = Rng::new(21);
+            let history = History::default();
+            let mut ratios = Vec::new();
+            for n in 0..20 {
+                let outcome = next_outcome(&library, &history, n * MIN, None, &mut rng);
+                let pick = outcome.pick.clone().unwrap();
+                if pick.track == 1 {
+                    ratios.push(pick.explanation.ratio.unwrap());
+                }
+                library.count_down(outcome.offered());
+            }
+            ratios
+        };
+        assert_eq!(plays(station(HashMap::new())), [10; 20]);
+        // The station's ratio, logged with each pick.
+        assert_eq!(plays(station(HashMap::from([(1, 2)]))), [2; 4]);
+        let disabled = station(HashMap::from([(1, 0)]));
+        assert!(!disabled.tracks.contains_key(&1));
+        assert!(
+            disabled.categories[&1]
+                .members
+                .iter()
+                .all(|member| member.track != 1)
+        );
+        assert!(plays(disabled).is_empty());
     }
 
     #[test]
