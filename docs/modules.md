@@ -27,7 +27,7 @@ A module that is off for a station:
 - **is hidden**: its menu entries, pages, settings and widgets disappear from the web interface, for that station; a link to one of its pages says that the module is turned off, and where to turn it on;
 - **answers `404`** on its routes, with the error `module_off`: the routes of the station (`/stations/{id}/…`) when it is off for that station, every route of the module when it is off for the installation;
 - **does nothing in the background**: nothing of it plays or is planned, nothing is fetched or sent;
-- **keeps its data**: medleys, covers, statistics, webhooks and their deliveries stay in the database and in backups, and are there again, as they were, once it is turned on.
+- **keeps its data**: medleys, covers, statistics, webhooks and their deliveries stay in the database (cover images in the covers folder) and in backups, and are there again, as they were, once it is turned on.
 
 What each module stops:
 

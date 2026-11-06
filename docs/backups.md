@@ -7,7 +7,7 @@ Each backup is **two files** taken at the same time:
 | File | What it is for |
 |---|---|
 | `heron-config-<time>-<kind>.json` | Everything set by hand, readable, restored from the web UI or the command line on top of a library scanned again ([What it holds](#what-the-configuration-file-holds)) |
-| `heron-database-<time>-<kind>.sql.gz` | A dump of the whole database, history and listener statistics included, restored with MariaDB's own tools ([Restoring the database](#restoring-the-database-dump)) |
+| `heron-database-<time>-<kind>.sql.gz` | A dump of the whole database, history and listener statistics included, restored with MariaDB's own tools ([Restoring the database](#restoring-the-database-dump)). Cover images are files, not in the database: not in the dump either |
 
 With [encryption](#encryption) on, both files are encrypted with the station's key and end in `.age`. A third file, `heron-checksums-<time>-<kind>.sha256`, holds the checksums of both as written ([Testing backups](#testing-backups)).
 
@@ -26,8 +26,8 @@ The configuration file is what a station restores after a bad change or a lost d
 | Labels | Rendered medley files: they are in the library, under `medleys/` |
 | Artists curated by hand: marked similar, suggestions accepted or dismissed | Artist names moved or merged by hand: to do again after a restore onto a rebuilt library, or restore the database dump |
 | Medleys: recipes, stations and parts | |
-| Webhooks, with their secrets | Covers found in the files or on the Cover Art Archive: the scan and a lookup find them again (they are in the database dump) |
-| Covers set by hand, on albums and tracks, with their images | |
+| Webhooks, with their secrets | Covers found in the files or on the Cover Art Archive: the scan and a lookup find them again (the database dump has their rows, not their images) |
+| Covers set by hand, on albums and tracks, and the station logos, with their images (read from the covers folder) | |
 | Users (password hashes, shared roles, roles per station, preferences), their second factors (the authenticator app's secret, passkeys, hashes of recovery codes) and API tokens (hashes) | |
 | **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code and play ratio, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
 
@@ -84,7 +84,7 @@ docker compose exec -T heron-api heron-api backup restore 2026-11-03T03-30-00Z-d
 
 1. The file is checked first: its format, its schema, every part of it. A file that does not pass changes nothing.
 2. The current configuration is backed up (`before_restore`), so a restore can itself be undone.
-3. Everything the file holds replaces what the database has, in one transaction: a restore applies whole or not at all. Rows are matched by ID: what the database has and the file does not (a category made since) is deleted, except stations, which are left as they are with their history. What is set on tracks is replaced for every track: a track the file does not name (added since) loses its categories and settings. What the file does not hold (the tracks themselves, history…) is not touched.
+3. Everything the file holds replaces what the database has, in one transaction: a restore applies whole or not at all. Rows are matched by ID: what the database has and the file does not (a category made since) is deleted, except stations, which are left as they are with their history. What is set on tracks is replaced for every track: a track the file does not name (added since) loses its categories and settings. What the file does not hold (the tracks themselves, history…) is not touched. The images of the file's covers are written back to the covers folder ([Library management – Where the images are](library.md#where-the-images-are)); a file written before the images moved out of the database restores the same way.
 4. Every session is closed: sign in again, with the users of the backup. When no admin can sign in afterwards, `heron-api user passwd` sets a password from the command line, and `heron-api user reset-2fa` removes their second factors. A backup made before two-factor authentication existed restores no second factor and no requirement: everyone signs in with their password alone.
 5. Each engine gets its station's restored playout settings, deck EQ, AGC chain and outputs at once, as after any change ([API – Engine configuration](api.md#engine-configuration)); outputs whose settings did not change keep streaming.
 
@@ -112,6 +112,8 @@ age -d -i heron-backup-key.txt data/backups/heron-database-2026-11-03T03-30-00Z-
 ```
 
 The engines play on throughout, with what they have queued.
+
+The dump has the covers' rows, not their images, which are files of the `covers` volume. Restored next to that volume, nothing is missing. On another machine, or after losing the volume, restore the last configuration file as well: it writes back the covers set by hand and the station logos; the scan and a lookup find the others again. Until then, a cover without its file shows the placeholder.
 
 ## Downloading and uploading
 
