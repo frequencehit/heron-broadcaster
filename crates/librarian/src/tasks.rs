@@ -7,7 +7,8 @@
 //! deletions and emptying the trash. Tasks run one at a time, in order;
 //! their results are stored as JSON for the API to show.
 //!
-//! Between tasks, new identified tracks get their MusicBrainz details, and
+//! Between tasks, new identified tracks get their MusicBrainz details,
+//! albums without a cover are looked up when the station asked for it, and
 //! once an hour the trash is purged of tracks deleted more than
 //! `trash_days` ago.
 
@@ -21,7 +22,7 @@ use crate::identify::{Endpoints, Identifier};
 use crate::journal::Roots;
 use crate::layout::Layout;
 use crate::review::{self, Choice};
-use crate::{edit, import, medley, musicbrainz, organize, relations, staging, trash};
+use crate::{covers, edit, import, medley, musicbrainz, organize, relations, staging, trash};
 
 /// Wait between looks at the table when there is nothing to do.
 const POLL: Duration = Duration::from_secs(1);
@@ -78,6 +79,9 @@ impl TaskRunner {
                 details_due = Instant::now() + DETAILS_INTERVAL;
                 if let Err(error) = self.new_details().await {
                     tracing::warn!(%error, "cannot fetch MusicBrainz details");
+                }
+                if let Err(error) = self.new_covers().await {
+                    tracing::warn!(%error, "cannot look covers up");
                 }
             }
             tokio::select! {
@@ -222,6 +226,23 @@ impl TaskRunner {
                 let report = medley::preview(&self.pool, &self.roots, *medley_id, parts).await?;
                 serde_json::to_value(report).map_err(|error| error.to_string())
             }
+            TaskRequest::FetchCovers {
+                track_ids,
+                candidates,
+            } => {
+                let albums = if track_ids.is_empty() {
+                    covers::Albums::AllMissing
+                } else {
+                    covers::Albums::Of(track_ids)
+                };
+                json(covers::look_up(&self.pool, &self.musicbrainz()?, albums, *candidates).await)
+            }
+            TaskRequest::ApplyCover {
+                candidate_id,
+                track_id,
+            } => json(
+                covers::apply(&self.pool, &self.musicbrainz()?, *candidate_id, *track_id).await,
+            ),
             TaskRequest::RenderMedley { medley_id } => {
                 let report = medley::render(&self.pool, &self.roots, *medley_id).await?;
                 serde_json::to_value(report).map_err(|error| error.to_string())
@@ -249,6 +270,26 @@ impl TaskRunner {
             &self.musicbrainz()?,
             false,
             Some(musicbrainz::BACKGROUND_RELEASES),
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+    }
+
+    /// Looks up albums without a cover never looked up, when the library
+    /// setting `fetch_covers` is on.
+    async fn new_covers(&self) -> Result<(), String> {
+        let settings = import::load_settings(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        if !settings.fetch_covers {
+            return Ok(());
+        }
+        covers::look_up(
+            &self.pool,
+            &self.musicbrainz()?,
+            covers::Albums::NeverLookedUp(covers::BACKGROUND_ALBUMS),
+            false,
         )
         .await
         .map(|_| ())

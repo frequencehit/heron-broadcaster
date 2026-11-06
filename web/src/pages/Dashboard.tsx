@@ -3,6 +3,7 @@
 // On air: the decks, levels, transport, FX player, what comes next and the
 // outputs.
 
+import { TrackCoverThumb } from "../components/Cover";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type DeckState, type OutputStatus, type QueueEntry, api, done, unwrap } from "../api";
@@ -344,18 +345,21 @@ function Deck({
         </div>
         {track ? (
           <>
-            <div style={{ minWidth: 0 }}>
-              <div className="deck-title ellipsis">
-                {track.track_id ? (
-                  <Link to={`/library/${track.track_id}`}>{track.title ?? trackName(track)}</Link>
-                ) : (
-                  (track.title ?? trackName(track))
-                )}
+            <div className="row" style={{ flexWrap: "nowrap", alignItems: "flex-start" }}>
+              <TrackCoverThumb trackId={track.track_id} px={56} />
+              <div style={{ minWidth: 0 }}>
+                <div className="deck-title ellipsis">
+                  {track.track_id ? (
+                    <Link to={`/library/${track.track_id}`}>{track.title ?? trackName(track)}</Link>
+                  ) : (
+                    (track.title ?? trackName(track))
+                  )}
+                </div>
+                <div className="muted ellipsis">
+                  {[track.artist, track.album].filter(Boolean).join(" · ") || track.path}
+                </div>
+                <CategoryChips categories={categories} />
               </div>
-              <div className="muted ellipsis">
-                {[track.artist, track.album].filter(Boolean).join(" · ") || track.path}
-              </div>
-              <CategoryChips categories={categories} />
             </div>
             {cued ? (
               <div className="deck-times">

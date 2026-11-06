@@ -2,6 +2,7 @@
 
 // What was played, newest first.
 
+import { CoverThumb } from "../components/Cover";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { type Play, api, query, unwrap } from "../api";
@@ -154,7 +155,10 @@ function DayRows({ day, plays, above }: { day: string; plays: Play[]; above?: Pl
             <tr>
               <td className="num">{clockTime(play.started_at_unix_ms)}</td>
               <td className="title-cell ellipsis">
-                {play.track_id ? <Link to={`/library/${play.track_id}`}>{name}</Link> : name}
+                <span className="row" style={{ flexWrap: "nowrap", gap: "0.5rem" }}>
+                  <CoverThumb url={play.cover_url} px={28} />
+                  {play.track_id ? <Link to={`/library/${play.track_id}`}>{name}</Link> : name}
+                </span>
               </td>
               <td className="hide-narrow">{play.deck.toUpperCase()}</td>
               <td className="hide-narrow">{sourceLabel(play.source)}</td>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Library scanner: walks the music library, reads tags, keeps `tracks` in
-//! sync and queues analysis jobs.
+//! sync (with their covers) and queues analysis jobs.
 //!
 //! A scan only reads files that are new or whose size or mtime changed, so
 //! re-scanning an unchanged library is cheap and re-analyzes nothing. Scans
@@ -346,6 +346,9 @@ impl Library {
         }
 
         report.enqueued += heron_analysis::jobs::enqueue_stale(&self.pool, &settings).await?;
+        if let Err(error) = heron_library::covers::prune(&self.pool).await {
+            tracing::warn!(%error, "cannot delete the covers nothing uses");
+        }
 
         report.duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         report.finished_at_unix = SystemTime::now()
@@ -441,7 +444,8 @@ impl Library {
         .execute(&mut *tx)
         .await?
         .last_insert_id();
-        details::save(&mut tx, id, &info.tags).await?;
+        let absolute = file.path.resolve(&self.root);
+        details::save(&mut tx, id, &info.tags, Some(&absolute)).await?;
         tx.commit().await
     }
 
@@ -464,7 +468,8 @@ impl Library {
         .bind(id)
         .execute(&mut *tx)
         .await?;
-        details::save(&mut tx, id, &info.tags).await?;
+        let absolute = file.path.resolve(&self.root);
+        details::save(&mut tx, id, &info.tags, Some(&absolute)).await?;
         // The file changed: its cue points may be wrong, analyze it again.
         if file_changed {
             sqlx::query("DELETE FROM track_analysis WHERE track_id = ?")
@@ -479,12 +484,13 @@ impl Library {
     /// could be read.
     async fn refresh(&self, id: u64, path: &LibraryPath) -> Result<bool, ScanError> {
         let absolute = path.resolve(&self.root);
+        let file = absolute.clone();
         let read =
             tokio::task::spawn_blocking(move || heron_library::tags::read(&absolute)).await?;
         match read {
             Ok(read) => {
                 let mut connection = self.pool.acquire().await?;
-                details::save(&mut connection, id, &read).await?;
+                details::save(&mut connection, id, &read, Some(&file)).await?;
                 Ok(true)
             }
             Err(error) => {
@@ -679,6 +685,45 @@ mod tests {
         let restored = scan(&library).await;
         assert_eq!(restored.restored + restored.updated, 1, "{restored:?}");
         assert_eq!(track_count(&db.pool, "missing_since IS NOT NULL").await, 0);
+        db.drop().await;
+    }
+
+    #[tokio::test]
+    async fn covers_beside_the_files_become_their_albums() {
+        let Some(db) = ScratchDatabase::create().await else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        for (name, freq) in [("01.wav", 440.0), ("02.wav", 550.0)] {
+            let path = root.join("Band/Record").join(name);
+            write_wav(&path, 1.0, freq);
+            let tags = heron_library::Tags {
+                artist: Some("Band".into()),
+                album: Some("Record".into()),
+                ..heron_library::Tags::default()
+            };
+            heron_library::tags::write(&path, &tags, heron_library::tags::Cover::Keep).unwrap();
+        }
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(40, 40))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        std::fs::write(root.join("Band/Record/Folder.png"), &png).unwrap();
+        let library = Library::new(db.pool.clone(), root.to_path_buf());
+        assert_eq!(scan(&library).await.added, 2);
+        let covers: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+            "SELECT CAST(c.source AS CHAR), c.detail,
+                    (SELECT COUNT(*) FROM tracks t WHERE t.album_key = c.album_key)
+             FROM album_covers c",
+        )
+        .fetch_all(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            covers,
+            [("file".to_owned(), Some("Folder.png".to_owned()), 2)]
+        );
         db.drop().await;
     }
 

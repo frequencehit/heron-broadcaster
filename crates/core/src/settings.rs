@@ -88,6 +88,9 @@ pub struct LibrarySettings {
     /// are kept in Heron's database (`track_tag_overrides`) and the files
     /// are left as they are.
     pub write_tags: bool,
+    /// Albums without a cover are looked up on the Cover Art Archive in
+    /// the background.
+    pub fetch_covers: bool,
 }
 
 impl LibrarySettings {
@@ -108,6 +111,7 @@ impl Default for LibrarySettings {
             min_free_mb: 5120,
             trash_days: 30,
             write_tags: true,
+            fetch_covers: false,
         }
     }
 }
@@ -123,6 +127,7 @@ impl std::fmt::Debug for LibrarySettings {
             .field("embed_cover", &self.embed_cover)
             .field("max_upload_mb", &self.max_upload_mb)
             .field("min_free_mb", &self.min_free_mb)
+            .field("fetch_covers", &self.fetch_covers)
             .field("trash_days", &self.trash_days)
             .field("write_tags", &self.write_tags)
             .finish()

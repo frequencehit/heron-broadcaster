@@ -4,6 +4,7 @@
 // actions on a selection (queue, labels, categories, programming, play
 // ratio, tags, disable and enable).
 
+import { CoverThumb } from "../components/Cover";
 import { useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioDialog } from "../components/Ratio";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -54,6 +55,7 @@ const FILTERS: { value: TrackFilter | ""; label: PlainKey }[] = [
   { value: "missing", label: "library.filter.missing" },
   { value: "disabled", label: "library.filter.disabled" },
   { value: "needs_review", label: "library.filter.needsReview" },
+  { value: "no_cover", label: "library.filter.noCover" },
 ];
 
 const SORTS: { value: TrackSort; label: PlainKey }[] = [
@@ -83,6 +85,7 @@ const RATIO_CHOICES: { value: RatioFilter | ""; label: PlainKey }[] = [
 ];
 
 type Column =
+  | "cover"
   | "album"
   | "genre"
   | "length"
@@ -101,6 +104,7 @@ type Column =
   | "labels";
 
 const COLUMNS: { value: Column; label: PlainKey }[] = [
+  { value: "cover", label: "library.column.cover" },
   { value: "album", label: "library.sort.album" },
   { value: "genre", label: "library.column.genre" },
   { value: "length", label: "library.length" },
@@ -119,7 +123,7 @@ const COLUMNS: { value: Column; label: PlainKey }[] = [
   { value: "labels", label: "library.column.labels" },
 ];
 
-const DEFAULT_COLUMNS: Column[] = ["album", "length", "last_played", "plays", "labels"];
+const DEFAULT_COLUMNS: Column[] = ["cover", "album", "length", "last_played", "plays", "labels"];
 const COLUMNS_KEY = "heron.library.columns";
 
 function storedColumns(): Column[] {
@@ -288,6 +292,10 @@ export function Library() {
       invalidate: [["tracks"], ["track"]],
     },
   );
+  const findCovers = useAction(
+    () => unwrap(api.POST("/api/v1/covers/fetch", { body: { selection } })),
+    { success: t("library.findCoversQueued") },
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const remove = useAction(
     (ids: number[]) => unwrap(api.POST("/api/v1/tracks/delete", { body: { track_ids: ids } })),
@@ -344,7 +352,9 @@ export function Library() {
     setSelected(new Set());
     setAllMatching(false);
   };
-  const shown = COLUMNS.filter((c) => columns.includes(c.value));
+  // The cover goes before the title; the others after the artist.
+  const showCover = columns.includes("cover");
+  const shown = COLUMNS.filter((c) => c.value !== "cover" && columns.includes(c.value));
 
   return (
     <>
@@ -539,6 +549,12 @@ export function Library() {
                       disabled: selectedCount > MAX_TAG_EDIT || backToFileTags.isPending,
                     },
                     {
+                      label: t("library.findCovers"),
+                      title: t("library.findCoversHelp"),
+                      onSelect: () => findCovers.mutate(undefined),
+                      disabled: findCovers.isPending,
+                    },
+                    {
                       label: t("library.delete"),
                       danger: true,
                       title: allMatching ? t("library.deletePageOnly") : undefined,
@@ -574,6 +590,11 @@ export function Library() {
                       }}
                     />
                   </th>
+                  {showCover && (
+                    <th className="cover-cell">
+                      <span className="visually-hidden">{t("library.column.cover")}</span>
+                    </th>
+                  )}
                   <th>{t("library.sort.title")}</th>
                   <th className="hide-narrow">{t("library.sort.artist")}</th>
                   {shown.map((c) => (
@@ -592,6 +613,7 @@ export function Library() {
                     key={track.id}
                     track={track}
                     columns={shown.map((c) => c.value)}
+                    showCover={showCover}
                     canQueue={canEdit}
                     selected={allMatching || selected.has(track.id)}
                     range={range}
@@ -894,6 +916,7 @@ export function bitrate(track: Pick<TrackSummary, "bitrate_kbps" | "bitrate_mode
 function Row({
   track,
   columns,
+  showCover,
   canQueue,
   selected,
   range,
@@ -903,6 +926,7 @@ function Row({
 }: {
   track: TrackSummary;
   columns: Column[];
+  showCover: boolean;
   canQueue: boolean;
   selected: boolean;
   range: RangeSelection<number>;
@@ -916,6 +940,7 @@ function Row({
   const file = track.path.split("/").pop() ?? track.path;
   const none = <span className="muted">–</span>;
   const cells: Record<Column, ReactNode> = {
+    cover: <CoverThumb url={track.cover_url} />,
     album: track.album ?? none,
     genre: track.genre ?? none,
     length: <span className="num">{duration(track.duration_ms)}</span>,
@@ -949,6 +974,7 @@ function Row({
           {...range.checkbox(track.id)}
         />
       </td>
+      {showCover && <td className="cover-cell">{cells.cover}</td>}
       <td className="title-cell">
         <div className="row" style={{ flexWrap: "nowrap" }}>
           <Link to={`/library/${track.id}`} className="ellipsis">

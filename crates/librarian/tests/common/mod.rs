@@ -136,6 +136,8 @@ pub struct MockState {
     pub covers: HashMap<String, Vec<u8>>,
     /// Artist MBID → MusicBrainz artist with its relationships.
     pub artists: HashMap<String, Value>,
+    /// Release searches: a word of the query → MusicBrainz `releases`.
+    pub searches: HashMap<String, Value>,
     pub requests: Vec<(Service, Instant)>,
     /// User-Agent of every request.
     pub user_agents: Vec<String>,
@@ -151,6 +153,7 @@ impl Mock {
         let state = Arc::new(Mutex::new(state));
         let router = Router::new()
             .route("/v2/lookup", post(acoustid))
+            .route("/ws/2/release", get(search))
             .route("/ws/2/release/{id}", get(release))
             .route("/ws/2/artist/{id}", get(artist))
             .route("/caa/release/{id}/front-500", get(cover))
@@ -223,6 +226,24 @@ async fn release(
         Some(release) => axum::Json(release.clone()).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+async fn search(
+    state: Shared,
+    headers: axum::http::HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
+) -> Response {
+    log(&state, Service::MusicBrainz, &headers);
+    let asked = query.get("query").cloned().unwrap_or_default();
+    let releases = state
+        .lock()
+        .unwrap()
+        .searches
+        .iter()
+        .find(|(word, _)| asked.contains(word.as_str()))
+        .map(|(_, releases)| releases.clone())
+        .unwrap_or_else(|| json!([]));
+    axum::Json(json!({"count": 1, "offset": 0, "releases": releases})).into_response()
 }
 
 async fn artist(

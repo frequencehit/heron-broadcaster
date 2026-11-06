@@ -2756,7 +2756,7 @@ async fn track_details_labels_programming_and_tags() {
     // The scanner reading the file again keeps them.
     let read = heron_library::tags::read(&file).unwrap();
     let mut connection = pool.acquire().await.unwrap();
-    heron_library::details::save(&mut connection, track, &read)
+    heron_library::details::save(&mut connection, track, &read, None)
         .await
         .unwrap();
     drop(connection);
@@ -7984,5 +7984,295 @@ async fn two_factor_authentication() {
         (status, &body["error"]),
         (StatusCode::FORBIDDEN, &json!("two_factor_required"))
     );
+    station.stop().await;
+}
+
+fn png(width: u32, height: u32, shade: u8) -> Vec<u8> {
+    let picture = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+        width,
+        height,
+        image::Rgb([shade, 100, 50]),
+    ));
+    let mut out = Vec::new();
+    picture
+        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+        .unwrap();
+    out
+}
+
+impl Client {
+    /// Sends an image, as an upload does.
+    async fn put_image(&self, path: &str, bytes: Vec<u8>) -> (StatusCode, Value) {
+        let mut request = self
+            .http
+            .put(format!("{}{path}", self.base))
+            .header("content-type", "image/png")
+            .body(bytes);
+        if let Some(cookie) = &self.cookie {
+            request = request
+                .header("cookie", cookie)
+                .header("x-requested-with", "test");
+        }
+        let response = request.send().await.unwrap();
+        let status = response.status();
+        let value = response.json().await.unwrap_or(Value::Null);
+        (status, value)
+    }
+}
+
+/// Covers set by hand for an album or a track, served by hash with a long
+/// cache, in track lists, history and the public side (the station logo
+/// standing in), Cover Art Archive candidates, and backups.
+#[tokio::test(flavor = "multi_thread")]
+async fn covers_are_set_by_hand_shown_and_backed_up() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+
+    let (status, _) = viewer
+        .put_image(&format!("/tracks/{}/cover", t[0]), png(800, 800, 1))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, error) = admin
+        .put_image(&format!("/tracks/{}/cover", t[0]), b"not an image".to_vec())
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{error}");
+    let (status, cover) = admin
+        .put_image(&format!("/tracks/{}/cover", t[0]), png(800, 400, 1))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{cover}");
+    assert_eq!(cover["source"], "hand");
+    assert_eq!(cover["scope"], "album");
+    assert_eq!(
+        (cover["width"].as_u64(), cover["height"].as_u64()),
+        (Some(800), Some(400))
+    );
+    let url = cover["url"].as_str().unwrap().to_owned();
+    assert!(url.starts_with("/api/v1/public/covers/"), "{url}");
+
+    // A track of its own.
+    let (status, own) = admin
+        .put_image(
+            &format!("/tracks/{}/cover?scope=track", t[1]),
+            png(50, 50, 2),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(own["scope"], "track");
+
+    // In the track list, with a filter for the others.
+    let page = viewer.get("/tracks").await;
+    let urls: std::collections::HashMap<u64, Value> = page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|track| (track["id"].as_u64().unwrap(), track["cover_url"].clone()))
+        .collect();
+    assert_eq!(urls[&t[0]], json!(url));
+    assert_eq!(urls[&t[1]], own["url"]);
+    assert_eq!(urls[&t[2]], Value::Null);
+    assert_eq!(viewer.get("/tracks?filter=no_cover").await["total"], 3);
+
+    // Served by hash to anyone, cached for a year; by track to those signed in.
+    let http = reqwest::Client::new();
+    let response = http
+        .get(format!("http://{}{url}?size=96", station.api))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["content-type"], "image/jpeg");
+    assert!(
+        response.headers()["cache-control"]
+            .to_str()
+            .unwrap()
+            .contains("immutable")
+    );
+    let etag = response.headers()["etag"].clone();
+    let thumbnail = image::load_from_memory(&response.bytes().await.unwrap()).unwrap();
+    assert_eq!((thumbnail.width(), thumbnail.height()), (96, 48));
+    let again = http
+        .get(format!("http://{}{url}?size=96", station.api))
+        .header("if-none-match", etag)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::NOT_MODIFIED);
+    let large = viewer.get_bytes(&format!("/tracks/{}/cover", t[0])).await;
+    let large = image::load_from_memory(&large).unwrap();
+    assert_eq!((large.width(), large.height()), (600, 300));
+    let (status, _) = viewer
+        .request(Method::GET, &format!("/tracks/{}/cover", t[2]), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // The public side: full addresses, the logo for a track without a cover.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/station",
+            json!({"timezone": "Europe/Paris", "public_url": "https://radio.example.org/"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/station",
+            json!({"timezone": "Europe/Paris", "public_url": "ftp://radio.example.org"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = admin
+        .put_image("/settings/station/logo", png(300, 300, 3))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    for (track, minutes) in [(t[0], 10), (t[2], 5)] {
+        sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, started_at, ended_at, deck, source)
+             VALUES (1, ?, NOW(6) - INTERVAL ? MINUTE, NOW(6) - INTERVAL ? MINUTE, 'a', 'rotation')",
+        )
+        .bind(track)
+        .bind(minutes)
+        .bind(minutes - 1)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+    let plays = station.client().get("/public/history").await;
+    let logo_hash: Vec<u8> = sqlx::query_scalar("SELECT logo_hash FROM stations WHERE id = 1")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    let logo = format!(
+        "https://radio.example.org/api/v1/public/covers/{}",
+        heron_library::covers::hex(&logo_hash)
+    );
+    // The engine plays too: the plays are found by title.
+    let cover_of = |plays: &Value, title: &str| {
+        plays
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|play| play["title"] == title)
+            .map(|play| play["cover_url"].clone())
+            .unwrap()
+    };
+    assert_eq!(cover_of(&plays, "Track 3"), json!(logo), "{plays}");
+    assert_eq!(
+        cover_of(&plays, "Track 1"),
+        json!(format!("https://radio.example.org{url}"))
+    );
+    // Heron's own history: the cover or nothing.
+    let history = admin.get("/history").await;
+    assert_eq!(cover_of(&history, "Track 3"), Value::Null);
+    assert_eq!(cover_of(&history, "Track 1"), json!(url));
+
+    // In backups: covers set by hand and the logo, with their images.
+    let file = crate::backups::file::export(
+        pool,
+        crate::backups::file::Kind::Manual,
+        "2026-12-15T00:00:00Z".to_owned(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(file.tables["covers"].len(), 3);
+    assert_eq!(file.tables["album_covers"].len(), 1);
+    assert_eq!(
+        file.tables["track_covers"][0]["track"],
+        "Artist 2/Track 2.wav"
+    );
+    sqlx::query("UPDATE stations SET logo_hash = NULL")
+        .execute(pool)
+        .await
+        .unwrap();
+    for table in ["album_covers", "track_covers"] {
+        sqlx::query(sqlx::AssertSqlSafe(format!("DELETE FROM {table}")))
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+    sqlx::query("DELETE FROM covers")
+        .execute(pool)
+        .await
+        .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    let mut report = crate::backups::file::RestoreReport::default();
+    crate::backups::file::restore(&mut tx, &file, &mut report)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let page = viewer.get("/tracks").await;
+    let restored: Vec<&Value> = page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|track| &track["cover_url"])
+        .collect();
+    assert_eq!(restored.iter().filter(|url| !url.is_null()).count(), 2);
+    let logo_back: Option<Vec<u8>> =
+        sqlx::query_scalar("SELECT logo_hash FROM stations WHERE id = 1")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(logo_back, Some(logo_hash));
+
+    // Removed: the file has none, nothing comes back.
+    let (status, now) = admin
+        .request(Method::DELETE, &format!("/tracks/{}/cover", t[0]), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(now, Value::Null);
+
+    // Cover Art Archive lookups are library tasks; unsure ones wait.
+    let (status, task) = admin
+        .send(
+            Method::POST,
+            "/covers/fetch",
+            json!({"selection": {"track_ids": [t[2]]}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{task}");
+    assert_eq!(task["request"]["kind"], "fetch_covers");
+    assert_eq!(task["request"]["track_ids"], json!([t[2]]));
+    sqlx::query(
+        "INSERT INTO cover_candidates (album_key, release_id, title, artist, score, thumbnail_url)
+         SELECT album_key, '00000000-0000-4000-8000-000000000001', 'Album', 'Artist 3', 70,
+                'https://coverartarchive.org/release/x/front-250'
+         FROM tracks WHERE id = ?",
+    )
+    .bind(t[2])
+    .execute(pool)
+    .await
+    .unwrap();
+    let albums = viewer.get("/covers/candidates").await;
+    assert_eq!(albums.as_array().unwrap().len(), 1, "{albums}");
+    assert_eq!(albums[0]["track_id"], t[2]);
+    assert_eq!(albums[0]["candidates"][0]["score"], 70);
+    let detail = viewer.get(&format!("/tracks/{}", t[2])).await;
+    assert_eq!(detail["cover_candidates"].as_array().unwrap().len(), 1);
+    let candidate = albums[0]["candidates"][0]["id"].as_u64().unwrap();
+    let (status, task) = admin
+        .send(
+            Method::POST,
+            &format!("/covers/candidates/{candidate}/accept"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(task["request"]["kind"], "apply_cover");
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/covers/candidates/refuse",
+            json!({"album_key": albums[0]["album_key"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(viewer.get("/covers/candidates").await, json!([]));
     station.stop().await;
 }

@@ -39,6 +39,8 @@ flate2 = "1.1.10"
 getrandom = "0.4.3"
 hmac = "0.13.0"
 hound = "3.5.1"
+# Cover art: decoded and re-encoded in pure Rust (the images stay as they are).
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "serde", "tzdb-bundle-always", "tzdb-zoneinfo", "tz-system"] }
 lofty = "0.25.5"
 metrics = "0.24.6"

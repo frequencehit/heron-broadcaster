@@ -53,6 +53,8 @@ pub enum TrackFilter {
     Disabled,
     /// Identification not confident enough, waiting for review.
     NeedsReview,
+    /// Neither a cover of its own nor its album's.
+    NoCover,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, ToSchema)]
@@ -198,6 +200,9 @@ pub struct TrackSummary {
     /// times rotation picks it. Kept while the track is disabled.
     #[sqlx(try_from = "u64")]
     pub play_ratio: u8,
+    /// Its cover (its own, else its album's), `/api/v1/public/covers/…`:
+    /// the address changes with the image. `?size=96` for a thumbnail.
+    pub cover_url: Option<String>,
     #[sqlx(skip)]
     pub labels: Vec<LabelRef>,
 }
@@ -258,7 +263,9 @@ impl ListContext {
         query.push(
             " AS era, CAST(COALESCE(p.bpm, a.bpm) AS DOUBLE) AS bpm, p.mood, p.sound_code,
               CAST(l.min_db AS DOUBLE) AS level_min_db, CAST(l.max_db AS DOUBLE) AS level_max_db,
-              CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED) AS play_ratio ",
+              CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED) AS play_ratio,
+              CONCAT('/api/v1/public/covers/',
+                     LOWER(HEX(COALESCE(tcv.cover_hash, acv.cover_hash)))) AS cover_url ",
         );
         self.push_from(query);
     }
@@ -271,6 +278,8 @@ impl ListContext {
               LEFT JOIN track_overrides tov ON tov.track_id = t.id
               LEFT JOIN track_musicbrainz mb ON mb.track_id = t.id
               LEFT JOIN track_programming p ON p.track_id = t.id
+              LEFT JOIN track_covers tcv ON tcv.track_id = t.id
+              LEFT JOIN album_covers acv ON acv.album_key = t.album_key
               -- Levels of an earlier analysis are not the file's any more.
               LEFT JOIN track_levels l ON l.track_id = t.id AND l.analyzed_at = a.analyzed_at
               LEFT JOIN (SELECT track_id, COUNT(*) AS plays, MAX(started_at) AS last_played
@@ -350,6 +359,7 @@ impl ListContext {
                 " AND EXISTS (SELECT 1 FROM track_identifications i
                               WHERE i.track_id = t.id AND i.status = 'needs_review')"
             }
+            Some(TrackFilter::NoCover) => " AND tcv.track_id IS NULL AND acv.album_key IS NULL",
         };
         query.push(condition);
 
@@ -777,6 +787,10 @@ pub struct TrackDetail {
     pub plays: crate::history::Plays,
     /// The play ratio counter on each station, in the stations' order.
     pub ratio_counters: Vec<RatioCounter>,
+    /// Its cover: where it comes from, the album's or its own.
+    pub cover: Option<crate::covers::TrackCover>,
+    /// Its album's Cover Art Archive candidates, waiting for an operator.
+    pub cover_candidates: Vec<crate::covers::CoverCandidate>,
 }
 
 /// Where a track's play ratio counter is on a station.
@@ -889,6 +903,8 @@ async fn get_track(
         .bind(id)
         .fetch_all(&state.pool)
         .await?,
+        cover: crate::covers::track_cover(&state.pool, id).await?,
+        cover_candidates: crate::covers::track_candidates(&state.pool, id).await?,
     }))
 }
 

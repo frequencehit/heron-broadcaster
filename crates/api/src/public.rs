@@ -27,6 +27,8 @@ pub struct PublicTrack {
     pub artist: Option<String>,
     pub title: Option<String>,
     pub album: Option<String>,
+    /// Its cover, else the station's logo (docs/api.md#public-endpoints).
+    pub cover_url: Option<String>,
     pub started_at_unix_ms: u64,
     /// From the cue-in to the cue-out.
     pub duration_ms: u64,
@@ -44,9 +46,14 @@ pub struct NowPlaying {
 /// One play.
 #[derive(Clone, Debug, Serialize, ToSchema, sqlx::FromRow)]
 pub struct PublicPlay {
+    #[serde(skip)]
+    pub track_id: Option<u64>,
     pub artist: Option<String>,
     pub title: Option<String>,
     pub album: Option<String>,
+    /// Its cover, else the station's logo.
+    #[sqlx(skip)]
+    pub cover_url: Option<String>,
     pub started_at_unix_ms: i64,
     /// Missing while the track plays.
     pub ended_at_unix_ms: Option<i64>,
@@ -57,9 +64,13 @@ pub struct PublicPlay {
 pub struct UpcomingTrack {
     /// 0 for the next one.
     pub position: u32,
+    #[serde(skip)]
+    pub track_id: Option<u64>,
     pub artist: Option<String>,
     pub title: Option<String>,
     pub album: Option<String>,
+    /// Its cover, else the station's logo; filled by [`fill_covers`].
+    pub cover_url: Option<String>,
     /// From the cue-in to the cue-out.
     pub duration_ms: u64,
     /// When it should start, without crossfades, as the Queue page shows it.
@@ -93,9 +104,11 @@ pub fn upcoming(player: &PlayerState, now_ms: u64) -> Vec<(u64, UpcomingTrack)> 
                 entry.entry_id,
                 UpcomingTrack {
                     position: position as u32,
+                    track_id: track.track_id,
                     artist: track.artist.clone(),
                     title: track.title.clone(),
                     album: track.album.clone(),
+                    cover_url: None,
                     duration_ms: u64::try_from(crate::rotation::planned_length_ms(entry))
                         .unwrap_or(0),
                     planned_start_unix_ms: u64::try_from(at).unwrap_or(0),
@@ -103,6 +116,20 @@ pub fn upcoming(player: &PlayerState, now_ms: u64) -> Vec<(u64, UpcomingTrack)> 
             )
         })
         .collect()
+}
+
+/// Gives upcoming tracks their cover addresses. Without them when the
+/// database cannot be read: the list matters more.
+pub async fn fill_covers(pool: &sqlx::MySqlPool, station_id: u64, tracks: &mut [UpcomingTrack]) {
+    let ids: Vec<u64> = tracks.iter().filter_map(|track| track.track_id).collect();
+    match crate::covers::PublicCovers::load(pool, station_id, &ids).await {
+        Ok(covers) => {
+            for track in tracks {
+                track.cover_url = covers.url(track.track_id);
+            }
+        }
+        Err(error) => tracing::warn!(%error, "cannot read the covers"),
+    }
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -119,6 +146,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(now_playing))
         .routes(routes!(public_history))
         .routes(routes!(public_queue))
+        .merge(crate::covers::public_router())
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -143,6 +171,7 @@ async fn now_playing(
 ) -> ([(header::HeaderName, &'static str); 1], Json<NowPlaying>) {
     let now = unix_ms(SystemTime::now());
     let mut jingle = false;
+    let mut track_id = None;
     let track = station.engine.state().borrow().as_ref().and_then(|player| {
         player
             .decks
@@ -154,26 +183,40 @@ async fn now_playing(
                     jingle = true;
                     return None;
                 }
+                track_id = track.track_id;
                 Some(PublicTrack {
                     artist: track.artist.clone(),
                     title: track.title.clone(),
                     album: track.album.clone(),
+                    cover_url: None,
                     started_at_unix_ms: now.saturating_sub(deck.position_ms),
                     duration_ms: deck.length_ms,
                     position_ms: deck.position_ms,
                 })
             })
     });
-    let track = match track {
+    let mut track = match track {
         Some(track) => Some(track),
-        None if jingle => last_song(&state, &station, now)
-            .await
-            .unwrap_or_else(|error| {
+        None if jingle => match last_song(&state, &station, now).await {
+            Ok(Some((id, track))) => {
+                track_id = id;
+                Some(track)
+            }
+            Ok(None) => None,
+            Err(error) => {
                 tracing::warn!(%error, "cannot read the last song");
                 None
-            }),
+            }
+        },
         None => None,
     };
+    if let Some(track) = &mut track {
+        let ids: Vec<u64> = track_id.into_iter().collect();
+        match crate::covers::PublicCovers::load(&state.pool, station.id(), &ids).await {
+            Ok(covers) => track.cover_url = covers.url(track_id),
+            Err(error) => tracing::warn!(%error, "cannot read the cover"),
+        }
+    }
     (
         [(header::CACHE_CONTROL, "public, max-age=5")],
         Json(NowPlaying {
@@ -189,10 +232,11 @@ async fn now_playing(
 #[utoipa::path(get, path = "/public/queue", tag = "public", security(()),
     responses((status = 200, body = PublicQueue)))]
 async fn public_queue(
+    State(state): State<AppState>,
     station: Station,
 ) -> ([(header::HeaderName, &'static str); 1], Json<PublicQueue>) {
     let now = unix_ms(SystemTime::now());
-    let upcoming = station
+    let mut upcoming: Vec<UpcomingTrack> = station
         .engine
         .state()
         .borrow()
@@ -204,6 +248,7 @@ async fn public_queue(
                 .collect()
         })
         .unwrap_or_default();
+    fill_covers(&state.pool, station.id(), &mut upcoming).await;
     (
         [(header::CACHE_CONTROL, "public, max-age=5")],
         Json(PublicQueue {
@@ -231,8 +276,8 @@ async fn public_history(
         return Err(ApiError::BadRequest("limit is 1 to 50".to_owned()));
     }
     let mut sql = sqlx::QueryBuilder::new(
-        "SELECT COALESCE(h.artist, t.artist) AS artist, COALESCE(h.title, t.title) AS title,
-                t.album,
+        "SELECT h.track_id, COALESCE(h.artist, t.artist) AS artist,
+                COALESCE(h.title, t.title) AS title, t.album,
                 CAST(UNIX_TIMESTAMP(h.started_at) * 1000 AS SIGNED) AS started_at_unix_ms,
                 CAST(UNIX_TIMESTAMP(h.ended_at) * 1000 AS SIGNED) AS ended_at_unix_ms
          FROM play_history h LEFT JOIN tracks t ON t.id = h.track_id
@@ -248,18 +293,25 @@ async fn public_history(
     }
     sql.push(" ORDER BY h.started_at DESC, h.id DESC LIMIT ")
         .push_bind(limit);
-    let plays = sql.build_query_as().fetch_all(&state.pool).await?;
+    let mut plays: Vec<PublicPlay> = sql.build_query_as().fetch_all(&state.pool).await?;
+    let ids: Vec<u64> = plays.iter().filter_map(|play| play.track_id).collect();
+    let covers = crate::covers::PublicCovers::load(&state.pool, station.id(), &ids).await?;
+    for play in &mut plays {
+        play.cover_url = covers.url(play.track_id);
+    }
     Ok(([(header::CACHE_CONTROL, "public, max-age=15")], Json(plays)))
 }
 
 /// The last song (a track that sends metadata) that played on the decks,
-/// shown while a jingle plays. Its position may be past its end: it ended.
+/// shown while a jingle plays, with its track. Its position may be past
+/// its end: it ended.
 async fn last_song(
     state: &AppState,
     station: &Station,
     now: u64,
-) -> ApiResult<Option<PublicTrack>> {
+) -> ApiResult<Option<(Option<u64>, PublicTrack)>> {
     type Row = (
+        Option<u64>,
         Option<String>,
         Option<String>,
         Option<String>,
@@ -267,7 +319,7 @@ async fn last_song(
         Option<u32>,
     );
     let row: Option<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT COALESCE(h.artist, t.artist), COALESCE(h.title, t.title), t.album,
+        "SELECT h.track_id, COALESCE(h.artist, t.artist), COALESCE(h.title, t.title), t.album,
                     CAST(UNIX_TIMESTAMP(h.started_at) * 1000 AS SIGNED), t.duration_ms
              FROM play_history h LEFT JOIN tracks t ON t.id = h.track_id
              WHERE h.deck <> 'fx' AND h.station_id = ? AND NOT {NO_METADATA}
@@ -276,17 +328,21 @@ async fn last_song(
     .bind(station.id())
     .fetch_optional(&state.pool)
     .await?;
-    Ok(row.map(|(artist, title, album, started, duration_ms)| {
-        let started = u64::try_from(started).unwrap_or(0);
-        PublicTrack {
-            artist,
-            title,
-            album,
-            started_at_unix_ms: started,
-            duration_ms: u64::from(duration_ms.unwrap_or(0)),
-            position_ms: now.saturating_sub(started),
-        }
-    }))
+    Ok(
+        row.map(|(track_id, artist, title, album, started, duration_ms)| {
+            let started = u64::try_from(started).unwrap_or(0);
+            let track = PublicTrack {
+                artist,
+                title,
+                album,
+                cover_url: None,
+                started_at_unix_ms: started,
+                duration_ms: u64::from(duration_ms.unwrap_or(0)),
+                position_ms: now.saturating_sub(started),
+            };
+            (track_id, track)
+        }),
+    )
 }
 
 #[cfg(test)]

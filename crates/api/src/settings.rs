@@ -67,6 +67,11 @@ pub struct StationSettings {
     /// IANA time zone the clocks and restrictions follow, e.g.
     /// `Europe/Paris`. By default the server's (`TZ`), or UTC.
     pub timezone: String,
+    /// The address `heron-web` is reached at from outside
+    /// (`https://radio.example.org`): cover addresses of the public
+    /// endpoints and webhooks start with it. Paths only when missing.
+    #[serde(default)]
+    pub public_url: Option<String>,
 }
 
 impl StationSettings {
@@ -94,6 +99,7 @@ impl Default for StationSettings {
         };
         Self {
             timezone: from_env.or_else(system).unwrap_or_else(|| "UTC".to_owned()),
+            public_url: None,
         }
     }
 }
@@ -227,6 +233,9 @@ pub struct LibrarySettingsView {
     /// Tags edited from the browser are written into the files; off, they
     /// are kept in Heron's database and the files are left alone.
     pub write_tags: bool,
+    /// Albums without a cover are looked up on the Cover Art Archive in
+    /// the background.
+    pub fetch_covers: bool,
 }
 
 impl From<LibrarySettings> for LibrarySettingsView {
@@ -241,6 +250,7 @@ impl From<LibrarySettings> for LibrarySettingsView {
             min_free_mb: settings.min_free_mb,
             trash_days: settings.trash_days,
             write_tags: settings.write_tags,
+            fetch_covers: settings.fetch_covers,
         }
     }
 }
@@ -267,6 +277,9 @@ pub struct LibrarySettingsPatch {
     /// Write tags edited from the browser into the files (true), or keep
     /// them in Heron's database (false).
     pub write_tags: Option<bool>,
+    /// Look albums without a cover up on the Cover Art Archive in the
+    /// background.
+    pub fetch_covers: Option<bool>,
 }
 
 /// Tells a field set to `null` (`Some(None)`) from a missing one (`None`).
@@ -584,6 +597,7 @@ async fn patch_library(
     settings.save_cover = patch.save_cover.unwrap_or(settings.save_cover);
     settings.embed_cover = patch.embed_cover.unwrap_or(settings.embed_cover);
     settings.write_tags = patch.write_tags.unwrap_or(settings.write_tags);
+    settings.fetch_covers = patch.fetch_covers.unwrap_or(settings.fetch_covers);
     save(&state.pool, LibrarySettings::SETTINGS_NAME, &settings).await?;
     tracing::info!(user = %user.username, ?settings, "library settings changed");
     Ok(Json(settings.into()))
@@ -702,9 +716,10 @@ async fn put_station(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
-    Json(settings): Json<StationSettings>,
+    Json(mut settings): Json<StationSettings>,
 ) -> ApiResult<Json<StationSettings>> {
     user.require(Role::Admin)?;
+    settings.public_url = check_public_url(settings.public_url.take())?;
     TimeZone::get(&settings.timezone).map_err(|_| {
         ApiError::Invalid(format!(
             "unknown time zone {:?}: use an IANA name such as Europe/Paris",
@@ -720,6 +735,29 @@ async fn put_station(
     .await?;
     tracing::info!(user = %user.username, timezone = %settings.timezone, "station settings changed");
     Ok(Json(settings))
+}
+
+/// A station's public address: `http` or `https`, without a path, query
+/// or trailing slash. Empty means none.
+fn check_public_url(url: Option<String>) -> ApiResult<Option<String>> {
+    let Some(url) = url.map(|url| url.trim().trim_end_matches('/').to_owned()) else {
+        return Ok(None);
+    };
+    if url.is_empty() {
+        return Ok(None);
+    }
+    let invalid = || {
+        ApiError::Invalid(format!(
+            "public_url {url:?}: give the address the station's Heron is reached at, \
+             such as https://radio.example.org"
+        ))
+    };
+    let parsed = reqwest::Url::parse(&url).map_err(|_| invalid())?;
+    let bare = parsed.query().is_none() && parsed.fragment().is_none() && parsed.has_host();
+    if !matches!(parsed.scheme(), "http" | "https") || !bare {
+        return Err(invalid());
+    }
+    Ok(Some(url))
 }
 
 /// What counts as a play, eras, and the mood and sound code scales.
