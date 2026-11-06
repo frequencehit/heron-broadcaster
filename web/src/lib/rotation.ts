@@ -2,7 +2,7 @@
 
 // Words for rotation: days, hours, rules, methods and separation windows.
 
-import type { Method, Rule, SeparationOverrides, Target, Windows } from "../api";
+import type { ClockSlot, Method, Rule, SeparationOverrides, Target, Windows } from "../api";
 import { type PlainKey, locale, number, t } from "../i18n";
 
 /** Monday (`1`) to Sunday (`7`). */
@@ -196,4 +196,22 @@ export function describeWindows(windows: Windows): string {
     described.push(daypartDays(windows.daypart_days));
   }
   return described.join(" · ");
+}
+
+/**
+ * Whether the slot at `index` cannot be linked to the next one: a clock of
+ * one slot, or a slot next to a linked slot (no chains; the first slot
+ * follows the last one). A slot already linked can always be unlinked.
+ */
+export function linkBlocked(slots: readonly ClockSlot[], index: number): boolean {
+  const count = slots.length;
+  if (slots[index]?.linked_to_next) {
+    return false;
+  }
+  if (count < 2) {
+    return true;
+  }
+  const previous = slots[(index - 1 + count) % count];
+  const next = slots[(index + 1) % count];
+  return !!previous?.linked_to_next || !!next?.linked_to_next;
 }

@@ -1176,6 +1176,11 @@ a.badge-link:hover {
   flex: none;
 }
 
+/* A jingle and the track it announces (a linked clock slot): one block. */
+.queue-item.linked {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 /* Waveform and graphs ---------------------------------------------------- */
 
 .waveform {
