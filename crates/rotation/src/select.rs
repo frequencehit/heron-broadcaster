@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::dayparts::{self, DaypartLog};
+use crate::dayparts::{self, DaypartFrom, DaypartLog};
 use crate::ratio::{self, HeldByRatio};
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{AcrossWindows, FALLBACK_STEP, LAST_STEP, Windows, describe_step};
@@ -508,7 +508,14 @@ fn fill(
     let previous = history
         .previous(at_ms)
         .map(|play| play.categories.as_slice());
-    let recent = Recent::new(library, history, at_ms, slot.call.windows.daypart_days);
+    // The days of the slot's category, or of a track's own.
+    let days = slot
+        .call
+        .pool
+        .iter()
+        .map(|(track, _)| library.for_track(slot.call.windows, track).daypart_days)
+        .fold(slot.call.windows.daypart_days, u8::max);
+    let recent = Recent::new(library, history, at_ms, days);
     let (allowed, restricted) = slot.call.allowed(library, local, previous);
     let across = if slot.enforce_rules {
         library.settings.across.windows()
@@ -519,7 +526,8 @@ fn fill(
     let mut held: Option<(Option<i64>, HeldElsewhere)> = None;
     if slot.enforce_rules {
         for (track, _) in &allowed {
-            match recent.blocking(library, track, slot.call.windows, at_ms) {
+            let windows = library.for_track(slot.call.windows, track);
+            match recent.blocking(library, track, windows, at_ms) {
                 Some(SeparationRule::Track) => blocked.track += 1,
                 Some(SeparationRule::Title) => blocked.title += 1,
                 Some(SeparationRule::Artist) => blocked.artist += 1,
@@ -560,27 +568,31 @@ fn fill(
         } else {
             AcrossWindows::OFF
         };
-        let (call, pool, windows) = if step < FALLBACK_STEP {
-            let windows = if slot.enforce_rules {
-                slot.call.windows.at_step(step)
-            } else {
-                Windows::OFF
-            };
-            (&slot.call, &allowed, windows)
+        // The windows before relaxation: none in a slot without rules.
+        let (call, pool, configured) = if step < FALLBACK_STEP {
+            let configured = slot.enforce_rules.then_some(slot.call.windows);
+            (&slot.call, &allowed, configured)
         } else {
             let (call, pool) = fallback.get_or_insert_with(|| {
                 let call = Call::new(library, library.fallback_category().map(|c| c.id), None);
                 let (pool, _) = call.allowed(library, local, previous);
                 (call, pool)
             });
-            let windows = call.windows.at_step(step);
-            (&*call, &*pool, windows)
+            (&*call, &*pool, Some(call.windows))
+        };
+        // Each track's, with its own daypart values, relaxed at this step.
+        let windows_of = |track: &Track| {
+            configured.map_or(Windows::OFF, |windows| {
+                library.for_track(windows, track).at_step(step)
+            })
         };
         let mut candidates: Vec<_> = pool
             .iter()
             .filter(|(track, _)| {
                 !held_by_ratio.iter().any(|held| held.track_id == track.id)
-                    && recent.blocking(library, track, windows, at_ms).is_none()
+                    && recent
+                        .blocking(library, track, windows_of(track), at_ms)
+                        .is_none()
                     && held_elsewhere(library, history, track, across, at_ms).is_none()
             })
             .copied()
@@ -612,6 +624,8 @@ fn fill(
         let Some((track, weight, counter)) = picked else {
             continue;
         };
+        let windows = windows_of(track);
+        let own = library.for_track(slot.call.windows, track);
         let explanation = Explanation {
             at_unix_ms: at_ms,
             schedule_id: None,
@@ -642,8 +656,10 @@ fn fill(
             daypart: Some(DaypartLog {
                 count: recent.daypart_count,
                 daypart: dayparts::of(recent.daypart_count, local),
-                separation: slot.call.windows.dayparts,
-                days: slot.call.windows.daypart_days,
+                separation: own.dayparts,
+                days: own.daypart_days,
+                separation_from: DaypartFrom::of(track.dayparts),
+                days_from: DaypartFrom::of(track.daypart_days),
                 last_daypart: history
                     .last_played(track.id)
                     .map(|last| dayparts::of(recent.daypart_count, library.local(last).datetime())),
@@ -897,6 +913,8 @@ mod tests {
             categories: vec![],
             length_ms: 240_000,
             ratio: 10,
+            dayparts: None,
+            daypart_days: None,
         }
     }
 
@@ -1684,6 +1702,8 @@ mod tests {
                 daypart: 2,
                 separation: 2,
                 days: 0,
+                separation_from: DaypartFrom::Category,
+                days_from: DaypartFrom::Category,
                 last_daypart: Some(0),
             })
         );
@@ -1824,6 +1844,157 @@ mod tests {
         assert_eq!(pick.explanation.windows.daypart_days, 1);
         let log = pick.explanation.daypart.unwrap();
         assert_eq!((log.daypart, log.days, log.last_daypart), (1, 2, Some(1)));
+    }
+
+    #[test]
+    fn a_track_s_own_daypart_separation_replaces_its_category_s() {
+        // The category keeps out the 3 dayparts after a play; track 1's
+        // own 0 turns it off for it. All of them played in A.
+        let mut library = daypart_library(4, 3);
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(0);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 10 * MIN));
+        for id in 2..=5 {
+            history.push(Play::of(&library.tracks[&id], 30 * MIN));
+        }
+        let mut rng = Rng::new(25);
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!((pick.track, pick.explanation.step), (1, 0));
+        assert_eq!(pick.explanation.blocked.daypart, 4);
+        assert_eq!(pick.explanation.windows.dayparts, 0);
+        let log = pick.explanation.daypart.unwrap();
+        assert_eq!(
+            (log.separation, log.separation_from, log.days_from),
+            (0, DaypartFrom::Track, DaypartFrom::Category)
+        );
+        // Its own 1, in a category without separation, keeps it out of B
+        // only; the others of the category are free.
+        let mut library = daypart_library(4, 0);
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(1);
+        assert!(held_by_daypart(&library, 30 * MIN, 6 * HOUR + 30 * MIN));
+        assert!(!held_by_daypart(&library, 30 * MIN, 12 * HOUR));
+        // The same in every category the track is in.
+        library.clocks.get_mut(&1).unwrap().slots = vec![slot(2, Method::LeastRecentlyPlayed)];
+        library
+            .categories
+            .get_mut(&2)
+            .unwrap()
+            .members
+            .push(Member {
+                track: 1,
+                weight: 1.0,
+            });
+        library.tracks.get_mut(&1).unwrap().categories.push(2);
+        assert!(held_by_daypart(&library, 30 * MIN, 6 * HOUR + 30 * MIN));
+    }
+
+    #[test]
+    fn a_track_s_own_values_are_cut_to_the_station_s_maximum() {
+        let mut library = daypart_library(4, 0);
+        let track = library.tracks.get_mut(&1).unwrap();
+        track.dayparts = Some(10);
+        track.daypart_days = Some(9);
+        let track = library.tracks[&1].clone();
+        let windows = library.for_track(Windows::OFF, &track);
+        assert_eq!((windows.dayparts, windows.daypart_days), (6, 7));
+        library.settings.daypart_count = 6;
+        assert_eq!(library.for_track(Windows::OFF, &track).dayparts, 10);
+        // Unset: the category's stays.
+        let other = library.tracks[&2].clone();
+        let category = Windows {
+            dayparts: 2,
+            daypart_days: 1,
+            ..Windows::OFF
+        };
+        assert_eq!(library.for_track(category, &other), category);
+        // The history reaches back as far as the track's own values do.
+        assert!(library.horizon_ms() >= 7 * DAY + 4 * HOUR);
+    }
+
+    #[test]
+    fn a_track_s_own_days_in_the_same_daypart_replace_its_category_s() {
+        // The category keeps the same daypart out 2 days; track 1 only 1.
+        let mut library = daypart_library(4, 0);
+        for id in 1..=5 {
+            library.tracks.get_mut(&id).unwrap().daypart_days = (id == 1).then_some(1);
+        }
+        library
+            .categories
+            .get_mut(&1)
+            .unwrap()
+            .separation
+            .daypart_days = Some(2);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 8 * HOUR));
+        for id in 2..=5 {
+            history.push(Play::of(&library.tracks[&id], 8 * HOUR + 10 * MIN));
+        }
+        let mut rng = Rng::new(26);
+        // Saturday's B: the others are kept out (2 days), track 1 is not.
+        let pick = next(&library, &history, 2 * DAY + 9 * HOUR, None, &mut rng).unwrap();
+        assert_eq!((pick.track, pick.explanation.step), (1, 0));
+        assert_eq!(pick.explanation.blocked.daypart_days, 4);
+        let log = pick.explanation.daypart.unwrap();
+        assert_eq!((log.days, log.days_from), (1, DaypartFrom::Track));
+    }
+
+    #[test]
+    fn a_track_s_own_daypart_separation_is_relaxed_like_the_category_s() {
+        // Every track of the category has its own 2, played in A.
+        let mut library = daypart_library(4, 0);
+        let mut history = History::default();
+        for id in 1..=5 {
+            library.tracks.get_mut(&id).unwrap().dayparts = Some(2);
+            history.push(Play::of(&library.tracks[&id], (id as i64) * MIN));
+        }
+        let mut rng = Rng::new(27);
+        // C: halved to 1 at step 3, it is free.
+        let pick = next(&library, &history, 12 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 3);
+        assert_eq!(pick.explanation.windows.dayparts, 1);
+        assert_eq!(pick.explanation.blocked.daypart, 5);
+        let log = pick.explanation.daypart.unwrap();
+        assert_eq!(
+            (log.separation, log.separation_from),
+            (2, DaypartFrom::Track)
+        );
+        // B: still kept out halved, dropped at step 4.
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 4);
+        assert_eq!(pick.explanation.windows.dayparts, 0);
+    }
+
+    #[test]
+    fn a_track_s_own_daypart_separation_holds_in_hours_without_a_clock() {
+        // No clock: the station's library, without a category value.
+        let mut library = daypart_library(4, 0);
+        library.schedule.hours.clear();
+        let mut history = History::default();
+        for id in 1..=20 {
+            if id < 20 {
+                library.tracks.get_mut(&id).unwrap().dayparts = Some(1);
+            }
+            history.push(Play::of(&library.tracks[&id], (id as i64) * MIN));
+        }
+        let mut rng = Rng::new(28);
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!((pick.track, pick.explanation.step), (20, 0));
+        assert_eq!(pick.explanation.blocked.daypart, 19);
+    }
+
+    #[test]
+    fn a_slot_without_rules_ignores_a_track_s_own_daypart_separation() {
+        let mut library = daypart_library(4, 0);
+        library.clocks.get_mut(&1).unwrap().slots[0].enforce_rules = false;
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(3);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 30 * MIN));
+        for id in 2..=5 {
+            history.push(Play::of(&library.tracks[&id], HOUR));
+        }
+        let mut rng = Rng::new(29);
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!((pick.track, pick.explanation.step), (1, 0));
     }
 
     /// Track 1 at 0.2, offered first at every pick (its weight dwarfs the
