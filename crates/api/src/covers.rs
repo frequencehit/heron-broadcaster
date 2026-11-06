@@ -5,8 +5,9 @@
 //! the station logo, and the cover addresses of the public side.
 //!
 //! Covers are found by the scanner and `heron-librarian`
-//! (`heron_library::covers`); images are served by their hash from
-//! `/public/covers/{hash}`, an address that changes with the image.
+//! (`heron_library::covers`); images are files of the covers folder,
+//! served by their hash from `/public/covers/{hash}`, an address that
+//! changes with the image.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -210,9 +211,10 @@ fn large(size: Option<u32>) -> ApiResult<bool> {
     }
 }
 
-/// The image of `hash`, with its `ETag`; `304` when the client has it.
+/// The image of `hash`, with its `ETag`; `304` when the client has it,
+/// `404` when its file is missing.
 async fn image(
-    pool: &MySqlPool,
+    files: &covers::Files,
     hash: &[u8],
     large: bool,
     cache: &'static str,
@@ -239,14 +241,20 @@ async fn image(
         cache_headers(&mut response);
         return Ok(response);
     }
-    let column = if large { "image" } else { "thumbnail" };
-    let bytes: Option<Vec<u8>> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-        "SELECT {column} FROM covers WHERE hash = ?"
-    )))
-    .bind(hash)
-    .fetch_optional(pool)
-    .await?;
-    let bytes = bytes.ok_or_else(|| ApiError::not_found("cover"))?;
+    let size = if large { covers::LARGE } else { covers::SMALL };
+    let bytes = files
+        .read(hash, size)
+        .await
+        .map_err(|error| ApiError::Internal(format!("cannot read the cover: {error}")))?;
+    let Some(bytes) = bytes else {
+        // A lost file: found again when the image is stored again.
+        tracing::warn!(
+            cover = covers::hex(hash),
+            size,
+            "the cover's file is missing from the covers folder"
+        );
+        return Err(ApiError::not_found("cover"));
+    };
     let mut response = Response::new(Body::from(bytes));
     response
         .headers_mut()
@@ -393,7 +401,7 @@ async fn get_track_cover(
     .await?
     .flatten();
     let hash = hash.ok_or_else(|| ApiError::not_found("cover"))?;
-    image(&state.pool, &hash, large, REVALIDATE, &headers).await
+    image(state.library.covers(), &hash, large, REVALIDATE, &headers).await
 }
 
 /// A cover or a station logo, by its hash. No sign-in; any origin. Its
@@ -410,7 +418,7 @@ async fn public_cover(
 ) -> ApiResult<Response> {
     let large = large(query.size)?;
     let hash = covers::parse_hex(&hash).ok_or_else(|| ApiError::not_found("cover"))?;
-    image(&state.pool, &hash, large, IMMUTABLE, &headers).await
+    image(state.library.covers(), &hash, large, IMMUTABLE, &headers).await
 }
 
 /// The image of a request: its body, or the image at the address of a
@@ -470,11 +478,12 @@ async fn fetch(url: &str) -> ApiResult<Vec<u8>> {
 /// Stores an image; what cannot be read is the request's fault.
 async fn store(state: &AppState, bytes: Vec<u8>) -> ApiResult<covers::Hash> {
     let mut connection = state.pool.acquire().await?;
-    covers::store(&mut connection, bytes)
+    covers::store(&mut connection, state.library.covers(), bytes)
         .await
         .map_err(|error| match error {
             CoverError::Database(error) => error.into(),
             CoverError::Task(error) => ApiError::Internal(error.to_string()),
+            error @ CoverError::Write(_) => ApiError::Internal(error.to_string()),
             other => ApiError::Invalid(other.to_string()),
         })
 }
@@ -607,7 +616,14 @@ async fn look_again(state: &AppState, id: u64) {
     .flatten();
     let found = async {
         let mut connection = state.pool.acquire().await?;
-        covers::from_file(&mut connection, id, Some(&file), embedded.as_deref()).await
+        covers::from_file(
+            &mut connection,
+            state.library.covers(),
+            id,
+            Some(&file),
+            embedded.as_deref(),
+        )
+        .await
     };
     if let Err(error) = found.await {
         tracing::warn!(track = id, %error, "cannot look for the next cover");
@@ -757,7 +773,7 @@ async fn get_station_logo(
         .await?
         .flatten();
     let hash = hash.ok_or_else(|| ApiError::not_found("logo"))?;
-    image(&state.pool, &hash, large, REVALIDATE, &headers).await
+    image(state.library.covers(), &hash, large, REVALIDATE, &headers).await
 }
 
 /// Sets the station's logo (JPEG, PNG or WebP, at most 10 MB): it stands in

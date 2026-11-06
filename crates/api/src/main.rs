@@ -30,6 +30,7 @@ mod library;
 mod listeners;
 mod live;
 mod medleys;
+mod migrate;
 mod modules;
 mod outputs;
 mod play_grid;
@@ -113,6 +114,15 @@ struct Cli {
         default_value = "/var/lib/heron/backups"
     )]
     backup_dir: PathBuf,
+
+    /// The covers folder, where cover images are written (read-write,
+    /// shared with heron-librarian).
+    #[arg(
+        long,
+        env = "HERON_COVERS_DIR",
+        default_value = "/var/lib/heron/covers"
+    )]
+    covers_dir: PathBuf,
 
     /// Seconds between full library scans (file system events also trigger scans).
     #[arg(long, env = "HERON_SCAN_INTERVAL", default_value_t = 3600)]
@@ -199,8 +209,10 @@ fn main() -> anyhow::Result<()> {
             println!("{document}");
             Ok(())
         }
-        Some(Command::User(command)) => manage_users(cli.database_url, command),
-        Some(Command::Backup(command)) => manage_backups(cli.database_url, cli.backup_dir, command),
+        Some(Command::User(command)) => manage_users(cli.database_url, cli.covers_dir, command),
+        Some(Command::Backup(command)) => {
+            manage_backups(cli.database_url, cli.backup_dir, cli.covers_dir, command)
+        }
         None => run(cli),
     }
 }
@@ -214,10 +226,15 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         .context("HERON_DATABASE_URL (or --database-url) is required")?;
 
     let pool = db::connect(&database_url, db::ConnectOptions::default()).await?;
-    MIGRATOR
-        .run(&pool)
-        .await
-        .context("failed to apply database migrations")?;
+    let covers = heron_library::covers::Files::new(cli.covers_dir.clone());
+    migrate::run(&pool, &covers).await?;
+    if let Err(error) = covers.check() {
+        tracing::error!(
+            dir = %cli.covers_dir.display(),
+            %error,
+            "the covers folder cannot be written: covers are not stored"
+        );
+    }
     tracing::info!(
         migrations = MIGRATOR.iter().count(),
         "database schema is up to date"
@@ -234,7 +251,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
 
     let staging_dir = cli.staging_dir.clone();
     let library_dir = cli.library_dir.clone();
-    let library = Arc::new(Library::new(pool.clone(), cli.library_dir.clone()));
+    let library = Arc::new(Library::new(
+        pool.clone(),
+        cli.library_dir.clone(),
+        covers.clone(),
+    ));
     let webhooks = webhooks::Webhooks::new(pool.clone()).context("cannot set up webhooks")?;
     let stations = stations::Stations::start(
         pool.clone(),
@@ -249,7 +270,8 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     let listeners =
         listeners::Collector::new(pool.clone()).context("cannot set up listener statistics")?;
     let backup_dir = cli.backup_dir.clone();
-    let backups = backups::Backups::new(cli.backup_dir.clone(), database_url.clone());
+    let backups =
+        backups::Backups::new(cli.backup_dir.clone(), database_url.clone(), covers.clone());
 
     let mut tasks = vec![
         tokio::spawn(library.clone().run(ScanOptions {
@@ -281,6 +303,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             ConfigItem::text("HERON_LIBRARY_DIR", library_dir.display()),
             ConfigItem::text("HERON_STAGING_DIR", staging_dir.display()),
             ConfigItem::text("HERON_BACKUP_DIR", backup_dir.display()),
+            ConfigItem::text("HERON_COVERS_DIR", cli.covers_dir.display()),
             ConfigItem::secret("HERON_DATABASE_URL", Some(&database_url)),
             ConfigItem::text("HERON_SCAN_INTERVAL", cli.scan_interval),
             ConfigItem::flag("HERON_LIBRARY_WATCH", cli.library_watch),
@@ -353,7 +376,11 @@ fn read_password(prompt: &str) -> anyhow::Result<String> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn manage_users(database_url: Option<String>, command: UserCommand) -> anyhow::Result<()> {
+async fn manage_users(
+    database_url: Option<String>,
+    covers_dir: PathBuf,
+    command: UserCommand,
+) -> anyhow::Result<()> {
     let database_url =
         database_url.context("HERON_DATABASE_URL (or --database-url) is required")?;
     let pool = db::connect(
@@ -364,10 +391,7 @@ async fn manage_users(database_url: Option<String>, command: UserCommand) -> any
         },
     )
     .await?;
-    MIGRATOR
-        .run(&pool)
-        .await
-        .context("failed to apply database migrations")?;
+    migrate::run(&pool, &heron_library::covers::Files::new(covers_dir)).await?;
     let passwords = Passwords::default();
     match command {
         UserCommand::Add { username, role } => {
@@ -431,6 +455,7 @@ async fn manage_users(database_url: Option<String>, command: UserCommand) -> any
 async fn manage_backups(
     database_url: Option<String>,
     backup_dir: PathBuf,
+    covers_dir: PathBuf,
     command: BackupCommand,
 ) -> anyhow::Result<()> {
     let database_url =
@@ -443,11 +468,9 @@ async fn manage_backups(
         },
     )
     .await?;
-    MIGRATOR
-        .run(&pool)
-        .await
-        .context("failed to apply database migrations")?;
-    let backups = backups::Backups::new(backup_dir, database_url);
+    let covers = heron_library::covers::Files::new(covers_dir);
+    migrate::run(&pool, &covers).await?;
+    let backups = backups::Backups::new(backup_dir, database_url, covers);
     let fail = |error: error::ApiError| anyhow::anyhow!("{error}");
     match command {
         BackupCommand::Create => {

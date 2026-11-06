@@ -171,6 +171,8 @@ pub struct FolderProblem {
 pub struct Backups {
     dir: PathBuf,
     database_url: String,
+    /// The covers folder: the images of the covers the file holds.
+    covers: heron_library::covers::Files,
     /// One backup or restore at a time in this process; `LOCK_FILE` for
     /// the others.
     lock: tokio::sync::Mutex<()>,
@@ -506,10 +508,15 @@ fn test_files(
 }
 
 impl Backups {
-    pub fn new(dir: PathBuf, database_url: String) -> Arc<Self> {
+    pub fn new(
+        dir: PathBuf,
+        database_url: String,
+        covers: heron_library::covers::Files,
+    ) -> Arc<Self> {
         Arc::new(Self {
             dir,
             database_url,
+            covers,
             lock: tokio::sync::Mutex::new(()),
             problem: std::sync::Mutex::new(None),
             damaged: std::sync::Mutex::new((BTreeMap::new(), None)),
@@ -726,8 +733,13 @@ impl Backups {
         let bytes = match upload {
             Some(bytes) => bytes.to_vec(),
             None => {
-                let file = file::export(pool, kind, now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string())
-                    .await?;
+                let file = file::export(
+                    pool,
+                    &self.covers,
+                    kind,
+                    now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                )
+                .await?;
                 let bytes = serde_json::to_vec_pretty(&file)
                     .map_err(|error| ApiError::Internal(error.to_string()))?;
                 // Read back as a restore would read it: a file it would
@@ -876,7 +888,7 @@ impl Backups {
             .execute(&mut *connection)
             .await?;
         let mut tx = sqlx::Connection::begin(&mut *connection).await?;
-        file::restore(&mut tx, &file, &mut report).await?;
+        file::restore(&mut tx, &self.covers, &file, &mut report).await?;
         // Everyone signs in again, with the restored users.
         sqlx::query("DELETE FROM sessions")
             .execute(&mut *tx)
@@ -1546,7 +1558,11 @@ mod tests {
     #[test]
     fn old_daily_and_before_restore_backups_are_deleted() {
         let dir = tempfile::tempdir().unwrap();
-        let backups = Backups::new(dir.path().to_path_buf(), String::new());
+        let backups = Backups::new(
+            dir.path().to_path_buf(),
+            String::new(),
+            heron_library::covers::Files::new("/nonexistent/covers"),
+        );
         for day in 1..=9 {
             for kind in ["daily", "before_restore", "manual"] {
                 let name = format!("2026-11-{day:02}T03-30-00Z-{kind}");
@@ -1587,7 +1603,11 @@ mod tests {
         // A file where the folder should be: it cannot be created.
         let taken = dir.path().join("backups");
         std::fs::write(&taken, "").unwrap();
-        let backups = Backups::new(taken.clone(), String::new());
+        let backups = Backups::new(
+            taken.clone(),
+            String::new(),
+            heron_library::covers::Files::new("/nonexistent/covers"),
+        );
         assert!(backups.check_folder().is_err());
         let problem = backups.problem().unwrap();
         assert_eq!((problem.uid, problem.gid), ids());
@@ -1652,15 +1672,27 @@ mod tests {
     async fn one_backup_at_a_time_across_processes() {
         let dir = tempfile::tempdir().unwrap();
         // Two processes: each its own `Backups`, the folder in common.
-        let api = Backups::new(dir.path().to_owned(), String::new());
-        let command_line = Backups::new(dir.path().to_owned(), String::new());
+        let api = Backups::new(
+            dir.path().to_owned(),
+            String::new(),
+            heron_library::covers::Files::new("/nonexistent/covers"),
+        );
+        let command_line = Backups::new(
+            dir.path().to_owned(),
+            String::new(),
+            heron_library::covers::Files::new("/nonexistent/covers"),
+        );
         let held = api.exclusive().await.unwrap();
         assert!(held.1.is_some(), "locked");
         let waiting = tokio::spawn(async move { command_line.exclusive().await.map(|_| ()) });
         tokio::time::sleep(Duration::from_millis(200)).await;
         assert!(!waiting.is_finished(), "waits for the other");
         // Stopped while it waits (the API shutting down): it stops at once.
-        let stopped = Backups::new(dir.path().to_owned(), String::new());
+        let stopped = Backups::new(
+            dir.path().to_owned(),
+            String::new(),
+            heron_library::covers::Files::new("/nonexistent/covers"),
+        );
         let gone = tokio::time::timeout(Duration::from_millis(300), stopped.exclusive()).await;
         assert!(gone.is_err(), "still waiting when stopped");
         drop(held);

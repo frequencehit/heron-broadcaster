@@ -85,6 +85,16 @@ struct Cli {
     )]
     staging_dir: PathBuf,
 
+    /// The covers folder, where cover images are written (read-write,
+    /// shared with heron-api).
+    #[arg(
+        long,
+        env = "HERON_COVERS_DIR",
+        default_value = "/var/lib/heron/covers",
+        global = true
+    )]
+    covers_dir: PathBuf,
+
     /// Seconds a file must stay unmodified before it moves into the buffer zone.
     #[arg(long, env = "HERON_IMPORT_SETTLE", default_value_t = 5)]
     import_settle: u64,
@@ -187,7 +197,15 @@ async fn run(cli: Cli, lowered: Result<(), String>) -> anyhow::Result<()> {
         library: cli.library_dir.clone(),
         incoming: cli.incoming_dir.clone(),
         staging: cli.staging_dir.clone(),
+        covers: heron_library::covers::Files::new(cli.covers_dir.clone()),
     };
+    if let Err(error) = roots.covers.check() {
+        tracing::error!(
+            dir = %cli.covers_dir.display(),
+            %error,
+            "the covers folder cannot be written: covers are not stored"
+        );
+    }
 
     // Finish what a crash interrupted before doing anything else.
     let lock = LibraryLock::acquire(&pool, SERVICE).await?;
@@ -246,6 +264,7 @@ async fn serve(cli: &Cli, pool: MySqlPool, roots: Roots) -> anyhow::Result<()> {
         ConfigItem::text("HERON_LIBRARY_DIR", roots.library.display()),
         ConfigItem::text("HERON_INCOMING_DIR", roots.incoming.display()),
         ConfigItem::text("HERON_STAGING_DIR", roots.staging.display()),
+        ConfigItem::text("HERON_COVERS_DIR", roots.covers.root().display()),
         ConfigItem::flag("HERON_INCOMING_WATCH", cli.incoming_watch),
         ConfigItem::text("HERON_INCOMING_INTERVAL", cli.incoming_interval),
         ConfigItem::text("HERON_IMPORT_SETTLE", cli.import_settle),

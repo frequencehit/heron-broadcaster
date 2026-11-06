@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Cover art kept in Heron's database (docs/library.md#cover-art).
+//! Cover art kept in Heron (docs/library.md#cover-art).
 //!
-//! Each image is stored once in `covers`, by the hash of the image as found,
-//! decoded and re-encoded as two JPEGs (600 and 96 px on the longest side).
+//! Each image is stored once, by the hash of the image as found, decoded
+//! and re-encoded as two JPEGs (600 and 96 px on the longest side): the
+//! JPEGs are files of the covers folder ([`Files`]), `covers` keeps the
+//! hash and the size of the image as found.
 //! An album (`tracks.album_key`) has its cover in `album_covers`; a track
 //! can have its own in `track_covers`, in place of its album's.
 //!
@@ -11,8 +13,9 @@
 //! a cover embedded in it, or an image beside it, becomes its album's or
 //! its own, in the order of [`Source`]. A cover set by hand always wins.
 
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use image::{DynamicImage, GenericImageView, ImageDecoder, ImageFormat, ImageReader, Limits};
 use sqlx::{MySqlConnection, MySqlPool};
@@ -78,6 +81,8 @@ pub enum CoverError {
     Database(#[from] sqlx::Error),
     #[error("cannot read the file: {0}")]
     Io(#[from] std::io::Error),
+    #[error("cannot write the image to the covers folder: {0}")]
+    Write(std::io::Error),
     #[error("the image was not processed: {0}")]
     Task(#[from] tokio::task::JoinError),
 }
@@ -193,9 +198,127 @@ fn jpeg(found: &DynamicImage) -> Result<Vec<u8>, CoverError> {
     Ok(out)
 }
 
+/// The covers folder (`HERON_COVERS_DIR`), where the two JPEGs of each
+/// cover are: `<first two hex digits>/<hash>-600.jpg` and `…-96.jpg`.
+#[derive(Clone, Debug)]
+pub struct Files {
+    root: PathBuf,
+}
+
+/// Temporary files of this process, each its own name.
+static TEMPORARY: AtomicU64 = AtomicU64::new(0);
+
+impl Files {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The file of a cover's copy, [`LARGE`] or [`SMALL`].
+    pub fn path(&self, hash: &[u8], size: u32) -> PathBuf {
+        let hex = hex(hash);
+        self.root
+            .join(hex.get(..2).unwrap_or("00"))
+            .join(format!("{hex}-{size}.jpg"))
+    }
+
+    /// Creates the folder if it is missing, and checks it can be written.
+    pub fn check(&self) -> std::io::Result<()> {
+        std::fs::create_dir_all(&self.root)?;
+        let probe = self
+            .root
+            .join(format!(".write-check-{}", std::process::id()));
+        std::fs::write(&probe, b"")?;
+        std::fs::remove_file(&probe)
+    }
+
+    /// Whether both copies of a cover are there.
+    pub async fn has(&self, hash: &Hash) -> bool {
+        let paths = [self.path(hash, LARGE), self.path(hash, SMALL)];
+        tokio::task::spawn_blocking(move || paths.iter().all(|path| path.is_file()))
+            .await
+            .unwrap_or(false)
+    }
+
+    /// One copy of a cover, `None` when its file is missing.
+    pub async fn read(&self, hash: &[u8], size: u32) -> std::io::Result<Option<Vec<u8>>> {
+        let path = self.path(hash, size);
+        let read = tokio::task::spawn_blocking(move || std::fs::read(path))
+            .await
+            .map_err(std::io::Error::other)?;
+        match read {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Writes one copy, to a temporary file renamed over its name: a crash
+    /// never leaves half an image under a cover's name. Blocking.
+    pub fn write(&self, hash: &[u8], size: u32, bytes: &[u8]) -> std::io::Result<()> {
+        let path = self.path(hash, size);
+        let dir = path.parent().unwrap_or(&self.root);
+        std::fs::create_dir_all(dir)?;
+        let temporary = dir.join(format!(
+            ".{}-{size}.{}-{}.tmp",
+            hex(hash),
+            std::process::id(),
+            TEMPORARY.fetch_add(1, Ordering::Relaxed)
+        ));
+        let written = (|| {
+            let mut file = std::fs::File::create(&temporary)?;
+            file.write_all(bytes)?;
+            file.sync_all()?;
+            std::fs::rename(&temporary, &path)
+        })();
+        if written.is_err() {
+            std::fs::remove_file(&temporary).ok();
+        }
+        written
+    }
+
+    /// Writes both copies of an encoded image.
+    pub async fn write_encoded(&self, encoded: &Encoded) -> std::io::Result<()> {
+        let files = self.clone();
+        let encoded = encoded.clone();
+        tokio::task::spawn_blocking(move || {
+            files.write(&encoded.hash, LARGE, &encoded.image)?;
+            files.write(&encoded.hash, SMALL, &encoded.thumbnail)
+        })
+        .await
+        .map_err(std::io::Error::other)?
+    }
+
+    /// Removes both copies of a cover; missing ones are no error.
+    pub async fn remove(&self, hash: &[u8]) -> std::io::Result<()> {
+        let paths = [self.path(hash, LARGE), self.path(hash, SMALL)];
+        tokio::task::spawn_blocking(move || {
+            for path in paths {
+                match std::fs::remove_file(path) {
+                    Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                        return Err(error);
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(std::io::Error::other)?
+    }
+}
+
 /// Stores `bytes` as a cover, unless the same image is stored already, and
-/// returns its hash. The image is decoded on a blocking thread.
-pub async fn store(connection: &mut MySqlConnection, bytes: Vec<u8>) -> Result<Hash, CoverError> {
+/// returns its hash. A cover whose files are missing has them written
+/// again. The image is decoded on a blocking thread.
+pub async fn store(
+    connection: &mut MySqlConnection,
+    files: &Files,
+    bytes: Vec<u8>,
+) -> Result<Hash, CoverError> {
     if bytes.len() > MAX_BYTES {
         return Err(CoverError::TooLarge);
     }
@@ -205,25 +328,35 @@ pub async fn store(connection: &mut MySqlConnection, bytes: Vec<u8>) -> Result<H
         .fetch_optional(&mut *connection)
         .await?;
     if known.is_some() {
-        return Ok(hash);
+        if files.has(&hash).await {
+            return Ok(hash);
+        }
+        tracing::warn!(
+            cover = hex(&hash),
+            "the cover's files were missing: written again"
+        );
     }
     let encoded = tokio::task::spawn_blocking(move || encode(&bytes)).await??;
-    save(connection, &encoded).await?;
+    save(connection, files, &encoded).await?;
     Ok(hash)
 }
 
-/// Saves an encoded image (once).
-pub async fn save(connection: &mut MySqlConnection, encoded: &Encoded) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT IGNORE INTO covers (hash, width, height, image, thumbnail) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&encoded.hash[..])
-    .bind(encoded.width)
-    .bind(encoded.height)
-    .bind(&encoded.image)
-    .bind(&encoded.thumbnail)
-    .execute(connection)
-    .await?;
+/// Saves an encoded image (once): its files, then its row.
+pub async fn save(
+    connection: &mut MySqlConnection,
+    files: &Files,
+    encoded: &Encoded,
+) -> Result<(), CoverError> {
+    files
+        .write_encoded(encoded)
+        .await
+        .map_err(CoverError::Write)?;
+    sqlx::query("INSERT IGNORE INTO covers (hash, width, height) VALUES (?, ?, ?)")
+        .bind(&encoded.hash[..])
+        .bind(encoded.width)
+        .bind(encoded.height)
+        .execute(connection)
+        .await?;
     Ok(())
 }
 
@@ -364,6 +497,7 @@ async fn drop_found_track_cover(
 /// given, an image beside it. Called after the track's tags were saved.
 pub async fn from_file(
     connection: &mut MySqlConnection,
+    files: &Files,
     track_id: u64,
     file: Option<&Path>,
     embedded: Option<&[u8]>,
@@ -377,7 +511,7 @@ pub async fn from_file(
     };
 
     let embedded = match embedded {
-        Some(bytes) => match store(connection, bytes.to_vec()).await {
+        Some(bytes) => match store(connection, files, bytes.to_vec()).await {
             Ok(hash) => Some(hash),
             Err(CoverError::Database(error)) => return Err(error.into()),
             Err(error) => {
@@ -453,7 +587,7 @@ pub async fn from_file(
     let Some((name, bytes)) = tokio::task::spawn_blocking(move || beside(&dir)).await? else {
         return Ok(());
     };
-    let hash = match store(connection, bytes).await {
+    let hash = match store(connection, files, bytes).await {
         Ok(hash) => hash,
         Err(CoverError::Database(error)) => return Err(error.into()),
         Err(error) => {
@@ -501,24 +635,41 @@ pub fn beside(dir: &Path) -> Option<(String, Vec<u8>)> {
 
 /// Deletes album covers no track uses (but those set by hand), and the
 /// images nothing uses that were stored more than an hour ago (an image
-/// just stored is about to be linked).
-pub async fn prune(pool: &MySqlPool) -> Result<u64, sqlx::Error> {
+/// just stored is about to be linked), with their files.
+pub async fn prune(pool: &MySqlPool, files: &Files) -> Result<u64, sqlx::Error> {
+    const UNUSED: &str = "created_at < NOW(6) - INTERVAL 1 HOUR
+           AND NOT EXISTS (SELECT 1 FROM album_covers a WHERE a.cover_hash = covers.hash)
+           AND NOT EXISTS (SELECT 1 FROM track_covers t WHERE t.cover_hash = covers.hash)
+           AND NOT EXISTS (SELECT 1 FROM stations s WHERE s.logo_hash = covers.hash)";
     sqlx::query(
         "DELETE FROM album_covers WHERE source <> 'hand' AND NOT EXISTS
              (SELECT 1 FROM tracks t WHERE t.album_key = album_covers.album_key)",
     )
     .execute(pool)
     .await?;
-    let deleted = sqlx::query(
-        "DELETE FROM covers
-         WHERE created_at < NOW(6) - INTERVAL 1 HOUR
-           AND NOT EXISTS (SELECT 1 FROM album_covers a WHERE a.cover_hash = covers.hash)
-           AND NOT EXISTS (SELECT 1 FROM track_covers t WHERE t.cover_hash = covers.hash)
-           AND NOT EXISTS (SELECT 1 FROM stations s WHERE s.logo_hash = covers.hash)",
-    )
-    .execute(pool)
-    .await?
-    .rows_affected();
+    let unused: Vec<Vec<u8>> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "SELECT hash FROM covers WHERE {UNUSED}"
+    )))
+    .fetch_all(pool)
+    .await?;
+    let mut deleted = 0;
+    for hash in unused {
+        // Still unused: it may have been linked since.
+        let gone = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DELETE FROM covers WHERE hash = ? AND {UNUSED}"
+        )))
+        .bind(&hash)
+        .execute(pool)
+        .await?
+        .rows_affected();
+        if gone == 0 {
+            continue;
+        }
+        deleted += 1;
+        if let Err(error) = files.remove(&hash).await {
+            tracing::warn!(cover = hex(&hash), %error, "cannot delete the cover's files");
+        }
+    }
     if deleted > 0 {
         tracing::info!(deleted, "covers nothing uses deleted");
     }
@@ -635,6 +786,8 @@ mod tests {
         };
         let pool = &db.pool;
         let dir = tempfile::tempdir().unwrap();
+        let covers_dir = tempfile::tempdir().unwrap();
+        let files = Files::new(covers_dir.path());
         let file = dir.path().join("01.mp3");
         let (red, green, blue) = (png(10, 10, false), png(20, 10, false), png(10, 20, false));
         let first = add_track(pool, "a/01.mp3", Some("Album")).await;
@@ -644,11 +797,11 @@ mod tests {
 
         // An image beside the file, then a cover embedded in it, which is better.
         std::fs::write(dir.path().join("cover.jpg"), &red).unwrap();
-        from_file(&mut connection, first, Some(&file), None)
+        from_file(&mut connection, &files, first, Some(&file), None)
             .await
             .unwrap();
         assert_eq!(shown(pool, second).await, Some((hash(&red), "file".into())));
-        from_file(&mut connection, first, Some(&file), Some(&green))
+        from_file(&mut connection, &files, first, Some(&file), Some(&green))
             .await
             .unwrap();
         assert_eq!(
@@ -656,7 +809,7 @@ mod tests {
             Some((hash(&green), "embedded".into()))
         );
         // Another embedded cover in the same album: the track's own.
-        from_file(&mut connection, second, Some(&file), Some(&blue))
+        from_file(&mut connection, &files, second, Some(&file), Some(&blue))
             .await
             .unwrap();
         assert_eq!(
@@ -668,7 +821,7 @@ mod tests {
             Some((hash(&blue), "embedded".into()))
         );
         // Gone from the file: the album's again.
-        from_file(&mut connection, second, Some(&file), None)
+        from_file(&mut connection, &files, second, Some(&file), None)
             .await
             .unwrap();
         assert_eq!(
@@ -677,12 +830,12 @@ mod tests {
         );
 
         // Set by hand for the album: it wins, over what the files have.
-        from_file(&mut connection, second, Some(&file), Some(&blue))
+        from_file(&mut connection, &files, second, Some(&file), Some(&blue))
             .await
             .unwrap();
         let key = album_key(pool, first).await.unwrap().unwrap();
         let by_hand = Link {
-            hash: store(&mut connection, red.clone()).await.unwrap(),
+            hash: store(&mut connection, &files, red.clone()).await.unwrap(),
             source: Source::Hand,
             detail: None,
         };
@@ -690,17 +843,17 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(shown(pool, second).await, Some((hash(&red), "hand".into())));
-        from_file(&mut connection, first, Some(&file), Some(&green))
+        from_file(&mut connection, &files, first, Some(&file), Some(&green))
             .await
             .unwrap();
-        from_file(&mut connection, second, Some(&file), Some(&blue))
+        from_file(&mut connection, &files, second, Some(&file), Some(&blue))
             .await
             .unwrap();
         assert_eq!(shown(pool, first).await, Some((hash(&red), "hand".into())));
         assert_eq!(shown(pool, second).await, Some((hash(&red), "hand".into())));
 
         // A track without an album has its own.
-        from_file(&mut connection, loose, None, Some(&blue))
+        from_file(&mut connection, &files, loose, None, Some(&blue))
             .await
             .unwrap();
         assert_eq!(
@@ -719,8 +872,59 @@ mod tests {
             .await
             .unwrap();
         drop(connection);
-        assert_eq!(prune(pool).await.unwrap(), 1, "green: nothing uses it");
+        assert!(files.has(&hash(&green)).await);
+        assert_eq!(
+            prune(pool, &files).await.unwrap(),
+            1,
+            "green: nothing uses it"
+        );
+        assert!(!files.has(&hash(&green)).await, "its files went with it");
+        assert!(files.has(&hash(&red)).await);
+
+        // Files lost: storing the image again writes them back.
+        files.remove(&hash(&red)).await.unwrap();
+        let mut connection = pool.acquire().await.unwrap();
+        store(&mut connection, &files, red.clone()).await.unwrap();
+        assert!(files.has(&hash(&red)).await);
+        drop(connection);
         db.drop().await;
+    }
+
+    #[tokio::test]
+    async fn files_are_written_whole_and_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = Files::new(dir.path().join("covers"));
+        files.check().unwrap();
+        let encoded = encode(&png(1200, 800, false)).unwrap();
+        let hash = encoded.hash;
+        assert_eq!(files.read(&hash, LARGE).await.unwrap(), None);
+        assert!(!files.has(&hash).await);
+        files.write_encoded(&encoded).await.unwrap();
+        assert!(files.has(&hash).await);
+        let large = files.path(&hash, LARGE);
+        assert_eq!(
+            large.strip_prefix(dir.path()).unwrap(),
+            Path::new("covers")
+                .join(&hex(&hash)[..2])
+                .join(format!("{}-600.jpg", hex(&hash)))
+        );
+        assert_eq!(
+            files.read(&hash, LARGE).await.unwrap(),
+            Some(encoded.image.clone())
+        );
+        assert_eq!(
+            files.read(&hash, SMALL).await.unwrap(),
+            Some(encoded.thumbnail.clone())
+        );
+        // No temporary file left behind.
+        let names: Vec<_> = std::fs::read_dir(large.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        files.remove(&hash).await.unwrap();
+        files.remove(&hash).await.unwrap();
+        assert!(!files.has(&hash).await);
     }
 
     #[test]

@@ -34,6 +34,8 @@ struct Station {
     _state_dir: TempDir,
     staging: TempDir,
     _backups: TempDir,
+    /// The covers folder.
+    covers: TempDir,
     _engine: Arc<Engine>,
     state: AppState,
     api: SocketAddr,
@@ -134,6 +136,8 @@ impl Station {
 
         let staging = tempfile::tempdir().unwrap();
         let backups = tempfile::tempdir().unwrap();
+        let covers = tempfile::tempdir().unwrap();
+        let cover_files = heron_library::covers::Files::new(covers.path());
         let (engine, state_dir, grpc_url, grpc_task) =
             start_engine(library.path(), engine_config).await;
         let mut tasks = vec![grpc_task];
@@ -165,14 +169,22 @@ impl Station {
         let state = AppState {
             pool: pool.clone(),
             health: DatabaseHealth(pool.clone()),
-            library: Arc::new(Library::new(pool.clone(), library.path().to_path_buf())),
+            library: Arc::new(Library::new(
+                pool.clone(),
+                library.path().to_path_buf(),
+                cover_files.clone(),
+            )),
             stations,
             passwords: Arc::new(Passwords::default()),
             staging: Arc::new(staging.path().to_path_buf()),
             webhooks,
             // Driven by the tests, minute by minute.
             listeners: crate::listeners::Collector::new(pool.clone()).unwrap(),
-            backups: crate::backups::Backups::new(backups.path().to_path_buf(), db.url()),
+            backups: crate::backups::Backups::new(
+                backups.path().to_path_buf(),
+                db.url(),
+                cover_files,
+            ),
             system,
             about: Arc::new(crate::about::Own::new(vec![
                 heron_service::about::ConfigItem::secret("HERON_DATABASE_URL", Some(&db.url())),
@@ -198,6 +210,7 @@ impl Station {
             _state_dir: state_dir,
             staging,
             _backups: backups,
+            covers,
             _engine: engine,
             state,
             api,
@@ -1842,6 +1855,7 @@ async fn web_ui_routes() {
         library: station.library.path().to_path_buf(),
         incoming: station.library.path().join(".incoming"),
         staging: station.staging.path().to_path_buf(),
+        covers: station.state.library.covers().clone(),
     };
     let librarian = heron_librarian::tasks::TaskRunner::new(
         pool.clone(),
@@ -2791,6 +2805,7 @@ async fn track_details_labels_programming_and_tags() {
         library: station.library.path().to_path_buf(),
         incoming: station.library.path().join(".incoming"),
         staging: station.staging.path().to_path_buf(),
+        covers: station.state.library.covers().clone(),
     };
     let librarian = heron_librarian::tasks::TaskRunner::new(
         pool.clone(),
@@ -2912,9 +2927,15 @@ async fn track_details_labels_programming_and_tags() {
     // The scanner reading the file again keeps them.
     let read = heron_library::tags::read(&file).unwrap();
     let mut connection = pool.acquire().await.unwrap();
-    heron_library::details::save(&mut connection, track, &read, None)
-        .await
-        .unwrap();
+    heron_library::details::save(
+        &mut connection,
+        station.state.library.covers(),
+        track,
+        &read,
+        None,
+    )
+    .await
+    .unwrap();
     drop(connection);
     assert_eq!(
         admin.get(&format!("/tracks/{track}")).await["title"],
@@ -2994,6 +3015,7 @@ async fn uploads_wait_in_the_buffer_zone_until_imported() {
         library: station.library.path().to_path_buf(),
         incoming: station.library.path().join(".incoming"),
         staging: station.staging.path().to_path_buf(),
+        covers: station.state.library.covers().clone(),
     };
     let endpoints = heron_librarian::identify::Endpoints::default();
     let librarian =
@@ -3370,6 +3392,7 @@ async fn deleted_tracks_leave_the_queue_and_go_to_the_trash() {
         library: station.library.path().to_path_buf(),
         incoming: station.library.path().join(".incoming"),
         staging: station.staging.path().to_path_buf(),
+        covers: station.state.library.covers().clone(),
     };
     let librarian = heron_librarian::tasks::TaskRunner::new(
         pool.clone(),
@@ -4365,6 +4388,7 @@ async fn medleys_are_planned_rendered_and_linked() {
             library: station.library.path().to_path_buf(),
             incoming: station.library.path().join(".incoming"),
             staging: station.staging.path().to_path_buf(),
+            covers: station.state.library.covers().clone(),
         },
         heron_librarian::identify::Endpoints::default(),
     );
@@ -4422,6 +4446,7 @@ async fn medleys_are_planned_rendered_and_linked() {
         library: station.library.path().to_path_buf(),
         incoming: station.library.path().join(".incoming"),
         staging: station.staging.path().to_path_buf(),
+        covers: station.state.library.covers().clone(),
     };
     let librarian = heron_librarian::tasks::TaskRunner::new(
         pool.clone(),
@@ -8329,14 +8354,29 @@ async fn covers_are_set_by_hand_shown_and_backed_up() {
     assert_eq!(cover_of(&history, "Track 1"), json!(url));
 
     // In backups: covers set by hand and the logo, with their images.
+    let files = station.state.library.covers().clone();
     let file = crate::backups::file::export(
         pool,
+        &files,
         crate::backups::file::Kind::Manual,
         "2026-12-15T00:00:00Z".to_owned(),
     )
     .await
     .unwrap();
     assert_eq!(file.tables["covers"].len(), 3);
+    // The images, read from their files, as the database had them before
+    // they were files: older backups restore the same way.
+    for row in &file.tables["covers"] {
+        let hash =
+            heron_library::covers::parse_hex(&row["hash"].as_str().unwrap().to_ascii_lowercase())
+                .unwrap();
+        let image = files.read(&hash, 600).await.unwrap().unwrap();
+        assert_eq!(
+            row["image"].as_str().unwrap(),
+            heron_library::covers::hex(&image).to_uppercase()
+        );
+        assert!(row["thumbnail"].as_str().is_some_and(|hex| !hex.is_empty()));
+    }
     assert_eq!(file.tables["album_covers"].len(), 1);
     assert_eq!(
         file.tables["track_covers"][0]["track"],
@@ -8356,9 +8396,11 @@ async fn covers_are_set_by_hand_shown_and_backed_up() {
         .execute(pool)
         .await
         .unwrap();
+    // The covers folder lost too.
+    std::fs::remove_dir_all(station.covers.path()).unwrap();
     let mut tx = pool.begin().await.unwrap();
     let mut report = crate::backups::file::RestoreReport::default();
-    crate::backups::file::restore(&mut tx, &file, &mut report)
+    crate::backups::file::restore(&mut tx, &files, &file, &mut report)
         .await
         .unwrap();
     tx.commit().await.unwrap();
@@ -8375,7 +8417,37 @@ async fn covers_are_set_by_hand_shown_and_backed_up() {
             .fetch_one(pool)
             .await
             .unwrap();
-    assert_eq!(logo_back, Some(logo_hash));
+    assert_eq!(logo_back, Some(logo_hash.clone()));
+    // Their images are files again.
+    let back = viewer.get_bytes(&format!("/tracks/{}/cover", t[0])).await;
+    assert_eq!(
+        image::load_from_memory(&back).unwrap().width(),
+        600,
+        "restored from the backup"
+    );
+    let response = http
+        .get(format!(
+            "http://{}/api/v1/public/covers/{}?size=96",
+            station.api,
+            heron_library::covers::hex(&logo_hash)
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // A file lost: not found, until the image is stored again.
+    let logo_file = files.path(&logo_hash, 600);
+    std::fs::remove_file(&logo_file).unwrap();
+    let (status, _) = viewer
+        .request(Method::GET, "/settings/station/logo", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = admin
+        .put_image("/settings/station/logo", png(300, 300, 3))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(logo_file.is_file(), "written again");
 
     // Removed: the file has none, nothing comes back.
     let (status, now) = admin

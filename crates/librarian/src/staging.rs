@@ -913,7 +913,7 @@ pub async fn import(
 
     // Kept in Heron too, for the albums that have no better cover.
     for (release, jpeg) in &covers {
-        crate::covers::keep_release_cover(pool, release, jpeg).await?;
+        crate::covers::keep_release_cover(pool, &roots.covers, release, jpeg).await?;
     }
     if settings.save_cover {
         for (release, dir) in album_dirs {

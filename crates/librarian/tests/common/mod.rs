@@ -383,6 +383,7 @@ pub fn temp_roots() -> (tempfile::TempDir, heron_librarian::journal::Roots) {
         library: dir.path().join("library"),
         incoming: dir.path().join("incoming"),
         staging: dir.path().join("staging"),
+        covers: heron_library::covers::Files::new(dir.path().join("covers")),
     };
     std::fs::create_dir_all(&roots.library).unwrap();
     std::fs::create_dir_all(&roots.incoming).unwrap();

@@ -10,6 +10,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use heron_library::covers;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sqlx::{MySql, MySqlPool, QueryBuilder, Transaction};
@@ -85,6 +86,9 @@ enum Col {
     /// A restriction's target: a track's path, an artist's name or a
     /// category's ID, after its `target`.
     Target,
+    /// A copy of a cover (its size), in hexadecimal: not a column, a file
+    /// of the covers folder, named by the row's `hash`.
+    Image(&'static str, u32),
 }
 
 impl Col {
@@ -94,7 +98,8 @@ impl Col {
             | Self::Json(name)
             | Self::Hex(name)
             | Self::Track(name)
-            | Self::Artist(name) => name,
+            | Self::Artist(name)
+            | Self::Image(name, _) => name,
             Self::Target => "target_id",
         }
     }
@@ -139,7 +144,7 @@ struct Table {
     filter: Option<&'static str>,
 }
 
-use Col::{Artist, Hex, Json, Plain, Target, Track};
+use Col::{Artist, Hex, Image, Json, Plain, Target, Track};
 
 const fn table(
     name: &'static str,
@@ -169,16 +174,17 @@ const TABLES: &[Table] = &[
         unique: &[],
         filter: Some("name NOT IN ('backup_encryption', 'backup_tests')"),
     },
-    // The images of the covers set by hand and of the station logos; the
-    // others are found again. Kept: the scan's covers stay.
+    // The covers set by hand and the station logos, with their images
+    // (files of the covers folder); the others are found again. Kept: the
+    // scan's covers stay.
     Table {
         name: "covers",
         cols: &[
             Hex("hash"),
             Plain("width"),
             Plain("height"),
-            Hex("image"),
-            Hex("thumbnail"),
+            Image("image", covers::LARGE),
+            Image("thumbnail", covers::SMALL),
         ],
         mode: Mode::Keep,
         unique: &[],
@@ -615,6 +621,7 @@ fn select(col: Col) -> String {
         Col::Hex(name) => format!("HEX(t.{name})"),
         Col::Track(name) => format!("(SELECT path FROM tracks WHERE id = t.{name})"),
         Col::Artist(name) => format!("(SELECT name FROM artists WHERE id = t.{name})"),
+        Col::Image(..) => "NULL".to_owned(),
         Col::Target => "CASE t.target \
              WHEN 'track' THEN (SELECT path FROM tracks WHERE id = t.target_id) \
              WHEN 'artist' THEN (SELECT name FROM artists WHERE id = t.target_id) \
@@ -623,8 +630,14 @@ fn select(col: Col) -> String {
     }
 }
 
-/// Reads the configuration, as one snapshot of the database.
-pub async fn export(pool: &MySqlPool, kind: Kind, created_at: String) -> ApiResult<ConfigFile> {
+/// Reads the configuration, as one snapshot of the database, with the
+/// images of its covers from `files`.
+pub async fn export(
+    pool: &MySqlPool,
+    files: &covers::Files,
+    kind: Kind,
+    created_at: String,
+) -> ApiResult<ConfigFile> {
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         .execute(&mut *tx)
@@ -635,13 +648,19 @@ pub async fn export(pool: &MySqlPool, kind: Kind, created_at: String) -> ApiResu
         let fields: Vec<String> = table
             .cols
             .iter()
+            .filter(|col| !matches!(col, Col::Image(..)))
             .map(|col| format!("'{}', {}", col.key(), select(*col)))
             .collect();
         let filter = table
             .filter
             .map(|filter| format!(" WHERE {filter}"))
             .unwrap_or_default();
-        let order: Vec<&str> = table.cols.iter().map(|col| col.column()).collect();
+        let order: Vec<&str> = table
+            .cols
+            .iter()
+            .filter(|col| !matches!(col, Col::Image(..)))
+            .map(|col| col.column())
+            .collect();
         let sql = format!(
             "SELECT JSON_OBJECT({}) FROM {} t{filter} ORDER BY {}",
             fields.join(", "),
@@ -655,11 +674,14 @@ pub async fn export(pool: &MySqlPool, kind: Kind, created_at: String) -> ApiResu
         let rows: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
             .fetch_all(&mut *tx)
             .await?;
-        let rows = rows
+        let mut rows = rows
             .iter()
             .map(|row| serde_json::from_str(row))
             .collect::<Result<Vec<Map<String, Value>>, _>>()
             .map_err(|error| ApiError::Internal(format!("{}: {error}", table.name)))?;
+        for row in &mut rows {
+            read_images(table, row, files).await?;
+        }
         tables.insert(table.name.to_owned(), rows);
     }
     let disabled_tracks: Vec<String> =
@@ -680,6 +702,93 @@ pub async fn export(pool: &MySqlPool, kind: Kind, created_at: String) -> ApiResu
         tables,
         disabled_tracks,
     })
+}
+
+/// The cover a row names, by its `hash`.
+fn row_hash(row: &Map<String, Value>) -> Option<covers::Hash> {
+    row.get("hash")
+        .and_then(Value::as_str)
+        .and_then(|hash| covers::parse_hex(&hash.to_ascii_lowercase()))
+}
+
+/// Adds the images of a cover's row, read from its files. A missing file
+/// is left out (and logged): the cover has no image until it is found
+/// again.
+async fn read_images(
+    table: &Table,
+    row: &mut Map<String, Value>,
+    files: &covers::Files,
+) -> ApiResult<()> {
+    for col in table.cols {
+        let Col::Image(key, size) = *col else {
+            continue;
+        };
+        let Some(hash) = row_hash(row) else {
+            continue;
+        };
+        let read = files.read(&hash, size).await.map_err(|error| {
+            ApiError::Internal(format!(
+                "cannot read the cover {}: {error}",
+                covers::hex(&hash)
+            ))
+        })?;
+        match read {
+            Some(bytes) => {
+                row.insert(
+                    key.to_owned(),
+                    Value::String(covers::hex(&bytes).to_uppercase()),
+                );
+            }
+            None => tracing::warn!(
+                cover = covers::hex(&hash),
+                size,
+                "the cover's file is missing: backed up without it"
+            ),
+        }
+    }
+    Ok(())
+}
+
+/// Writes the images of a cover's row to its files, unless they are there
+/// already (the same hash, the same image).
+async fn write_images(
+    table: &Table,
+    row: &Map<String, Value>,
+    files: &covers::Files,
+) -> ApiResult<()> {
+    for col in table.cols {
+        let Col::Image(key, size) = *col else {
+            continue;
+        };
+        let Some(text) = row.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        let invalid = || ApiError::Invalid(format!("{}: invalid {key}", table.name));
+        let hash = row_hash(row).ok_or_else(invalid)?;
+        let bytes = unhex(text).ok_or_else(invalid)?;
+        if files.read(&hash, size).await.ok().flatten().is_some() {
+            continue;
+        }
+        let files = files.clone();
+        tokio::task::spawn_blocking(move || files.write(&hash, size, &bytes))
+            .await
+            .map_err(|error| ApiError::Internal(error.to_string()))?
+            .map_err(|error| {
+                ApiError::Internal(format!("cannot write to the covers folder: {error}"))
+            })?;
+    }
+    Ok(())
+}
+
+/// Bytes from hexadecimal, either case.
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) || !text.is_ascii() {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&text[index..index + 2], 16).ok())
+        .collect()
 }
 
 /// What a restore did.
@@ -840,6 +949,7 @@ const UPGRADES: &[(i64, &str)] = &[(
 /// Writes the file's configuration over the database's, in `tx`.
 pub async fn restore(
     tx: &mut Transaction<'_, MySql>,
+    files: &covers::Files,
     file: &ConfigFile,
     report: &mut RestoreReport,
 ) -> ApiResult<()> {
@@ -883,7 +993,19 @@ pub async fn restore(
     let mut deletes = Vec::new();
     for table in TABLES {
         let mut left_out = 0;
-        let columns: Vec<&str> = table.cols.iter().map(|col| col.column()).collect();
+        // Images are files, written before their rows.
+        let cols: Vec<Col> = table
+            .cols
+            .iter()
+            .copied()
+            .filter(|col| !matches!(col, Col::Image(..)))
+            .collect();
+        if cols.len() < table.cols.len() {
+            for row in rows_of(table) {
+                write_images(table, row, files).await?;
+            }
+        }
+        let columns: Vec<&str> = cols.iter().map(|col| col.column()).collect();
         // `None`: a column the file does not have (written before it was
         // added), which takes its default.
         let mut resolved: Vec<Vec<Option<Value>>> = Vec::new();
@@ -896,8 +1018,7 @@ pub async fn restore(
             {
                 continue;
             }
-            let values: Option<Vec<Option<Value>>> = table
-                .cols
+            let values: Option<Vec<Option<Value>>> = cols
                 .iter()
                 .map(|col| match col {
                     Col::Plain(name) if !row.contains_key(*name) => Some(None),
@@ -933,7 +1054,7 @@ pub async fn restore(
             ));
             for (index, values) in chunk.iter().enumerate() {
                 query.push(if index == 0 { "(" } else { ", (" });
-                for (position, (col, value)) in table.cols.iter().zip(values).enumerate() {
+                for (position, (col, value)) in cols.iter().zip(values).enumerate() {
                     if position > 0 {
                         query.push(", ");
                     }

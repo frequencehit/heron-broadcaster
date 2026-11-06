@@ -48,6 +48,7 @@ impl Setup {
             .env("HERON_LIBRARY_DIR", &self.roots.library)
             .env("HERON_INCOMING_DIR", &self.roots.incoming)
             .env("HERON_STAGING_DIR", &self.roots.staging)
+            .env("HERON_COVERS_DIR", self.roots.covers.root())
             .env("HERON_HTTP_ADDR", "127.0.0.1:0")
             .env("HERON_IMPORT_SETTLE", "0")
             .env("HERON_INCOMING_INTERVAL", "1")

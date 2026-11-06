@@ -49,6 +49,8 @@ pub struct Roots {
     pub library: PathBuf,
     pub incoming: PathBuf,
     pub staging: PathBuf,
+    /// The covers folder (`HERON_COVERS_DIR`).
+    pub covers: heron_library::covers::Files,
 }
 
 /// Where a file comes from. Paths are relative to their root.
@@ -338,13 +340,22 @@ pub async fn execute(pool: &MySqlPool, roots: &Roots, op: Operation) -> Result<u
     let read_details = op.retag.is_some() || matches!(op.subject, Subject::New(_));
     match transferred {
         Ok(Transfer::Renamed) => {
-            finish(pool, move_id, track_id, &op.to, &to, read_details, "done").await?;
+            finish(pool, roots, move_id, track_id, &op.to, read_details, "done").await?;
         }
         Ok(Transfer::Copied) => {
             if in_place {
-                finish(pool, move_id, track_id, &op.to, &to, read_details, "done").await?;
+                finish(pool, roots, move_id, track_id, &op.to, read_details, "done").await?;
             } else {
-                finish(pool, move_id, track_id, &op.to, &to, read_details, "moved").await?;
+                finish(
+                    pool,
+                    roots,
+                    move_id,
+                    track_id,
+                    &op.to,
+                    read_details,
+                    "moved",
+                )
+                .await?;
                 crash_point("finished");
                 remove_original(&from)?;
                 crash_point("removed");
@@ -655,13 +666,16 @@ fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// the tags and properties read from it when they may have changed.
 async fn finish(
     pool: &MySqlPool,
+    roots: &Roots,
     move_id: u64,
     track_id: u64,
     to: &LibraryPath,
-    to_abs: &Path,
     read_details: bool,
     status: &str,
 ) -> Result<(), OpError> {
+    let covers = &roots.covers;
+    let to_abs = to.resolve(&roots.library);
+    let to_abs = to_abs.as_path();
     let stamp = FileStamp::from_metadata(&std::fs::metadata(to_abs)?);
     let path = to_abs.to_path_buf();
     let hash = blocking(move || heron_library::content_hash(&path)).await?;
@@ -697,7 +711,7 @@ async fn finish(
     if let Some(details) = &details {
         // In the trash, a file's folder is not its album's.
         let folder = (!in_trash(to.as_str())).then_some(to_abs);
-        heron_library::details::save(&mut tx, track_id, details, folder).await?;
+        heron_library::details::save(&mut tx, covers, track_id, details, folder).await?;
     }
     sqlx::query("UPDATE library_moves SET status = ?, error = NULL WHERE id = ?")
         .bind(status)
@@ -953,7 +967,7 @@ pub async fn recover(pool: &MySqlPool, roots: &Roots) -> Result<Recovery, OpErro
             (true, Some(track_id)) => {
                 let leftover = !in_place && from_exists;
                 let status = if leftover { "moved" } else { "done" };
-                finish(pool, move_id, track_id, &to, &to_abs, read_details, status).await?;
+                finish(pool, roots, move_id, track_id, &to, read_details, status).await?;
                 if leftover {
                     remove_original(&from_abs)?;
                     set_status(pool, move_id, "done", None).await?;
