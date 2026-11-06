@@ -4,6 +4,7 @@
 // overrides, play ratio, categories, programming details and labels,
 // analysis, file and plays, when it played, and its tags edited.
 
+import { CoverCard } from "../components/Cover";
 import { PlaysByStation, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioCounter, RatioScale, WeightOrRatio } from "../components/Ratio";
 import { effectiveRatio, nextText, ratioLabel, ratioSummary } from "../lib/ratio";
@@ -681,6 +682,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
           saving={saveOverrides.isPending}
         />
         <div className="stack">
+          <CoverCard track={track} />
           <RatioCard track={track} canEdit={canEdit} />
           <ProgrammingCard track={track} canEdit={canEdit} />
           <CategoriesCard track={track} canEdit={canEdit} />

@@ -3,6 +3,7 @@
 // The waiting tracks (the cued one first), reordered by dragging them or
 // with the keyboard, from the live state.
 
+import { TrackCoverThumb } from "./Cover";
 import {
   DndContext,
   type DragEndEvent,
@@ -226,6 +227,7 @@ function Item({
         </button>
       )}
       <span className="index">{index + 1}</span>
+      <TrackCoverThumb trackId={track.track_id} px={32} />
       <div className="meta">
         <div className="ellipsis">
           {track.track_id ? <Link to={`/library/${track.track_id}`}>{name}</Link> : name}
