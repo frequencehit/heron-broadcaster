@@ -1966,7 +1966,7 @@
           {
             "name": "station_id",
             "in": "query",
-            "description": "Only the categories this station can use.",
+            "description": "Only the categories this station uses.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -11798,6 +11798,15 @@
             }
           },
           {
+            "name": "no_category",
+            "in": "query",
+            "description": "Tracks in no category.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "filter",
             "in": "query",
             "required": false,
@@ -11845,6 +11854,17 @@
             "name": "station_id",
             "in": "query",
             "description": "Count plays on this station only: play counts, last played, their\nsort, `never_played` and `not_played_days`. Every station's when\nleft out.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "on_station_id",
+            "in": "query",
+            "description": "Only the tracks on this station: in one of its categories and in\nnone it keeps out of its library (`kept_out_category_ids` of its\n`rotation` settings), what rotation can play there.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -25195,6 +25215,13 @@
             ],
             "description": "Tracks never played."
           },
+          "no_category": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tracks in no category."
+          },
           "not_played_days": {
             "type": [
               "integer",
@@ -25210,6 +25237,15 @@
               "null"
             ],
             "format": "int32",
+            "minimum": 0
+          },
+          "on_station_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Only the tracks on this station: in one of its categories and in\nnone it keeps out of its library (`kept_out_category_ids` of its\n`rotation` settings), what rotation can play there.",
             "minimum": 0
           },
           "q": {

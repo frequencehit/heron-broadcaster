@@ -250,7 +250,7 @@ pub async fn grid(pool: &MySqlPool, request: &GridRequest, now: Timestamp) -> Ap
     params(("id" = u64, Path), GridQuery),
     responses((status = 200, body = PlayGrid), (status = "4XX", body = ErrorBody)))]
 async fn get_play_grid(
-    _user: CurrentUser,
+    user: CurrentUser,
     State(state): State<AppState>,
     Path(track_id): Path<u64>,
     Query(query): Query<GridQuery>,
@@ -268,11 +268,8 @@ async fn get_play_grid(
     }
     let zone_station_id = match query.station_id {
         Some(id) => {
-            let station: Option<u64> = sqlx::query_scalar("SELECT id FROM stations WHERE id = ?")
-                .bind(id)
-                .fetch_optional(&state.pool)
-                .await?;
-            station.ok_or_else(|| ApiError::not_found(format!("station {id}")))?
+            user.require_station(&state.pool, id).await?;
+            id
         }
         None => state.stations.first().id(),
     };

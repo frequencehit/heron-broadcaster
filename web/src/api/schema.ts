@@ -9205,6 +9205,8 @@ export interface components {
             mood?: string | null;
             /** @description Tracks never played. */
             never_played?: boolean | null;
+            /** @description Tracks in no category. */
+            no_category?: boolean | null;
             /**
              * Format: int32
              * @description Tracks not played for this many days (including those never played).
@@ -9212,6 +9214,13 @@ export interface components {
             not_played_days?: number | null;
             /** Format: int32 */
             offset?: number | null;
+            /**
+             * Format: int64
+             * @description Only the tracks on this station: in one of its categories and in
+             *     none it keeps out of its library (`kept_out_category_ids` of its
+             *     `rotation` settings), what rotation can play there.
+             */
+            on_station_id?: number | null;
             /** @description Words found in the title, artist, album, album artist, genre or path. */
             q?: string | null;
             /**
@@ -11235,7 +11244,7 @@ export interface operations {
     list_categories: {
         parameters: {
             query?: {
-                /** @description Only the categories this station can use. */
+                /** @description Only the categories this station uses. */
                 station_id?: number;
             };
             header?: never;
@@ -18292,6 +18301,8 @@ export interface operations {
                 /** @description Words found in the title, artist, album, album artist, genre or path. */
                 q?: string;
                 category_id?: number;
+                /** @description Tracks in no category. */
+                no_category?: boolean;
                 filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
                 /** @description Tracks with every one of these labels (IDs, comma-separated). */
                 labels_all?: string;
@@ -18305,6 +18316,12 @@ export interface operations {
                  *     left out.
                  */
                 station_id?: number;
+                /**
+                 * @description Only the tracks on this station: in one of its categories and in
+                 *     none it keeps out of its library (`kept_out_category_ids` of its
+                 *     `rotation` settings), what rotation can play there.
+                 */
+                on_station_id?: number;
                 /** @description Tracks never played. */
                 never_played?: boolean;
                 /** @description Tracks not played for this many days (including those never played). */
