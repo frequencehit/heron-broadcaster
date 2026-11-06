@@ -157,18 +157,27 @@ Each track has a weight in each of its categories (1 by default), used by weight
 A weight is a chance: it does not say how often a track plays. A **play ratio** is an exact quota instead: at 0.2, a track plays 2 times out of the 10 times rotation picks it, no more, no less.
 
 - Each track has a ratio from **0.1 to 1**, in steps of 0.1 (stored in tenths, 1 to 10). It is **1 by default**, which changes nothing. A track has one ratio, the same in all its categories.
+- That ratio is the track's **default**: a station can have **its own** for the track instead (0.3 on one station, the default on the others). A station's rotation, its log and its simulations use the station's ratio when it has one, the default otherwise.
 - Each **station** keeps a **counter** per track, from 10 down to 1, then back to 10. A track never picked yet is at 10.
 - When rotation picks a track that passes the restrictions and the separation rules (as relaxed at that step), its counter goes down one step, **whether the track plays or not**. The track plays if the counter was in the first `ratio × 10` steps: at 0.2 it plays at 10 and 9, and is held back from 8 to 1. At 1 it always plays.
 - A track held back **leaves the slot to another candidate**: the slot's method picks again among the others. A track is offered at most once per pick: held back, it is not offered again for that pick, at a later relaxation step or in another slot. When every candidate of a step is held back, rotation goes on to the next relaxation step, as when a step has no candidate.
 - The ratio is a **hard rule**, like the restrictions: it is never relaxed, at any step, the fallback category included.
 - It applies in **every slot**, whatever its method, and in hours without a clock. It is **rotation only**: tracks queued by hand (and listener requests) always play and do not move the counter.
-- The rotation log lists, for each pick, the tracks held back by their ratio with their counter (`held_by_ratio`: `track_id`, `ratio`, `counter`), and the counter of the track picked (`counter`).
+- The rotation log lists, for each pick, the tracks held back by their ratio with their counter (`held_by_ratio`: `track_id`, `ratio`, `counter`), and the ratio and counter of the track picked (`ratio`, `counter`): the station's ratio, as rotation used it.
 
-**Weight or ratio?** They add up. The **weight** says which track rotation *offers*: a chance against the other tracks, per category, only in weighted slots (at 2, twice the chances of a track at 1). The **ratio** says whether the offered track *plays*: an exact quota out of 10, for the track itself, in every slot. Rotation picks first (rules, then weights in a weighted slot), and the ratio decides after.
+**Weight or ratio?** They add up. The **weight** says which track rotation *offers*: a chance against the other tracks, per category, only in weighted slots (at 2, twice the chances of a track at 1). The **ratio** says whether the offered track *plays*: an exact quota out of 10, for the track itself, in every slot (on each station, the station's own ratio or the default). Rotation picks first (rules, then weights in a weighted slot), and the ratio decides after.
 
-**A ratio of 0 disables the track**: it is the same as *Disable*. A disabled track does not play at all: rotation, clocks and medleys never pick it, it cannot be queued by hand, and the queue manager takes it out of the queue. It stays in the library and in its categories, and keeps the ratio it had. **Re-enabling** a track, however it was disabled, asks for its ratio: the one it had, or 1. The counters can be **reset to 10** (all of the track's stations), from the track's page or when re-enabling it.
+**A default ratio of 0 disables the track**: it is the same as *Disable*. A disabled track does not play at all: rotation, clocks and medleys never pick it, it cannot be queued by hand, and the queue manager takes it out of the queue. It stays in the library and in its categories, and keeps the ratio it had. **Re-enabling** a track, however it was disabled, asks for its ratio: the one it had, or 1. The counters can be **reset to 10** (all of the track's stations), from the track's page or when re-enabling it.
 
-The counter is state, not configuration: backups keep the ratio, not the counters ([Backups](backups.md)). A simulation starts from the station's counters and moves copies of them in memory; the station's counters do not move.
+**A station's ratio of 0 disables the track on that station only.** That station's rotation, clocks and medleys never pick it, queuing it by hand there is refused, and that station's queue manager takes it out of its queue; it plays as usual on the other stations. A medley played on several stations leaves out the songs disabled on any of them. The station keeps the ratio the track had there: re-enabling it on the station asks for its ratio, the one it had there, or the default. A station's ratio can also go back to the default. *Disable* without a station stays global.
+
+**Who disabled a track, and when**, is kept with it, for the global *Disable* and on each station; re-enabling forgets it.
+
+A station's counter can be reset to 10 for one track, or **for all its tracks at once** (the rotation log's page, operators and admins of the station, after a confirmation).
+
+**Importing ratios** from another system: a CSV file with one column per station (named by its code), an optional `default` column, and a column naming the track: `path`, its library path, or `filename`, its file name alone, ignoring case, as [Migrate](import.md) matches tracks. A ratio is written `0.2` or `0,2`, 0 disables the track (on that station, or everywhere in `default`), and an empty cell changes nothing. A dry run lists the rows that match no track (or several), the values that are not ratios and the unknown columns; nothing is written until it is applied.
+
+The counter is state, not configuration: backups keep the ratios (the default and each station's) and who disabled a track, not the counters ([Backups](backups.md)). A simulation starts from the station's counters and moves copies of them in memory; the station's counters do not move.
 
 ### Rule relaxation
 

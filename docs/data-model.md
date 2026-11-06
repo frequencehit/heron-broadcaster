@@ -6,7 +6,7 @@ The schema lives in `migrations/`; this page summarizes it. Tables not used yet 
 
 | Table | Columns |
 |---|---|
-| `tracks` | id, path (relative to the library root, `/` separators, unique through a hash), file_hash (content hash: size + first and last 64 KiB), file_size, file_mtime_us, title, artist, album, musicbrainz_artist_id (the first of the tag), artists_key (hash of the artist and title tags the track's artists were linked from), duration_ms, enabled, missing_since, created_at, updated_at |
+| `tracks` | id, path (relative to the library root, `/` separators, unique through a hash), file_hash (content hash: size + first and last 64 KiB), file_size, file_mtime_us, title, artist, album, musicbrainz_artist_id (the first of the tag), artists_key (hash of the artist and title tags the track's artists were linked from), duration_ms, enabled, disabled_by and disabled_at (who disabled it, and when), missing_since, created_at, updated_at |
 | `track_analysis` | track_id, analysis_version, params_hash (fingerprint of the analysis settings), integrated_lufs, true_peak_db, cue_in_ms, cue_out_ms, fade_out_start_ms, has_internal_silence, analyzed_at |
 | `track_overrides` | track_id, cue_in_ms, cue_out_ms, crossfade settings, gap_killer_enabled (all nullable) |
 | `analysis_jobs` | id, track_id, analysis_version, status (pending, running, done, failed), attempts, claimed_by, claimed_at, error, created_at, updated_at — queue between the scanner and `heron-analyzer` (see [Import and analysis](analysis.md#job-queue)) |
@@ -133,6 +133,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 | `schedule_periods` | id, schedule_id (not the default one), starts_at, ends_at (station time, on the hour, the end excluded), every_year (the years are ignored; the range may run over the new year) |
 | `clock_schedule` | schedule_id, day_of_week (ISO: 1 = Monday), hour (station time), clock_id |
 | `rotation_picks` | id, track_id, planned_at, clock_id, slot, hour_start, category_id, step (0 to 12; picks logged before daypart separation were renumbered), explanation (JSON, see [Rotation](rotation.md#rotation-model)), engine_started_at and entry_id (the engine's queue entry), play_id — the rotation log |
+| `track_station_ratios` | track_id, station_id, play_ratio (tenths, 1 to 10; NULL: the track's default), enabled (off: disabled on that station only, keeping its ratio there), disabled_by, disabled_at — a station's own [play ratio](rotation.md#play-ratio) for a track; no row: the default |
 | `track_ratio_counters` | station_id, track_id, counter (10 down to 1; no row is 10) — each station's play ratio counters, state rather than configuration ([Rotation – Play ratio](rotation.md#play-ratio)) |
 
 ## History

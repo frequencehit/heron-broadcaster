@@ -29,7 +29,7 @@ The configuration file is what a station restores after a bad change or a lost d
 | Webhooks, with their secrets | Covers found in the files or on the Cover Art Archive: the scan and a lookup find them again (they are in the database dump) |
 | Covers set by hand, on albums and tracks, with their images | |
 | Users (password hashes, shared roles, roles per station, preferences), their second factors (the authenticator app's secret, passkeys, hashes of recovery codes) and API tokens (hashes) | |
-| **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code and play ratio, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
+| **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code and play ratio (the default and each station's), disabled everywhere or on a station and by whom, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
 
 **Secrets are in both files.** Output and stream server passwords, webhook secrets, the AcoustID key, password and token hashes: a restore gives back a working station, with nothing to type again. The files are written readable by the API's user only (`0600`). In clear, treat them like the database: do not mail them, and keep copies off the machine somewhere private. [Encrypted](#encryption), they can go anywhere: without the key they are unreadable.
 
@@ -55,6 +55,7 @@ The configuration file is what a station restores after a bad change or a lost d
 - `kind`: `daily`, `manual` (backed up on request), `before_restore` (taken before a restore), `uploaded`. It is in the files' names too: a backup's name is its time and kind, `2026-11-03T03-30-00Z-daily`.
 - A Heron restores files of its own format and older ones. A file written by a newer Heron is refused, with its version in the message.
 - A file of an older `schema` gets the changes the migrations since made to the configuration: a station's daypart separation from before it was set per category goes onto the categories as the [upgrade](upgrading.md#edge) did.
+- `disabled_tracks` lists the library paths of the tracks disabled everywhere, and `disabled_by` who disabled them and when (`{"<path>": {"user_id", "at"}}`); the stations' own ratios, and the tracks disabled on a station, are the rows of `track_station_ratios`. A file from before them restores with every track on its default ratio, and no one recorded as having disabled a track.
 
 ## Where and when
 
