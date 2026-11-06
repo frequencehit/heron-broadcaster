@@ -684,6 +684,40 @@ fn a_restart_resumes_the_track_on_air_and_the_queue() {
 }
 
 #[test]
+fn a_standby_prepared_twice_in_a_row_keeps_its_cued_track() {
+    let mut station = Station::new();
+    let tracks = vec![station.file("one.wav", 10.0), station.file("two.wav", 1.0)];
+    let ids = station.player.enqueue(tracks, None).unwrap();
+    station.play(3.0);
+    let saved = station.player.saved();
+
+    // The active engine's retry reaches the standby before its player has
+    // handled what the mixer answered to the first `Prepare`.
+    let mut standby = Station::build(station.library, None);
+    standby.player.hold().unwrap();
+    for _ in 0..3 {
+        standby.player.reset().unwrap();
+        standby.player.take_over(saved.clone());
+    }
+    // The mixer has applied none of the cues yet: nothing is ready.
+    assert!(!standby.player.cued_ready());
+    standby.play(0.5);
+
+    assert_eq!(standby.player.cued, Some(ids[0]));
+    assert!(standby.player.cued_ready());
+    standby.player.unhold().unwrap();
+    standby.play(1.0);
+    let snapshot = standby.player.snapshot();
+    let deck = snapshot.decks.iter().find(|deck| deck.on_air).unwrap();
+    assert_eq!(deck.entry.as_ref().unwrap().entry_id, ids[0]);
+    assert!(
+        deck.position_ms.abs_diff(4_000) <= 100,
+        "{}",
+        deck.position_ms
+    );
+}
+
+#[test]
 fn a_track_that_cannot_start_gives_way_to_the_fallback_directory() {
     let fallback = tempfile::tempdir().unwrap();
     write_tone(&fallback.path().join("filler.wav"), 2.0, 0.3);

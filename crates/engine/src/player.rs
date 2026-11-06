@@ -233,7 +233,14 @@ pub struct Player {
     /// Entries the player uncued whose `Uncued` event has not arrived yet.
     /// They are not cued again before it does: the mixer may have started
     /// them instead.
-    uncueing: HashSet<u64>,
+    /// Cues asked to be removed, by entry and generation, whose `Uncued` is
+    /// still to come. A set of entries is not enough: a retried handover
+    /// cues the same entry again before the first uncue is confirmed.
+    uncueing: HashSet<(u64, u64)>,
+    /// The generation of the last cue ([`LoadedTrack::generation`]).
+    cue_generation: u64,
+    /// The generation of the cued track and its jingle.
+    cued_generation: u64,
     /// The track on air: the last one started on Deck A or B.
     on_air: Option<u64>,
     paused: bool,
@@ -287,6 +294,8 @@ impl Player {
             cued: None,
             cued_jingle: None,
             uncueing: HashSet::new(),
+            cue_generation: 0,
+            cued_generation: 0,
             on_air: None,
             paused: false,
             next_entry_id: 1,
@@ -573,6 +582,11 @@ impl Player {
         usize::from(self.cued.is_some()) + usize::from(self.cued_jingle.is_some())
     }
 
+    /// Whether the mixer may still hold a cue of `entry_id` the player asked to remove.
+    fn is_uncueing(&self, entry_id: u64) -> bool {
+        self.uncueing.iter().any(|(uncued, _)| *uncued == entry_id)
+    }
+
     fn is_cued(&self, entry_id: u64) -> bool {
         self.cued == Some(entry_id) || self.cued_jingle == Some(entry_id)
     }
@@ -663,6 +677,7 @@ impl Player {
         let status = &self.mixer.status;
         self.cued.is_none()
             || (status.cued.load(Ordering::Relaxed) == self.cued.unwrap_or(0)
+                && status.cued_generation.load(Ordering::Relaxed) == self.cued_generation
                 && status.cued_ready.load(Ordering::Relaxed))
     }
 
@@ -833,7 +848,7 @@ impl Player {
         let upcoming: Vec<(u64, PathBuf)> = self
             .queue
             .iter()
-            .filter(|entry| !self.uncueing.contains(&entry.entry_id))
+            .filter(|entry| !self.is_uncueing(entry.entry_id))
             .filter_map(|entry| Some((entry.entry_id, self.resolve(&entry.track.path).ok()?)))
             .collect();
         self.preloader.keep(upcoming);
@@ -929,7 +944,7 @@ impl Player {
         match event {
             Event::Started { deck, entry_id, .. } => {
                 // The mixer may start a track the player just tried to uncue.
-                self.uncueing.remove(&entry_id);
+                self.uncueing.retain(|(uncued, _)| *uncued != entry_id);
                 self.queue.retain(|entry| entry.entry_id != entry_id);
                 if self.cued == Some(entry_id) {
                     self.cued = None;
@@ -994,13 +1009,20 @@ impl Player {
                     });
                 }
             }
-            Event::Uncued { entry_id } => {
-                if self.uncueing.remove(&entry_id) {
+            Event::Uncued {
+                entry_id,
+                generation,
+            } => {
+                if self.uncueing.remove(&(entry_id, generation)) {
                     // Uncued by the player: back in the queue.
                     if !self.is_cued(entry_id) {
                         self.loaded.remove(&entry_id);
                         self.fallback_entries.remove(&entry_id);
                     }
+                    return;
+                }
+                // An older cue of the track cued now, which the new one replaced.
+                if self.is_cued(entry_id) && generation != self.cued_generation {
                     return;
                 }
                 // Dropped by the mixer, its audio having ended before it started.
@@ -1042,7 +1064,7 @@ impl Player {
             if self
                 .queue
                 .front()
-                .is_some_and(|entry| self.uncueing.contains(&entry.entry_id))
+                .is_some_and(|entry| self.is_uncueing(entry.entry_id))
             {
                 return;
             }
@@ -1060,6 +1082,7 @@ impl Player {
                 continue;
             }
             let transition = self.transition_into(&entry.track.playout);
+            self.cue_generation += 1;
             match self.load(&entry, transition.as_ref(), 0) {
                 Ok(track) => {
                     let frame_transition = self.frame_transition(transition.as_ref());
@@ -1069,6 +1092,7 @@ impl Player {
                     }) {
                         Ok(()) => {
                             self.cued = Some(entry.entry_id);
+                            self.cued_generation = self.cue_generation;
                             self.loaded.insert(entry.entry_id, entry);
                         }
                         Err(_) => {
@@ -1093,7 +1117,7 @@ impl Player {
         let next = self
             .queue
             .front()
-            .filter(|next| !self.uncueing.contains(&next.entry_id) && !next.track.over_intro)?;
+            .filter(|next| !self.is_uncueing(next.entry_id) && !next.track.over_intro)?;
         next.track
             .intro_start_for(jingle.track.playout.playable_ms())
     }
@@ -1109,6 +1133,7 @@ impl Player {
             self.queue.push_front(jingle);
             return true;
         };
+        self.cue_generation += 1;
         let jingle_track = match self.load(&jingle, None, 0) {
             Ok(track) => track,
             Err(error) => {
@@ -1150,6 +1175,7 @@ impl Player {
             "jingle cued over the intro"
         );
         self.cued = Some(next.entry_id);
+        self.cued_generation = self.cue_generation;
         self.cued_jingle = Some(jingle.entry_id);
         self.loaded.insert(next.entry_id, next);
         self.loaded.insert(jingle.entry_id, jingle);
@@ -1205,6 +1231,7 @@ impl Player {
         self.next_entry_id += 1;
         self.fallback_entries.insert(entry.entry_id);
         let transition = self.transition_into(&entry.track.playout);
+        self.cue_generation += 1;
         let track = match self.load(&entry, transition.as_ref(), 0) {
             Ok(track) => track,
             Err(error) => {
@@ -1229,6 +1256,7 @@ impl Player {
             "nothing queued: playing from the fallback directory"
         );
         self.cued = Some(entry.entry_id);
+        self.cued_generation = self.cue_generation;
         self.loaded.insert(entry.entry_id, entry);
         true
     }
@@ -1272,7 +1300,7 @@ impl Player {
         let jingle = self.cued_jingle.take();
         // The jingle comes first in the play order.
         for entry_id in [Some(cued), jingle].into_iter().flatten() {
-            self.uncueing.insert(entry_id);
+            self.uncueing.insert((entry_id, self.cued_generation));
             if requeue
                 && !self.fallback_entries.contains(&entry_id)
                 && let Some(entry) = self.loaded.get(&entry_id).cloned()
@@ -1379,6 +1407,7 @@ impl Player {
             start,
             gain: db_to_gain(playout.gain_db(&self.settings.loudness)),
             fade_in,
+            generation: self.cue_generation,
         }))
     }
 
@@ -1470,6 +1499,7 @@ impl Player {
             if left > RESUME_MIN_LEFT_MS && (!on_air.fallback || self.fallback.is_some()) {
                 let start_ms = u32::try_from(on_air.position_ms).unwrap_or(u32::MAX);
                 let entry = on_air.entry;
+                self.cue_generation += 1;
                 match self.load_with(&entry, None, start_ms, resume_fade_ms) {
                     Ok(track) => {
                         let transition = FrameTransition::back_to_back();
@@ -1486,6 +1516,7 @@ impl Player {
                                 "resuming the track on air"
                             );
                             self.cued = Some(entry.entry_id);
+                            self.cued_generation = self.cue_generation;
                             self.resuming = Some(entry.entry_id);
                             self.loaded.insert(entry.entry_id, entry);
                         }
