@@ -4982,6 +4982,72 @@
         }
       }
     },
+    "/api/v1/modules": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The installation's modules.",
+        "operationId": "get_modules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Modules"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Turns modules on or off for the installation (a module left out is\non). Admins only.",
+        "operationId": "put_modules",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Modules"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Modules"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/outputs": {
       "get": {
         "tags": [
@@ -8122,6 +8188,96 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{id}/modules": {
+      "get": {
+        "tags": [
+          "stations"
+        ],
+        "summary": "A station's modules: the installation's, its own, and what is on.",
+        "operationId": "get_station_modules",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationModules"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "stations"
+        ],
+        "summary": "Turns modules on or off for a station (a module left out is on). A\nmodule off for the installation stays off. Admins of the station.",
+        "operationId": "put_station_modules",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Modules"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationModules"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -16711,7 +16867,7 @@
         "properties": {
           "error": {
             "type": "string",
-            "description": "Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,\n`two_factor_required`, `not_found`, `conflict`, `invalid`, `too_many_requests`,\n`engine_unavailable` or `internal`."
+            "description": "Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,\n`two_factor_required`, `not_found`, `module_off`, `conflict`, `invalid`, `too_many_requests`,\n`engine_unavailable` or `internal`."
           },
           "message": {
             "type": "string",
@@ -19393,6 +19549,28 @@
           "allow",
           "ban"
         ]
+      },
+      "Modules": {
+        "type": "object",
+        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: the modules that existed before\nthey could be turned off are on.",
+        "properties": {
+          "cover_art": {
+            "type": "boolean",
+            "default": true
+          },
+          "listener_statistics": {
+            "type": "boolean",
+            "default": true
+          },
+          "medleys": {
+            "type": "boolean",
+            "default": true
+          },
+          "webhooks": {
+            "type": "boolean",
+            "default": true
+          }
+        }
       },
       "MoveName": {
         "type": "object",
@@ -22635,7 +22813,8 @@
         "description": "Why a slot was passed over.",
         "enum": [
           "nothing_allowed",
-          "same_type_in_a_row"
+          "same_type_in_a_row",
+          "module_off"
         ]
       },
       "SkippedFile": {
@@ -23286,6 +23465,29 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "StationModules": {
+        "type": "object",
+        "description": "A station's modules.",
+        "required": [
+          "installation",
+          "station",
+          "on"
+        ],
+        "properties": {
+          "installation": {
+            "$ref": "#/components/schemas/Modules",
+            "description": "The installation's switches: off here is off for every station."
+          },
+          "on": {
+            "$ref": "#/components/schemas/Modules",
+            "description": "What is on for the station: on at both levels."
+          },
+          "station": {
+            "$ref": "#/components/schemas/Modules",
+            "description": "The station's own switches."
           }
         }
       },
