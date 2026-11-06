@@ -142,6 +142,9 @@ pub struct PayloadTrack {
     pub artist: Option<String>,
     pub title: Option<String>,
     pub album: Option<String>,
+    /// Its cover, else the station's logo: a full address when the station
+    /// has its public address (docs/api.md#public-endpoints).
+    pub cover_url: Option<String>,
     pub duration_ms: u32,
     pub deck: DeckName,
     pub source: PlaySource,
@@ -194,6 +197,7 @@ impl Payload {
                 artist: track.artist.clone(),
                 title: track.title.clone(),
                 album: track.album.clone(),
+                cover_url: None,
                 duration_ms: track.duration_ms,
                 deck,
                 source: track.source,
@@ -249,6 +253,7 @@ impl Payload {
             "artist" => text(track.and_then(|track| track.artist.as_ref())),
             "title" => text(track.and_then(|track| track.title.as_ref())),
             "album" => text(track.and_then(|track| track.album.as_ref())),
+            "cover_url" => text(track.and_then(|track| track.cover_url.as_ref())),
             "duration_ms" => track
                 .map(|track| track.duration_ms.to_string())
                 .unwrap_or_default(),
@@ -275,6 +280,7 @@ impl Payload {
             "next.artist" => text(next.and_then(|next| next.artist.as_ref())),
             "next.title" => text(next.and_then(|next| next.title.as_ref())),
             "next.album" => text(next.and_then(|next| next.album.as_ref())),
+            "next.cover_url" => text(next.and_then(|next| next.cover_url.as_ref())),
             "next.planned_start_unix_ms" => next
                 .map(|next| next.planned_start_unix_ms.to_string())
                 .unwrap_or_default(),
@@ -284,7 +290,7 @@ impl Payload {
 }
 
 /// The placeholders a body template can use.
-pub const PLACEHOLDERS: [&str; 18] = [
+pub const PLACEHOLDERS: [&str; 20] = [
     "event",
     "station",
     "delivery_id",
@@ -293,6 +299,7 @@ pub const PLACEHOLDERS: [&str; 18] = [
     "artist",
     "title",
     "album",
+    "cover_url",
     "duration_ms",
     "deck",
     "source",
@@ -302,6 +309,7 @@ pub const PLACEHOLDERS: [&str; 18] = [
     "next.artist",
     "next.title",
     "next.album",
+    "next.cover_url",
     "next.planned_start_unix_ms",
 ];
 
@@ -511,7 +519,7 @@ impl Webhooks {
     }
 
     async fn queue_event(&self, station_id: u64, event: &TrackEvent) -> ApiResult<()> {
-        let payload = Payload::of(event);
+        let mut payload = Payload::of(event);
         // FX player tracks, and tracks that send no metadata (jingles), go
         // only to webhooks that ask for them.
         let entry = match event {
@@ -529,13 +537,25 @@ impl Webhooks {
         .bind(station_id)
         .fetch_all(&self.pool)
         .await?;
-        let mut queued = false;
-        for (id, events, include_fx) in webhooks {
-            let events: Vec<WebhookEvent> = serde_json::from_str(&events).unwrap_or_default();
-            if events.contains(&payload.event) && (include_fx || !fx) {
-                self.queue(id, payload.clone()).await?;
-                queued = true;
+        let matching: Vec<u64> = webhooks
+            .into_iter()
+            .filter(|(_, events, include_fx)| {
+                let events: Vec<WebhookEvent> = serde_json::from_str(events).unwrap_or_default();
+                events.contains(&payload.event) && (*include_fx || !fx)
+            })
+            .map(|(id, _, _)| id)
+            .collect();
+        if let (Some(track), false) = (payload.track.as_mut(), matching.is_empty()) {
+            let ids: Vec<u64> = track.track_id.into_iter().collect();
+            match crate::covers::PublicCovers::load(&self.pool, station_id, &ids).await {
+                Ok(covers) => track.cover_url = covers.url(track.track_id),
+                Err(error) => tracing::warn!(%error, "cannot read the cover"),
             }
+        }
+        let mut queued = false;
+        for id in matching {
+            self.queue(id, payload.clone()).await?;
+            queued = true;
         }
         if queued {
             self.wake.notify_one();
@@ -597,10 +617,10 @@ impl Webhooks {
                 continue;
             }
             sent = Some(current);
-            let payload = Payload::queue_changed(
-                upcoming_now.into_iter().map(|(_, track)| track).collect(),
-                now,
-            );
+            let mut tracks: Vec<UpcomingTrack> =
+                upcoming_now.into_iter().map(|(_, track)| track).collect();
+            crate::public::fill_covers(&self.pool, station_id, &mut tracks).await;
+            let payload = Payload::queue_changed(tracks, now);
             if let Err(error) = self.queue_for(station_id, payload).await {
                 tracing::error!(%error, "cannot queue webhook deliveries");
             }
@@ -1519,9 +1539,11 @@ mod tests {
     fn queue_templates_insert_the_upcoming_tracks() {
         let upcoming = vec![crate::public::UpcomingTrack {
             position: 0,
+            track_id: Some(3),
             artist: Some("Jamiroquai".to_owned()),
             title: Some("Space \"Cowboy\"".to_owned()),
             album: None,
+            cover_url: None,
             duration_ms: 212_000,
             planned_start_unix_ms: 1_792_918_037_000,
         }];

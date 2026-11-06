@@ -352,6 +352,8 @@ pub struct Play {
     pub deck: String,
     #[schema(value_type = PlaySource)]
     pub source: String,
+    /// The track's cover, as in track summaries.
+    pub cover_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -460,8 +462,13 @@ async fn list_history(
                 CAST(UNIX_TIMESTAMP(h.started_at) * 1000 AS SIGNED) AS started_at_unix_ms,
                 CAST(UNIX_TIMESTAMP(h.ended_at) * 1000 AS SIGNED) AS ended_at_unix_ms,
                 h.played_ms, CAST(h.end_reason AS CHAR) AS end_reason,
-                CAST(h.deck AS CHAR) AS deck, CAST(h.source AS CHAR) AS source
-         FROM play_history h LEFT JOIN tracks t ON t.id = h.track_id WHERE h.station_id = ",
+                CAST(h.deck AS CHAR) AS deck, CAST(h.source AS CHAR) AS source,
+                CONCAT('/api/v1/public/covers/',
+                       LOWER(HEX(COALESCE(tc.cover_hash, ac.cover_hash)))) AS cover_url
+         FROM play_history h LEFT JOIN tracks t ON t.id = h.track_id
+         LEFT JOIN track_covers tc ON tc.track_id = t.id
+         LEFT JOIN album_covers ac ON ac.album_key = t.album_key
+         WHERE h.station_id = ",
     );
     sql.push_bind(station.id());
     if let Some(before) = query.before {

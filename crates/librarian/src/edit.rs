@@ -189,10 +189,11 @@ async fn drop_overrides(
         return Ok(());
     }
     let absolute = path.resolve(&roots.library);
+    let file = absolute.clone();
     match tokio::task::spawn_blocking(move || tags::read(&absolute)).await? {
         Ok(read) => {
             let mut connection = pool.acquire().await?;
-            heron_library::details::save(&mut connection, track_id, &read).await?;
+            heron_library::details::save(&mut connection, track_id, &read, Some(&file)).await?;
         }
         // The scanner reads it again when the file changes.
         Err(error) => tracing::warn!(%path, %error, "cannot read the tags back"),

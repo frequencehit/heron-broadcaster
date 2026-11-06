@@ -133,6 +133,44 @@ For identified tracks (whose tags carry a MusicBrainz recording and release), th
 
 The whole library is looked up on request (*Settings*, or `POST /api/v1/library/musicbrainz-details`); once a lookup has finished, tracks without details (new tracks) are looked up in the background, up to 30 releases a minute. A release MusicBrainz does not know is saved empty and not looked up again unless asked for every track.
 
+## Cover art
+
+Heron keeps a copy of each track's cover in its database, sized for display, and shows it in the web UI, the API, the public endpoints and webhooks. The audio files are never changed for it (`save_cover` and `embed_cover` are about imports, [above](#identification)).
+
+**Per album, with exceptions per track.** The tracks of an album share its cover; a track can have its own (a single, a radio edit). An album is its MusicBrainz release ID when its tracks have one, else its album artist (or artist) and album, ignoring case and spaces around. A track without an album or a release ID can only have a cover of its own.
+
+**Where covers come from,** the first found wins, and a cover set by hand always does:
+
+| Source | Shown as | |
+|---|---|---|
+| Set by hand | *set by hand* | An image uploaded, or an image address pasted, from the track's page, for its album or for the track only |
+| Embedded in the file | *embedded in the file* | The front cover first, else any picture: ID3 `APIC`, FLAC `PICTURE`, MP4 `covr`, Vorbis `METADATA_BLOCK_PICTURE`. Read by the scanner with the tags |
+| An image beside the file | its name, `cover.jpg` | `cover`, `folder` or `front`, `.jpg`, `.jpeg` or `.png`, in the file's folder, as imports save them |
+| The Cover Art Archive | *Cover Art Archive* | Looked up by `heron-librarian` (below) |
+
+- The scanner reads them when it reads a file's tags: for new and changed files, and once for every track after an upgrade to this version (the tags are read again, nothing is analyzed again).
+- An embedded cover becomes its album's when the album has none, or one from a lower source. A track whose embedded cover differs from its album's (also embedded) keeps its own, as an exception. An image beside the file is read only while the album has no cover from the file or by hand.
+- A cover set by hand for an album replaces the exceptions its tracks found in their files. Removing a cover (by hand or not) looks at the file and its folder again for the next source; a Cover Art Archive cover comes back only when it is asked for.
+- **Stored:** each image once, by its hash (BLAKE3 of the image as found), with its width and height, re-encoded as two JPEGs: 600 px and 96 px on their longest side (never enlarged). Images are decoded and re-encoded, never served as found or uploaded. JPEG, PNG and WebP are read, up to 10 MB and 10,000 px a side. Covers nothing uses any more are deleted after each scan.
+
+### The Cover Art Archive
+
+A `fetch_covers` library task looks up albums without a cover, at one request a second to MusicBrainz and to the Cover Art Archive:
+
+1. An album with a MusicBrainz release ID gets that release's front cover (500 px).
+2. Otherwise, MusicBrainz is searched for releases by the album and its album artist (or artist). The best result is taken when its score is at least 90 out of 100 and it has a front cover (the next ones are tried, while they score 90 or more).
+3. An unsure search (no result that high, or none with a cover) sets no cover: its results scoring at least 50, at most 5, wait on the **review screen** (*To organize*) as candidates, with their cover. An operator picks one, which is then fetched, or refuses them all.
+
+An album looked up is not looked up again by itself (found, unsure, not found or failed); asking for it does. Ask from the track list (*Find covers* on a selection), from *Settings › Library* (*Find missing covers now*: every album without a cover), or with `POST /api/v1/covers/fetch`. A track's page can also *search the Cover Art Archive*: the results are shown as candidates, even when one is sure.
+
+With the library setting `fetch_covers` on, albums without a cover that were never looked up are looked up in the background, up to 30 a minute. It is off by default.
+
+The candidates' thumbnails are loaded by the browser from the Cover Art Archive (`coverartarchive.org`) on the review screen and the track page.
+
+### The station logo
+
+Each station can have a logo (*Settings › Station*), stored like a cover. It stands in for a missing cover on the public side: the public endpoints and webhooks. Heron's own pages show a neutral placeholder instead.
+
 ## Layout
 
 Files are filed at `layout` under the library root. Default:
@@ -214,6 +252,7 @@ docker compose exec heron-librarian heron-librarian settings --set '{"acoustid_k
 | `min_free_mb` | 5120: uploads that would leave less free space on the buffer zone's disk are refused |
 | `trash_days` | 30: days deleted tracks stay in the trash |
 | `write_tags` | true: tags edited from the browser are written into the files; false keeps them in Heron's database ([above](#keeping-tags-in-heron-instead-of-the-files)) |
+| `fetch_covers` | false: albums without a cover are looked up on the Cover Art Archive in the background ([Cover art](#the-cover-art-archive)) |
 
 ## Work asked through the API
 
@@ -230,5 +269,6 @@ The scanner (in `heron-api`, read-only) and the librarian share a MariaDB named 
 - Duplicates are flagged, not refused: importing one gives it a ` (2)` suffix.
 - An upload resumes after a dropped connection, not after the page is reloaded: the file starts over (the abandoned one is given up after a day).
 - Restoring works on a whole deletion (batch), not on one track of it.
+- An image beside the files replaced later (a new `cover.jpg`) is not read again while the album has a cover from its files: remove the album's cover on a track's page to read it again.
 
 Metrics: `heron_librarian_staged_total{source}`, `heron_librarian_imports_total{result}`, `heron_api_uploads_total`.

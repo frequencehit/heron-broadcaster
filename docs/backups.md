@@ -17,7 +17,7 @@ The configuration file is what a station restores after a bad change or a lost d
 
 | Saved | Left out |
 |---|---|
-| Stations (name, code, enabled, order) and every settings group, shared and per station (the rotation settings with the station's dayparts) | Tracks themselves, their analysis, waveforms, fingerprints and identification: the scan rebuilds them |
+| Stations (name, code, enabled, order, logo) and every settings group, shared and per station (the rotation settings with the station's dayparts) | Tracks themselves, their analysis, waveforms, fingerprints and identification: the scan rebuilds them |
 | Encoder profiles and outputs, with their passwords and statistics credentials | The play history, the rotation log, listener statistics: in the database dump |
 | EQ and AGC presets | Library tasks, import batches, the trash journal |
 | Category types, categories (their separation overrides and daypart separation) and their stations | The buffer zone |
@@ -26,7 +26,8 @@ The configuration file is what a station restores after a bad change or a lost d
 | Labels | Rendered medley files: they are in the library, under `medleys/` |
 | Artists curated by hand: marked similar, suggestions accepted or dismissed | Artist names moved or merged by hand: to do again after a restore onto a rebuilt library, or restore the database dump |
 | Medleys: recipes, stations and parts | |
-| Webhooks, with their secrets | |
+| Webhooks, with their secrets | Covers found in the files or on the Cover Art Archive: the scan and a lookup find them again (they are in the database dump) |
+| Covers set by hand, on albums and tracks, with their images | |
 | Users (password hashes, shared roles, roles per station, preferences), their second factors (the authenticator app's secret, passkeys, hashes of recovery codes) and API tokens (hashes) | |
 | **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code and play ratio, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
 

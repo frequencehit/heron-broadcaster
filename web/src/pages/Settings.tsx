@@ -4,8 +4,9 @@
 // medleys, listener statistics, analysis and library management.
 
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useState } from "react";
-import { type Schemas, api, unwrap } from "../api";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type Schemas, api, done, unwrap } from "../api";
+import { CoverImage, sendImage } from "../components/Cover";
 import { DaypartSettings } from "../components/Dayparts";
 import { Card, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
 import { type PlainKey, number, rich, t } from "../i18n";
@@ -13,7 +14,7 @@ import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
 import { Link } from "../lib/router";
 import { useStationCategories } from "./Clocks";
 import { useStations } from "../components/Stations";
-import { here, useStation } from "../lib/station";
+import { here, stationUrl, useStation } from "../lib/station";
 import { DuckPlaceSelect, FadeCurveSelect, useMedleySettings } from "./Medleys";
 import { useAction, useCan } from "../lib/session";
 
@@ -641,22 +642,84 @@ function StationCard() {
       canEdit={isAdmin}
     >
       {(draft, set) => (
-        <Field label={t("settings.timeZone")} hint={t("settings.timeZoneHint")}>
-          <input
-            className="input"
-            list="time-zones"
-            value={draft.timezone}
-            disabled={!isAdmin}
-            onChange={(e) => set({ timezone: e.target.value })}
-          />
-          <datalist id="time-zones">
-            {timeZones().map((zone) => (
-              <option key={zone} value={zone} />
-            ))}
-          </datalist>
-        </Field>
+        <>
+          <Field label={t("settings.timeZone")} hint={t("settings.timeZoneHint")}>
+            <input
+              className="input"
+              list="time-zones"
+              value={draft.timezone}
+              disabled={!isAdmin}
+              onChange={(e) => set({ timezone: e.target.value })}
+            />
+            <datalist id="time-zones">
+              {timeZones().map((zone) => (
+                <option key={zone} value={zone} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label={t("settings.publicUrl")} hint={t("settings.publicUrlHint")}>
+            <input
+              className="input"
+              type="url"
+              placeholder="https://…"
+              value={draft.public_url ?? ""}
+              disabled={!isAdmin}
+              onChange={(e) => set({ public_url: e.target.value.trim() === "" ? null : e.target.value })}
+            />
+          </Field>
+          <StationLogo canEdit={isAdmin} />
+        </>
       )}
     </SettingsCard>
+  );
+}
+
+/** The station logo, which stands in for a missing cover on the public side. */
+function StationLogo({ canEdit }: { canEdit: boolean }) {
+  const station = useStation();
+  const [version, setVersion] = useState(0);
+  const file = useRef<HTMLInputElement>(null);
+  const logo = stationUrl("settings/station/logo", station);
+  const changed = () => setVersion((v) => v + 1);
+  const upload = useAction((image: File) => sendImage(logo, image), {
+    success: t("settings.logoSaved"),
+    onSuccess: changed,
+  });
+  const remove = useAction(
+    () => done(api.DELETE("/api/v1/stations/{station_id}/settings/station/logo", { params: { path: here() } })),
+    { success: t("settings.logoRemoved"), onSuccess: changed },
+  );
+  return (
+    <div className="field">
+      <span>{t("settings.logo")}</span>
+      <div className="row" style={{ alignItems: "center" }}>
+        <CoverImage key={version} src={`${logo}?v=${version}`} px={72} alt={t("settings.logo")} />
+        {canEdit && (
+          <>
+            <input
+              ref={file}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              hidden
+              onChange={(e) => {
+                const picked = e.target.files?.[0];
+                e.target.value = "";
+                if (picked) {
+                  upload.mutate(picked);
+                }
+              }}
+            />
+            <button type="button" className="btn small" disabled={upload.isPending} onClick={() => file.current?.click()}>
+              <Icon name="upload" /> {t("cover.upload")}
+            </button>
+            <button type="button" className="btn small" disabled={remove.isPending} onClick={() => remove.mutate(undefined)}>
+              {t("cover.remove")}
+            </button>
+          </>
+        )}
+      </div>
+      <span className="hint">{t("settings.logoHint")}</span>
+    </div>
   );
 }
 
@@ -928,6 +991,10 @@ function ProgrammingCard() {
 
 function LibraryCard() {
   const isAdmin = useCan("admin");
+  const canFetch = useCan("operator");
+  const findCovers = useAction(() => unwrap(api.POST("/api/v1/covers/fetch", { body: {} })), {
+    success: t("library.findCoversQueued"),
+  });
   const settings = useQuery({
     queryKey: ["settings", "library"],
     queryFn: () => unwrap(api.GET("/api/v1/settings/library")),
@@ -957,6 +1024,7 @@ function LibraryCard() {
           save_cover: current.save_cover,
           embed_cover: current.embed_cover,
           write_tags: current.write_tags,
+          fetch_covers: current.fetch_covers,
           max_upload_mb: current.max_upload_mb,
           min_free_mb: current.min_free_mb,
           trash_days: current.trash_days,
@@ -1016,6 +1084,30 @@ function LibraryCard() {
                 {t("settings.writeTags")}
               </label>
               <span className="muted small">{t("settings.writeTagsHint")}</span>
+            </div>
+            <div className="stack" style={{ gap: "0.2rem" }}>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={draft.fetch_covers}
+                  disabled={!isAdmin}
+                  onChange={(e) => set({ fetch_covers: e.target.checked })}
+                />
+                {t("settings.fetchCovers")}
+              </label>
+              <span className="muted small">{t("settings.fetchCoversHint")}</span>
+              {canFetch && (
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={findCovers.isPending}
+                    onClick={() => findCovers.mutate(undefined)}
+                  >
+                    <Icon name="image" /> {t("settings.findMissingCovers")}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="form-grid">
               <Field label={t("settings.maxUpload")} hint={t("settings.maxUploadHint")}>

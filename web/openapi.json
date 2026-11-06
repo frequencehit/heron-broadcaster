@@ -2535,6 +2535,159 @@
         }
       }
     },
+    "/api/v1/covers/candidates": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "The albums whose Cover Art Archive search was unsure and that have no\ncover, with their candidates.",
+        "operationId": "list_cover_candidates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CandidateAlbum"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/covers/candidates/refuse": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Refuses every candidate of an album: it keeps no cover. Operators and\nadmins.",
+        "operationId": "refuse_cover_candidates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefuseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/covers/candidates/{id}/accept": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Picks a candidate: a library task fetches it, for its album or for one\ntrack, and refuses the album's other candidates. Operators and admins.",
+        "operationId": "accept_cover_candidate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryTask"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/covers/fetch": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Looks the albums of a selection up on the Cover Art Archive (every\nalbum without a cover when there is none), as a library task.\nOperators and admins.",
+        "operationId": "fetch_covers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryTask"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/encoder-profiles": {
       "get": {
         "tags": [
@@ -5300,6 +5453,65 @@
         }
       }
     },
+    "/api/v1/public/covers/{hash}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "A cover or a station logo, by its hash. No sign-in; any origin. Its\naddress changes with the image: it is cached for a year.",
+        "operationId": "public_cover",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "600 (the default) or 96.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/api/v1/public/history": {
       "get": {
         "tags": [
@@ -7007,6 +7219,127 @@
               }
             }
           },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/station/logo": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station's logo as JPEG, 404 when it has none.",
+        "operationId": "get_station_logo",
+        "parameters": [
+          {
+            "name": "size",
+            "in": "query",
+            "description": "600 (the default) or 96.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Sets the station's logo (JPEG, PNG or WebP, at most 10 MB): it stands in\nfor a missing cover on the public side. Admins only.",
+        "operationId": "put_station_logo",
+        "requestBody": {
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            },
+            "image/png": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Removes the station's logo. Admins only.",
+        "operationId": "delete_station_logo",
+        "responses": {
+          "204": {},
           "4XX": {
             "content": {
               "application/json": {
@@ -10689,6 +11022,158 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/settings/station/logo": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station's logo as JPEG, 404 when it has none.",
+        "operationId": "get_station_logo_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "600 (the default) or 96.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Sets the station's logo (JPEG, PNG or WebP, at most 10 MB): it stands in\nfor a missing cover on the public side. Admins only.",
+        "operationId": "put_station_logo_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            },
+            "image/png": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Removes the station's logo. Admins only.",
+        "operationId": "delete_station_logo_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/webhook-deliveries/{id}/retry": {
       "post": {
         "tags": [
@@ -11324,7 +11809,8 @@
                 "unanalyzed",
                 "silent",
                 "disabled",
-                "needs_review"
+                "needs_review",
+                "no_cover"
               ]
             }
           },
@@ -12115,6 +12601,215 @@
                   "items": {
                     "$ref": "#/components/schemas/TrackCategory"
                   }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tracks/{id}/cover": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "The track's cover as JPEG, 404 when it has none. Its address stays the\nsame when the cover changes: it is revalidated (`ETag`).",
+        "operationId": "get_track_cover",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "600 (the default) or 96.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Sets the track's cover by hand, for its album (the default) or for the\ntrack only. The body is the image (JPEG, PNG or WebP, at most 10 MB),\nor `{\"url\"}`: the API fetches it. Operators and admins.",
+        "operationId": "put_track_cover",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "The album's cover (the default), or the track's own.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "album",
+                "track"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverAddress"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            },
+            "image/png": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackCover"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Removes the album's cover (the default) or the track's own, whatever\nits source; the file and its folder are looked at again for the next\nsource. Answers the cover the track shows now. Operators and admins.",
+        "operationId": "delete_track_cover",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "The album's cover (the default), or the track's own.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "album",
+                "track"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TrackCover"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }
@@ -13097,6 +13792,21 @@
             }
           }
         }
+      },
+      "AcceptRequest": {
+        "type": "object",
+        "properties": {
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "For this track only; for its album when left out.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "AcrossStations": {
         "type": "object",
@@ -14221,6 +14931,52 @@
           }
         }
       },
+      "CandidateAlbum": {
+        "type": "object",
+        "description": "An album whose search was unsure.",
+        "required": [
+          "album_key",
+          "track_id",
+          "tracks",
+          "candidates"
+        ],
+        "properties": {
+          "album": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "album_key": {
+            "type": "string"
+          },
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoverCandidate"
+            },
+            "description": "Best first."
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "One of its tracks.",
+            "minimum": 0
+          },
+          "tracks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its tracks.",
+            "minimum": 0
+          }
+        }
+      },
       "CategoriesChange": {
         "type": "object",
         "required": [
@@ -14868,6 +15624,132 @@
               "type": "string"
             },
             "description": "Backups left in clear: their files fail their checksums, or could\nnot be written."
+          }
+        }
+      },
+      "CoverAddress": {
+        "type": "object",
+        "description": "An image to fetch from an address.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "`http` or `https`."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoverCandidate": {
+        "type": "object",
+        "description": "A release proposed by an unsure search.",
+        "required": [
+          "id",
+          "release_id",
+          "score",
+          "thumbnail_url"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "release_id": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer",
+            "format": "int32",
+            "description": "MusicBrainz's, 0 to 100.",
+            "minimum": 0
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "description": "The release's front cover (250 px) on the Cover Art Archive."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CoverScope": {
+        "type": "string",
+        "enum": [
+          "album",
+          "track"
+        ]
+      },
+      "CoverSource": {
+        "type": "string",
+        "enum": [
+          "hand",
+          "embedded",
+          "file",
+          "cover_art_archive"
+        ]
+      },
+      "CoversReport": {
+        "type": "object",
+        "description": "What a Cover Art Archive lookup did.",
+        "required": [
+          "albums",
+          "found",
+          "candidates",
+          "not_found",
+          "failed"
+        ],
+        "properties": {
+          "albums": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Albums looked up.",
+            "minimum": 0
+          },
+          "candidates": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Albums whose search was unsure: their candidates wait for review.",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Lookups that failed (MusicBrainz or the Cover Art Archive unreachable).",
+            "minimum": 0
+          },
+          "found": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Albums given a cover.",
+            "minimum": 0
+          },
+          "not_found": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -16098,6 +16980,27 @@
           "logarithmic",
           "exponential"
         ]
+      },
+      "FetchRequest": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "boolean",
+            "description": "Shows the results as candidates even when one is sure, and looks up\nalbums that have a cover too."
+          },
+          "selection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TrackSelection",
+                "description": "The tracks whose albums to look up; every album without a cover\nwhen left out."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "FileSelection": {
         "type": "object",
@@ -17588,6 +18491,13 @@
               "null"
             ]
           },
+          "fetch_covers": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Look albums without a cover up on the Cover Art Archive in the\nbackground."
+          },
           "layout": {
             "type": [
               "string",
@@ -17657,7 +18567,8 @@
           "max_upload_mb",
           "min_free_mb",
           "trash_days",
-          "write_tags"
+          "write_tags",
+          "fetch_covers"
         ],
         "properties": {
           "acoustid_key_set": {
@@ -17666,6 +18577,10 @@
           },
           "embed_cover": {
             "type": "boolean"
+          },
+          "fetch_covers": {
+            "type": "boolean",
+            "description": "Albums without a cover are looked up on the Cover Art Archive in\nthe background."
           },
           "layout": {
             "type": "string"
@@ -17759,6 +18674,17 @@
           "created_at_unix_ms"
         ],
         "properties": {
+          "covers": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CoversReport",
+                "description": "What a finished Cover Art Archive lookup did."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at_unix_ms": {
             "type": "integer",
             "format": "int64"
@@ -19445,6 +20371,13 @@
               "null"
             ]
           },
+          "cover_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The track's cover, as in track summaries."
+          },
           "deck": {
             "$ref": "#/components/schemas/DeckName"
           },
@@ -20000,6 +20933,13 @@
               "null"
             ]
           },
+          "cover_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its cover, else the station's logo."
+          },
           "ended_at_unix_ms": {
             "type": [
               "integer",
@@ -20061,6 +21001,13 @@
               "string",
               "null"
             ]
+          },
+          "cover_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its cover, else the station's logo (docs/api.md#public-endpoints)."
           },
           "duration_ms": {
             "type": "integer",
@@ -20443,6 +21390,18 @@
             "description": "Shown once."
           }
         }
+      },
+      "RefuseRequest": {
+        "type": "object",
+        "required": [
+          "album_key"
+        ],
+        "properties": {
+          "album_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "RelationsReport": {
         "type": "object",
@@ -22435,6 +23394,13 @@
           "timezone"
         ],
         "properties": {
+          "public_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The address `heron-web` is reached at from outside\n(`https://radio.example.org`): cover addresses of the public\nendpoints and webhooks start with it. Paths only when missing."
+          },
           "timezone": {
             "type": "string",
             "description": "IANA time zone the clocks and restrictions follow, e.g.\n`Europe/Paris`. By default the server's (`TZ`), or UTC."
@@ -23108,6 +24074,61 @@
                 }
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Looks the albums of `track_ids` up on the Cover Art Archive (every\nalbum without a cover when empty); albums with a cover are left\nout. With `candidates`, the results wait for an operator even when\none is sure.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "candidates": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "fetch_covers"
+                ]
+              },
+              "track_ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Fetches the cover of a candidate picked by an operator, for its\nalbum, or for `track_id` only.",
+            "required": [
+              "candidate_id",
+              "kind"
+            ],
+            "properties": {
+              "candidate_id": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "apply_cover"
+                ]
+              },
+              "track_id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "minimum": 0
+              }
+            }
           }
         ],
         "description": "A task, as stored in `library_tasks.params`. The tag is also its `kind`."
@@ -23360,6 +24381,47 @@
           }
         }
       },
+      "TrackCover": {
+        "type": "object",
+        "description": "A track's cover, as its page shows it.",
+        "required": [
+          "source",
+          "scope",
+          "width",
+          "height",
+          "url"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The file's name (`file`), the release ID (`cover_art_archive`)."
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CoverScope"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CoverSource"
+          },
+          "url": {
+            "type": "string",
+            "description": "`/api/v1/public/covers/…`; `?size=96` for the thumbnail."
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of the image as found.",
+            "minimum": 0
+          }
+        }
+      },
       "TrackDetail": {
         "allOf": [
           {
@@ -23374,7 +24436,8 @@
               "playout",
               "categories",
               "plays",
-              "ratio_counters"
+              "ratio_counters",
+              "cover_candidates"
             ],
             "properties": {
               "analysis": {
@@ -23400,6 +24463,24 @@
                 "items": {
                   "$ref": "#/components/schemas/TrackCategory"
                 }
+              },
+              "cover": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TrackCover",
+                    "description": "Its cover: where it comes from, the album's or its own."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cover_candidates": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CoverCandidate"
+                },
+                "description": "Its album's Cover Art Archive candidates, waiting for an operator."
               },
               "deleted_at_unix_ms": {
                 "type": [
@@ -23629,7 +24710,8 @@
           "unanalyzed",
           "silent",
           "disabled",
-          "needs_review"
+          "needs_review",
+          "no_cover"
         ]
       },
       "TrackIdentification": {
@@ -24320,6 +25402,13 @@
             ],
             "description": "`MP3`, `AAC`, `FLAC`, …"
           },
+          "cover_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its cover (its own, else its album's), `/api/v1/public/covers/…`:\nthe address changes with the image. `?size=96` for a thumbnail."
+          },
           "cue_in_ms": {
             "type": [
               "integer",
@@ -24719,6 +25808,13 @@
               "string",
               "null"
             ]
+          },
+          "cover_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its cover, else the station's logo; filled by [`fill_covers`]."
           },
           "duration_ms": {
             "type": "integer",

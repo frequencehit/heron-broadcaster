@@ -316,6 +316,7 @@ mod tests {
         for station in [1, second] {
             let paris = StationSettings {
                 timezone: "Europe/Paris".to_owned(),
+                public_url: None,
             };
             settings::save_for(&db.pool, station, StationSettings::SETTINGS_NAME, &paris)
                 .await

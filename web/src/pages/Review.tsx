@@ -3,6 +3,7 @@
 // Library management through heron-librarian: identifications to review,
 // organizing the library after a dry run, and undoing batches.
 
+import { CoverCandidates } from "../components/Cover";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type Schemas, api, done, unwrap } from "../api";
@@ -23,7 +24,7 @@ import { dateTime, duration, trackName } from "../lib/format";
 import { Link, setSearch, useLocation } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 
-type Tab = "review" | "organize" | "batches";
+type Tab = "review" | "covers" | "organize" | "batches";
 
 export function Review() {
   const { search } = useLocation();
@@ -38,6 +39,7 @@ export function Review() {
         {(
           [
             ["review", "review.tab.identifications"],
+            ["covers", "review.tab.covers"],
             ["organize", "review.tab.organize"],
             ["batches", "review.tab.changes"],
           ] as const satisfies readonly (readonly [Tab, PlainKey])[]
@@ -53,9 +55,81 @@ export function Review() {
         ))}
       </nav>
       {tab === "review" && <Identifications />}
+      {tab === "covers" && <CoversToCheck />}
       {tab === "organize" && <Organize />}
       {tab === "batches" && <Batches />}
     </>
+  );
+}
+
+// Covers to check ------------------------------------------------------------
+
+function CoversToCheck() {
+  const albums = useQuery({
+    queryKey: ["cover-candidates"],
+    queryFn: () => unwrap(api.GET("/api/v1/covers/candidates")),
+  });
+  if (albums.isPending) {
+    return <Loading />;
+  }
+  if (albums.isError) {
+    return <ErrorView error={albums.error} />;
+  }
+  if (albums.data.length === 0) {
+    return (
+      <Card>
+        <Empty>{t("review.noCovers")}</Empty>
+      </Card>
+    );
+  }
+  return (
+    <div className="stack">
+      <p className="muted" style={{ margin: 0 }}>
+        {t("review.coversIntro")}
+      </p>
+      {albums.data.map((album) => (
+        <CoverAlbum key={album.album_key} album={album} />
+      ))}
+    </div>
+  );
+}
+
+function CoverAlbum({ album }: { album: Schemas["CandidateAlbum"] }) {
+  const canEdit = useCan("operator");
+  const client = useQueryClient();
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: ["cover-candidates"] });
+    void client.invalidateQueries({ queryKey: ["tracks"] });
+  };
+  const refuse = useAction(
+    () => done(api.POST("/api/v1/covers/candidates/refuse", { body: { album_key: album.album_key } })),
+    { success: t("review.coversRefused"), onSuccess: refresh },
+  );
+  return (
+    <Card
+      title={
+        <div style={{ minWidth: 0 }}>
+          <h2 className="ellipsis">
+            <Link to={`/library/${album.track_id}`}>{album.album ?? t("track.noTags")}</Link>
+          </h2>
+          <div className="muted small ellipsis">
+            {album.artist} · {t("review.albumTracks", { count: album.tracks })}
+          </div>
+        </div>
+      }
+    >
+      <CoverCandidates
+        candidates={album.candidates}
+        onAccepted={refresh}
+        extra={
+          canEdit && (
+            <button type="button" className="btn small" disabled={refuse.isPending} onClick={() => refuse.mutate(undefined)}>
+              {t("review.refuseCovers")}
+            </button>
+          )
+        }
+      />
+    </Card>
   );
 }
 

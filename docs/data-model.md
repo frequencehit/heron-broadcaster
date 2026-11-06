@@ -43,7 +43,7 @@ See [Library management](library.md).
 | `track_import_changes` | import_id, track_id, previous (JSON: what the import changed, as it was, for undo) |
 | `track_tag_overrides` | track_id, field (a tag: title, artist, album, album_artist, year, genre, track, disc), value (NULL removes the field), updated_by, updated_at. Tags kept in Heron instead of the files while `write_tags` is off; applied on top of the file's tags whenever the track's columns are read from its file |
 | `track_tag_changes` | id, track_id, move_id, kind (tags: identification's, fields: edited from the browser), previous and applied tags (JSON), cover_embedded, restore (rebuilds the previous file byte for byte from the one written), created_at, undone_at |
-| `library_tasks` | id, kind (organize_plan, organize_apply, undo, review_apply, artist_relations, edit_tags, musicbrainz_details, staging_import, delete, empty_trash), params (JSON, the request), status (pending, running, done, failed), result (JSON: the dry run's moves or the batch report), error, requested_by, created_at, started_at, finished_at — work the API asks of `heron-librarian` |
+| `library_tasks` | id, kind (organize_plan, organize_apply, undo, review_apply, artist_relations, edit_tags, musicbrainz_details, staging_import, delete, empty_trash, render_medley, preview_medley, fetch_covers, apply_cover), params (JSON, the request), status (pending, running, done, failed), result (JSON: the dry run's moves or the batch report), error, requested_by, created_at, started_at, finished_at — work the API asks of `heron-librarian` |
 
 ## Buffer zone and trash
 
@@ -59,6 +59,22 @@ See [Library management](library.md#the-buffer-zone).
 | `track_fingerprints` (added) | chromaprint_hash (to find the same audio) |
 
 Library batches gain the kinds `delete` and `purge`, moves the origin `staging` (the trash is in the library, `.heron-trash/`), and library tasks the kinds `staging_import`, `delete` and `empty_trash` (restoring is an `undo`).
+
+## Cover art
+
+See [Library management – Cover art](library.md#cover-art).
+
+| Table | Columns |
+|---|---|
+| `covers` | hash (BLAKE3 of the image as found, the key: each image is stored once), width, height (of the image as found), image (600 px JPEG), thumbnail (96 px JPEG), created_at |
+| `album_covers` | album_key, cover_hash, source (hand, embedded, file, cover_art_archive), detail (the file's name for `file`, the release ID for `cover_art_archive`), updated_by, updated_at — the cover of an album |
+| `track_covers` | track_id, cover_hash, source, detail, updated_by, updated_at — a track's own cover, in place of its album's |
+| `cover_lookups` | album_key, status (found, candidates, not_found, failed), error, looked_up_at — albums looked up on the Cover Art Archive, not looked up again by themselves |
+| `cover_candidates` | id, album_key, release_id, title, artist, date, country, score (MusicBrainz's, 0 to 100), thumbnail_url, status (pending, accepted, refused), created_at — the results of an unsure search, for the review screen |
+| `tracks` (added) | album_key (generated: MD5 of the release ID, else of the album artist or artist and the album, lowercased and trimmed; NULL without album and release ID) |
+| `stations` (added) | logo_hash (a cover: the station logo) |
+
+Library tasks gain the kinds `fetch_covers` and `apply_cover`. The scanner's `details_version` is 2: tracks read before are read again once, for their covers.
 
 ## Stations
 
@@ -129,7 +145,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 
 | Table | Columns |
 |---|---|
-| `settings` | name, JSON value. `two_factor`: the roles that require a second factor ([Two-factor authentication](api.md#two-factor-authentication)); `analysis`: Gap Killer and crossfade point detection ([Import and analysis](analysis.md#settings)); `library`: AcoustID key, layout, covers ([Library management](library.md#settings)); `playout`: crossfade and loudness ([Audio engine](audio-engine.md#playout-settings)); `eq`: the music and FX deck EQs ([Audio engine](audio-engine.md#deck-eq)); `agc`: the master AGC chain ([Audio engine](audio-engine.md#master-agc-chain)); `queue`: autofill and how many tracks wait ([API](api.md#queue-manager)); `engine`: whether the API manages the engine's configuration yet ([API](api.md#engine-configuration)); `rotation`: separation windows, the station's dayparts (`daypart_count`: 4 or 6; the separation is each category's, [Rotation – Daypart separation](rotation.md#daypart-separation)), fallback category, categories kept out of the station's library, weight factors; `station`: time zone ([Rotation](rotation.md#scheduling)); `programming`: what counts as a play, eras, mood and sound code scales ([API](api.md#track-details)); `statistics`: minimum session length, retention ([Listener statistics](statistics.md#settings)); `backups`: daily time, days kept, whether a database dump goes with each backup ([Backups](backups.md#settings)); `backup_encryption`: the public key backups are encrypted with, and the earlier ones; `backup_tests`: the last backup test and the last one that passed (neither in backups, both kept by a restore, [Backups – Encryption](backups.md#encryption)) |
+| `settings` | name, JSON value. `two_factor`: the roles that require a second factor ([Two-factor authentication](api.md#two-factor-authentication)); `analysis`: Gap Killer and crossfade point detection ([Import and analysis](analysis.md#settings)); `library`: AcoustID key, layout, covers and their lookup ([Library management](library.md#settings)); `playout`: crossfade and loudness ([Audio engine](audio-engine.md#playout-settings)); `eq`: the music and FX deck EQs ([Audio engine](audio-engine.md#deck-eq)); `agc`: the master AGC chain ([Audio engine](audio-engine.md#master-agc-chain)); `queue`: autofill and how many tracks wait ([API](api.md#queue-manager)); `engine`: whether the API manages the engine's configuration yet ([API](api.md#engine-configuration)); `rotation`: separation windows, the station's dayparts (`daypart_count`: 4 or 6; the separation is each category's, [Rotation – Daypart separation](rotation.md#daypart-separation)), fallback category, categories kept out of the station's library, weight factors; `station`: time zone and public address ([Rotation](rotation.md#scheduling), [API – Public endpoints](api.md#public-endpoints)); `programming`: what counts as a play, eras, mood and sound code scales ([API](api.md#track-details)); `statistics`: minimum session length, retention ([Listener statistics](statistics.md#settings)); `backups`: daily time, days kept, whether a database dump goes with each backup ([Backups](backups.md#settings)); `backup_encryption`: the public key backups are encrypted with, and the earlier ones; `backup_tests`: the last backup test and the last one that passed (neither in backups, both kept by a restore, [Backups – Encryption](backups.md#encryption)) |
 | `eq_presets` | id, name (unique), gains_db (JSON: ten gains in dB, from 60 Hz up). A fresh install has `Flat` and 17 starting points for styles of music (rock, pop, soft rock, dance, progressive rock and metal, jazz, classical, acoustic, hip-hop, R&B / soul, reggae, country, latin, chill), spoken programmes (`Talk`) and the FX player (`Voice (FX)`). Loading a preset copies its gains into an EQ: changing the preset later does not change the EQ ([Audio engine](audio-engine.md#deck-eq)) |
 | `agc_presets` | id, name (unique), settings (JSON: the blocks of the [AGC chain](audio-engine.md#master-agc-chain), without `bypass_all`). A fresh install has starting points for a gentle, open sound (`Gentle`), pop and hits (`Pop`), a loud and dense format (`Dense`), rock (`Rock`) and spoken programmes (`Talk`). Loading a preset copies its settings into a station's chain: changing the preset later does not change the chain |
 
@@ -179,6 +195,8 @@ tracks 1──0..1 track_overrides
 tracks 1──* analysis_jobs
 tracks 1──0..1 track_fingerprints, track_identifications, track_waveforms, track_musicbrainz, track_programming
 tracks *──* labels            (through track_labels)
+tracks *──0..1 album_covers   (through album_key), 1──0..1 track_covers
+album_covers, track_covers, stations *──1 covers
 library_batches 1──* library_moves 1──0..1 track_tag_changes *──1 tracks
 staged_groups 1──* staged_files *──0..1 tracks
 staged_files *──* categories, labels   (through staged_file_categories, staged_file_labels: given to its track)

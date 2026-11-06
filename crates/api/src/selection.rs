@@ -854,16 +854,20 @@ async fn clear_tag_overrides(
                 .into_iter()
                 .map(|(id, path)| {
                     let absolute = heron_core::LibraryPath::from_stored(path).resolve(&root);
-                    (id, heron_library::tags::read(&absolute))
+                    let read = heron_library::tags::read(&absolute);
+                    (id, absolute, read)
                 })
                 .collect::<Vec<_>>()
         })
         .await
         .map_err(|error| ApiError::Internal(error.to_string()))?;
         let mut connection = state.pool.acquire().await?;
-        for (id, read) in read {
+        for (id, absolute, read) in read {
             match read {
-                Ok(read) => heron_library::details::save(&mut connection, id, &read).await?,
+                Ok(read) => {
+                    heron_library::details::save(&mut connection, id, &read, Some(&absolute))
+                        .await?
+                }
                 Err(error) => {
                     tracing::warn!(track = id, %error, "cannot read tags, read at the next scan");
                     sqlx::query("UPDATE tracks SET details_version = 0 WHERE id = ?")

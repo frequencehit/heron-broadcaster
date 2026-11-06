@@ -9,10 +9,12 @@
 //! of what the file says, so they survive a rescan.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use heron_core::library::{FieldValues, TagField};
 use sqlx::{MySqlConnection, MySqlPool, Row};
 
+use crate::covers;
 use crate::tags::FileTags;
 
 /// What the scanner reads from files, stored in `tracks.details_version`.
@@ -21,14 +23,18 @@ use crate::tags::FileTags;
 ///
 /// - 1: M5b, album artist, genre, year, track and disc numbers, MusicBrainz
 ///   recording and release IDs, codec, bitrate, sample rate, channels.
-pub const DETAILS_VERSION: u8 = 1;
+/// - 2: cover art, embedded or beside the file.
+pub const DETAILS_VERSION: u8 = 2;
 
 /// Saves the tags and properties of `read` to the track `id`, with the
-/// track's overrides applied on top.
+/// track's overrides applied on top, then its covers ([`covers::from_file`]):
+/// the one embedded in it, and one beside `file` (its absolute path) when
+/// given. A cover that cannot be read is logged, and left out.
 pub async fn save(
     connection: &mut MySqlConnection,
     id: u64,
     read: &FileTags,
+    file: Option<&Path>,
 ) -> Result<(), sqlx::Error> {
     let overrides = overrides(&mut *connection, id).await?;
     let mut read = read.clone();
@@ -70,9 +76,16 @@ pub async fn save(
     .bind(properties.channels)
     .bind(DETAILS_VERSION)
     .bind(id)
-    .execute(connection)
+    .execute(&mut *connection)
     .await?;
-    Ok(())
+    match covers::from_file(connection, id, file, read.cover.as_deref()).await {
+        Ok(()) => Ok(()),
+        Err(covers::CoverError::Database(error)) => Err(error),
+        Err(error) => {
+            tracing::warn!(track_id = id, %error, "cannot read the track's covers");
+            Ok(())
+        }
+    }
 }
 
 /// The tags kept in Heron's database for the track `id`.

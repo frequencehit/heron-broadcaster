@@ -911,6 +911,10 @@ pub async fn import(
         lock.release().await?;
     }
 
+    // Kept in Heron too, for the albums that have no better cover.
+    for (release, jpeg) in &covers {
+        crate::covers::keep_release_cover(pool, release, jpeg).await?;
+    }
     if settings.save_cover {
         for (release, dir) in album_dirs {
             if let Some(jpeg) = covers.get(&release) {

@@ -122,6 +122,10 @@ enum Mode {
     /// As `Replace`; rows naming a track or an artist that is not found
     /// are left out and reported.
     Library,
+    /// The rows of the filter (set by hand) deleted, the file's written
+    /// over the others (found by the scan); rows naming a track that is
+    /// not found are left out and reported.
+    Merge,
 }
 
 struct Table {
@@ -165,6 +169,25 @@ const TABLES: &[Table] = &[
         unique: &[],
         filter: Some("name NOT IN ('backup_encryption', 'backup_tests')"),
     },
+    // The images of the covers set by hand and of the station logos; the
+    // others are found again. Kept: the scan's covers stay.
+    Table {
+        name: "covers",
+        cols: &[
+            Hex("hash"),
+            Plain("width"),
+            Plain("height"),
+            Hex("image"),
+            Hex("thumbnail"),
+        ],
+        mode: Mode::Keep,
+        unique: &[],
+        filter: Some(
+            "hash IN (SELECT cover_hash FROM album_covers WHERE source = 'hand'
+                      UNION SELECT cover_hash FROM track_covers WHERE source = 'hand'
+                      UNION SELECT logo_hash FROM stations WHERE logo_hash IS NOT NULL)",
+        ),
+    },
     table(
         "stations",
         &[
@@ -173,6 +196,7 @@ const TABLES: &[Table] = &[
             Plain("code"),
             Plain("enabled"),
             Plain("position"),
+            Hex("logo_hash"),
         ],
         Mode::Keep,
         &["code"],
@@ -529,6 +553,31 @@ const TABLES: &[Table] = &[
         Mode::Library,
         &[],
     ),
+    // Covers set by hand.
+    Table {
+        name: "album_covers",
+        cols: &[
+            Plain("album_key"),
+            Hex("cover_hash"),
+            Plain("source"),
+            Plain("detail"),
+        ],
+        mode: Mode::Merge,
+        unique: &[],
+        filter: Some("source = 'hand'"),
+    },
+    Table {
+        name: "track_covers",
+        cols: &[
+            Track("track_id"),
+            Hex("cover_hash"),
+            Plain("source"),
+            Plain("detail"),
+        ],
+        mode: Mode::Merge,
+        unique: &[],
+        filter: Some("source = 'hand'"),
+    },
     // Artists curated by hand.
     Table {
         name: "artist_similar",
@@ -800,7 +849,7 @@ pub async fn restore(
 
     // Tables replaced whole are emptied first, children before parents.
     for table in TABLES.iter().rev() {
-        if matches!(table.mode, Mode::Replace | Mode::Library) {
+        if matches!(table.mode, Mode::Replace | Mode::Library | Mode::Merge) {
             let filter = table
                 .filter
                 .map(|filter| format!(" WHERE {filter}"))
@@ -897,7 +946,7 @@ pub async fn restore(
                 }
                 query.push(")");
             }
-            if matches!(table.mode, Mode::Upsert | Mode::Keep) {
+            if matches!(table.mode, Mode::Upsert | Mode::Keep | Mode::Merge) {
                 let updates: Vec<String> = columns
                     .iter()
                     .filter(|column| **column != "id")

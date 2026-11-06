@@ -1772,6 +1772,48 @@ ul.steps .bar {
   background: var(--surface-2);
 }
 
+/* Cover art (components/Cover.tsx) */
+.cover-art {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--surface-2);
+  vertical-align: middle;
+}
+
+.cover-art.placeholder {
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.cover-art.large {
+  border-radius: 6px;
+}
+
+.table .cover-cell {
+  width: 2.5rem;
+  padding-right: 0;
+}
+
+.cover-candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cover-candidates > li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+
 /* Statistics charts (components/ListenerChart.tsx) */
 .chart {
   position: relative;
