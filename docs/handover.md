@@ -164,6 +164,8 @@ The standby resets its player, then `Player::take_over` cues the track on air st
 
 The active engine needs `Ready` at least 300 ms (`READY_MARGIN`) before the track reaches the stop, to plan the stop in time. Seeking far into a long file on a Raspberry Pi can take longer than the 2 s lead, so a late `Ready` is not an error: the active engine sends a new `Prepare` with a lead three times longer (2 s, 6 s, 18 s), and ignores a `Ready` for an earlier attempt. After three attempts, or 25 s in all (within the 30 s stop grace period), it gives up. The stop never falls after those 25 s: a longer lead is cut to the time left, and with less than 2 s left the active engine gives up.
 
+Two `Prepare` can reach the standby within a millisecond of each other, before its player has handled what the mixer answered to the first. Each cue of the track on air carries a **generation**, which the mixer reports back with the track it drops (`Event::Uncued`) and in `MixerStatus`. The player takes an `Uncued` of an older generation for the confirmation of its own `Uncue`, never for a track the mixer gave up on, and `Ready` is answered only once the mixer holds the **last** attempt's cue and its decoder has `READY_SAMPLES` decoded. The cued track is therefore never lost to a retry, and `Ready` never describes a decoder that is not open yet.
+
 A standby may answer `Ready` well before the stop, when the track is quick to open the second time. The active engine then waits for the track to reach the stop, and gives up only 2 s after it should have stopped there.
 
 ## Stopping on the exact frame
