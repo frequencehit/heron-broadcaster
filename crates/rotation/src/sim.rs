@@ -118,7 +118,7 @@ pub fn simulate(
     // Tracks held back by their ratio while nothing could be picked: their
     // counters moved, and the next pick lists them for the audit.
     let mut held_in_gaps = Vec::new();
-    while at < end {
+    'run: while at < end {
         let outcome = next_outcome(&working, &history, at, last.as_ref(), &mut rng);
         working.count_down(outcome.offered());
         let Some(mut pick) = outcome.pick else {
@@ -131,22 +131,25 @@ pub fn simulate(
             held_in_gaps.append(&mut pick.explanation.held_by_ratio);
             pick.explanation.held_by_ratio = std::mem::take(&mut held_in_gaps);
         }
-        let Some(track) = working.tracks.get(&pick.track) else {
-            break;
-        };
-        history.push(Play::of(track, at));
-        picks.push(SimulatedPick {
-            track_id: pick.track,
-            start_unix_ms: at,
-            length_ms: track.length_ms,
-            explanation: pick.explanation,
-        });
-        at += i64::from(track.length_ms).max(MIN_LENGTH_MS);
-        if pick.position.is_some() {
-            last = pick.position;
+        // A linked slot's pick comes with the next slot's.
+        for pick in pick.into_picks() {
+            let Some(track) = working.tracks.get(&pick.track) else {
+                break 'run;
+            };
+            history.push(Play::of(track, at));
+            picks.push(SimulatedPick {
+                track_id: pick.track,
+                start_unix_ms: at,
+                length_ms: track.length_ms,
+                explanation: pick.explanation,
+            });
+            at += i64::from(track.length_ms).max(MIN_LENGTH_MS);
+            if pick.position.is_some() {
+                last = pick.position;
+            }
+            let factor = working.settings.weights.play_factor;
+            working.reweigh(pick.track, factor);
         }
-        let factor = working.settings.weights.play_factor;
-        working.reweigh(pick.track, factor);
         history.forget_before(at - horizon);
     }
     let mut steps = vec![0; usize::from(LAST_STEP) + 1];
@@ -484,6 +487,7 @@ mod tests {
                         category: 1,
                         method: Method::Random,
                         enforce_rules: true,
+                        linked_to_next: false,
                         separation: SeparationOverrides::default(),
                     }],
                 }],
@@ -532,6 +536,7 @@ mod tests {
                 counter: None,
                 held_by_ratio: vec![],
                 daypart: None,
+                linked: false,
             },
         }
     }

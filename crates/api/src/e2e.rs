@@ -1428,6 +1428,162 @@ async fn library_tracks_overrides_and_categories() {
     station.stop().await;
 }
 
+/// A jingle linked to the next slot is queued with its track, linked to it.
+#[tokio::test(flavor = "multi_thread")]
+async fn linked_clock_slots_queue_a_jingle_with_its_track() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let t = &station.tracks;
+    let mut categories = Vec::new();
+    for (name, members) in [("Jingles", &t[..2]), ("Songs", &t[2..])] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "separation": {"track_min": 1}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (jingles, songs) = (categories[0], categories[1]);
+    // No chains: a slot linked to the next one, itself linked.
+    for slots in [
+        json!([{"category_id": jingles, "linked_to_next": true}]),
+        json!([
+            {"category_id": jingles, "linked_to_next": true},
+            {"category_id": jingles, "linked_to_next": true},
+            {"category_id": songs},
+        ]),
+    ] {
+        let (status, body) = admin
+            .send(
+                Method::POST,
+                "/clocks",
+                json!({"name": "Chain", "slots": slots}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    }
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Linked", "slots": [
+                {"category_id": songs},
+                {"category_id": jingles, "linked_to_next": true},
+                {"category_id": songs},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    assert_eq!(clock["slots"][0]["linked_to_next"], false);
+    assert_eq!(clock["slots"][1]["linked_to_next"], true);
+    let clock_id = clock["id"].as_u64().unwrap();
+    let week: Vec<Value> = (1..=7)
+        .flat_map(|day| {
+            (0..24).map(move |hour| json!({"day_of_week": day, "hour": hour, "clock_id": clock_id}))
+        })
+        .collect();
+    let (status, _) = admin.send(Method::PUT, "/schedule", json!(week)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 6}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // A jingle and its track, after the first waiting track.
+    let pair = || async {
+        let queue = admin.get("/queue").await;
+        let entries = queue.as_array().unwrap().clone();
+        entries
+            .windows(2)
+            .skip(1)
+            .find(|pair| pair[0]["linked_to"] == pair[1]["entry_id"])
+            .map(|pair| {
+                (
+                    pair[0]["entry_id"].as_u64().unwrap(),
+                    pair[1]["entry_id"].as_u64().unwrap(),
+                )
+            })
+    };
+    let entries = || async {
+        let queue = admin.get("/queue").await;
+        queue
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["entry_id"].as_u64().unwrap())
+            .collect::<Vec<u64>>()
+    };
+    let (jingle, track) = eventually("a linked pair", Duration::from_secs(20), pair).await;
+    // Moving the track to the end moves its jingle with it.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/queue/{track}/position"),
+            json!({"position": 99}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let waiting = entries().await;
+    let at = waiting.iter().position(|id| *id == track).unwrap();
+    assert_eq!(waiting[at - 1], jingle, "{waiting:?}");
+    // Removing the track removes its jingle.
+    let (status, _) = admin
+        .request(Method::DELETE, &format!("/queue/{track}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let waiting = entries().await;
+    assert!(
+        !waiting.contains(&jingle) && !waiting.contains(&track),
+        "{waiting:?}"
+    );
+    // Removing a jingle keeps its track.
+    let (jingle, track) = eventually("another pair", Duration::from_secs(20), pair).await;
+    let (status, _) = admin
+        .request(Method::DELETE, &format!("/queue/{jingle}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let waiting = entries().await;
+    assert!(
+        !waiting.contains(&jingle) && waiting.contains(&track),
+        "{waiting:?}"
+    );
+
+    // The rotation log: the jingle's pick says it is linked, and the next
+    // pick is the next slot's.
+    let picks = admin.get("/rotation/picks?limit=100").await;
+    let picks: Vec<Value> = picks.as_array().unwrap().iter().rev().cloned().collect();
+    let linked: Vec<usize> = (0..picks.len().saturating_sub(1))
+        .filter(|index| picks[*index]["explanation"]["linked"] == true)
+        .collect();
+    assert!(!linked.is_empty());
+    for index in linked {
+        assert_eq!(picks[index]["explanation"]["slot"], 1);
+        assert_eq!(picks[index + 1]["explanation"]["slot"], 2);
+    }
+    station.stop().await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn queued_tracks_follow_the_library() {
     let Some(station) = Station::start().await else {

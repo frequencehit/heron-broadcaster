@@ -23,6 +23,21 @@ pub struct Pick {
     /// Missing when no clock is scheduled.
     pub position: Option<Position>,
     pub explanation: Explanation,
+    /// The track of the next slot, picked with this one because this
+    /// pick's slot is linked to it: it plays right after this track.
+    pub linked: Option<Box<Pick>>,
+}
+
+impl Pick {
+    /// This pick, then the one linked to it, in play order.
+    pub fn into_picks(mut self) -> Vec<Pick> {
+        let linked = self.linked.take();
+        let mut picks = vec![self];
+        if let Some(linked) = linked {
+            picks.extend(linked.into_picks());
+        }
+        picks
+    }
 }
 
 /// Why a track was picked: the rotation log.
@@ -91,6 +106,10 @@ pub struct Explanation {
     /// in picks logged before daypart separation.
     #[serde(default)]
     pub daypart: Option<DaypartLog>,
+    /// The slot is linked to the next one: the next pick is that slot's
+    /// track, picked with this one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub linked: bool,
 }
 
 /// A track another station's play or planned track held back.
@@ -146,6 +165,11 @@ pub enum SkipReason {
     /// The track before is of the slot category's type, which never plays
     /// twice in a row (two jingles, for instance).
     SameTypeInARow,
+    /// The slot and the next one, which it is linked to: the next slot's
+    /// track would start after the end of the hour (or in another clock).
+    LinkedTrackAfterHour,
+    /// The slot is linked to the next one, which found nothing.
+    LinkedTrackNotFound,
 }
 
 /// A separation rule.
@@ -615,6 +639,7 @@ fn fill(
                     .last_played(track.id)
                     .map(|last| dayparts::of(recent.daypart_count, library.local(last).datetime())),
             }),
+            linked: false,
         };
         return Some((track.id, explanation));
     }
@@ -660,7 +685,10 @@ impl Outcome {
         self.held_by_ratio
             .iter()
             .map(|held| held.track_id)
-            .chain(self.pick.as_ref().map(|pick| pick.track))
+            .chain(self.pick.iter().flat_map(|pick| {
+                std::iter::successors(Some(pick), |pick| pick.linked.as_deref())
+                    .map(|pick| pick.track)
+            }))
     }
 }
 
@@ -685,6 +713,14 @@ pub fn next_outcome(
     }
 }
 
+/// Start of the station hour of `at_ms` (Unix ms).
+fn hour_start_of(library: &Library, at_ms: i64) -> i64 {
+    let local = library.local(at_ms);
+    let into_hour = (i64::from(local.minute()) * 60 + i64::from(local.second())) * 1_000
+        + i64::from(local.millisecond());
+    at_ms - into_hour
+}
+
 fn pick(
     library: &Library,
     history: &History,
@@ -694,11 +730,9 @@ fn pick(
     rng: &mut Rng,
 ) -> Option<Pick> {
     let local = library.local(at_ms);
-    let into_hour = (i64::from(local.minute()) * 60 + i64::from(local.second())) * 1_000
-        + i64::from(local.millisecond());
-    let hour_start = at_ms - into_hour;
-    let schedule = library.schedule_at(&local);
-    let named = |mut explanation: Explanation| {
+    let hour_start = hour_start_of(library, at_ms);
+    let named = |mut explanation: Explanation, at_ms: i64| {
+        let schedule = library.schedule_at(&library.local(at_ms));
         explanation.schedule_id = Some(schedule.id);
         explanation.schedule_name = Some(schedule.name.clone());
         explanation
@@ -713,7 +747,8 @@ fn pick(
             |(track, explanation)| Pick {
                 track,
                 position: None,
-                explanation: named(explanation),
+                explanation: named(explanation, at_ms),
+                linked: None,
             },
         );
     };
@@ -728,22 +763,23 @@ fn pick(
         _ => 0,
     };
     let mut skipped = Vec::new();
-    let previous = history
-        .previous(at_ms)
-        .map(|play| play.categories.as_slice());
-    for index in (0..count).map(|k| (first + k) % count) {
+    // The slot at `index` at `at_ms`, after `history`: passed over (and
+    // why) or picked.
+    let mut try_slot = |index: usize,
+                        history: &History,
+                        at_ms: i64,
+                        held_by_ratio: &mut Vec<HeldByRatio>|
+     -> Result<Pick, SkipReason> {
         let slot = &clock.slots[index];
+        let previous = history
+            .previous(at_ms)
+            .map(|play| play.categories.as_slice());
         // A jingle slot after a jingle: passed over, never relaxed.
         if library
             .repeated_type(previous, std::slice::from_ref(&slot.category))
             .is_some()
         {
-            skipped.push(SkippedSlot {
-                slot: u32::try_from(index).unwrap_or(u32::MAX),
-                category_id: slot.category,
-                reason: SkipReason::SameTypeInARow,
-            });
-            continue;
+            return Err(SkipReason::SameTypeInARow);
         }
         let call = SlotCall {
             call: Call::new(library, Some(slot.category), Some(&slot.separation)),
@@ -751,29 +787,75 @@ fn pick(
             enforce_rules: slot.enforce_rules,
         };
         let index = u32::try_from(index).unwrap_or(u32::MAX);
-        match fill(library, history, at_ms, &call, held_by_ratio, rng) {
-            Some((track, mut explanation)) => {
-                explanation.clock_id = Some(clock.id);
-                explanation.clock_name = Some(clock.name.clone());
-                explanation.slot = Some(index);
-                explanation.skipped_slots = skipped;
-                let explanation = named(explanation);
-                return Some(Pick {
-                    track,
-                    position: Some(Position {
-                        hour_start_unix_ms: hour_start,
-                        clock_id: clock.id,
-                        slot: index,
-                    }),
-                    explanation,
-                });
-            }
-            None => skipped.push(SkippedSlot {
+        let (track, mut explanation) = fill(library, history, at_ms, &call, held_by_ratio, rng)
+            .ok_or(SkipReason::NothingAllowed)?;
+        explanation.clock_id = Some(clock.id);
+        explanation.clock_name = Some(clock.name.clone());
+        explanation.slot = Some(index);
+        Ok(Pick {
+            track,
+            position: Some(Position {
+                hour_start_unix_ms: hour_start_of(library, at_ms),
+                clock_id: clock.id,
                 slot: index,
-                category_id: slot.category,
-                reason: SkipReason::NothingAllowed,
             }),
+            explanation: named(explanation, at_ms),
+            linked: None,
+        })
+    };
+    let skip = |skipped: &mut Vec<SkippedSlot>, index: usize, reason| {
+        skipped.push(SkippedSlot {
+            slot: u32::try_from(index).unwrap_or(u32::MAX),
+            category_id: clock.slots[index].category,
+            reason,
+        });
+    };
+    let mut k = 0;
+    while k < count {
+        let index = (first + k) % count;
+        k += 1;
+        let mut pick = match try_slot(index, history, at_ms, held_by_ratio) {
+            Ok(pick) => pick,
+            Err(reason) => {
+                skip(&mut skipped, index, reason);
+                continue;
+            }
+        };
+        if clock.linked(index) {
+            // The next slot's track, right after this one: in this run of
+            // the clock, or neither plays.
+            let next = (index + 1) % count;
+            let length = library.tracks.get(&pick.track).map_or(0, |t| t.length_ms);
+            let next_at = at_ms + i64::from(length);
+            let same_run = library
+                .clock_at(&library.local(next_at))
+                .is_some_and(|other| other.id == clock.id)
+                && (clock.looping || hour_start_of(library, next_at) == hour_start);
+            if !same_run {
+                skip(&mut skipped, index, SkipReason::LinkedTrackAfterHour);
+                skip(&mut skipped, next, SkipReason::LinkedTrackAfterHour);
+                k += 1;
+                continue;
+            }
+            let mut with_jingle = history.clone();
+            if let Some(track) = library.tracks.get(&pick.track) {
+                with_jingle.push(crate::Play::of(track, at_ms));
+            }
+            match try_slot(next, &with_jingle, next_at, held_by_ratio) {
+                Ok(linked) => {
+                    pick.explanation.linked = true;
+                    pick.linked = Some(Box::new(linked));
+                }
+                Err(reason) => {
+                    skip(&mut skipped, index, SkipReason::LinkedTrackNotFound);
+                    skip(&mut skipped, next, reason);
+                    k += 1;
+                    continue;
+                }
+            }
         }
+        pick.explanation.skipped_slots = skipped;
+        return Some(pick);
     }
     None
 }
@@ -822,6 +904,7 @@ mod tests {
             category,
             method,
             enforce_rules: true,
+            linked_to_next: false,
             separation: SeparationOverrides::default(),
         }
     }
@@ -1144,6 +1227,192 @@ mod tests {
         let mut history = History::default();
         history.push(Play::of(&library.tracks[&1], -MIN));
         assert!(next(&library, &history, 0, None, &mut rng).is_none());
+    }
+
+    fn linked(category: CategoryId) -> Slot {
+        Slot {
+            linked_to_next: true,
+            ..slot(category, Method::Random)
+        }
+    }
+
+    fn skipped(slot: u32, category_id: CategoryId, reason: SkipReason) -> SkippedSlot {
+        SkippedSlot {
+            slot,
+            category_id,
+            reason,
+        }
+    }
+
+    #[test]
+    fn a_linked_slot_is_picked_with_the_next_slot() {
+        let library = library(vec![
+            linked(1),
+            slot(2, Method::Random),
+            slot(3, Method::Random),
+        ]);
+        let mut rng = Rng::new(3);
+        let history = History::default();
+        let jingle = next(&library, &history, 10 * MIN, None, &mut rng).unwrap();
+        assert_eq!(jingle.position.unwrap().slot, 0);
+        assert!(jingle.explanation.linked);
+        let track = jingle.linked.as_deref().unwrap();
+        assert_eq!(track.position.unwrap().slot, 1);
+        assert_eq!(track.explanation.category_id, Some(2));
+        // Planned for when the jingle ends (4 minutes).
+        assert_eq!(track.explanation.at_unix_ms, 14 * MIN);
+        assert!(!track.explanation.linked && track.linked.is_none());
+        let picks = jingle.clone().into_picks();
+        assert_eq!(picks.len(), 2);
+        // The clock carries on after the linked track.
+        let after = next(
+            &library,
+            &history,
+            18 * MIN,
+            picks[1].position.as_ref(),
+            &mut rng,
+        )
+        .unwrap();
+        assert_eq!(after.position.unwrap().slot, 2);
+        // Both counters move.
+        let outcome = next_outcome(&library, &history, 10 * MIN, None, &mut Rng::new(3));
+        assert_eq!(outcome.offered().count(), 2);
+    }
+
+    #[test]
+    fn a_linked_slot_does_not_play_when_its_track_starts_after_the_hour() {
+        let library = library(vec![
+            linked(1),
+            slot(2, Method::Random),
+            slot(3, Method::Random),
+        ]);
+        let mut rng = Rng::new(3);
+        let history = History::default();
+        // At 55:00, the track starts at 59:00: both play.
+        let pair = next(&library, &history, 55 * MIN, None, &mut rng).unwrap();
+        assert!(pair.linked.is_some());
+        // At 57:00, the track would start at 01:01:00: neither plays, the
+        // slot after them does.
+        let pick = next(&library, &history, 57 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.position.unwrap().slot, 2);
+        assert!(pick.linked.is_none());
+        assert_eq!(
+            pick.explanation.skipped_slots,
+            [
+                skipped(0, 1, SkipReason::LinkedTrackAfterHour),
+                skipped(1, 2, SkipReason::LinkedTrackAfterHour),
+            ]
+        );
+        // 02:00 has no clock: at 01:57, the jingle is dropped too.
+        let pick = next(&library, &history, HOUR + 57 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.position.unwrap().slot, 2);
+    }
+
+    #[test]
+    fn the_last_slot_links_to_the_first_one_within_the_hour() {
+        let library = library(vec![
+            slot(1, Method::Random),
+            slot(2, Method::Random),
+            linked(3),
+        ]);
+        let mut rng = Rng::new(5);
+        let history = History::default();
+        let last = Position {
+            hour_start_unix_ms: 0,
+            clock_id: 1,
+            slot: 1,
+        };
+        let pick = next(&library, &history, 30 * MIN, Some(&last), &mut rng).unwrap();
+        assert_eq!(pick.position.unwrap().slot, 2);
+        let first = pick.linked.as_deref().unwrap();
+        assert_eq!(first.position.unwrap().slot, 0);
+        assert_eq!(first.position.unwrap().hour_start_unix_ms, 0);
+        // At the end of the hour the new hour's clock does not count.
+        let pick = next(&library, &history, 57 * MIN, Some(&last), &mut rng).unwrap();
+        assert!(pick.linked.is_none());
+        assert_eq!(pick.position.unwrap().slot, 1);
+        assert_eq!(
+            pick.explanation.skipped_slots,
+            [
+                skipped(2, 3, SkipReason::LinkedTrackAfterHour),
+                skipped(0, 1, SkipReason::LinkedTrackAfterHour),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_looping_clock_keeps_a_linked_pair_across_hours() {
+        let mut library = library(vec![
+            linked(1),
+            slot(2, Method::Random),
+            slot(3, Method::Random),
+        ]);
+        library.clocks.get_mut(&1).unwrap().looping = true;
+        let mut rng = Rng::new(5);
+        let pick = next(&library, &History::default(), 57 * MIN, None, &mut rng).unwrap();
+        let track = pick.linked.as_deref().unwrap();
+        assert_eq!(track.position.unwrap().hour_start_unix_ms, HOUR);
+    }
+
+    #[test]
+    fn a_linked_slot_is_skipped_when_its_track_finds_nothing() {
+        let mut library = library(vec![
+            linked(1),
+            slot(9, Method::Random),
+            slot(3, Method::Random),
+        ]);
+        // Category 9 and the fallback category are empty.
+        library.categories.insert(9, category(9, &[]));
+        library.categories.insert(8, category(8, &[]));
+        library.settings.fallback_category_id = Some(8);
+        let mut rng = Rng::new(5);
+        let pick = next(&library, &History::default(), 10 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.position.unwrap().slot, 2);
+        assert_eq!(
+            pick.explanation.skipped_slots,
+            [
+                skipped(0, 1, SkipReason::LinkedTrackNotFound),
+                skipped(1, 9, SkipReason::NothingAllowed),
+            ]
+        );
+        // A next slot passed over as the same type twice in a row is
+        // nothing found too.
+        let mut library = self::library(vec![
+            linked(1),
+            slot(2, Method::Random),
+            slot(3, Method::Random),
+        ]);
+        library.no_two_in_a_row = HashMap::from([(1, 7), (2, 7)]);
+        let pick = next(&library, &History::default(), 10 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.position.unwrap().slot, 2);
+        assert_eq!(
+            pick.explanation.skipped_slots,
+            [
+                skipped(0, 1, SkipReason::LinkedTrackNotFound),
+                skipped(1, 2, SkipReason::SameTypeInARow),
+            ]
+        );
+    }
+
+    #[test]
+    fn linked_slots_do_not_chain() {
+        let library = library(vec![linked(1), linked(2), slot(3, Method::Random)]);
+        let clock = &library.clocks[&1];
+        // Slot 0 is followed by a linked slot: not linked; slot 1 is.
+        assert!(!clock.linked(0) && clock.linked(1) && !clock.linked(2));
+        let pick = next(
+            &library,
+            &History::default(),
+            10 * MIN,
+            None,
+            &mut Rng::new(1),
+        )
+        .unwrap();
+        assert_eq!(pick.position.unwrap().slot, 0);
+        assert!(pick.linked.is_none());
+        // A clock of one slot cannot link it to itself.
+        let library = self::library(vec![linked(1)]);
+        assert!(!library.clocks[&1].linked(0));
     }
 
     #[test]

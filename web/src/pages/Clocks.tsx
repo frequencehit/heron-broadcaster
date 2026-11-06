@@ -51,7 +51,7 @@ import {
 } from "../components/ui";
 import { number, rich, t } from "../i18n";
 import { duration } from "../lib/format";
-import { METHODS_LIST, describeOverrides, methodLabel, stepLabel } from "../lib/rotation";
+import { METHODS_LIST, describeOverrides, linkBlocked, methodLabel, stepLabel } from "../lib/rotation";
 import { Link, navigate } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { here, useStation } from "../lib/station";
@@ -320,6 +320,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
                         key={slot.key}
                         slot={slot}
                         index={index}
+                        linkBlocked={linkBlocked(slots, index)}
                         categories={categories.data ?? []}
                         preview={shown?.slots[index]}
                         canEdit={canEdit}
@@ -411,6 +412,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
 function SlotRow({
   slot,
   index,
+  linkBlocked,
   categories,
   preview,
   canEdit,
@@ -420,6 +422,8 @@ function SlotRow({
 }: {
   slot: Draft;
   index: number;
+  /** The slot cannot be linked to the next one. */
+  linkBlocked: boolean;
   categories: Category[];
   preview: ClockPreview["slots"][number] | undefined;
   canEdit: boolean;
@@ -488,6 +492,18 @@ function SlotRow({
               onChange={(event) => onChange({ enforce_rules: event.target.checked })}
             />
             {t("clocks.enforce")}
+          </label>
+          <label
+            className="check small"
+            title={linkBlocked ? t("clocks.linkedChain") : t("clocks.linkedHelp")}
+          >
+            <input
+              type="checkbox"
+              checked={slot.linked_to_next ?? false}
+              disabled={!canEdit || linkBlocked}
+              onChange={(event) => onChange({ linked_to_next: event.target.checked })}
+            />
+            <Icon name="link" size={14} /> {t("clocks.linked")}
           </label>
         </div>
         <div className="row small muted" style={{ gap: "0.4rem" }}>
