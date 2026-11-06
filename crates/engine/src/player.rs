@@ -106,6 +106,12 @@ impl TrackRequest {
 pub struct QueueEntry {
     pub entry_id: u64,
     pub track: TrackRequest,
+    /// The entry this one is linked to: a jingle announcing the track
+    /// right after it (a clock slot linked to the next one). Removing that
+    /// entry removes this one, moving either moves both, and nothing goes
+    /// between them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_to: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -341,28 +347,53 @@ impl Player {
         tracks: Vec<TrackRequest>,
         position: Option<usize>,
     ) -> Result<Vec<u64>, PlayerError> {
+        self.enqueue_linked(tracks, position, &[])
+    }
+
+    /// As [`Self::enqueue`], the tracks at the indices of `linked` linked
+    /// to the track after them. A position between a linked entry and the
+    /// one it is linked to puts the tracks before the linked entry.
+    pub fn enqueue_linked(
+        &mut self,
+        tracks: Vec<TrackRequest>,
+        position: Option<usize>,
+        linked: &[usize],
+    ) -> Result<Vec<u64>, PlayerError> {
         for track in &tracks {
             self.resolve(&track.path)?;
         }
-        let entries: Vec<QueueEntry> = tracks
+        let mut entries: Vec<QueueEntry> = tracks
             .into_iter()
             .map(|track| {
                 let entry_id = self.next_entry_id;
                 self.next_entry_id += 1;
-                QueueEntry { entry_id, track }
+                QueueEntry {
+                    entry_id,
+                    track,
+                    linked_to: None,
+                }
             })
             .collect();
+        for &index in linked {
+            if let Some(next) = entries.get(index + 1).map(|entry| entry.entry_id) {
+                entries[index].linked_to = Some(next);
+            }
+        }
         let ids = entries.iter().map(|entry| entry.entry_id).collect();
         let position = position.unwrap_or(usize::MAX);
         let fallback_cued = self
             .cued
             .is_some_and(|id| self.fallback_entries.contains(&id));
-        if position < self.cued_count().max(1) || fallback_cued {
-            // The new tracks go before the one already cued; a fallback
-            // track is dropped.
+        if position < self.cued_count().max(1)
+            || fallback_cued
+            || (position == self.cued_count() && self.splits_cued())
+        {
+            // The new tracks go before the one already cued (or before a
+            // cued jingle linked to the next track); a fallback track is
+            // dropped.
             self.uncue()?;
         }
-        let at = self.queue_index(position);
+        let at = self.unsplit(self.queue_index(position));
         for (offset, entry) in entries.into_iter().enumerate() {
             self.queue.insert(at + offset, entry);
         }
@@ -371,11 +402,18 @@ impl Player {
         Ok(ids)
     }
 
+    /// Takes a waiting entry out of the queue, and the waiting entries
+    /// linked to it (its jingle). A linked jingle already playing plays on.
     pub fn remove(&mut self, entry_id: u64) -> Result<(), PlayerError> {
         if self.on_air == Some(entry_id) {
             return Err(PlayerError::OnAir(entry_id));
         }
-        if self.is_cued(entry_id) {
+        let jingles: Vec<u64> = self
+            .waiting()
+            .filter(|entry| entry.linked_to == Some(entry_id))
+            .map(|entry| entry.entry_id)
+            .collect();
+        if self.is_cued(entry_id) || jingles.iter().any(|id| self.is_cued(*id)) {
             self.uncue()?;
             if self.fallback_entries.contains(&entry_id) {
                 return Ok(());
@@ -384,7 +422,13 @@ impl Player {
         let before = self.queue.len();
         self.queue.retain(|entry| entry.entry_id != entry_id);
         if self.queue.len() == before {
+            self.ensure_cued();
             return Err(PlayerError::NotFound(entry_id));
+        }
+        if !jingles.is_empty() {
+            self.queue
+                .retain(|entry| !jingles.contains(&entry.entry_id));
+            tracing::info!(entry_id, ?jingles, "linked jingle removed with its track");
         }
         self.changed = true;
         self.ensure_cued();
@@ -392,14 +436,22 @@ impl Player {
     }
 
     /// Moves a waiting entry (cued or queued) to `position` (0 is next).
+    /// A linked jingle and its track move together, the jingle first, and
+    /// nothing is moved between them: what would be goes before the jingle.
     pub fn move_entry(&mut self, entry_id: u64, position: usize) -> Result<(), PlayerError> {
         if self.on_air == Some(entry_id) || self.is_playing(entry_id) {
             return Err(PlayerError::OnAir(entry_id));
         }
+        let partner = self.partner(entry_id);
         if self.cued == Some(entry_id) && self.cued_jingle.is_none() && position == 0 {
             return Ok(());
         }
-        if self.cued.is_some() && (self.is_cued(entry_id) || position < self.cued_count()) {
+        if self.cued.is_some()
+            && (self.is_cued(entry_id)
+                || partner.is_some_and(|(id, _)| self.is_cued(id))
+                || position < self.cued_count()
+                || (position == self.cued_count() && self.splits_cued()))
+        {
             // The cued track goes back to the front of the queue.
             self.uncue()?;
         }
@@ -411,9 +463,82 @@ impl Player {
             let at = self.queue_index(position);
             self.queue.insert(at, entry);
         }
+        // The entry and its partner, in play order, go where the entry is
+        // now, out of any other pair.
+        let mut ids = vec![entry_id];
+        match partner {
+            Some((id, true)) => ids.insert(0, id),
+            Some((id, false)) => ids.push(id),
+            None => {}
+        }
+        let place = self
+            .queue
+            .iter()
+            .take_while(|entry| entry.entry_id != entry_id)
+            .filter(|entry| !ids.contains(&entry.entry_id))
+            .count();
+        let group: Vec<QueueEntry> = ids
+            .iter()
+            .filter_map(|id| {
+                let index = self.queue.iter().position(|e| e.entry_id == *id)?;
+                self.queue.remove(index)
+            })
+            .collect();
+        let at = self.unsplit(place);
+        for (offset, entry) in group.into_iter().enumerate() {
+            self.queue.insert(at + offset, entry);
+        }
         self.changed = true;
         self.ensure_cued();
         Ok(())
+    }
+
+    /// The waiting entries in play order: the jingle cued over the cued
+    /// track's intro, the cued track, then the queue.
+    fn waiting(&self) -> impl Iterator<Item = &QueueEntry> {
+        [self.cued_jingle, self.cued]
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.loaded.get(&id))
+            .chain(self.queue.iter())
+    }
+
+    /// The other waiting entry of the linked pair `entry_id` is in, and
+    /// whether it comes first (it is the jingle).
+    fn partner(&self, entry_id: u64) -> Option<(u64, bool)> {
+        let waiting = |id: u64| self.waiting().any(|entry| entry.entry_id == id);
+        let linked_to = self
+            .waiting()
+            .find(|entry| entry.entry_id == entry_id)?
+            .linked_to;
+        if let Some(track) = linked_to.filter(|id| waiting(*id)) {
+            return Some((track, false));
+        }
+        self.waiting()
+            .find(|entry| entry.linked_to == Some(entry_id))
+            .map(|jingle| (jingle.entry_id, true))
+    }
+
+    /// Whether the cued entry is linked to the first one of the queue: an
+    /// entry put in front of the queue would go between them.
+    fn splits_cued(&self) -> bool {
+        let cued = self.cued.and_then(|id| self.loaded.get(&id));
+        cued.zip(self.queue.front())
+            .is_some_and(|(cued, next)| cued.linked_to == Some(next.entry_id))
+    }
+
+    /// Where an insert at queue index `at` goes so that it does not come
+    /// between a linked entry and the one it is linked to: before the
+    /// linked entry.
+    fn unsplit(&self, at: usize) -> usize {
+        let mut at = at.min(self.queue.len());
+        while at > 0
+            && at < self.queue.len()
+            && self.queue[at - 1].linked_to == Some(self.queue[at].entry_id)
+        {
+            at -= 1;
+        }
+        at
     }
 
     /// Replaces the track of a waiting entry (cued or queued), keeping its
@@ -495,6 +620,7 @@ impl Player {
         let entry = QueueEntry {
             entry_id: self.next_entry_id,
             track,
+            linked_to: None,
         };
         self.next_entry_id += 1;
         let loaded = self.load(&entry, None, 0)?;
@@ -1074,6 +1200,7 @@ impl Player {
         let entry = QueueEntry {
             entry_id: self.next_entry_id,
             track,
+            linked_to: None,
         };
         self.next_entry_id += 1;
         self.fallback_entries.insert(entry.entry_id);

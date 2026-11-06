@@ -1025,3 +1025,143 @@ fn a_loudness_target_the_mixer_was_too_busy_for_is_tried_again() {
     station.player.set_settings(settings).unwrap();
     assert_eq!(station.player.settings().loudness.target_lufs, before - 3.0);
 }
+
+/// The waiting entries' paths, in play order.
+fn waiting(station: &Station) -> Vec<String> {
+    let snapshot = station.player.snapshot();
+    snapshot
+        .cued_jingle
+        .into_iter()
+        .chain(snapshot.cued)
+        .chain(snapshot.queue)
+        .map(|entry| entry.track.path)
+        .collect()
+}
+
+/// A track on air, then `b`, a jingle `j` linked to `t`, and `c`.
+fn linked_station() -> (Station, Vec<u64>) {
+    let mut station = Station::new();
+    let on_air = station.file("a.wav", 3.0);
+    station.player.enqueue(vec![on_air], None).unwrap();
+    let b = station.file("b.wav", 0.5);
+    station.player.enqueue(vec![b], None).unwrap();
+    let pair = vec![station.file("j.wav", 0.5), station.file("t.wav", 0.5)];
+    let mut ids = station.player.enqueue_linked(pair, None, &[0]).unwrap();
+    let c = station.file("c.wav", 0.5);
+    ids.extend(station.player.enqueue(vec![c], None).unwrap());
+    station.play(0.2);
+    assert_eq!(waiting(&station), ["b.wav", "j.wav", "t.wav", "c.wav"]);
+    (station, ids)
+}
+
+#[test]
+fn a_linked_jingle_goes_with_its_track() {
+    let (station, ids) = linked_station();
+    let (jingle, track) = (ids[0], ids[1]);
+    let entry = |station: &Station, id| {
+        station
+            .player
+            .snapshot()
+            .queue
+            .into_iter()
+            .find(|entry| entry.entry_id == id)
+    };
+    assert_eq!(entry(&station, jingle).unwrap().linked_to, Some(track));
+    assert_eq!(entry(&station, track).unwrap().linked_to, None);
+    // The link survives a restart.
+    let mut station = station.restart();
+    station.play(0.2);
+    assert_eq!(entry(&station, jingle).unwrap().linked_to, Some(track));
+    // Removing the track removes its jingle.
+    station.player.remove(track).unwrap();
+    assert_eq!(waiting(&station), ["b.wav", "c.wav"]);
+
+    // Removing the jingle keeps the track.
+    let (mut station, ids) = linked_station();
+    station.player.remove(ids[0]).unwrap();
+    assert_eq!(waiting(&station), ["b.wav", "t.wav", "c.wav"]);
+    station.play(0.2);
+    assert!(matches!(
+        station.player.remove(ids[0]),
+        Err(PlayerError::NotFound(_))
+    ));
+}
+
+#[test]
+fn a_linked_jingle_moves_with_its_track() {
+    let (mut station, ids) = linked_station();
+    let (jingle, track, c) = (ids[0], ids[1], ids[2]);
+    // The track first: its jingle comes along, right before it.
+    station.player.move_entry(track, 0).unwrap();
+    assert_eq!(waiting(&station), ["j.wav", "t.wav", "b.wav", "c.wav"]);
+    // Last.
+    station.player.move_entry(track, 3).unwrap();
+    assert_eq!(waiting(&station), ["b.wav", "c.wav", "j.wav", "t.wav"]);
+    // The jingle moves its track too.
+    station.player.move_entry(jingle, 1).unwrap();
+    assert_eq!(waiting(&station), ["b.wav", "j.wav", "t.wav", "c.wav"]);
+    // Moved past its own track, the jingle stays where it is.
+    station.player.move_entry(jingle, 2).unwrap();
+    assert_eq!(waiting(&station), ["b.wav", "j.wav", "t.wav", "c.wav"]);
+    // Nothing goes between them: before the jingle.
+    station.player.move_entry(c, 2).unwrap();
+    assert_eq!(waiting(&station), ["b.wav", "c.wav", "j.wav", "t.wav"]);
+    let x = station.file("x.wav", 0.5);
+    station.player.enqueue(vec![x], Some(3)).unwrap();
+    assert_eq!(
+        waiting(&station),
+        ["b.wav", "c.wav", "x.wav", "j.wav", "t.wav"]
+    );
+    station.play(5.0);
+    let order: Vec<String> = started(&station.events())
+        .into_iter()
+        .map(|(_, path)| path)
+        .collect();
+    assert_eq!(
+        order,
+        ["a.wav", "b.wav", "c.wav", "x.wav", "j.wav", "t.wav"]
+    );
+}
+
+#[test]
+fn nothing_is_queued_between_a_cued_jingle_and_its_track() {
+    let mut station = Station::new();
+    let on_air = station.file("a.wav", 2.0);
+    station.player.enqueue(vec![on_air], None).unwrap();
+    let pair = vec![station.file("j.wav", 0.5), station.file("t.wav", 0.5)];
+    station.player.enqueue_linked(pair, None, &[0]).unwrap();
+    station.play(0.2);
+    assert_eq!(
+        station.player.snapshot().cued.map(|entry| entry.track.path),
+        Some("j.wav".to_owned())
+    );
+    // Right after the cued jingle: before it.
+    let x = station.file("x.wav", 0.5);
+    station.player.enqueue(vec![x], Some(1)).unwrap();
+    assert_eq!(waiting(&station), ["x.wav", "j.wav", "t.wav"]);
+}
+
+#[test]
+fn a_jingle_on_air_plays_on_when_its_track_is_removed() {
+    let mut station = Station::new();
+    let pair = vec![station.file("j.wav", 1.0), station.file("t.wav", 1.0)];
+    let ids = station.player.enqueue_linked(pair, None, &[0]).unwrap();
+    station.play(0.2);
+    station.player.remove(ids[1]).unwrap();
+    assert!(waiting(&station).is_empty());
+    let on_air = station
+        .player
+        .snapshot()
+        .decks
+        .into_iter()
+        .find(|deck| deck.on_air)
+        .and_then(|deck| deck.entry)
+        .map(|entry| entry.entry_id);
+    assert_eq!(on_air, Some(ids[0]));
+    station.play(2.0);
+    let order: Vec<String> = started(&station.events())
+        .into_iter()
+        .map(|(_, path)| path)
+        .collect();
+    assert_eq!(order, ["j.wav"]);
+}
