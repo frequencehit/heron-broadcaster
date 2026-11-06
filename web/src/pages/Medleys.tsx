@@ -4,11 +4,11 @@
 // rearranged here, then mixed into a library file by heron-librarian.
 // See docs/medleys.md.
 
-import { StationBadges, StationChecks, useSeveralStations } from "../components/Stations";
+import { StationBadges, StationChecks, StationFilter, useSeveralStations, useStationFilter } from "../components/Stations";
 import { here, useStation } from "../lib/station";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
-import { type Schemas, api, done, unwrap } from "../api";
+import { type Schemas, api, done, query, unwrap } from "../api";
 import { MedleyTimeline, SHIFT_STEP_MS, junctions } from "../components/MedleyTimeline";
 import { useLabels } from "../components/SelectionActions";
 import { TaskState, useTask } from "../components/Task";
@@ -38,10 +38,11 @@ export function useMedleySettings() {
   });
 }
 
-function useMedleys() {
+/** The medleys, or those of a station. */
+function useMedleys(stationId?: number) {
   return useQuery({
-    queryKey: ["medleys"],
-    queryFn: () => unwrap(api.GET("/api/v1/medleys")),
+    queryKey: ["medleys", { station_id: stationId }],
+    queryFn: () => unwrap(api.GET("/api/v1/medleys", { params: { query: query({ station_id: stationId }) } })),
     // While a render runs, or its file waits for the library scan.
     refetchInterval: (query) =>
       query.state.data?.some(
@@ -61,13 +62,9 @@ function useCategories() {
 
 export function Medleys() {
   const canEdit = useCan("operator");
-  const medleys = useMedleys();
-  const station = useStation();
-  const several = useSeveralStations();
-  const [onlyHere, setOnlyHere] = useState(false);
-  const shown = medleys.data?.filter(
-    (medley) => !onlyHere || station === null || medley.station_ids.includes(station),
-  );
+  const stationFilter = useStationFilter("medleys");
+  const medleys = useMedleys(stationFilter.stationId);
+  const shown = medleys.data;
   return (
     <>
       <PageHead
@@ -81,13 +78,12 @@ export function Medleys() {
           )
         }
       />
-      {several && (
-        <label className="check">
-          <input type="checkbox" checked={onlyHere} onChange={(e) => setOnlyHere(e.target.checked)} />{" "}
-          {t("medleys.onlyStation")}
-        </label>
-      )}
       <Card flush>
+        {stationFilter.stations.length > 1 && (
+          <div className="card-head">
+            <StationFilter filter={stationFilter} />
+          </div>
+        )}
         {medleys.isPending && <Loading />}
         {medleys.isError && <ErrorView error={medleys.error} />}
         {shown?.length === 0 && <Empty>{t("medleys.none")}</Empty>}

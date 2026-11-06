@@ -5,7 +5,7 @@
 // ratio, tags, disable and enable).
 
 import { CoverThumb } from "../components/Cover";
-import { useStations } from "../components/Stations";
+import { StationFilter, useStationFilter, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioDialog } from "../components/Ratio";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -153,8 +153,11 @@ function useColumns(): [Column[], (column: Column, shown: boolean) => void] {
   return [columns, toggle];
 }
 
-/** The filters of the URL, as the API takes them. */
-function filtersOf(search: URLSearchParams, q: string) {
+/**
+ * The filters of the URL and the station filter, as the API takes them.
+ * *No category* shows the tracks in no category, whatever the station.
+ */
+export function filtersOf(search: URLSearchParams, q: string, station: number | undefined) {
   const whole = (name: string) => {
     const value = Number(search.get(name));
     return search.get(name) && Number.isFinite(value) && value >= 0 ? value : undefined;
@@ -164,6 +167,8 @@ function filtersOf(search: URLSearchParams, q: string) {
     q,
     filter: text("filter") as TrackFilter | undefined,
     category_id: whole("category"),
+    no_category: search.get("category") === "none" ? true : undefined,
+    on_station_id: search.get("category") === "none" ? undefined : station,
     labels_all: text("labels_all"),
     labels_any: text("labels_any"),
     labels_none: text("labels_none"),
@@ -231,7 +236,8 @@ export function Library() {
     }
   }, [q, search]);
 
-  const filters = filtersOf(search, q);
+  const stationFilter = useStationFilter("tracks");
+  const filters = filtersOf(search, q, stationFilter.stationId);
   const filterKey = JSON.stringify(filters);
   // Other filters start another selection.
   useEffect(() => {
@@ -239,9 +245,11 @@ export function Library() {
     setAllMatching(false);
   }, [filterKey]);
 
+  // The station's categories.
   const categories = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => unwrap(api.GET("/api/v1/categories")),
+    queryKey: ["categories", { station_id: stationFilter.stationId }],
+    queryFn: () =>
+      unwrap(api.GET("/api/v1/categories", { params: { query: query({ station_id: stationFilter.stationId }) } })),
   });
   const labels = useLabels();
   const programming = useProgrammingSettings();
@@ -402,6 +410,7 @@ export function Library() {
                 ))}
               </select>
             </label>
+            <StationFilter filter={stationFilter} disabled={category === "none"} />
             <label>
               <span className="visually-hidden">{t("library.category")}</span>
               <select
@@ -410,6 +419,7 @@ export function Library() {
                 onChange={(event) => setSearch({ category: event.target.value, page: undefined })}
               >
                 <option value="">{t("library.anyCategory")}</option>
+                <option value="none">{t("library.noCategory")}</option>
                 {categories.data?.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}

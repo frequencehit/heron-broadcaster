@@ -109,3 +109,58 @@ export function stationRole(user: User, stationId: number | null): Role | undefi
 export function codes(ids: number[], stations: StationInfo[]): string[] {
   return stations.filter((station) => ids.includes(station.id)).map((station) => station.code);
 }
+
+// The station filter of the library pages (docs/web.md#station-filter):
+// kept per user and per page in the browser.
+
+/** A page's station filter: one station, or all of them. */
+export type StationFilter = number | "all";
+
+/** The pages with a station filter. */
+export type FilterPage = "tracks" | "categories" | "medleys";
+
+function filterKey(page: FilterPage, user: number): string {
+  return `heron.stationFilter.${page}.${user}`;
+}
+
+/** The filter kept for `page`, as stored; `null` when none is. */
+export function storedFilter(page: FilterPage): string | null {
+  if (userId === null) {
+    return null;
+  }
+  try {
+    return localStorage.getItem(filterKey(page, userId));
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps `filter` for `page`. */
+export function keepFilter(page: FilterPage, filter: StationFilter) {
+  if (userId === null) {
+    return;
+  }
+  try {
+    localStorage.setItem(filterKey(page, userId), String(filter));
+  } catch {
+    // Storage unavailable: the choice lasts while the page is open.
+  }
+}
+
+/**
+ * The filter to show among the stations `ids` the user sees: the one kept,
+ * else the switcher's station (also when the one kept is not seen any more).
+ */
+export function stationFilter(stored: string | null, ids: number[], switcher: number | null): StationFilter {
+  if (stored === "all") {
+    return "all";
+  }
+  const kept = Number(stored);
+  if (stored !== null && ids.includes(kept)) {
+    return kept;
+  }
+  if (switcher !== null && ids.includes(switcher)) {
+    return switcher;
+  }
+  return ids[0] ?? "all";
+}

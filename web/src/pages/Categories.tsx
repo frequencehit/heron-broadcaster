@@ -6,9 +6,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { StationBadges, StationChecks, useSeveralStations } from "../components/Stations";
+import {
+  StationBadges,
+  StationChecks,
+  StationFilter,
+  useSeveralStations,
+  useStationFilter,
+} from "../components/Stations";
 import { here, useStation } from "../lib/station";
-import { type Category, type SeparationOverrides, api, done, unwrap } from "../api";
+import { type Category, type SeparationOverrides, api, done, query, unwrap } from "../api";
 import { useLabels } from "../components/SelectionActions";
 import { CategoryDaypartDays, CategoryDayparts } from "../components/Dayparts";
 import { SeparationEditor } from "../components/Separation";
@@ -41,15 +47,19 @@ export function sortCategories(categories: Category[], by: SortKey, descending: 
 
 export function Categories() {
   const canEdit = useCan("operator");
+  const stationFilter = useStationFilter("categories");
   const categories = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => unwrap(api.GET("/api/v1/categories")),
+    queryKey: ["categories", { station_id: stationFilter.stationId }],
+    queryFn: () =>
+      unwrap(api.GET("/api/v1/categories", { params: { query: query({ station_id: stationFilter.stationId }) } })),
   });
   const [editing, setEditing] = useState<Category | "new" | null>(null);
   const [filling, setFilling] = useState<Category | null>(null);
   const [type, setType] = useState<number | "all" | "none">("all");
   const [sort, setSort] = useState<{ by: SortKey; descending: boolean }>({ by: "name", descending: false });
   const types = useCategoryTypes();
+  // The type filter, when there are types and categories.
+  const typed = (types.data?.length ?? 0) > 0 && (categories.data?.length ?? 0) > 0;
   const shown = sortCategories(
     (categories.data ?? []).filter((category) =>
       type === "all" ? true : type === "none" ? category.type_id == null : category.type_id === type,
@@ -98,30 +108,35 @@ export function Categories() {
         }
       />
       <Card flush>
-        {(types.data?.length ?? 0) > 0 && (categories.data?.length ?? 0) > 0 && (
+        {(stationFilter.stations.length > 1 || typed) && (
           <div className="card-head">
-            <label className="row small">
-              {t("categories.type")}
-              <select
-                className="input"
-                value={String(type)}
-                onChange={(event) =>
-                  setType(
-                    event.target.value === "all" || event.target.value === "none"
-                      ? event.target.value
-                      : Number(event.target.value),
-                  )
-                }
-              >
-                <option value="all">{t("categories.allTypes")}</option>
-                {types.data?.map((categoryType) => (
-                  <option key={categoryType.id} value={categoryType.id}>
-                    {categoryType.name}
-                  </option>
-                ))}
-                <option value="none">{t("categories.noType")}</option>
-              </select>
-            </label>
+            <div className="row">
+              <StationFilter filter={stationFilter} />
+              {typed && (
+                <label className="row small">
+                  {t("categories.type")}
+                  <select
+                    className="input"
+                    value={String(type)}
+                    onChange={(event) =>
+                      setType(
+                        event.target.value === "all" || event.target.value === "none"
+                          ? event.target.value
+                          : Number(event.target.value),
+                      )
+                    }
+                  >
+                    <option value="all">{t("categories.allTypes")}</option>
+                    {types.data?.map((categoryType) => (
+                      <option key={categoryType.id} value={categoryType.id}>
+                        {categoryType.name}
+                      </option>
+                    ))}
+                    <option value="none">{t("categories.noType")}</option>
+                  </select>
+                </label>
+              )}
+            </div>
           </div>
         )}
         {categories.isPending && <Loading />}
