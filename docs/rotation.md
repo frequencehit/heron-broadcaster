@@ -97,7 +97,7 @@ Types let rules apply to every category of a kind at once, whatever their number
 A category type can be set to **never play twice in a row** (*Categories › Category types*); Jingle is from the start, any other type can be (Ad, Liner…). Then:
 
 - Rotation **never picks a track of that type right after a track of the same type**: what played or is queued just before, whatever its category (nine jingle categories count as one), a track queued by hand included. FX player tracks do not count: they play over the music.
-- A clock slot calling a category of that type right after one is **passed over** for the next slot, like a slot with nothing to play, and the rotation log says why (*same type twice in a row*). It is never relaxed: no relaxation step or fallback plays a jingle there instead.
+- A clock slot calling a category of that type right after one is **passed over** for the next slot, like a slot with nothing to play, and the rotation log says why (*same type twice in a row*). It is never relaxed: no relaxation step or fallback plays a jingle there instead. A slot calling the station's medley category is passed over the same way while [medleys are turned off](modules.md) for the station (*module turned off*).
 - Hours without a clock never pick two of them in a row either.
 - The clock editor warns about two slots in a row calling the same such type (the last slot followed by the first one included: the clock starts over), and simulations check the rule like the restrictions.
 
