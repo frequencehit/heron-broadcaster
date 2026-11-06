@@ -7,7 +7,7 @@
 import { CoverThumb } from "../components/Cover";
 import { useModule } from "../lib/modules";
 import { StationFilter, useStationFilter, useStations } from "../components/Stations";
-import { DisableDialog, EnableDialog, RatioDialog } from "../components/Ratio";
+import { DisableDialog, EnableDialog, RatioDialog, RatioImportDialog } from "../components/Ratio";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
@@ -42,7 +42,7 @@ import { useAction, useCan } from "../lib/session";
 import { type Preview, usePreview } from "../lib/preview";
 import { here } from "../lib/station";
 import { levelText } from "../lib/level";
-import { type RatioFilter, effectiveRatio, ratioFilter, ratioLabel, ratioSummary } from "../lib/ratio";
+import { type RatioFilter, disabledText, effectiveRatio, ratioFilter, ratioLabel, ratioSummary } from "../lib/ratio";
 
 const PAGE = 50;
 /** Files in one tag edit, at most (the API's limit). */
@@ -203,7 +203,7 @@ const MORE_FILTERS = [
   "genre",
 ];
 
-type Dialog = "labels" | "category" | "programming" | "ratio" | "tags" | "disable" | "enable" | null;
+type Dialog = "labels" | "category" | "programming" | "ratio" | "tags" | "disable" | "enable" | "import-ratios" | null;
 
 export function Library() {
   const { search } = useLocation();
@@ -240,6 +240,9 @@ export function Library() {
 
   const stationFilter = useStationFilter("tracks");
   const filters = filtersOf(search, q, stationFilter.stationId);
+  const stations = useStations();
+  // The station whose ratios the list shows and a bulk edit sets.
+  const ratioStation = stations.find((station) => station.id === filters.on_station_id);
   const filterKey = JSON.stringify(filters);
   // Other filters start another selection.
   useEffect(() => {
@@ -368,7 +371,17 @@ export function Library() {
 
   return (
     <>
-      <PageHead title={t("nav.tracks")} description={<LibrarySummary status={status.data} />} />
+      <PageHead
+        title={t("nav.tracks")}
+        description={<LibrarySummary status={status.data} />}
+        actions={
+          canEdit && (
+            <button type="button" className="btn" onClick={() => setDialog("import-ratios")}>
+              {t("ratioImport.action")}
+            </button>
+          )
+        }
+      />
       <Card flush>
         {batch && (
           <div className="card-head">
@@ -703,7 +716,9 @@ export function Library() {
         selection={selection}
         tracks={selectedCount}
         known={selectedTracks}
+        station={ratioStation}
       />
+      <RatioImportDialog open={dialog === "import-ratios"} onClose={() => setDialog(null)} />
       <DisableDialog
         open={dialog === "disable"}
         onClose={() => setDialog(null)}
@@ -909,7 +924,21 @@ function TrackState({ track }: { track: TrackSummary }) {
     return <span className="badge bad">{t("library.state.missing")}</span>;
   }
   if (!track.enabled) {
-    return <span className="badge">{t("library.state.disabled")}</span>;
+    return (
+      <span className="badge" title={disabledText(track.disabled_by, track.disabled_at_unix_ms) || undefined}>
+        {t("library.state.disabled")}
+      </span>
+    );
+  }
+  if (track.station_ratio && !track.station_ratio.enabled) {
+    return (
+      <span
+        className="badge"
+        title={disabledText(track.station_ratio.disabled_by, track.station_ratio.disabled_at_unix_ms) || undefined}
+      >
+        {t("library.state.disabledHere")}
+      </span>
+    );
   }
   if (!track.analyzed) {
     return <span className="badge warn">{t("library.state.unanalyzed")}</span>;
@@ -972,7 +1001,7 @@ function Row({
     sound_code: track.sound_code ?? none,
     level_min: <span className="num small">{levelText(track.level_min_db)}</span>,
     level_max: <span className="num small">{levelText(track.level_max_db)}</span>,
-    ratio: <RatioPill ratio={effectiveRatio(track)} />,
+    ratio: <RatioPill track={track} />,
     labels: (
       <span className="chips">
         {track.labels.map((label) => (
@@ -1066,16 +1095,28 @@ function Row({
   );
 }
 
-/** `0.2` and a bar a fifth full; `0` for a disabled track. */
-function RatioPill({ ratio }: { ratio: number }) {
+/** `0.2` and a bar a fifth full; `0` for a disabled track. Listed on a
+ * station: its ratio there, marked when it is the station's own. */
+function RatioPill({ track }: { track: TrackSummary }) {
+  const ratio = effectiveRatio(track);
+  const here = track.station_ratio;
+  let title = ratioSummary(ratio);
+  if (!track.enabled) {
+    title = `${title} ${disabledText(track.disabled_by, track.disabled_at_unix_ms)}`;
+  } else if (here && !here.enabled) {
+    title = `${t("library.state.disabledHere")}. ${disabledText(here.disabled_by, here.disabled_at_unix_ms)}`;
+  } else if (here?.play_ratio != null) {
+    title = `${title} ${t("ratio.ownHere", { ratio: ratioLabel(track.play_ratio) })}`;
+  }
   return (
-    <span className={ratio === 0 ? "ratio-pill muted" : "ratio-pill"} title={ratioSummary(ratio)}>
+    <span className={ratio === 0 ? "ratio-pill muted" : "ratio-pill"} title={title.trim()}>
       <span className="num">{ratioLabel(ratio)}</span>
       {ratio > 0 && (
         <span className="ratio-bar" aria-hidden="true">
           <i style={{ width: `${ratio * 10}%` }} />
         </span>
       )}
+      {here?.play_ratio != null && here.enabled && track.enabled && <span className="muted small">{t("ratio.ownShort")}</span>}
     </span>
   );
 }

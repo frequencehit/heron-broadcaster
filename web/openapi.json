@@ -6208,6 +6208,35 @@
         }
       }
     },
+    "/api/v1/rotation/counters/reset": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Puts every play ratio counter of the station back to 10. Operators and\nadmins of the station.",
+        "operationId": "reset_station_counters",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountersReset"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rotation/picks": {
       "get": {
         "tags": [
@@ -10106,6 +10135,46 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/rotation/counters/reset": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Puts every play ratio counter of the station back to 10. Operators and\nadmins of the station.",
+        "operationId": "reset_station_counters_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountersReset"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/rotation/picks": {
       "get": {
         "tags": [
@@ -12488,6 +12557,56 @@
         }
       }
     },
+    "/api/v1/tracks/ratios/import": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Sets play ratios from a CSV file (the body, `text/csv`): a `path` or\n`filename` column naming the track, a column per station code, and\n`default`. A ratio is 0 to 1 in steps of 0.1 (`0.2` or `0,2`); 0\ndisables the track (on that station, or everywhere), another ratio sets\nit and enables the track; an empty cell changes nothing. Operators of\nevery station named, and the shared role for `default`.",
+        "operationId": "import_ratios",
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "description": "Checks the file and answers what it would change, writing nothing.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/csv": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatioImport"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tracks/tag-overrides": {
       "post": {
         "tags": [
@@ -12649,7 +12768,7 @@
         "tags": [
           "library"
         ],
-        "summary": "Enables or disables a track, sets its play ratio, resets its play\nratio counters. Operators and admins.",
+        "summary": "Enables or disables a track, sets its play ratio, resets its play\nratio counters: everywhere (operators and admins), or on one station\n(operators and admins of that station).",
         "operationId": "patch_track",
         "parameters": [
           {
@@ -15803,6 +15922,20 @@
           }
         }
       },
+      "CountersReset": {
+        "type": "object",
+        "required": [
+          "reset"
+        ],
+        "properties": {
+          "reset": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Counters that were not at 10.",
+            "minimum": 0
+          }
+        }
+      },
       "CoverAddress": {
         "type": "object",
         "description": "An image to fetch from an address.",
@@ -16575,6 +16708,15 @@
           },
           "selection": {
             "$ref": "#/components/schemas/TrackSelection"
+          },
+          "station_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Disables or enables them on this station only: `play_ratio` is\ntheir ratio there, and `reset_counters` resets their counter there.\nOperators and admins of the station.",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -17031,6 +17173,15 @@
             "type": "integer",
             "format": "int32",
             "description": "Tracks in the slot's category.",
+            "minimum": 0
+          },
+          "ratio": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The picked track's play ratio on the station, in tenths, as rotation\nused it: the station's own, else the track's default. Missing in\npicks logged before play ratios per station.",
             "minimum": 0
           },
           "restricted": {
@@ -18332,6 +18483,26 @@
           }
         },
         "additionalProperties": false
+      },
+      "InvalidValue": {
+        "type": "object",
+        "required": [
+          "line",
+          "column",
+          "value"
+        ],
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string"
+          }
+        }
       },
       "KeyRecord": {
         "type": "object",
@@ -21060,6 +21231,15 @@
               "null"
             ],
             "description": "A value of the sound code scale, or `null` to clear it."
+          },
+          "station_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "`play_ratio` is their ratio on this station (0 disables them there),\nnot their default. Operators and admins of the station.",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -21420,23 +21600,91 @@
           }
         }
       },
-      "RatioCounter": {
+      "RatioImport": {
         "type": "object",
-        "description": "Where a track's play ratio counter is on a station.",
+        "description": "What an import of ratios found, and did.",
         "required": [
-          "station_id",
-          "counter"
+          "dry_run",
+          "matched_by",
+          "columns",
+          "unknown_columns",
+          "rows",
+          "matched",
+          "values",
+          "changed",
+          "unmatched",
+          "unmatched_total",
+          "invalid",
+          "invalid_total"
         ],
         "properties": {
-          "counter": {
-            "type": "integer",
-            "format": "int32",
-            "description": "10 down to 1: the next time rotation picks the track, it plays if\nthis is in its first `play_ratio` steps.",
-            "minimum": 0
-          },
-          "station_id": {
+          "changed": {
             "type": "integer",
             "format": "int64",
+            "description": "Ratios set to another value, tracks disabled or enabled (none in a\ndry run).",
+            "minimum": 0
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The columns of ratios: station codes, and `default`."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "invalid": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvalidValue"
+            },
+            "description": "The first 500."
+          },
+          "invalid_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows matching one track.",
+            "minimum": 0
+          },
+          "matched_by": {
+            "type": "string",
+            "description": "`path` or `filename`."
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows read, the header aside.",
+            "minimum": 0
+          },
+          "unknown_columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Columns that are neither a station's code nor `default`."
+          },
+          "unmatched": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnmatchedRow"
+            },
+            "description": "The first 500."
+          },
+          "unmatched_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "values": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Valid ratios in the rows matched.",
             "minimum": 0
           }
         }
@@ -23556,6 +23804,64 @@
           }
         }
       },
+      "StationRatio": {
+        "type": "object",
+        "description": "A track's play ratio on a station.",
+        "required": [
+          "station_id",
+          "enabled",
+          "ratio"
+        ],
+        "properties": {
+          "counter": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its counter there, 10 down to 1 (the track's page only).",
+            "minimum": 0
+          },
+          "disabled_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "disabled_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who disabled it there (a username), while it is."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Off: disabled on this station only."
+          },
+          "play_ratio": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The station's own, in tenths, 1 to 10, kept while the track is\ndisabled there; `null`: the track's default.",
+            "minimum": 0
+          },
+          "ratio": {
+            "type": "integer",
+            "format": "int32",
+            "description": "What rotation uses there: 0 when the track is disabled there or\neverywhere.",
+            "minimum": 0
+          },
+          "station_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "StationRequest": {
         "type": "object",
         "required": [
@@ -24658,7 +24964,7 @@
               "playout",
               "categories",
               "plays",
-              "ratio_counters",
+              "station_ratios",
               "cover_candidates"
             ],
             "properties": {
@@ -24756,12 +25062,12 @@
                 "$ref": "#/components/schemas/Plays",
                 "description": "Plays and last play in total and per station."
               },
-              "ratio_counters": {
+              "station_ratios": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/RatioCounter"
+                  "$ref": "#/components/schemas/StationRatio"
                 },
-                "description": "The play ratio counter on each station, in the stations' order."
+                "description": "Its play ratio and counter on each station, in the stations' order."
               },
               "tag_overrides": {
                 "type": "array",
@@ -25269,6 +25575,10 @@
       "TrackPatch": {
         "type": "object",
         "properties": {
+          "default_ratio": {
+            "type": "boolean",
+            "description": "With `station_id`: the station goes back to the track's default\nratio, and the track is enabled there."
+          },
           "enabled": {
             "type": [
               "boolean",
@@ -25288,6 +25598,15 @@
           "reset_counters": {
             "type": "boolean",
             "description": "Puts its play ratio counters back to 10 on every station."
+          },
+          "station_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "`enabled`, `play_ratio` and `reset_counters` apply to this station\nonly: its own ratio for the track, 0 disabling it there. Operators\nand admins of the station.",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -25664,6 +25983,20 @@
             "format": "int64",
             "minimum": 0
           },
+          "disabled_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "disabled_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who disabled it everywhere (a username; none for a user since\ndeleted), while it is disabled."
+          },
           "duration_ms": {
             "type": [
               "integer",
@@ -25754,6 +26087,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "station_ratio": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StationRatio",
+                "description": "Listed on a station (`on_station_id`): its ratio there."
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "title": {
@@ -26023,6 +26367,37 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "Unmatched": {
+        "type": "string",
+        "description": "Why a row matches no track.",
+        "enum": [
+          "not_found",
+          "several",
+          "empty"
+        ]
+      },
+      "UnmatchedRow": {
+        "type": "object",
+        "required": [
+          "line",
+          "name",
+          "reason"
+        ],
+        "properties": {
+          "line": {
+            "type": "integer",
+            "description": "Its line in the file, from 1 (the header).",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "The path or file name it gives."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Unmatched"
           }
         }
       },

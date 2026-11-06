@@ -300,6 +300,7 @@ fn station() -> Station {
             },
             no_two_in_a_row: Vec::new(),
             counters: HashMap::new(),
+            station_ratios: HashMap::new(),
             modules_off: Vec::new(),
         },
         artists,

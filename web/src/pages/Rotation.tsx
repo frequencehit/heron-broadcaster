@@ -16,7 +16,7 @@ import {
   query,
   unwrap,
 } from "../api";
-import { Banner, Card, Empty, ErrorView, Field, Loading, PageHead, Segmented } from "../components/ui";
+import { Banner, Card, ConfirmButton, Empty, ErrorView, Field, Loading, PageHead, Segmented } from "../components/ui";
 import { number, rich, t } from "../i18n";
 import { ago, clockTime, dateTime } from "../lib/format";
 import { DaypartBadge, daypartNote } from "../components/Dayparts";
@@ -34,10 +34,33 @@ export function Rotation() {
       <PageHead
         title={t("nav.rotation")}
         description={t("rotationPage.description")}
+        actions={canSimulate && <ResetCounters />}
       />
       {canSimulate && <SimulationCard />}
       <PicksCard />
     </>
+  );
+}
+
+/** Every play ratio counter of the station back to 10, after a confirmation. */
+function ResetCounters() {
+  const reset = useAction(
+    () => unwrap(api.POST("/api/v1/stations/{station_id}/rotation/counters/reset", { params: { path: here() } })),
+    {
+      success: (result) => t("ratio.stationResetDone", { count: result.reset }),
+      invalidate: [["track"], ["tracks"]],
+    },
+  );
+  return (
+    <ConfirmButton
+      className="btn"
+      confirm={t("ratio.stationReset")}
+      question={t("ratio.stationResetQuestion")}
+      disabled={reset.isPending}
+      onConfirm={() => reset.mutate(undefined)}
+    >
+      {t("ratio.stationReset")}
+    </ConfirmButton>
   );
 }
 
@@ -212,6 +235,12 @@ function Details({ explanation }: { explanation: Explanation }) {
         {explanation.method === "weighted" &&
           ` · ${t("rotationPage.weight", { weight: number(explanation.weight, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}`}
       </dd>
+      {explanation.ratio != null && explanation.counter != null && (
+        <>
+          <dt>{t("ratio.title")}</dt>
+          <dd>{t("ratio.picked", { ratio: ratioLabel(explanation.ratio), counter: explanation.counter })}</dd>
+        </>
+      )}
       {explanation.skipped_slots.length > 0 && (
         <>
           <dt>{t("history.skipped")}</dt>

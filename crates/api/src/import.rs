@@ -861,11 +861,15 @@ async fn apply(
         }
 
         if disable {
-            let changed = sqlx::query("UPDATE tracks SET enabled = FALSE WHERE id = ? AND enabled")
-                .bind(row.track_id)
-                .execute(&mut *tx)
-                .await?
-                .rows_affected();
+            let changed = sqlx::query(
+                "UPDATE tracks SET enabled = FALSE, disabled_by = ?, disabled_at = NOW(6)
+                 WHERE id = ? AND enabled",
+            )
+            .bind(user.id)
+            .bind(row.track_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
             summary.disabled += changed;
         }
         if let Some(added_at) = &values.added_at {
@@ -1201,13 +1205,18 @@ async fn restore(
         }
     }
     sqlx::query(
-        "UPDATE tracks SET title = ?, artist = ?, year = ?, enabled = ?,
+        "UPDATE tracks SET title = ?, artist = ?, year = ?,
+                disabled_by = IF(?, NULL, disabled_by),
+                disabled_at = IF(?, NULL, disabled_at),
+                enabled = ?,
                 created_at = COALESCE(?, created_at)
          WHERE id = ?",
     )
     .bind(&previous.title)
     .bind(&previous.artist)
     .bind(previous.year)
+    .bind(previous.enabled)
+    .bind(previous.enabled)
     .bind(previous.enabled)
     .bind(&previous.created_at)
     .bind(track_id)

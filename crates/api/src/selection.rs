@@ -122,6 +122,10 @@ pub struct EnabledChange {
     /// Puts their play ratio counters back to 10 on every station.
     #[serde(default)]
     pub reset_counters: bool,
+    /// Disables or enables them on this station only: `play_ratio` is
+    /// their ratio there, and `reset_counters` resets their counter there.
+    /// Operators and admins of the station.
+    pub station_id: Option<u64>,
 }
 
 /// Whether a change of `enabled` and `play_ratio` enables the tracks,
@@ -173,17 +177,26 @@ pub async fn reset_counters(tx: &mut Transaction<'_, MySql>, ids: &[u64]) -> Api
     Ok(())
 }
 
-/// Sets `enabled` on `ids`; answers how many changed.
-async fn set_enabled_on(
+/// Sets `enabled` on `ids`, everywhere, `user_id` disabling them (who and
+/// when are kept while they are disabled); answers how many changed.
+pub async fn set_enabled_on(
     tx: &mut Transaction<'_, MySql>,
     ids: &[u64],
     enabled: bool,
+    user_id: u64,
 ) -> ApiResult<u64> {
     let mut changed = 0;
     for chunk in ids.chunks(CHUNK) {
         let mut query = QueryBuilder::new("UPDATE tracks SET enabled = ");
+        query.push_bind(enabled);
+        if enabled {
+            query.push(", disabled_by = NULL, disabled_at = NULL");
+        } else {
+            query
+                .push(", disabled_at = NOW(6), disabled_by = ")
+                .push_bind(user_id);
+        }
         query
-            .push_bind(enabled)
             .push(" WHERE enabled <> ")
             .push_bind(enabled)
             .push(" AND id IN (");
@@ -207,7 +220,13 @@ async fn set_enabled(
     State(state): State<AppState>,
     Json(change): Json<EnabledChange>,
 ) -> ApiResult<Json<SelectionResult>> {
-    user.require(Role::Operator)?;
+    match change.station_id {
+        Some(station_id) => {
+            user.require_on(&state.pool, station_id, Role::Operator)
+                .await?;
+        }
+        None => user.require(Role::Operator)?,
+    }
     if let Some(ratio) = change.play_ratio
         && !(change.enabled && (1..=10).contains(&ratio))
     {
@@ -220,16 +239,32 @@ async fn set_enabled(
         .resolve(&state, &user, MAX_SELECTION)
         .await?;
     let mut tx = state.pool.begin().await?;
-    let mut changed = set_enabled_on(&mut tx, &ids, change.enabled).await?;
-    if let Some(ratio) = change.play_ratio {
-        changed = changed.max(set_play_ratio(&mut tx, &ids, ratio).await?);
-    }
-    if change.reset_counters {
-        reset_counters(&mut tx, &ids).await?;
-    }
+    let changed = match change.station_id {
+        Some(station_id) => {
+            let on_station =
+                crate::ratios::StationChange::new(Some(change.enabled), change.play_ratio, false)?;
+            let changed =
+                crate::ratios::change_on_station(&mut tx, &ids, station_id, on_station, user.id)
+                    .await?;
+            if change.reset_counters {
+                crate::ratios::reset_counters_on(&mut tx, &ids, station_id).await?;
+            }
+            changed
+        }
+        None => {
+            let mut changed = set_enabled_on(&mut tx, &ids, change.enabled, user.id).await?;
+            if let Some(ratio) = change.play_ratio {
+                changed = changed.max(set_play_ratio(&mut tx, &ids, ratio).await?);
+            }
+            if change.reset_counters {
+                reset_counters(&mut tx, &ids).await?;
+            }
+            changed
+        }
+    };
     tx.commit().await?;
     tracing::info!(user = %user.username, tracks = ids.len(), changed, enabled = change.enabled,
-        "tracks enabled or disabled");
+        station = change.station_id, "tracks enabled or disabled");
     Ok(Json(SelectionResult {
         tracks: ids.len() as u64,
         changed,
@@ -548,6 +583,9 @@ pub struct ProgrammingChange {
     /// The play ratio, in tenths, 1 to 10; 0 disables the tracks, which keep
     /// their ratio.
     pub play_ratio: Option<u8>,
+    /// `play_ratio` is their ratio on this station (0 disables them there),
+    /// not their default. Operators and admins of the station.
+    pub station_id: Option<u64>,
 }
 
 /// Sets the mood, sound code, tempo or play ratio of every selected track.
@@ -560,7 +598,14 @@ async fn apply_programming(
     State(state): State<AppState>,
     Json(change): Json<ProgrammingChange>,
 ) -> ApiResult<Json<SelectionResult>> {
-    user.require(Role::Operator)?;
+    let shared = change.mood.is_some() || change.sound_code.is_some() || change.bpm.is_some();
+    if shared || change.station_id.is_none() {
+        user.require(Role::Operator)?;
+    }
+    if let Some(station_id) = change.station_id {
+        user.require_on(&state.pool, station_id, Role::Operator)
+            .await?;
+    }
     check_scales(&state.pool, &change.mood, &change.sound_code).await?;
     let bpm = match change.bpm {
         Some(Some(bpm)) => {
@@ -594,10 +639,18 @@ async fn apply_programming(
         .await?;
     let mut tx = state.pool.begin().await?;
     let mut changed = 0;
-    match change.play_ratio {
-        Some(_) if disable => changed += set_enabled_on(&mut tx, &ids, false).await?,
-        Some(ratio) => changed += set_play_ratio(&mut tx, &ids, ratio).await?,
-        None => {}
+    match (change.play_ratio, change.station_id) {
+        (Some(ratio), Some(station_id)) => {
+            let on_station = crate::ratios::StationChange::new(None, Some(ratio), false)?;
+            changed +=
+                crate::ratios::change_on_station(&mut tx, &ids, station_id, on_station, user.id)
+                    .await?;
+        }
+        (Some(_), None) if disable => {
+            changed += set_enabled_on(&mut tx, &ids, false, user.id).await?;
+        }
+        (Some(ratio), None) => changed += set_play_ratio(&mut tx, &ids, ratio).await?,
+        (None, _) => {}
     }
     for chunk in ids.chunks(CHUNK) {
         for (column, text, number) in &columns {

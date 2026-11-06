@@ -177,6 +177,23 @@ impl CurrentUser {
     }
 }
 
+impl CurrentUser {
+    /// On a shared route, answers 403 unless the user has at least `role`
+    /// on that station (a shared admin has every role), 404 when they do
+    /// not see it: for what a shared route changes on one station (a
+    /// track's play ratio there).
+    pub async fn require_on(&self, pool: &MySqlPool, station_id: u64, role: Role) -> ApiResult<()> {
+        self.require_station(pool, station_id).await?;
+        if self.role == Role::Admin {
+            return Ok(());
+        }
+        match station_role(pool, self.id, station_id).await? {
+            Some(on_station) if on_station >= role => Ok(()),
+            _ => Err(ApiError::Forbidden),
+        }
+    }
+}
+
 /// A user's role on a station; `None` for `none`, a shared admin's aside.
 pub async fn station_role(
     pool: &MySqlPool,

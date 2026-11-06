@@ -73,7 +73,7 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
             .into_iter()
             .collect()
     };
-    // ID, title, album, playable length, play ratio.
+    // ID, title, album, playable length, default play ratio.
     type Row = (u64, Option<String>, Option<String>, i64, u64);
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT t.id, t.title, t.album,
@@ -218,6 +218,15 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
             .bind(station_id)
             .fetch_all(pool)
             .await?;
+    // The station's own ratios, 0 for the tracks it disabled.
+    let station_ratios: Vec<(u64, u64)> = sqlx::query_as(
+        "SELECT track_id, CAST(IF(enabled, play_ratio, 0) AS UNSIGNED)
+         FROM track_station_ratios
+         WHERE station_id = ? AND (NOT enabled OR play_ratio IS NOT NULL)",
+    )
+    .bind(station_id)
+    .fetch_all(pool)
+    .await?;
     Ok(Library::new(
         LibraryParts {
             tracks,
@@ -230,6 +239,10 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
             settings,
             no_two_in_a_row,
             counters: counters.into_iter().collect(),
+            station_ratios: station_ratios
+                .into_iter()
+                .map(|(track, ratio)| (track, u8::try_from(ratio).unwrap_or(0)))
+                .collect(),
             modules_off,
         },
         station.time_zone(),

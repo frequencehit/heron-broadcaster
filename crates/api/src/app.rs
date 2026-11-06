@@ -126,6 +126,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(crate::covers::router())
         .merge(crate::play_grid::router())
         .merge(selection::router())
+        .merge(crate::ratios::router())
         .merge(labels::router())
         .merge(librarian::router())
         .merge(import::router())

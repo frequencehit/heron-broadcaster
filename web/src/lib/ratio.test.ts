@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from "vitest";
-import { cells, effectiveRatio, nextText, plays, ratioFilter, ratioLabel, ratioSummary } from "./ratio";
+import { cells, disabledText, effectiveRatio, nextText, plays, ratioFilter, ratioLabel, ratioSummary } from "./ratio";
 
 describe("play ratio", () => {
   it("plays in the first steps of the counter", () => {
@@ -47,5 +47,20 @@ describe("play ratio", () => {
     expect(ratioFilter("off")).toEqual({ ratio_max: 0 });
     expect(ratioFilter(null)).toEqual({});
     expect(ratioFilter("toString")).toEqual({});
+  });
+
+  it("follows the station a list shows", () => {
+    expect(effectiveRatio({ enabled: true, play_ratio: 4 })).toBe(4);
+    expect(effectiveRatio({ enabled: false, play_ratio: 4 })).toBe(0);
+    expect(effectiveRatio({ enabled: true, play_ratio: 4, station_ratio: null })).toBe(4);
+    expect(effectiveRatio({ enabled: true, play_ratio: 4, station_ratio: { ratio: 2 } })).toBe(2);
+    expect(effectiveRatio({ enabled: true, play_ratio: 4, station_ratio: { ratio: 0 } })).toBe(0);
+  });
+
+  it("says who disabled a track", () => {
+    expect(disabledText("ada", null)).toBe("Disabled by ada.");
+    expect(disabledText("ada", Date.UTC(2026, 10, 6, 10, 12))).toMatch(/^Disabled by ada, .*2026/);
+    expect(disabledText(null, Date.UTC(2026, 10, 6, 10, 12))).toMatch(/^Disabled .*2026/);
+    expect(disabledText(null, null)).toBe("");
   });
 });

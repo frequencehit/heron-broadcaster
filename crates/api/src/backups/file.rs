@@ -69,6 +69,19 @@ pub struct ConfigFile {
     /// The library paths of the tracks turned off.
     #[serde(default)]
     pub disabled_tracks: Vec<String>,
+    /// Who turned them off, and when, by library path.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub disabled_by: BTreeMap<String, DisabledBy>,
+}
+
+/// Who disabled a track, and when.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DisabledBy {
+    /// A user of the file; none for a user since deleted.
+    pub user_id: Option<u64>,
+    /// As the database writes it.
+    pub at: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -548,6 +561,20 @@ const TABLES: &[Table] = &[
         Mode::Library,
         &[],
     ),
+    // A station's own play ratios, and the tracks disabled on a station.
+    table(
+        "track_station_ratios",
+        &[
+            Track("track_id"),
+            Plain("station_id"),
+            Plain("play_ratio"),
+            Plain("enabled"),
+            Plain("disabled_by"),
+            Plain("disabled_at"),
+        ],
+        Mode::Library,
+        &[],
+    ),
     table(
         "track_tag_overrides",
         &[
@@ -684,10 +711,26 @@ pub async fn export(
         }
         tables.insert(table.name.to_owned(), rows);
     }
-    let disabled_tracks: Vec<String> =
-        sqlx::query_scalar("SELECT path FROM tracks WHERE NOT enabled ORDER BY path")
-            .fetch_all(&mut *tx)
-            .await?;
+    let disabled: Vec<(String, Option<u64>, Option<String>)> = sqlx::query_as(
+        "SELECT path, disabled_by, CAST(disabled_at AS CHAR) FROM tracks
+         WHERE NOT enabled ORDER BY path",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let disabled_by = disabled
+        .iter()
+        .filter(|(_, user_id, at)| user_id.is_some() || at.is_some())
+        .map(|(path, user_id, at)| {
+            (
+                path.clone(),
+                DisabledBy {
+                    user_id: *user_id,
+                    at: at.clone(),
+                },
+            )
+        })
+        .collect();
+    let disabled_tracks = disabled.into_iter().map(|(path, _, _)| path).collect();
     let schema: i64 =
         sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations WHERE success")
             .fetch_one(&mut *tx)
@@ -701,6 +744,7 @@ pub async fn export(
         kind,
         tables,
         disabled_tracks,
+        disabled_by,
     })
 }
 
@@ -1119,16 +1163,26 @@ pub async fn restore(
         }
     }
     // Tracks turned off.
-    sqlx::query("UPDATE tracks SET enabled = TRUE WHERE NOT enabled")
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query(
+        "UPDATE tracks SET enabled = TRUE, disabled_by = NULL, disabled_at = NULL WHERE NOT enabled",
+    )
+    .execute(&mut **tx)
+    .await?;
     let mut disabled = 0;
     for path in &file.disabled_tracks {
         if let Some(id) = library.track(&Value::from(path.as_str())) {
-            sqlx::query("UPDATE tracks SET enabled = FALSE WHERE id = ?")
-                .bind(id)
-                .execute(&mut **tx)
-                .await?;
+            let by = file.disabled_by.get(path);
+            sqlx::query(
+                "UPDATE tracks SET enabled = FALSE,
+                        disabled_by = (SELECT u.id FROM users u WHERE u.id = ?),
+                        disabled_at = ?
+                 WHERE id = ?",
+            )
+            .bind(by.and_then(|by| by.user_id))
+            .bind(by.and_then(|by| by.at.clone()))
+            .bind(id)
+            .execute(&mut **tx)
+            .await?;
             disabled += 1;
         }
     }

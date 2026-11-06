@@ -544,6 +544,17 @@ async fn songs(pool: &MySqlPool, medley: &Medley) -> ApiResult<Vec<Candidate>> {
            AND a.cue_out_ms > a.cue_in_ms
            AND m.hook_in_ms IS NOT NULL AND m.hook_out_ms > m.hook_in_ms
            AND NOT EXISTS (SELECT 1 FROM medleys md WHERE md.track_id = t.id)
+           -- Disabled on one of the medley's stations: it would play there.
+           AND NOT EXISTS (SELECT 1 FROM track_station_ratios sr
+                           WHERE sr.track_id = t.id AND NOT sr.enabled AND sr.station_id IN (",
+    );
+    let mut separated = query.separated(", ");
+    separated.push_bind(0u64);
+    for id in &medley.station_ids {
+        separated.push_bind(*id);
+    }
+    query.push(
+        "))
            AND EXISTS (SELECT 1 FROM track_categories tc
                        WHERE tc.track_id = t.id AND tc.category_id IN (",
     );
@@ -595,31 +606,53 @@ async fn liners(pool: &MySqlPool, medley: &Medley) -> ApiResult<Liners> {
     }
     let settings = categories_of(pool, *first).await?;
     Ok(Liners {
-        between: liner_tracks(pool, settings.liner_category_id).await?,
-        start: liner_tracks(pool, settings.opening_liner_category_id).await?,
-        end: liner_tracks(pool, settings.closing_liner_category_id).await?,
+        between: liner_tracks(pool, settings.liner_category_id, &medley.station_ids).await?,
+        start: liner_tracks(
+            pool,
+            settings.opening_liner_category_id,
+            &medley.station_ids,
+        )
+        .await?,
+        end: liner_tracks(
+            pool,
+            settings.closing_liner_category_id,
+            &medley.station_ids,
+        )
+        .await?,
     })
 }
 
 /// The tracks of a liner category, from cue-in to cue-out; never a medley,
 /// even when medleys go in that category.
-async fn liner_tracks(pool: &MySqlPool, category_id: Option<u64>) -> ApiResult<Vec<Candidate>> {
+async fn liner_tracks(
+    pool: &MySqlPool,
+    category_id: Option<u64>,
+    station_ids: &[u64],
+) -> ApiResult<Vec<Candidate>> {
     let Some(category_id) = category_id else {
         return Ok(Vec::new());
     };
-    let rows: Vec<(u64, u32, u32)> = sqlx::query_as(
+    let mut query = QueryBuilder::new(
         "SELECT t.id, COALESCE(o.cue_in_ms, a.cue_in_ms), COALESCE(o.cue_out_ms, a.cue_out_ms)
          FROM tracks t
-         JOIN track_categories tc ON tc.track_id = t.id AND tc.category_id = ?
-         JOIN track_analysis a ON a.track_id = t.id
+         JOIN track_categories tc ON tc.track_id = t.id AND tc.category_id = ",
+    );
+    query.push_bind(category_id).push(
+        " JOIN track_analysis a ON a.track_id = t.id
          LEFT JOIN track_overrides o ON o.track_id = t.id
          WHERE t.deleted_at IS NULL AND t.enabled AND t.missing_since IS NULL
            AND a.cue_out_ms > a.cue_in_ms
-           AND NOT EXISTS (SELECT 1 FROM medleys md WHERE md.track_id = t.id)",
-    )
-    .bind(category_id)
-    .fetch_all(pool)
-    .await?;
+           AND NOT EXISTS (SELECT 1 FROM medleys md WHERE md.track_id = t.id)
+           AND NOT EXISTS (SELECT 1 FROM track_station_ratios sr
+                           WHERE sr.track_id = t.id AND NOT sr.enabled AND sr.station_id IN (",
+    );
+    let mut separated = query.separated(", ");
+    separated.push_bind(0u64);
+    for id in station_ids {
+        separated.push_bind(*id);
+    }
+    query.push("))");
+    let rows: Vec<(u64, u32, u32)> = query.build_query_as().fetch_all(pool).await?;
     Ok(rows
         .into_iter()
         .filter(|(_, from_ms, to_ms)| to_ms > from_ms)
