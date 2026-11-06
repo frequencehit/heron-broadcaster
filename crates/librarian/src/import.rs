@@ -14,7 +14,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use heron_core::{FileStamp, LibraryPath, LibrarySettings};
+use heron_core::{FileStamp, LibraryPath, LibrarySettings, Modules};
 use heron_library::{Tags, is_audio, is_hidden};
 use serde::Serialize;
 use sqlx::MySqlPool;
@@ -347,6 +347,16 @@ pub(crate) fn candidates_json(candidates: &[Candidate]) -> Option<serde_json::Va
     let mut sorted: Vec<&Candidate> = candidates.iter().collect();
     sorted.sort_by(|a, b| b.score.total_cmp(&a.score));
     serde_json::to_value(sorted.into_iter().take(MAX_CANDIDATES).collect::<Vec<_>>()).ok()
+}
+
+/// The installation's modules (`docs/modules.md`): what is not stored is on.
+pub async fn load_modules(pool: &MySqlPool) -> Result<Modules, sqlx::Error> {
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT CAST(value AS CHAR) FROM settings WHERE name = ?")
+            .bind(Modules::SETTINGS_NAME)
+            .fetch_optional(pool)
+            .await?;
+    Ok(Modules::parse(value.as_deref()))
 }
 
 /// Reads the library settings from the `settings` table, falling back to

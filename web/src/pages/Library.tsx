@@ -5,6 +5,7 @@
 // ratio, tags, disable and enable).
 
 import { CoverThumb } from "../components/Cover";
+import { useModule } from "../lib/modules";
 import { useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioDialog } from "../components/Ratio";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -202,6 +203,7 @@ type Dialog = "labels" | "category" | "programming" | "ratio" | "tags" | "disabl
 export function Library() {
   const { search } = useLocation();
   const canEdit = useCan("operator");
+  const coverArt = useModule("cover_art");
   const preview = usePreview();
   const filter = (search.get("filter") ?? "") as TrackFilter | "";
   const sort = (search.get("sort") ?? "artist") as TrackSort;
@@ -353,7 +355,7 @@ export function Library() {
     setAllMatching(false);
   };
   // The cover goes before the title; the others after the artist.
-  const showCover = columns.includes("cover");
+  const showCover = coverArt && columns.includes("cover");
   const shown = COLUMNS.filter((c) => c.value !== "cover" && columns.includes(c.value));
 
   return (
@@ -395,7 +397,7 @@ export function Library() {
                 value={filter}
                 onChange={(event) => setSearch({ filter: event.target.value, page: undefined })}
               >
-                {FILTERS.map((option) => (
+                {FILTERS.filter((option) => coverArt || option.value !== "no_cover").map((option) => (
                   <option key={option.value} value={option.value}>
                     {t(option.label)}
                   </option>
@@ -548,12 +550,16 @@ export function Library() {
                       onSelect: () => backToFileTags.mutate(undefined),
                       disabled: selectedCount > MAX_TAG_EDIT || backToFileTags.isPending,
                     },
-                    {
-                      label: t("library.findCovers"),
-                      title: t("library.findCoversHelp"),
-                      onSelect: () => findCovers.mutate(undefined),
-                      disabled: findCovers.isPending,
-                    },
+                    ...(coverArt
+                      ? [
+                          {
+                            label: t("library.findCovers"),
+                            title: t("library.findCoversHelp"),
+                            onSelect: () => findCovers.mutate(undefined),
+                            disabled: findCovers.isPending,
+                          },
+                        ]
+                      : []),
                     {
                       label: t("library.delete"),
                       danger: true,
@@ -715,11 +721,12 @@ function sameRatio(tracks: TrackSummary[]): number | null {
 }
 
 function ColumnsMenu({ columns, onToggle }: { columns: Column[]; onToggle: (column: Column, shown: boolean) => void }) {
+  const coverArt = useModule("cover_art");
   return (
     <details className="menu">
       <summary className="btn ghost small">{t("library.columns")}</summary>
       <div className="menu-panel stack">
-        {COLUMNS.map((column) => (
+        {COLUMNS.filter((column) => coverArt || column.value !== "cover").map((column) => (
           <label key={column.value} className="check">
             <input
               type="checkbox"

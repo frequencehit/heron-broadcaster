@@ -165,6 +165,9 @@ pub enum SkipReason {
     /// The track before is of the slot category's type, which never plays
     /// twice in a row (two jingles, for instance).
     SameTypeInARow,
+    /// The slot calls the category of a module turned off for the station
+    /// (its medley category, while medleys are off).
+    ModuleOff,
     /// The slot and the next one, which it is linked to: the next slot's
     /// track would start after the end of the hour (or in another clock).
     LinkedTrackAfterHour,
@@ -771,6 +774,10 @@ fn pick(
                         held_by_ratio: &mut Vec<HeldByRatio>|
      -> Result<Pick, SkipReason> {
         let slot = &clock.slots[index];
+        // A module turned off: passed over, never relaxed.
+        if library.modules_off.contains(&slot.category) {
+            return Err(SkipReason::ModuleOff);
+        }
         let previous = history
             .previous(at_ms)
             .map(|play| play.categories.as_slice());
@@ -1413,6 +1420,28 @@ mod tests {
         // A clock of one slot cannot link it to itself.
         let library = self::library(vec![linked(1)]);
         assert!(!library.clocks[&1].linked(0));
+    }
+
+    #[test]
+    fn slots_of_a_module_turned_off_are_passed_over() {
+        let mut library = library(vec![slot(1, Method::Random), slot(2, Method::Random)]);
+        library.modules_off.insert(2);
+        let mut rng = Rng::new(7);
+        let history = History::default();
+        let first = next(&library, &history, 0, None, &mut rng).unwrap();
+        assert_eq!(first.position.unwrap().slot, 0);
+        // Slot 1 calls category 2: passed over, slot 0 plays again.
+        let second = next(&library, &history, MIN, first.position.as_ref(), &mut rng).unwrap();
+        assert_eq!(second.position.unwrap().slot, 0);
+        assert_eq!(second.explanation.step, 0);
+        assert_eq!(
+            second.explanation.skipped_slots,
+            [SkippedSlot {
+                slot: 1,
+                category_id: 2,
+                reason: SkipReason::ModuleOff,
+            }]
+        );
     }
 
     #[test]

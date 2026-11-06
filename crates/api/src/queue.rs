@@ -73,6 +73,11 @@ struct TrackRow {
     over_intro: bool,
     /// Where the intro ends, from the import (`track_markers`).
     intro_ms: Option<u32>,
+    /// A rendered medley.
+    medley: bool,
+    /// Medleys are turned off for the station: a medley does not play.
+    #[sqlx(skip)]
+    medleys_off: bool,
 }
 
 const TRACK_COLUMNS: &str = "
@@ -91,7 +96,8 @@ const TRACK_COLUMNS: &str = "
             JOIN categories c ON c.id = tc.category_id
             JOIN category_types ct ON ct.id = c.type_id
             WHERE tc.track_id = t.id AND ct.plays_over_intro) AS over_intro,
-    m.intro_ms
+    m.intro_ms,
+    EXISTS (SELECT 1 FROM medleys md WHERE md.track_id = t.id) AS medley
     FROM tracks t
     LEFT JOIN track_analysis a ON a.track_id = t.id
     LEFT JOIN track_overrides o ON o.track_id = t.id
@@ -148,6 +154,12 @@ impl TrackRow {
         base.with_overrides(overrides)
     }
 
+    /// Whether it may stay queued: in the library, enabled, and not a
+    /// medley while medleys are off.
+    fn plays(&self) -> bool {
+        self.enabled && !self.missing && !(self.medley && self.medleys_off)
+    }
+
     /// Why the track cannot be played, if it cannot.
     fn unplayable(&self) -> Option<String> {
         if self.missing {
@@ -155,6 +167,12 @@ impl TrackRow {
         }
         if !self.enabled {
             return Some(format!("track {}: it is disabled", self.id));
+        }
+        if self.medley && self.medleys_off {
+            return Some(format!(
+                "track {}: it is a medley, and medleys are turned off",
+                self.id
+            ));
         }
         let playout = self.playout();
         if self.analyzed && playout.playable_ms() < SILENT_MS {
@@ -241,7 +259,17 @@ impl QueueManager {
             separated.push_bind(*id);
         }
         query.push(")");
-        Ok(query.build_query_as().fetch_all(&self.pool).await?)
+        let mut rows: Vec<TrackRow> = query.build_query_as().fetch_all(&self.pool).await?;
+        if rows.iter().any(|row| row.medley)
+            && !crate::modules::on_for(&self.pool, self.station_id)
+                .await?
+                .medleys
+        {
+            for row in &mut rows {
+                row.medleys_off = true;
+            }
+        }
+        Ok(rows)
     }
 
     /// The engine's version of library tracks, in the order given. Fails
@@ -424,8 +452,8 @@ impl QueueManager {
                             && playout.cue_out_ms == entry.track.cue_out_ms))
             };
             match row {
-                Some(row) if row.enabled && !row.missing && unchanged(row) => {}
-                Some(row) if row.enabled && !row.missing => {
+                Some(row) if row.plays() && unchanged(row) => {}
+                Some(row) if row.plays() => {
                     let track = row.to_proto(entry.track.source)?;
                     match self.engine.replace(entry.entry_id, track).await {
                         Ok(()) => tracing::info!(
@@ -443,7 +471,8 @@ impl QueueManager {
                     Ok(()) => tracing::warn!(
                         entry = entry.entry_id,
                         path = %entry.track.path,
-                        "queued track left the library or was disabled: removed from the queue"
+                        "queued track left the library, was disabled or is a medley turned off: \
+                         removed from the queue"
                     ),
                     Err(ApiError::Invalid(_) | ApiError::NotFound(_)) => {}
                     Err(error) => return Err(error),
@@ -481,6 +510,8 @@ mod tests {
             no_metadata: false,
             over_intro: false,
             intro_ms: None,
+            medley: false,
+            medleys_off: false,
         }
     }
 
@@ -537,5 +568,10 @@ mod tests {
         silent.cue_out_ms = Some(150);
         assert!(silent.unplayable().is_some());
         assert!(row().unplayable().is_none());
+        let mut medley = row();
+        medley.medley = true;
+        assert!(medley.unplayable().is_none() && medley.plays());
+        medley.medleys_off = true;
+        assert!(medley.unplayable().is_some() && !medley.plays());
     }
 }

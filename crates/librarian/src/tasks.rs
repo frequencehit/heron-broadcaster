@@ -14,6 +14,7 @@
 
 use std::time::{Duration, Instant};
 
+use heron_core::Module;
 use heron_core::library::{OrganizePlan, TaskRequest};
 use sqlx::MySqlPool;
 use tokio::sync::watch;
@@ -223,6 +224,7 @@ impl TaskRunner {
             }
             TaskRequest::EmptyTrash => json(trash::purge(&self.pool, &self.roots, None).await),
             TaskRequest::PreviewMedley { medley_id, parts } => {
+                self.module_on(Module::Medleys).await?;
                 let report = medley::preview(&self.pool, &self.roots, *medley_id, parts).await?;
                 serde_json::to_value(report).map_err(|error| error.to_string())
             }
@@ -230,6 +232,7 @@ impl TaskRunner {
                 track_ids,
                 candidates,
             } => {
+                self.module_on(Module::CoverArt).await?;
                 let albums = if track_ids.is_empty() {
                     covers::Albums::AllMissing
                 } else {
@@ -240,13 +243,30 @@ impl TaskRunner {
             TaskRequest::ApplyCover {
                 candidate_id,
                 track_id,
-            } => json(
-                covers::apply(&self.pool, &self.musicbrainz()?, *candidate_id, *track_id).await,
-            ),
+            } => {
+                self.module_on(Module::CoverArt).await?;
+                json(
+                    covers::apply(&self.pool, &self.musicbrainz()?, *candidate_id, *track_id).await,
+                )
+            }
             TaskRequest::RenderMedley { medley_id } => {
+                self.module_on(Module::Medleys).await?;
                 let report = medley::render(&self.pool, &self.roots, *medley_id).await?;
                 serde_json::to_value(report).map_err(|error| error.to_string())
             }
+        }
+    }
+
+    /// Fails a task of a module turned off for the installation, queued
+    /// before it was (`docs/modules.md`).
+    async fn module_on(&self, module: Module) -> Result<(), String> {
+        let modules = import::load_modules(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        if modules.is_on(module) {
+            Ok(())
+        } else {
+            Err(format!("the {} module is turned off", module.name()))
         }
     }
 
@@ -277,12 +297,18 @@ impl TaskRunner {
     }
 
     /// Looks up albums without a cover never looked up, when the library
-    /// setting `fetch_covers` is on.
+    /// setting `fetch_covers` and cover art are on.
     async fn new_covers(&self) -> Result<(), String> {
         let settings = import::load_settings(&self.pool)
             .await
             .map_err(|error| error.to_string())?;
         if !settings.fetch_covers {
+            return Ok(());
+        }
+        let modules = import::load_modules(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        if !modules.cover_art {
             return Ok(());
         }
         covers::look_up(

@@ -8432,3 +8432,197 @@ async fn covers_are_set_by_hand_shown_and_backed_up() {
     assert_eq!(viewer.get("/covers/candidates").await, json!([]));
     station.stop().await;
 }
+
+/// Modules turned off for the installation or a station: their routes
+/// answer 404, their background work stops, and their data is back once
+/// they are on again (docs/modules.md).
+#[tokio::test(flavor = "multi_thread")]
+async fn modules_are_turned_off_and_on_again() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
+                        "webhooks": true});
+
+    // Everything is on after an upgrade.
+    assert_eq!(viewer.get("/modules").await, all_on);
+    let modules = viewer.get("/stations/1/modules").await;
+    assert_eq!(modules["on"], all_on);
+    assert_eq!(modules["station"], all_on);
+    let (status, _) = viewer
+        .send(Method::PUT, "/modules", json!({"webhooks": false}))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = viewer
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"webhooks": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = admin
+        .request(Method::GET, "/stations/99/modules", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Data of each module.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, created) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Website", "url": format!("http://{receiver}/json"),
+                   "events": ["track.started"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let (status, _) = admin
+        .put_image(&format!("/tracks/{}/cover", t[1]), png(64, 64, 3))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let medley = sqlx::query("INSERT INTO medleys (name, recipe, track_id) VALUES ('M', '{}', ?)")
+        .bind(t[0])
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+    sqlx::query("INSERT INTO medley_stations (medley_id, station_id, position) VALUES (?, 1, 0)")
+        .bind(medley)
+        .execute(pool)
+        .await
+        .unwrap();
+    let profile = admin.get("/encoder-profiles").await[0]["id"]
+        .as_u64()
+        .unwrap();
+    let (status, output) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
+                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live",
+                              "password": "hackme"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{output}");
+    let collector = &station.state.listeners;
+    collector.poll(rotation_now()).await.unwrap();
+    assert_eq!(collector.last().len(), 1, "the output is read");
+    // Webhooks are sent.
+    tokio::time::timeout(Duration::from_secs(15), received.recv())
+        .await
+        .expect("a delivery")
+        .unwrap();
+
+    // Off for the station: webhooks and listener statistics.
+    let (status, modules) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"webhooks": false, "listener_statistics": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{modules}");
+    assert_eq!(modules["installation"], all_on);
+    assert_eq!(modules["on"]["webhooks"], false);
+    assert_eq!(modules["on"]["medleys"], true);
+    for path in ["/webhooks", "/stations/1/webhooks", "/listeners/now"] {
+        let (status, body) = admin.request(Method::GET, path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    // The statistics settings are the installation's.
+    admin.get("/settings/statistics").await;
+    collector.poll(rotation_now()).await.unwrap();
+    assert!(
+        collector.last().is_empty(),
+        "the station's servers are not read"
+    );
+    // Nothing is sent: what was on its way fails.
+    while tokio::time::timeout(Duration::from_millis(100), received.recv())
+        .await
+        .is_ok()
+    {}
+    tokio::time::sleep(Duration::from_secs(2 * TRACK_SECONDS as u64)).await;
+    assert!(received.try_recv().is_err(), "a webhook was sent");
+    let pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM webhook_deliveries WHERE status = 'pending'")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(pending, 0);
+
+    // Off for the installation: medleys and cover art.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"medleys": false, "cover_art": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let modules = viewer.get("/stations/1/modules").await;
+    assert_eq!(modules["station"]["medleys"], true);
+    assert_eq!(modules["on"]["medleys"], false);
+    for path in [
+        "/medleys".to_owned(),
+        format!("/medleys/{medley}"),
+        "/stations/1/settings/medleys".to_owned(),
+        format!("/tracks/{}/cover", t[1]),
+        "/covers/candidates".to_owned(),
+        "/stations/1/settings/station/logo".to_owned(),
+    ] {
+        let (status, body) = viewer.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    let page = viewer.get("/tracks").await;
+    assert!(
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|track| track["cover_url"].is_null()),
+        "{page}"
+    );
+    assert!(viewer.get(&format!("/tracks/{}", t[1])).await["cover"].is_null());
+    assert!(viewer.get("/public/now-playing").await["now"]["cover_url"].is_null());
+    // The medley never plays.
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert!(!library.tracks.contains_key(&t[0]));
+    assert!(library.tracks.contains_key(&t[1]));
+    let (status, refused) = admin
+        .send(Method::POST, "/queue", json!({"track_ids": [t[0]]}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{refused}");
+    assert!(refused["message"].as_str().unwrap().contains("medley"));
+
+    // On again: everything is back as it was.
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, modules) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(modules["on"], all_on);
+    assert_eq!(admin.get("/webhooks").await[0]["name"], "Website");
+    assert_eq!(admin.get("/medleys").await[0]["id"], medley);
+    assert!(viewer.get(&format!("/tracks/{}", t[1])).await["cover"].is_object());
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert!(library.tracks.contains_key(&t[0]));
+    collector.poll(rotation_now()).await.unwrap();
+    assert_eq!(collector.last().len(), 1);
+    tokio::time::timeout(Duration::from_secs(15), received.recv())
+        .await
+        .expect("a delivery once webhooks are on again")
+        .unwrap();
+    station.stop().await;
+}
+
+fn rotation_now() -> i64 {
+    crate::rotation::now_ms()
+}

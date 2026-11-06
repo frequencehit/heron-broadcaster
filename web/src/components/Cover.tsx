@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError, type Schemas, type TrackDetail, api, done, unwrap } from "../api";
 import { type PlainKey, t } from "../i18n";
+import { useModule } from "../lib/modules";
 import { useAction, useCan } from "../lib/session";
 import { TaskState, useTask } from "./Task";
 import { Card, ConfirmButton, Icon, Segmented, useToast } from "./ui";
@@ -53,13 +54,18 @@ export function CoverImage({
   );
 }
 
-/** A track's thumbnail from its `cover_url`. */
+/** A track's thumbnail from its `cover_url`; none while cover art is off. */
 export function CoverThumb({ url, px = 32 }: Readonly<{ url: string | null | undefined; px?: number }>) {
-  return <CoverImage src={coverSrc(url, true)} px={px} />;
+  const on = useModule("cover_art");
+  return on ? <CoverImage src={coverSrc(url, true)} px={px} /> : null;
 }
 
-/** The thumbnail of a track known by its ID only (decks, queue). */
+/** The thumbnail of a track known by its ID only (decks, queue); none while cover art is off. */
 export function TrackCoverThumb({ trackId, px = 40 }: Readonly<{ trackId: number | null | undefined; px?: number }>) {
+  const on = useModule("cover_art");
+  if (!on) {
+    return null;
+  }
   const src = trackId == null ? null : `/api/v1/tracks/${trackId}/cover?size=96`;
   return <CoverImage src={src} px={px} />;
 }
@@ -188,8 +194,13 @@ export function CoverCandidates({
   );
 }
 
-/** A track's cover on its page: where it comes from, and how to change it. */
+/** A track's cover on its page: where it comes from, and how to change it; none while cover art is off. */
 export function CoverCard({ track }: Readonly<{ track: TrackDetail }>) {
+  const on = useModule("cover_art");
+  return on ? <TrackCover track={track} /> : null;
+}
+
+function TrackCover({ track }: Readonly<{ track: TrackDetail }>) {
   const canEdit = useCan("operator");
   const client = useQueryClient();
   const toast = useToast();

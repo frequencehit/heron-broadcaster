@@ -7,6 +7,7 @@ pub mod eq;
 pub mod file;
 pub mod library;
 pub mod medley;
+pub mod modules;
 pub mod output;
 pub mod playout;
 pub mod settings;
@@ -14,6 +15,7 @@ pub mod settings;
 pub use agc::AgcSettings;
 pub use eq::{DeckEq, EQ_BANDS, EQ_MAX_GAIN_DB, EqSettings};
 pub use file::{FileStamp, LibraryPath};
+pub use modules::{Module, Modules};
 pub use output::{EncoderKind, EncoderProfile, OutputConfig, OutputKind, OutputsConfig};
 pub use playout::{
     CrossfadeSettings, FadeCurve, LoudnessSettings, PlaySource, PlayoutSettings,

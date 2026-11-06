@@ -6,9 +6,11 @@ import { api, can, done, errorMessage, fetchStatus, unwrap } from "./api";
 import { BackupWarnings } from "./components/BackupKey";
 import { StatusBar } from "./components/StatusBar";
 import { Enrolment, RecoveryCodesHost } from "./components/TwoFactor";
+import { ModuleGate } from "./components/Modules";
 import { Banner, Icon, Loading, Logo } from "./components/ui";
 import { type PlainKey, rich, setLanguage, t, toSetting, useLanguage } from "./i18n";
 import { setTimeZone } from "./lib/format";
+import { ALL_ON, useStationModules } from "./lib/modules";
 import { PAGES, isCurrent, placeOf } from "./lib/pages";
 import { startLive, stopLive, useLive } from "./lib/live";
 import { Link, match, navigate, useLocation } from "./lib/router";
@@ -30,6 +32,7 @@ import { Agc } from "./pages/Agc";
 import { History } from "./pages/History";
 import { Labels } from "./pages/Labels";
 import { MedleyEditor, Medleys } from "./pages/Medleys";
+import { ModulesPage } from "./pages/Modules";
 import { Library } from "./pages/Library";
 import { Login } from "./pages/Login";
 import { Outputs } from "./pages/Outputs";
@@ -101,6 +104,13 @@ async function signOut(client: QueryClient) {
 }
 
 function route(pathname: string): ReactNode {
+  const page = pageAt(pathname);
+  const module = placeOf(pathname)?.page.module;
+  return module ? <ModuleGate module={module}>{page}</ModuleGate> : page;
+}
+
+/** The page at `pathname`, its module aside. */
+function pageAt(pathname: string): ReactNode {
   const track = match("/library/:id", pathname);
   if (track) {
     return <Track id={Number(track.id)} />;
@@ -166,6 +176,8 @@ function route(pathname: string): ReactNode {
       return <Users />;
     case "/backups":
       return <Backups />;
+    case "/modules":
+      return <ModulesPage />;
     case "/stations":
       return <Stations />;
     case "/account":
@@ -235,8 +247,9 @@ function Shell() {
       predicate: (query) => query.queryKey[0] !== ME_KEY[0] && query.queryKey[0] !== "stations",
     });
   };
+  const modules = useStationModules().data?.on ?? ALL_ON;
   const visible = (page: (typeof PAGES)[number]) =>
-    !page.admin || (page.station ? isStationAdmin : isAdmin);
+    (!page.admin || (page.station ? isStationAdmin : isAdmin)) && (!page.module || modules[page.module]);
   const scope = placeOf(pathname)?.page.station ?? false;
 
   useEffect(() => {

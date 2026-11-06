@@ -4,6 +4,7 @@
 // listeners and, for operators and admins, the machine's load
 // (docs/web.md#status-bar).
 
+import { useModule } from "../lib/modules";
 import { useEffect, useState } from "react";
 import { t } from "../i18n";
 import { useListenersNow } from "../lib/listeners";
@@ -60,6 +61,7 @@ export function StatusBar() {
   const positions = useLive((live) => live.positions);
   const system = useLive((live) => live.system);
   const listeners = useListenersNow();
+  const statistics = useModule("listener_statistics");
 
   const paused = player?.paused ?? false;
   const deckSummary = (letter: "A" | "B") => {
@@ -80,9 +82,11 @@ export function StatusBar() {
           <Deck summary={deckSummary("B")} />
         </>
       )}
-      <Link to="/statistics" className="statusbar-part statusbar-link">
-        {t("statusbar.listeners")} {listenersText(listeners.data?.total)}
-      </Link>
+      {statistics && (
+        <Link to="/statistics" className="statusbar-part statusbar-link">
+          {t("statusbar.listeners")} {listenersText(listeners.data?.total)}
+        </Link>
+      )}
       {summary && (
         <span className="statusbar-part statusbar-system">
           <span className={`statusbar-${summary.cpuLevel}`}>cpu {summary.cpu}</span>

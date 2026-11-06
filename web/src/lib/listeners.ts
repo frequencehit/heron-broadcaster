@@ -3,6 +3,7 @@
 // Listener statistics: the current counts, and the days of a period in
 // station time (see docs/statistics.md).
 
+import { useModule } from "./modules";
 import { useQuery } from "@tanstack/react-query";
 import { type Schemas, api, unwrap } from "../api";
 import { locale, number, t } from "../i18n";
@@ -10,11 +11,14 @@ import { here, stationUrl } from "./station";
 
 /** Each output's listeners at the last minute; read again every half minute. */
 export function useListenersNow() {
+  // Nothing to read while listener statistics are off (docs/modules.md).
+  const on = useModule("listener_statistics");
   return useQuery({
     // Per station: another station's count is not shown while this one's loads.
     queryKey: ["listeners", "now", here().station_id],
     queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/listeners/now", { params: { path: here() } })),
     refetchInterval: 30_000,
+    enabled: on,
   });
 }
 

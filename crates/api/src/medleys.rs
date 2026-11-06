@@ -1281,7 +1281,11 @@ pub async fn link(pool: &MySqlPool) -> ApiResult<usize> {
 /// Links rendered medleys to their tracks every few seconds.
 pub async fn run_linker(pool: MySqlPool) {
     loop {
-        match link(&pool).await {
+        // Medleys turned off for the installation: nothing to link.
+        let on = crate::modules::is_on(&pool, None, crate::modules::Module::Medleys)
+            .await
+            .unwrap_or(true);
+        match if on { link(&pool).await } else { Ok(0) } {
             Ok(0) => {}
             Ok(linked) => tracing::info!(medleys = linked, "medleys linked to their tracks"),
             Err(error) => tracing::warn!(%error, "cannot link medleys to their tracks"),
