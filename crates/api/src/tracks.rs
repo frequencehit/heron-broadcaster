@@ -581,6 +581,7 @@ impl ListContext {
         query.push(" OFFSET ").push_bind(params.offset.unwrap_or(0));
         let mut items: Vec<TrackSummary> = query.build_query_as().fetch_all(pool).await?;
         add_labels(pool, &mut items).await?;
+        hide_covers(pool, &mut items).await?;
         Ok(TrackPage {
             items,
             total: u64::try_from(total).unwrap_or(0),
@@ -606,6 +607,7 @@ impl ListContext {
         query.push(")");
         let mut items: Vec<TrackSummary> = query.build_query_as().fetch_all(pool).await?;
         add_labels(pool, &mut items).await?;
+        hide_covers(pool, &mut items).await?;
         Ok(items)
     }
 
@@ -631,6 +633,16 @@ impl ListContext {
         }
         Ok(ids)
     }
+}
+
+/// No cover while cover art is turned off for the installation.
+async fn hide_covers(pool: &sqlx::MySqlPool, tracks: &mut [TrackSummary]) -> ApiResult<()> {
+    if !tracks.is_empty() && !crate::modules::installation(pool).await?.cover_art {
+        for track in tracks {
+            track.cover_url = None;
+        }
+    }
+    Ok(())
 }
 
 /// Fills in the labels of `tracks`.
@@ -814,6 +826,14 @@ async fn get_track(
     station: Station,
     Path(id): Path<u64>,
 ) -> ApiResult<Json<TrackDetail>> {
+    let (cover, cover_candidates) = if crate::modules::installation(&state.pool).await?.cover_art {
+        (
+            crate::covers::track_cover(&state.pool, id).await?,
+            crate::covers::track_candidates(&state.pool, id).await?,
+        )
+    } else {
+        (None, Vec::new())
+    };
     let context = ListContext::load(&state.pool).await?;
     let summary = context
         .summaries(&state.pool, &[id])
@@ -903,8 +923,8 @@ async fn get_track(
         .bind(id)
         .fetch_all(&state.pool)
         .await?,
-        cover: crate::covers::track_cover(&state.pool, id).await?,
-        cover_candidates: crate::covers::track_candidates(&state.pool, id).await?,
+        cover,
+        cover_candidates,
     }))
 }
 

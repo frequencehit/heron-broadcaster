@@ -472,7 +472,7 @@ pub struct Webhooks {
     wake: Notify,
 }
 
-type DueRow = (String, String, String, String, String, u16, bool);
+type DueRow = (String, String, String, String, String, u16, bool, u64);
 
 impl Webhooks {
     pub fn new(pool: MySqlPool) -> reqwest::Result<Arc<Self>> {
@@ -519,6 +519,9 @@ impl Webhooks {
     }
 
     async fn queue_event(&self, station_id: u64, event: &TrackEvent) -> ApiResult<()> {
+        if !self.on(station_id).await? {
+            return Ok(());
+        }
         let mut payload = Payload::of(event);
         // FX player tracks, and tracks that send no metadata (jingles), go
         // only to webhooks that ask for them.
@@ -630,6 +633,9 @@ impl Webhooks {
     /// Queues `payload` for every enabled webhook of a station that asks
     /// for its event.
     async fn queue_for(&self, station_id: u64, payload: Payload) -> ApiResult<()> {
+        if !self.on(station_id).await? {
+            return Ok(());
+        }
         let webhooks: Vec<(u64, String)> = sqlx::query_as(
             "SELECT id, CAST(events AS CHAR) FROM webhooks
              WHERE enabled AND station_id = ? ORDER BY id",
@@ -649,6 +655,13 @@ impl Webhooks {
             self.wake.notify_one();
         }
         Ok(())
+    }
+
+    /// Whether webhooks are on for the station (docs/modules.md).
+    async fn on(&self, station_id: u64) -> ApiResult<bool> {
+        Ok(crate::modules::on_for(&self.pool, station_id)
+            .await?
+            .webhooks)
     }
 
     /// Adds a delivery, due now. The body is written once the delivery has
@@ -781,7 +794,8 @@ impl Webhooks {
 
     async fn attempt(&self, id: u64) -> ApiResult<()> {
         let row: Option<DueRow> = sqlx::query_as(
-            "SELECT w.name, w.url, w.secret, w.content_type, d.event, d.attempts, w.enabled
+            "SELECT w.name, w.url, w.secret, w.content_type, d.event, d.attempts, w.enabled,
+                    w.station_id
              FROM webhook_deliveries d JOIN webhooks w ON w.id = d.webhook_id
              WHERE d.id = ? AND d.status = 'pending'",
         )
@@ -789,15 +803,26 @@ impl Webhooks {
         .fetch_optional(&self.pool)
         .await?;
         // Deleted, or retried by hand meanwhile.
-        let Some((name, url, secret, content_type, event, attempts, enabled)) = row else {
+        let Some((name, url, secret, content_type, event, attempts, enabled, station_id)) = row
+        else {
             return Ok(());
         };
-        if !enabled {
+        // Turned off, the deliveries still pending are not sent later: they
+        // would tell of old track changes.
+        let off = if !enabled {
+            Some("the webhook is disabled")
+        } else if !self.on(station_id).await? {
+            Some("webhooks are turned off")
+        } else {
+            None
+        };
+        if let Some(reason) = off {
             sqlx::query(
                 "UPDATE webhook_deliveries SET status = 'failed', next_attempt_at = NULL,
-                        last_error = 'the webhook is disabled'
+                        last_error = ?
                  WHERE id = ?",
             )
+            .bind(reason)
             .bind(id)
             .execute(&self.pool)
             .await?;

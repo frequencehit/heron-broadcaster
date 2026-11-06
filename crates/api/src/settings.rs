@@ -302,7 +302,7 @@ impl EngineManagement {
 
 /// The settings groups each station has its own of, in `station_settings`
 /// (docs/stations.md#settings). The others are shared, in `settings`.
-pub const PER_STATION: [&str; 8] = [
+pub const PER_STATION: [&str; 9] = [
     "station",
     "playout",
     "eq",
@@ -311,6 +311,7 @@ pub const PER_STATION: [&str; 8] = [
     "engine",
     "rotation",
     "medley_categories",
+    "station_modules",
 ];
 
 fn shared(name: &str) {

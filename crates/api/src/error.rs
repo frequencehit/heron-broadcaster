@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorBody {
     /// Machine-readable code: `invalid_request`, `unauthorized`, `forbidden`,
-    /// `two_factor_required`, `not_found`, `conflict`, `invalid`, `too_many_requests`,
+    /// `two_factor_required`, `not_found`, `module_off`, `conflict`, `invalid`, `too_many_requests`,
     /// `engine_unavailable` or `internal`.
     pub error: String,
     /// For people.
@@ -32,6 +32,9 @@ pub enum ApiError {
     TwoFactorRequired,
     #[error("{0}")]
     NotFound(String),
+    /// The route's module is turned off (`docs/modules.md`).
+    #[error("the {} module is turned off", .0.name())]
+    ModuleOff(heron_core::Module),
     #[error("{0}")]
     Conflict(String),
     /// The request is well-formed but its content is not acceptable.
@@ -60,6 +63,7 @@ impl ApiError {
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             Self::TwoFactorRequired => (StatusCode::FORBIDDEN, "two_factor_required"),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
+            Self::ModuleOff(_) => (StatusCode::NOT_FOUND, "module_off"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             Self::Invalid(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid"),
             Self::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),

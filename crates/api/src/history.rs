@@ -489,7 +489,16 @@ async fn list_history(
     }
     sql.push(" ORDER BY h.started_at DESC, h.id DESC LIMIT ")
         .push_bind(limit);
-    Ok(Json(sql.build_query_as().fetch_all(&state.pool).await?))
+    let mut plays: Vec<Play> = sql.build_query_as().fetch_all(&state.pool).await?;
+    if !crate::modules::on_for(&state.pool, station.id())
+        .await?
+        .cover_art
+    {
+        for play in &mut plays {
+            play.cover_url = None;
+        }
+    }
+    Ok(Json(plays))
 }
 
 #[cfg(test)]
