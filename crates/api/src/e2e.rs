@@ -12355,7 +12355,6 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
     station.stop().await;
 }
 
-
 /// A clock slot at an exact time: hard, the track on air is cut and the
 /// slot starts then; soft, a track queued by hand that would end after the
 /// window is taken out.

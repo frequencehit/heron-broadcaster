@@ -484,8 +484,7 @@ impl QueueManager {
                 picks.push(pick);
             }
             if let Some(planner) = planner.as_mut()
-                && let Some(planned) =
-                    planner.after(&library, &history, at, &mut picks, &mut rng)
+                && let Some(planned) = planner.after(&library, &history, at, &mut picks, &mut rng)
             {
                 planned_match = Some(planned);
                 break;
