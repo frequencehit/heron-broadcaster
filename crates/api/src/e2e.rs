@@ -9568,3 +9568,201 @@ async fn modules_are_turned_off_and_on_again() {
 fn rotation_now() -> i64 {
     crate::rotation::now_ms()
 }
+
+/// A clock slot at an exact time: hard, the track on air is cut and the
+/// slot starts then; soft, a track queued by hand that would end after the
+/// window is taken out.
+#[tokio::test(flavor = "multi_thread")]
+async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let t = &station.tracks;
+    let mut categories = Vec::new();
+    // Songs repeat at once: they also fill the gaps before exact times.
+    let free = json!({"track_min": 0, "title_min": 0, "artist_min": 0, "album_min": 0});
+    for (name, members) in [("News", &t[4..]), ("Songs", &t[..4])] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "separation": free}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (news, songs) = (categories[0], categories[1]);
+    let mut rotation = admin.get("/settings/rotation").await;
+    rotation["filler_category_id"] = json!(songs);
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // Exact times follow one another, and fit in the hour.
+    for exact in [json!({"at_s": 3_600}), json!({"at_s": 10, "after_s": 301})] {
+        let (status, body) = admin
+            .send(
+                Method::POST,
+                "/clocks",
+                json!({"name": "Bad", "slots": [{"category_id": news, "exact": exact}]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    }
+    // Keep a minute and a half from the end of the hour.
+    while rotation_now().rem_euclid(3_600_000) > 3_500_000 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let hour_start = rotation_now() - rotation_now().rem_euclid(3_600_000);
+    let hard_s = (rotation_now() - hour_start) / 1_000 + 20;
+    let soft_s = hard_s + 40;
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Exact", "slots": [
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": hard_s, "mode": "hard"}},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": soft_s, "mode": "soft", "before_s": 0, "after_s": 0}},
+                {"category_id": songs, "enforce_rules": false},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    assert_eq!(clock["slots"][1]["exact"]["mode"], "hard");
+    assert_eq!(clock["slots"][3]["exact"]["before_s"], 0);
+    let clock_id = clock["id"].as_u64().unwrap();
+    let week: Vec<Value> = (1..=7)
+        .flat_map(|day| {
+            (0..24).map(move |hour| json!({"day_of_week": day, "hour": hour, "clock_id": clock_id}))
+        })
+        .collect();
+    let (status, _) = admin.send(Method::PUT, "/schedule", json!(week)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Hard: queued with its start time, started then, the track before cut.
+    let hard_at = hour_start + hard_s * 1_000;
+    let queued = |at: i64| {
+        let admin = &admin;
+        async move {
+            let queue = admin.get("/queue").await;
+            queue
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["track"]["start_at_unix_ms"] == at)
+                .cloned()
+        }
+    };
+    let entry = eventually(
+        "the hard exact slot queued",
+        Duration::from_secs(30),
+        || queued(hard_at),
+    )
+    .await;
+    assert_eq!(entry["track"]["track_id"], t[4]);
+    let play = eventually("the news on air", Duration::from_secs(40), || async {
+        let history = admin.get("/history").await;
+        history
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|play| play["track_id"] == t[4])
+            .cloned()
+    })
+    .await;
+    let started = play["started_at_unix_ms"].as_i64().unwrap();
+    assert!(
+        (started - hard_at).abs() < 1_500,
+        "started {} ms from its exact time",
+        started - hard_at
+    );
+    // The track before fades out over 1.5 s, skipped.
+    eventually("the track before cut", Duration::from_secs(10), || async {
+        let history = admin.get("/history").await;
+        let before = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|other| other["started_at_unix_ms"].as_i64() < Some(started))
+            .cloned()?;
+        (before["end_reason"] == "skipped").then_some(())
+    })
+    .await;
+    let picks = admin.get("/rotation/picks?limit=100").await;
+    let exact = picks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pick| pick["explanation"]["exact"]["at_unix_ms"] == hard_at)
+        .map(|pick| pick["explanation"]["exact"].clone())
+        .unwrap();
+    assert_eq!(exact["met"], "on_time", "{exact}");
+    assert_eq!(exact["faded"], true, "{exact}");
+
+    // Soft: a track queued by hand right before it, which would end after
+    // the window, is taken out.
+    let soft_at = hour_start + soft_s * 1_000;
+    let entry = eventually(
+        "the soft exact slot queued",
+        Duration::from_secs(40),
+        || queued(soft_at),
+    )
+    .await;
+    let queue = admin.get("/queue").await;
+    let position = queue
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|other| other["entry_id"] == entry["entry_id"])
+        .unwrap();
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/queue",
+            json!({"track_ids": [t[0]], "position": position}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let manual = body["entry_ids"][0].as_u64().unwrap();
+    eventually(
+        "the manual track taken out",
+        Duration::from_secs(20),
+        || async {
+            let queue = admin.get("/queue").await;
+            (!queue
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|other| other["entry_id"] == manual))
+            .then_some(())
+        },
+    )
+    .await;
+    station.stop().await;
+}

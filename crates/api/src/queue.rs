@@ -726,4 +726,63 @@ mod tests {
                 .is_some_and(|reason| reason.contains("disabled on this station"))
         );
     }
+
+    fn pick(track: u64) -> heron_rotation::Pick {
+        let library = heron_rotation::Library::new(
+            heron_rotation::LibraryParts {
+                tracks: vec![heron_rotation::Track {
+                    id: track,
+                    title_key: None,
+                    album_key: None,
+                    artists: vec![],
+                    categories: vec![],
+                    length_ms: 46_000,
+                    ratio: 10,
+                    dayparts: None,
+                    daypart_days: None,
+                }],
+                ..heron_rotation::LibraryParts::default()
+            },
+            jiff::tz::TimeZone::UTC,
+        );
+        let mut rng = heron_rotation::Rng::new(1);
+        heron_rotation::next(
+            &library,
+            &heron_rotation::History::default(),
+            0,
+            None,
+            &mut rng,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_shortened_medley_is_queued_as_two_linked_spans() {
+        let mut medley = pick(7);
+        medley.medley_cut = Some(heron_rotation::MedleyCut {
+            hooks_left_out: 1,
+            parts_left_out: vec![4, 5],
+            length_ms: 31_000,
+            first_to_ms: 25_000,
+            second_from_ms: 37_500,
+            crossfade_ms: 500,
+        });
+        let mut news = pick(8);
+        news.start_at_ms = Some(3_600_000);
+        let track = row().to_proto(PlaySource::Rotation).unwrap();
+        let (tracks, linked, firsts) =
+            entries(&[medley, news], vec![track.clone(), track]).unwrap();
+        assert_eq!(tracks.len(), 3);
+        assert_eq!((linked, firsts), (vec![0], vec![0, 2]));
+        assert_eq!(tracks[0].cue_out_ms, 25_000);
+        assert!(
+            tracks[0]
+                .crossfade_overrides_json
+                .contains("\"crossfade\":true")
+        );
+        assert_eq!(tracks[1].cue_in_ms, 37_500);
+        assert!(tracks[1].continues && !tracks[0].continues);
+        assert_eq!(tracks[2].start_at_unix_ms, Some(3_600_000));
+        assert_eq!(tracks[2].cut_fade_ms, heron_rotation::exact::CUT_FADE_MS);
+    }
 }
