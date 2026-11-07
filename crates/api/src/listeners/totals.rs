@@ -148,7 +148,7 @@ pub fn day_totals(
 
 /// The rows of one set of samples and sessions, per output and for the
 /// station, with `server_id` left to the caller.
-fn scope_totals(
+pub(super) fn scope_totals(
     samples: &[Sample],
     spans: &[Span],
     tz: &TimeZone,
