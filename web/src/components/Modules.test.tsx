@@ -93,13 +93,13 @@ describe("modules", () => {
     expect(screen.getByRole("checkbox", { name: /Restrictions/ })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: /Equalizer/ })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: /Processing/ })).toBeTruthy();
-    for (const name of [/Trash/, /To organize/, /Artists/, /Labels/]) {
+    for (const name of [/Trash/, /To do/, /Artists/, /Labels/]) {
       expect(screen.queryByRole("checkbox", { name })).toBeNull();
     }
     cleanup();
     answer({ "GET /api/v1/modules": ALL_ON });
     renderApp(<ModulesPage />);
-    for (const name of [/Trash/, /To organize/, /Artists/, /Labels/, /Restrictions/]) {
+    for (const name of [/Trash/, /To do/, /Artists/, /Labels/, /Restrictions/]) {
       expect(await screen.findByRole("checkbox", { name })).toBeTruthy();
     }
   });

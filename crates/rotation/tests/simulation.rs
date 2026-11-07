@@ -77,6 +77,7 @@ fn station() -> Station {
             artists: names.iter().map(|name| artists.id(name)).collect(),
             categories: vec![],
             length_ms: 150_000 + dice.roll(180_000) as u32,
+            mix_ms: None,
             // Every ninth track plays 3 times out of 10.
             ratio: if id.is_multiple_of(9) { 3 } else { 10 },
             dayparts: None,

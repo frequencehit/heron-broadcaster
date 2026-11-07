@@ -19,6 +19,7 @@ pub mod draw;
 pub mod exact;
 #[cfg(test)]
 mod exact_tests;
+mod lookahead;
 pub mod names;
 pub mod ratio;
 pub mod restrict;
@@ -33,6 +34,7 @@ pub use draw::{DrawDepth, DrawLog};
 pub use exact::{
     ExactLog, ExactMode, ExactTime, FillKind, FillLog, Medley, MedleyCut, Met, Window,
 };
+pub use lookahead::LookaheadLog;
 pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
@@ -208,6 +210,10 @@ pub struct Track {
     pub categories: Vec<CategoryId>,
     /// Playable length (between the cue points).
     pub length_ms: u32,
+    /// Where the next track starts, from the cue-in, when it is a
+    /// full-length track: the track's mix point with the station's
+    /// crossfade settings and its own. `None`: at its end.
+    pub mix_ms: Option<u32>,
     /// Play ratio in tenths, 1 to 10: plays this many times out of the 10
     /// times rotation picks it ([`ratio`]).
     pub ratio: u8,
@@ -217,6 +223,15 @@ pub struct Track {
     /// The track's own same daypart on the following days, 0 to 7, in
     /// place of its categories'; `None`: its category's.
     pub daypart_days: Option<u8>,
+}
+
+impl Track {
+    /// How long from its start to the next track's: its mix point, else
+    /// its length.
+    pub fn next_ms(&self) -> u32 {
+        self.mix_ms
+            .map_or(self.length_ms, |mix| mix.min(self.length_ms))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -762,6 +777,7 @@ mod tests {
             artists: vec![],
             categories: vec![],
             length_ms: 180_000,
+            mix_ms: None,
             ratio: 10,
             dayparts: None,
             daypart_days: None,

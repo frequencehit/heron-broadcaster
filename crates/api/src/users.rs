@@ -50,6 +50,9 @@ pub struct User {
     /// follow the browser's languages.
     pub language: String,
     pub width: Width,
+    /// The On air page shows the whole queue, editable there, instead of
+    /// its first tracks.
+    pub on_air_whole_queue: bool,
     pub last_login_at_unix_ms: Option<i64>,
     pub created_at_unix_ms: i64,
     /// Their role on each station; a station left out is `none`. `role` is
@@ -244,17 +247,18 @@ type UserRow = (
     String,
     String,
     String,
+    bool,
     Option<i64>,
     i64,
 );
 
 const USER_COLUMNS: &str =
-    "id, username, CAST(role AS CHAR), enabled, CAST(theme AS CHAR), language, CAST(width AS CHAR),
+    "id, username, CAST(role AS CHAR), enabled, CAST(theme AS CHAR), language, CAST(width AS CHAR), on_air_whole_queue,
     CAST(UNIX_TIMESTAMP(last_login_at) * 1000 AS SIGNED),
     CAST(UNIX_TIMESTAMP(created_at) * 1000 AS SIGNED)";
 
 fn user(
-    (id, username, role, enabled, theme, language, width, last_login, created): UserRow,
+    (id, username, role, enabled, theme, language, width, on_air_whole_queue, last_login, created): UserRow,
 ) -> User {
     User {
         id,
@@ -264,6 +268,7 @@ fn user(
         theme: Theme::parse(&theme),
         language,
         width: Width::parse(&width),
+        on_air_whole_queue,
         last_login_at_unix_ms: last_login,
         created_at_unix_ms: created,
         station_roles: Vec::new(),
@@ -492,6 +497,9 @@ pub struct Preferences {
     pub language: Option<String>,
     #[serde(default)]
     pub width: Option<Width>,
+    /// The On air page shows the whole queue, editable there.
+    #[serde(default)]
+    pub on_air_whole_queue: Option<bool>,
 }
 
 /// `system`, or a language tag: a 2 or 3 letter language and optional
@@ -515,7 +523,8 @@ fn check_language(language: &str) -> ApiResult<()> {
     }
 }
 
-/// Saves your preferences: the web UI's theme, language and width.
+/// Saves your preferences: the web UI's theme, language, width and whether
+/// the On air page shows the whole queue.
 #[utoipa::path(put, path = "/auth/preferences", tag = "auth",
     request_body = Preferences,
     responses((status = 200, body = User), (status = "4XX", body = ErrorBody)))]
@@ -529,12 +538,13 @@ async fn set_preferences(
     }
     sqlx::query(
         "UPDATE users SET theme = COALESCE(?, theme), language = COALESCE(?, language),
-             width = COALESCE(?, width)
+             width = COALESCE(?, width), on_air_whole_queue = COALESCE(?, on_air_whole_queue)
          WHERE id = ?",
     )
     .bind(preferences.theme.map(Theme::as_str))
     .bind(preferences.language)
     .bind(preferences.width.map(Width::as_str))
+    .bind(preferences.on_air_whole_queue)
     .bind(user.id)
     .execute(&state.pool)
     .await?;

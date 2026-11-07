@@ -5,6 +5,7 @@ import {
   daysLabel,
   describeExact,
   describeFill,
+  describeLookahead,
   describeMet,
   describeOverrides,
   describeRule,
@@ -139,6 +140,28 @@ describe("exact times", () => {
       "early by 60 s, outside its window",
     );
     expect(describeMet({ ...log, met: "on_time", offset_ms: 0, faded: false })).toBe("on time");
+  });
+
+  it("says how a pick looked ahead", () => {
+    const log = {
+      exact_at_unix_ms: 3_600_000,
+      draws: 8,
+      faded: false,
+      in_window: true,
+      offset_ms: -4_000,
+      filling_ms: 0,
+      relaxed_steps: 0,
+    };
+    expect(describeLookahead(log)).toMatch(/^8 endings simulated, the best ends at .*: no filling$/);
+    expect(describeLookahead({ ...log, filling_ms: 4_200, relaxed_steps: 2 })).toMatch(
+      /: 4 s filled, 2 relaxation steps$/,
+    );
+    expect(describeLookahead({ ...log, faded: true, in_window: false })).toMatch(
+      /: no filling, the track before faded out$/,
+    );
+    expect(describeLookahead({ ...log, offset_ms: null })).toBe(
+      "8 endings simulated, none reaches the exact time",
+    );
   });
 
   it("says what filled the gap", () => {

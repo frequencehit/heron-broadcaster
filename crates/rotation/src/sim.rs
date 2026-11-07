@@ -10,11 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{FALLBACK_STEP, LAST_STEP};
-use crate::select::{Call, SeparationRule};
+use crate::select::{self, Call, SeparationRule};
 use crate::{
     AcrossWindows, CategoryId, DrawDepth, Elsewhere, ExactTime, Explanation, FillKind, History,
-    Library, Method, Play, Position, Rng, Track, TrackId, Windows, dayparts, draw, next_outcome,
-    ratio,
+    Library, Method, Play, Position, Rng, Track, TrackId, Windows, dayparts, draw, ratio,
 };
 
 /// Shortest length a simulated track is counted for.
@@ -114,11 +113,25 @@ pub struct Simulation {
 /// library's, in memory.
 pub fn simulate(
     library: &Library,
+    history: History,
+    last: Option<Position>,
+    start_ms: i64,
+    duration_ms: i64,
+    seed: u64,
+) -> Simulation {
+    simulate_with(library, history, last, start_ms, duration_ms, seed, true)
+}
+
+/// [`simulate`], looking ahead before exact times or not (to measure what
+/// it gains).
+pub(crate) fn simulate_with(
+    library: &Library,
     mut history: History,
     mut last: Option<Position>,
     start_ms: i64,
     duration_ms: i64,
     seed: u64,
+    lookahead: bool,
 ) -> Simulation {
     let mut working = library.clone();
     let before = history.plays().to_vec();
@@ -132,7 +145,7 @@ pub fn simulate(
     // counters moved, and the next pick lists them for the audit.
     let mut held_in_gaps = Vec::new();
     'run: while at < end {
-        let outcome = next_outcome(&working, &history, at, last.as_ref(), &mut rng);
+        let outcome = select::outcome(&working, &history, at, last.as_ref(), &mut rng, lookahead);
         working.count_down(outcome.offered());
         let Some(mut pick) = outcome.pick else {
             held_in_gaps.extend(outcome.held_by_ratio);
@@ -160,6 +173,7 @@ pub fn simulate(
             }
             at = start;
             let length_ms = pick.length_ms(&working);
+            let next_ms = pick.next_ms(&working);
             history.push(Play::of(track, at));
             picks.push(SimulatedPick {
                 track_id: pick.track,
@@ -167,7 +181,8 @@ pub fn simulate(
                 length_ms,
                 explanation: pick.explanation,
             });
-            at += i64::from(length_ms).max(MIN_LENGTH_MS);
+            // The next track starts at its mix point.
+            at += i64::from(next_ms).max(MIN_LENGTH_MS);
             if pick.position.is_some() {
                 last = pick.position;
             }
@@ -604,6 +619,7 @@ mod tests {
             artists: vec![artist],
             categories: vec![],
             length_ms: 200_000,
+            mix_ms: None,
             ratio: 10,
             dayparts: None,
             daypart_days: None,
@@ -696,6 +712,7 @@ mod tests {
                 linked: false,
                 exact: None,
                 fill: None,
+                lookahead: None,
             },
         }
     }
@@ -772,6 +789,7 @@ mod tests {
                 artists: vec![100 + id % 60],
                 categories: vec![],
                 length_ms: 200_000,
+                mix_ms: None,
                 ratio: 10,
                 dayparts: None,
                 daypart_days: None,

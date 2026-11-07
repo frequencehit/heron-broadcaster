@@ -391,7 +391,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Saves your preferences: the web UI's theme, language and width. */
+        /**
+         * Saves your preferences: the web UI's theme, language, width and whether
+         *     the On air page shows the whole queue.
+         */
         put: operations["set_preferences"];
         post?: never;
         delete?: never;
@@ -1446,6 +1449,27 @@ export interface paths {
         };
         /** A library task, with its result once done. */
         get: operations["get_task"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/todo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many tracks to identify, and active songs missing an intro, a hook
+         *     or a cover: the counts of the *To do* page, whose lists are
+         *     `GET /library/review` and `GET /tracks?active_songs=true&filter=…`.
+         */
+        get: operations["todo_counts"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6380,6 +6404,7 @@ export interface components {
              *     track, picked with this one.
              */
             linked?: boolean;
+            lookahead?: components["schemas"]["LookaheadLog"] | null;
             /** @description Applied: least recently played at step 10. */
             method: components["schemas"]["Method"];
             /**
@@ -7394,6 +7419,46 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @description How a pick looked ahead, in the rotation log. */
+        LookaheadLog: {
+            /**
+             * Format: int32
+             * @description Endings simulated.
+             */
+            draws: number;
+            /**
+             * Format: int64
+             * @description The exact time looked ahead to (Unix ms).
+             */
+            exact_at_unix_ms: number;
+            /**
+             * @description The best ending fades out the track before the exact slot: it ends
+             *     after the cut (the end of the window, the exact time in hard mode).
+             *     Fading nothing comes first: every ending simulated did.
+             */
+            faded: boolean;
+            /**
+             * Format: int32
+             * @description Time filled before the exact slot (medley or filler track).
+             */
+            filling_ms: number;
+            /**
+             * @description The best ending: the tracks before the exact slot end inside its
+             *     window (at the exact time in hard mode).
+             */
+            in_window: boolean;
+            /**
+             * Format: int64
+             * @description Where they end, from the exact time; negative when early. Missing
+             *     when no ending reached the exact slot.
+             */
+            offset_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Relaxation steps of its picks, added up.
+             */
+            relaxed_steps: number;
+        };
         /** @description Loudness normalization from the analyzed integrated loudness (EBU R128). */
         LoudnessSettings: {
             /** @default true */
@@ -8226,6 +8291,8 @@ export interface components {
              *     lacks.
              */
             language?: string | null;
+            /** @description The On air page shows the whole queue, editable there. */
+            on_air_whole_queue?: boolean | null;
             theme?: components["schemas"]["Theme"] | null;
             width?: components["schemas"]["Width"] | null;
         };
@@ -8402,6 +8469,14 @@ export interface components {
              *     jingle, and moving either moves both.
              */
             linked_to?: number | null;
+            /**
+             * Format: int32
+             * @description Where the next track starts, in ms from this entry's cue-in: the
+             *     engine's transition into the entry after it. Missing from engines
+             *     before it, and for the jingle over the cued track's intro: at its
+             *     end.
+             */
+            next_start_ms?: number | null;
             track: components["schemas"]["QueuedTrack"];
         };
         /**
@@ -9943,6 +10018,29 @@ export interface components {
          * @enum {string}
          */
         Theme: "system" | "light" | "dark";
+        /** @description What there is to do on the library: the counts of the *To do* page. */
+        TodoCounts: {
+            /**
+             * Format: int64
+             * @description Active songs with no cover; `null` while cover art is turned off.
+             */
+            no_cover?: number | null;
+            /**
+             * Format: int64
+             * @description Active songs with no hook.
+             */
+            no_hook: number;
+            /**
+             * Format: int64
+             * @description Active songs (`GET /tracks?active_songs=true`) with no intro point.
+             */
+            no_intro: number;
+            /**
+             * Format: int64
+             * @description Tracks waiting for review (`GET /library/review`'s `total`).
+             */
+            to_identify: number;
+        };
         /** @description An authenticator app to set up. */
         TotpSetup: {
             /** @description The QR code, as an SVG image. */
@@ -10091,7 +10189,7 @@ export interface components {
             year_tag?: number | null;
         };
         /** @enum {string} */
-        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
+        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover" | "no_intro" | "no_hook";
         TrackIdentification: {
             /** @description Why the track needs review. */
             reason?: string | null;
@@ -10246,6 +10344,12 @@ export interface components {
          *     for the actions on a selection. Lists of IDs are comma-separated.
          */
         TrackQuery: {
+            /**
+             * @description Only the enabled songs whose file is there: tracks in at least one
+             *     category of the Song type (the one that exists from the start,
+             *     whatever its name), not disabled, not missing. What *To do* lists.
+             */
+            active_songs?: boolean | null;
             /**
              * Format: int32
              * @description Tracks added in the last this many days.
@@ -10554,7 +10658,7 @@ export interface components {
             duration_ms: number;
             /**
              * Format: int64
-             * @description When it should start, without crossfades, as the Queue page shows it.
+             * @description When it should start, crossfades included, as the Queue page shows it.
              */
             planned_start_unix_ms: number;
             /**
@@ -10577,6 +10681,11 @@ export interface components {
             language: string;
             /** Format: int64 */
             last_login_at_unix_ms?: number | null;
+            /**
+             * @description The On air page shows the whole queue, editable there, instead of
+             *     its first tracks.
+             */
+            on_air_whole_queue: boolean;
             role: components["schemas"]["Role"];
             /**
              * @description Their role on each station; a station left out is `none`. `role` is
@@ -13887,6 +13996,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryTask"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    todo_counts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoCounts"];
                 };
             };
             "4XX": {
@@ -20397,7 +20533,13 @@ export interface operations {
                 category_id?: number;
                 /** @description Tracks in no category. */
                 no_category?: boolean;
-                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
+                /**
+                 * @description Only the enabled songs whose file is there: tracks in at least one
+                 *     category of the Song type (the one that exists from the start,
+                 *     whatever its name), not disabled, not missing. What *To do* lists.
+                 */
+                active_songs?: boolean;
+                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover" | "no_intro" | "no_hook";
                 /** @description Tracks with every one of these labels (IDs, comma-separated). */
                 labels_all?: string;
                 /** @description Tracks with at least one of these labels. */

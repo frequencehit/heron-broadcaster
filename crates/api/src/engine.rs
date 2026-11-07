@@ -84,6 +84,11 @@ pub struct QueueEntry {
     /// track it announces, right after it. Removing that track removes the
     /// jingle, and moving either moves both.
     pub linked_to: Option<u64>,
+    /// Where the next track starts, in ms from this entry's cue-in: the
+    /// engine's transition into the entry after it. Missing from engines
+    /// before it, and for the jingle over the cued track's intro: at its
+    /// end.
+    pub next_start_ms: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -644,6 +649,7 @@ fn entry(entry: pb::QueueEntry) -> QueueEntry {
             continues: track.continues,
         },
         linked_to: entry.linked_to,
+        next_start_ms: entry.next_start_ms,
     }
 }
 

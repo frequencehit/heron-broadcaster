@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Your account: theme, language, width, password, second factors and API tokens.
+// Your account: theme, language, width, the whole queue on On air, password, second factors and API tokens.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
@@ -21,7 +21,12 @@ export function Account() {
         description={t("account.signedInAs", { user: user.username, role: t(`role.${user.role}`) })}
       />
       <div className="grid two">
-        <DisplayCard theme={user.theme} language={toSetting(user.language)} width={user.width} />
+        <DisplayCard
+          theme={user.theme}
+          language={toSetting(user.language)}
+          width={user.width}
+          wholeQueue={user.on_air_whole_queue}
+        />
         <PasswordCard />
       </div>
       <TwoFactorCard />
@@ -34,14 +39,16 @@ function DisplayCard({
   theme,
   language,
   width,
+  wholeQueue,
 }: {
   theme: Theme;
   language: LanguageSetting;
   width: Width;
+  wholeQueue: boolean;
 }) {
   const client = useQueryClient();
   const save = useAction(
-    (preferences: { theme?: Theme; language?: LanguageSetting; width?: Width }) =>
+    (preferences: { theme?: Theme; language?: LanguageSetting; width?: Width; on_air_whole_queue?: boolean }) =>
       unwrap(api.PUT("/api/v1/auth/preferences", { body: preferences })),
     { onSuccess: (user) => client.setQueryData(ME_KEY, user) },
   );
@@ -97,6 +104,14 @@ function DisplayCard({
             ]}
           />
         </Field>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={wholeQueue}
+            onChange={(event) => save.mutate({ on_air_whole_queue: event.target.checked })}
+          />
+          {t("account.onAirWholeQueue")}
+        </label>
         <p className="muted small" style={{ margin: 0 }}>
           {t("account.displayHelp")}
         </p>

@@ -1038,7 +1038,7 @@
         "tags": [
           "auth"
         ],
-        "summary": "Saves your preferences: the web UI's theme, language and width.",
+        "summary": "Saves your preferences: the web UI's theme, language, width and whether\nthe On air page shows the whole queue.",
         "operationId": "set_preferences",
         "requestBody": {
           "content": {
@@ -3903,6 +3903,35 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryTask"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/todo": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "How many tracks to identify, and active songs missing an intro, a hook\nor a cover: the counts of the *To do* page, whose lists are\n`GET /library/review` and `GET /tracks?active_songs=true&filter=…`.",
+        "operationId": "todo_counts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoCounts"
                 }
               }
             }
@@ -13056,6 +13085,15 @@
             }
           },
           {
+            "name": "active_songs",
+            "in": "query",
+            "description": "Only the enabled songs whose file is there: tracks in at least one\ncategory of the Song type (the one that exists from the start,\nwhatever its name), not disabled, not missing. What *To do* lists.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "filter",
             "in": "query",
             "required": false,
@@ -13068,7 +13106,9 @@
                 "silent",
                 "disabled",
                 "needs_review",
-                "no_cover"
+                "no_cover",
+                "no_intro",
+                "no_hook"
               ]
             }
           },
@@ -18485,6 +18525,17 @@
             "type": "boolean",
             "description": "The slot is linked to the next one: the next pick is that slot's\ntrack, picked with this one."
           },
+          "lookahead": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LookaheadLog",
+                "description": "Picked looking ahead before an exact time: the endings simulated\nand how the best one meets it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "method": {
             "$ref": "#/components/schemas/Method",
             "description": "Applied: least recently played at step 10."
@@ -20818,6 +20869,59 @@
         },
         "additionalProperties": false
       },
+      "LookaheadLog": {
+        "type": "object",
+        "description": "How a pick looked ahead, in the rotation log.",
+        "required": [
+          "exact_at_unix_ms",
+          "draws",
+          "faded",
+          "in_window",
+          "filling_ms",
+          "relaxed_steps"
+        ],
+        "properties": {
+          "draws": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Endings simulated.",
+            "minimum": 0
+          },
+          "exact_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The exact time looked ahead to (Unix ms)."
+          },
+          "faded": {
+            "type": "boolean",
+            "description": "The best ending fades out the track before the exact slot: it ends\nafter the cut (the end of the window, the exact time in hard mode).\nFading nothing comes first: every ending simulated did."
+          },
+          "filling_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Time filled before the exact slot (medley or filler track).",
+            "minimum": 0
+          },
+          "in_window": {
+            "type": "boolean",
+            "description": "The best ending: the tracks before the exact slot end inside its\nwindow (at the exact time in hard mode)."
+          },
+          "offset_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where they end, from the exact time; negative when early. Missing\nwhen no ending reached the exact slot."
+          },
+          "relaxed_steps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Relaxation steps of its picks, added up.",
+            "minimum": 0
+          }
+        }
+      },
       "LoudnessSettings": {
         "type": "object",
         "description": "Loudness normalization from the analyzed integrated loudness (EBU R128).",
@@ -22642,6 +22746,13 @@
             ],
             "description": "A language tag (`en`, `fr`…) or `system`. The API does not know which\nlanguages the web UI has: it falls back on the browser's for one it\nlacks."
           },
+          "on_air_whole_queue": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The On air page shows the whole queue, editable there."
+          },
           "theme": {
             "oneOf": [
               {
@@ -23050,6 +23161,15 @@
             ],
             "format": "int64",
             "description": "A jingle of a clock slot linked to the next one: the entry of the\ntrack it announces, right after it. Removing that track removes the\njingle, and moving either moves both.",
+            "minimum": 0
+          },
+          "next_start_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Where the next track starts, in ms from this entry's cue-in: the\nengine's transition into the entry after it. Missing from engines\nbefore it, and for the jingle over the cued track's intro: at its\nend.",
             "minimum": 0
           },
           "track": {
@@ -26955,6 +27075,44 @@
           "dark"
         ]
       },
+      "TodoCounts": {
+        "type": "object",
+        "description": "What there is to do on the library: the counts of the *To do* page.",
+        "required": [
+          "to_identify",
+          "no_intro",
+          "no_hook"
+        ],
+        "properties": {
+          "no_cover": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Active songs with no cover; `null` while cover art is turned off.",
+            "minimum": 0
+          },
+          "no_hook": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Active songs with no hook.",
+            "minimum": 0
+          },
+          "no_intro": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Active songs (`GET /tracks?active_songs=true`) with no intro point.",
+            "minimum": 0
+          },
+          "to_identify": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tracks waiting for review (`GET /library/review`'s `total`).",
+            "minimum": 0
+          }
+        }
+      },
       "TotpSetup": {
         "type": "object",
         "description": "An authenticator app to set up.",
@@ -27435,7 +27593,9 @@
           "silent",
           "disabled",
           "needs_review",
-          "no_cover"
+          "no_cover",
+          "no_intro",
+          "no_hook"
         ]
       },
       "TrackIdentification": {
@@ -27811,6 +27971,13 @@
         "type": "object",
         "description": "Which tracks: the filters of `GET /tracks`, also used to select tracks\nfor the actions on a selection. Lists of IDs are comma-separated.",
         "properties": {
+          "active_songs": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Only the enabled songs whose file is there: tracks in at least one\ncategory of the Song type (the one that exists from the start,\nwhatever its name), not disabled, not missing. What *To do* lists."
+          },
           "added_days": {
             "type": [
               "integer",
@@ -28659,7 +28826,7 @@
           "planned_start_unix_ms": {
             "type": "integer",
             "format": "int64",
-            "description": "When it should start, without crossfades, as the Queue page shows it.",
+            "description": "When it should start, crossfades included, as the Queue page shows it.",
             "minimum": 0
           },
           "position": {
@@ -28686,6 +28853,7 @@
           "theme",
           "language",
           "width",
+          "on_air_whole_queue",
           "created_at_unix_ms",
           "station_roles",
           "two_factor"
@@ -28713,6 +28881,10 @@
               "null"
             ],
             "format": "int64"
+          },
+          "on_air_whole_queue": {
+            "type": "boolean",
+            "description": "The On air page shows the whole queue, editable there, instead of\nits first tracks."
           },
           "role": {
             "$ref": "#/components/schemas/Role"

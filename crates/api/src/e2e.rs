@@ -1992,6 +1992,31 @@ async fn web_ui_routes() {
         let (status, _) = admin.send(Method::PUT, "/auth/preferences", refused).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     }
+
+    // And the whole queue on On air: off unless the user turns it on.
+    assert_eq!(me["on_air_whole_queue"], false);
+    let (status, me) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{me}");
+    assert_eq!(
+        (&me["on_air_whole_queue"], &me["width"], &me["theme"]),
+        (&json!(true), &json!("full"), &json!("dark"))
+    );
+    assert_eq!(admin.get("/auth/me").await["on_air_whole_queue"], true);
+    assert_eq!(viewer.get("/auth/me").await["on_air_whole_queue"], false);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": "yes"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let (status, _) = admin
         .send(
             Method::PUT,
@@ -8847,6 +8872,56 @@ async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories(
     station.stop().await;
 }
 
+/// The whole queue on On air is kept by a configuration backup; a file
+/// from before it restores it off.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_backup_keeps_the_whole_queue_on_air_and_an_older_one_turns_it_off() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    assert!(
+        file["tables"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|user| user["username"] == "admin" && user["on_air_whole_queue"] == 1)
+    );
+
+    // Restored as it is, it stays on.
+    let (status, report) = admin
+        .send(Method::POST, "/backups/restore", file.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    assert_eq!(admin.get("/auth/me").await["on_air_whole_queue"], true);
+
+    // A file written before the column: off.
+    file["schema"] = json!(20270702000000_i64);
+    for user in file["tables"]["users"].as_array_mut().unwrap() {
+        user.as_object_mut().unwrap().remove("on_air_whole_queue");
+    }
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    for user in admin.get("/users").await.as_array().unwrap() {
+        assert_eq!(user["on_air_whole_queue"], false, "{user}");
+    }
+    station.stop().await;
+}
+
 /// A configuration file from before the width choice: a user with the
 /// whole width (`full_width`) gets it back as `full`.
 #[tokio::test(flavor = "multi_thread")]
@@ -9455,6 +9530,139 @@ impl Client {
         let value = response.json().await.unwrap_or(Value::Null);
         (status, value)
     }
+}
+
+/// The lists of *To do*: the active songs (enabled, present, in a category
+/// of the Song type) missing an intro, a hook or a cover, and their counts.
+#[tokio::test(flavor = "multi_thread")]
+async fn to_do_lists_the_songs_missing_an_intro_a_hook_or_a_cover() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+
+    // Songs: t0, t1, t2 (disabled) and t4 (also a jingle); t3 a jingle only.
+    sqlx::query(
+        "INSERT INTO categories (id, name, type_id) VALUES (101, 'Songs', 1), (102, 'Jingles', 2)",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    for (track, category) in [
+        (t[0], 101),
+        (t[1], 101),
+        (t[2], 101),
+        (t[3], 102),
+        (t[4], 101),
+        (t[4], 102),
+    ] {
+        sqlx::query("INSERT INTO track_categories (track_id, category_id) VALUES (?, ?)")
+            .bind(track)
+            .bind(category)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+    sqlx::query("UPDATE tracks SET enabled = FALSE WHERE id = ?")
+        .bind(t[2])
+        .execute(pool)
+        .await
+        .unwrap();
+    // t0 has everything; t4 an intro and half a hook.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{}/intro", t[0]),
+            json!({"intro_ms": 1000}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{}/hook", t[0]),
+            json!({"hook_in_ms": 500, "hook_out_ms": 1500}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .put_image(
+            &format!("/tracks/{}/cover?scope=track", t[0]),
+            png(50, 50, 1),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    sqlx::query("INSERT INTO track_markers (track_id, intro_ms, hook_in_ms) VALUES (?, 800, 400)")
+        .bind(t[4])
+        .execute(pool)
+        .await
+        .unwrap();
+
+    let ids = |page: &Value| -> Vec<u64> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|track| track["id"].as_u64().unwrap())
+            .collect()
+    };
+    let songs = viewer.get("/tracks?active_songs=true").await;
+    assert_eq!(ids(&songs), vec![t[0], t[1], t[4]]);
+    let no_intro = viewer
+        .get("/tracks?active_songs=true&filter=no_intro")
+        .await;
+    assert_eq!(ids(&no_intro), vec![t[1]]);
+    let no_hook = viewer
+        .get("/tracks?active_songs=true&filter=no_hook&sort=title&desc=true")
+        .await;
+    assert_eq!(ids(&no_hook), vec![t[4], t[1]]);
+    assert_eq!(no_hook["total"], 2);
+    let no_cover = viewer
+        .get("/tracks?active_songs=true&filter=no_cover")
+        .await;
+    assert_eq!(ids(&no_cover), vec![t[1], t[4]]);
+    // Without `active_songs`, every track.
+    assert_eq!(viewer.get("/tracks?filter=no_intro").await["total"], 3);
+    assert_eq!(viewer.get("/tracks?filter=no_hook").await["total"], 4);
+
+    sqlx::query(
+        "INSERT INTO track_identifications (track_id, status, reason) VALUES (?, 'needs_review', 'doubtful')",
+    )
+    .bind(t[3])
+    .execute(pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        viewer.get("/library/todo").await,
+        json!({"to_identify": 1, "no_intro": 1, "no_hook": 2, "no_cover": 2})
+    );
+
+    // A missing file, or a track in the trash, is not to do.
+    sqlx::query("UPDATE tracks SET missing_since = NOW(6) WHERE id = ?")
+        .bind(t[4])
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE tracks SET deleted_at = NOW(6) WHERE id = ?")
+        .bind(t[1])
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        viewer.get("/library/todo").await,
+        json!({"to_identify": 1, "no_intro": 0, "no_hook": 0, "no_cover": 0})
+    );
+
+    // Without cover art, no count of covers.
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"cover_art": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(viewer.get("/library/todo").await["no_cover"], Value::Null);
+    station.stop().await;
 }
 
 /// Covers set by hand for an album or a track, served by hash with a long
@@ -10111,6 +10319,7 @@ async fn more_modules_are_turned_off_and_on_again() {
     assert_eq!(modules["on"]["trash"], false);
     for path in [
         "/library/trash".to_owned(),
+        "/library/todo".to_owned(),
         "/library/review".to_owned(),
         "/library/batches".to_owned(),
         // Refused before the artist is looked for.
