@@ -4329,6 +4329,64 @@
         ]
       }
     },
+    "/api/v1/library/tag-overrides": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "How many tracks have tags kept in Heron's database instead of their\nfiles. Admins.",
+        "operationId": "count_tag_overrides",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagOverridesCount"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/tag-overrides/write": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Writes every track's tags kept in Heron's database into its file, as\none `edit` batch that can be undone, whatever the library setting\n`write_tags` says: queues a `write_tag_overrides` task. The tags stay\nkept in Heron. Admins.",
+        "operationId": "write_tag_overrides",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryTask"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/library/tasks": {
       "get": {
         "tags": [
@@ -9382,6 +9440,419 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StationInfo"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/listeners/audience": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "Each station's audience figures and the previous period's, and the\nstations' together.",
+        "operationId": "stations_audience",
+        "parameters": [
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "`all` (every station the user sees), or station IDs (`1,2`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsAudience"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/listeners/breakdown": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "Each station's shares by country, device or player, and the stations'\ntogether.",
+        "operationId": "stations_breakdown",
+        "parameters": [
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "`all` (every station the user sees), or station IDs (`1,2`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "By country (by default), device or player.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "country",
+                "device",
+                "player"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsBreakdown"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/listeners/days": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "Each station's totals per hour, day, week or month, and the stations'\ntogether.",
+        "operationId": "stations_days",
+        "parameters": [
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "`all` (every station the user sees), or station IDs (`1,2`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "description": "Rows per hour, day (by default), week or month.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day",
+                "week",
+                "month"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsDays"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/listeners/hours-of-day": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "Each station's hours of the day, and the stations' together.",
+        "operationId": "stations_hours_of_day",
+        "parameters": [
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "`all` (every station the user sees), or station IDs (`1,2`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsHours"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/listeners/now": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "Each station's listeners at the last minute, and their total.",
+        "operationId": "stations_now",
+        "parameters": [
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "`all` (every station the user sees), or station IDs (`1,2`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/listeners/samples": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "Each station's listeners minute by minute, and the stations' added up.",
+        "operationId": "stations_samples",
+        "parameters": [
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "`all` (every station the user sees), or station IDs (`1,2`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_unix_ms",
+            "in": "query",
+            "description": "From this time (Unix ms).",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to_unix_ms",
+            "in": "query",
+            "description": "Until this time (Unix ms), at most 8 days after `from_unix_ms`.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsSamples"
                 }
               }
             }
@@ -16309,52 +16780,13 @@
         "tags": [
           "library"
         ],
-        "summary": "Edits the tags of the selected tracks in Heron's database only, when\nthe library setting `write_tags` is off: the files are not changed.\nThe values are shown instead of the files' tags, and survive a rescan,\nuntil they are cleared. Operators and admins.",
+        "summary": "Edits the tags of the selected tracks in Heron's database only, when\nthe library setting `write_tags` is off: the files are not changed.\nThe values are shown instead of the files' tags, and survive a rescan;\n`POST /library/tag-overrides/write` writes them into the files.\nOperators and admins.",
         "operationId": "override_tags",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/TagOverrides"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SelectionResult"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/tracks/tag-overrides/clear": {
-      "post": {
-        "tags": [
-          "library"
-        ],
-        "summary": "Drops the tags kept in Heron's database for the selected tracks (at most\n10,000): they show their files' tags again. Works whatever `write_tags`\nsays. Operators and admins.",
-        "operationId": "clear_tag_overrides",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TagOverridesClear"
               }
             }
           },
@@ -30183,6 +30615,70 @@
           }
         }
       },
+      "StationAudience": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StationRef"
+          },
+          {
+            "type": "object",
+            "required": [
+              "current",
+              "previous"
+            ],
+            "properties": {
+              "current": {
+                "$ref": "#/components/schemas/Audience"
+              },
+              "previous": {
+                "$ref": "#/components/schemas/Audience"
+              }
+            }
+          }
+        ]
+      },
+      "StationDays": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StationRef"
+          },
+          {
+            "type": "object",
+            "required": [
+              "periods"
+            ],
+            "properties": {
+              "periods": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PeriodTotals"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "StationHours": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StationRef"
+          },
+          {
+            "type": "object",
+            "required": [
+              "hours"
+            ],
+            "properties": {
+              "hours": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HourOfDay"
+                }
+              }
+            }
+          }
+        ]
+      },
       "StationInfo": {
         "type": "object",
         "description": "A station as stored.",
@@ -30256,6 +30752,28 @@
             "description": "The station's own switches."
           }
         }
+      },
+      "StationNow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StationRef"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Its outputs' listeners added up; missing when none could be read.",
+                "minimum": 0
+              }
+            }
+          }
+        ],
+        "description": "A station's listeners at the last minute."
       },
       "StationPlays": {
         "type": "object",
@@ -30341,6 +30859,28 @@
           }
         }
       },
+      "StationRef": {
+        "type": "object",
+        "description": "A station of the answer.",
+        "required": [
+          "station_id",
+          "code",
+          "name"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "station_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "StationRequest": {
         "type": "object",
         "required": [
@@ -30394,6 +30934,27 @@
           "admin"
         ]
       },
+      "StationSamples": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StationRef"
+          },
+          {
+            "type": "object",
+            "required": [
+              "samples"
+            ],
+            "properties": {
+              "samples": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MinuteSample"
+                }
+              }
+            }
+          }
+        ]
+      },
       "StationSettings": {
         "type": "object",
         "description": "The station itself.",
@@ -30421,6 +30982,27 @@
           }
         },
         "additionalProperties": false
+      },
+      "StationShares": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StationRef"
+          },
+          {
+            "type": "object",
+            "required": [
+              "groups"
+            ],
+            "properties": {
+              "groups": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Share"
+                }
+              }
+            }
+          }
+        ]
       },
       "StationWindows": {
         "type": "object",
@@ -30456,6 +31038,143 @@
           }
         },
         "additionalProperties": false
+      },
+      "StationsAudience": {
+        "type": "object",
+        "required": [
+          "stations",
+          "total"
+        ],
+        "properties": {
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationAudience"
+            }
+          },
+          "total": {
+            "$ref": "#/components/schemas/AudienceComparison",
+            "description": "The stations together: the peak and AQH on their minutes added up,\na listener of two stations once."
+          }
+        }
+      },
+      "StationsBreakdown": {
+        "type": "object",
+        "required": [
+          "stations",
+          "total"
+        ],
+        "properties": {
+          "geoip": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The GeoIP country database's type when countries are on, `null`\notherwise."
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationShares"
+            }
+          },
+          "total": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Share"
+            },
+            "description": "The stations together: a listener of two stations once."
+          }
+        }
+      },
+      "StationsDays": {
+        "type": "object",
+        "required": [
+          "stations",
+          "total"
+        ],
+        "properties": {
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationDays"
+            }
+          },
+          "total": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeriodTotals"
+            },
+            "description": "The stations together, in the first one's time zone."
+          }
+        }
+      },
+      "StationsHours": {
+        "type": "object",
+        "required": [
+          "stations",
+          "total"
+        ],
+        "properties": {
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationHours"
+            }
+          },
+          "total": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HourOfDay"
+            },
+            "description": "The stations together, in the first one's time zone."
+          }
+        }
+      },
+      "StationsNow": {
+        "type": "object",
+        "required": [
+          "stations"
+        ],
+        "properties": {
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationNow"
+            }
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The stations' listeners added up; missing when none could be read.",
+            "minimum": 0
+          }
+        }
+      },
+      "StationsSamples": {
+        "type": "object",
+        "required": [
+          "stations",
+          "total"
+        ],
+        "properties": {
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationSamples"
+            }
+          },
+          "total": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MinuteSample"
+            },
+            "description": "The stations' listeners added up, minute by minute."
+          }
+        }
       },
       "StatisticsSettings": {
         "type": "object",
@@ -30967,24 +31686,19 @@
         },
         "additionalProperties": false
       },
-      "TagOverridesClear": {
+      "TagOverridesCount": {
         "type": "object",
         "required": [
-          "selection"
+          "tracks"
         ],
         "properties": {
-          "fields": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TagField"
-            },
-            "description": "The fields to give back to the files; every field when empty."
-          },
-          "selection": {
-            "$ref": "#/components/schemas/TrackSelection"
+          "tracks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tracks with tags kept in Heron's database (the trash left out).",
+            "minimum": 0
           }
-        },
-        "additionalProperties": false
+        }
       },
       "Target": {
         "oneOf": [
@@ -31202,6 +31916,21 @@
                   "format": "int64",
                   "minimum": 0
                 }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Writes every track's tags kept in Heron's database\n(`track_tag_overrides`) into its file, as one `edit` batch, whatever\n`write_tags` says. The tags stay kept in Heron.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "write_tag_overrides"
+                ]
               }
             }
           },
@@ -31909,7 +32638,7 @@
                 "items": {
                   "$ref": "#/components/schemas/TagField"
                 },
-                "description": "Tags kept in Heron's database (library setting `write_tags` off),\nshown instead of the file's: `POST /tracks/tag-overrides/clear`\ngives them back to the file."
+                "description": "Tags kept in Heron's database (library setting `write_tags` off),\nshown instead of the file's: `POST /library/tag-overrides/write`\nwrites them into the files."
               }
             }
           }

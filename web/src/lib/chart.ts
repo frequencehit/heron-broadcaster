@@ -31,13 +31,13 @@ export function niceScale(max: number): { top: number; ticks: number[] } {
   return { top, ticks };
 }
 
-/** Points split wherever a minute is missing. */
-export function splitAtGaps(points: readonly Point[]): Point[][] {
+/** Points split wherever one is missing: a minute, or `step` apart. */
+export function splitAtGaps(points: readonly Point[], step = MINUTE): Point[][] {
   const segments: Point[][] = [];
   for (const point of points) {
     const segment = segments.at(-1);
     const previous = segment?.at(-1);
-    if (segment && previous && point.at - previous.at <= MINUTE) {
+    if (segment && previous && point.at - previous.at <= step) {
       segment.push(point);
     } else {
       segments.push([point]);
