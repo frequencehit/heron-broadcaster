@@ -54,8 +54,14 @@ export function useWaiting(): QueueEntry[] | undefined {
  * How long from an entry's start to the next one's: where the engine
  * starts the next track (its transition), else the entry's length.
  */
+/** A usual track's length, for one whose length is not known (as the API plans). */
+const UNKNOWN_LENGTH_MS = 210_000;
+/** A day or more is not a length: an unanalyzed fallback file, played whole. */
+const NOT_A_LENGTH_MS = 24 * 3_600_000;
+
 export function nextStartMs(entry: QueueEntry): number {
-  return entry.next_start_ms ?? Math.max(0, entry.track.cue_out_ms - entry.track.cue_in_ms);
+  const ms = entry.next_start_ms ?? Math.max(0, entry.track.cue_out_ms - entry.track.cue_in_ms);
+  return ms >= NOT_A_LENGTH_MS ? UNKNOWN_LENGTH_MS : ms;
 }
 
 /**
