@@ -239,6 +239,7 @@ async fn simulated_listeners_are_counted() {
         &StationSettings {
             timezone: "UTC".to_owned(),
             public_url: None,
+            gateway_url: None,
         },
     )
     .await
@@ -710,6 +711,7 @@ async fn relays_add_their_listeners_without_their_connections() {
         &StationSettings {
             timezone: "UTC".to_owned(),
             public_url: None,
+            gateway_url: None,
         },
     )
     .await

@@ -27,6 +27,8 @@ use crate::{engine, stations, users, webhooks};
 
 /// Tracks short enough to see several play during a test.
 const TRACK_SECONDS: f64 = 3.0;
+/// The gateway token the test API accepts.
+const GATEWAY_TOKEN: &str = "test-gateway-token";
 
 struct Station {
     db: ScratchDatabase,
@@ -191,6 +193,7 @@ impl Station {
                 heron_service::about::ConfigItem::flag("HERON_LIBRARY_WATCH", true),
             ])),
             two_factor: Default::default(),
+            gateway_token: crate::gateway::token_from(Some(GATEWAY_TOKEN)),
         };
         let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api = http.local_addr().unwrap();
@@ -10158,13 +10161,18 @@ async fn modules_are_turned_off_and_on_again() {
     let t = station.tracks.clone();
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
-                        "trash": true, "review": true, "artists": true, "labels": true});
+                        "trash": true, "review": true, "artists": true, "labels": true,
+                        "dedications": false, "match": false, "top30": false});
+    let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
+                        "webhooks": true, "restrictions": true, "eq": true, "processing": true,
+                        "trash": true, "review": true, "artists": true, "labels": true,
+                        "dedications": true, "match": true, "top30": true});
 
-    // Everything is on after an upgrade.
+    // Everything is on after an upgrade, but the shows.
     assert_eq!(viewer.get("/modules").await, all_on);
     let modules = viewer.get("/stations/1/modules").await;
     assert_eq!(modules["on"], all_on);
-    assert_eq!(modules["station"], all_on);
+    assert_eq!(modules["station"], station_all_on);
     let (status, _) = viewer
         .send(Method::PUT, "/modules", json!({"webhooks": false}))
         .await;
@@ -10520,6 +10528,269 @@ async fn more_modules_are_turned_off_and_on_again() {
 
 fn rotation_now() -> i64 {
     crate::rotation::now_ms()
+}
+
+/// The shows (docs/listener-interaction.md): off until turned on, their
+/// hours in whole hours without overlaps, what the gateway reads with its
+/// token only, and their notifications.
+#[tokio::test(flavor = "multi_thread")]
+async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
+    use crate::error::ApiError;
+    use heron_core::Module;
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let code = station.state.stations.first().code();
+
+    // Off after an upgrade.
+    assert_eq!(viewer.get("/shows").await, json!([]));
+    let (status, body) = admin.request(Method::GET, "/shows/dedications", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"], "module_off");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"dedications": true, "match": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::GET, "/shows/medleys", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let shows = viewer.get("/shows").await;
+    assert_eq!(shows.as_array().unwrap().len(), 2, "{shows}");
+    let dedications = viewer.get("/stations/1/shows/dedications").await;
+    assert_eq!(dedications["settings"]["enabled"], true);
+    assert_eq!(dedications["status"]["open"], false);
+    assert_eq!(
+        dedications["settings"]["notifications"]["events"]["show.started"]["enabled"],
+        true
+    );
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Hours, one show at a time.
+    let weekdays = json!({"hours": [{"days": [1, 2, 3, 4, 5], "start_hour": 17, "end_hour": 18}]});
+    let (status, _) = viewer
+        .send(Method::PUT, "/shows/dedications", weekdays.clone())
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, saved) = admin
+        .send(Method::PUT, "/shows/dedications", weekdays)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["settings"]["hours"][0]["end_hour"], 18);
+    assert_eq!(saved["timezone"], "UTC");
+    assert!(saved["status"]["next_opening_unix_ms"].is_i64());
+    let (status, refused) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [6], "start_hour": 18, "end_hour": 19},
+                             {"days": [5], "start_hour": 16, "end_hour": 19}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains("17:00–18:00 on Friday belongs to dedications"),
+        "{message}"
+    );
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [6], "start_hour": 18, "end_hour": 19}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for bad in [
+        json!({"hours": [{"days": [1], "start_hour": 18, "end_hour": 18}]}),
+        json!({"website": {"color": "red"}}),
+        json!({"notifications": {"webhook_ids": [999]}}),
+        json!({"notifications": {"events": {"show.started": {"enabled": true, "message": "{nope}"}}}}),
+    ] {
+        let (status, body) = admin.send(Method::PUT, "/shows/match", bad.clone()).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {body}");
+    }
+
+    // The gateway's state, with its token only.
+    let mut gateway = station.client();
+    for token in [None, Some("wrong")] {
+        gateway.bearer = token.map(str::to_owned);
+        let (status, _) = gateway.request(Method::GET, "/gateway/state", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+    let (status, _) = admin.request(Method::GET, "/gateway/state", None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a session is not the gateway"
+    );
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let (status, _) = gateway.request(Method::GET, "/queue", None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "the gateway token reaches nothing else"
+    );
+    let state = gateway.get("/gateway/state").await;
+    let first = &state["stations"][0];
+    assert_eq!(first["code"], code.as_str());
+    assert_eq!(first["timezone"], "UTC");
+    assert!(first["now_playing"]["server_time_unix_ms"].is_u64());
+    let modules: Vec<&str> = first["shows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|show| show["module"].as_str().unwrap())
+        .collect();
+    assert_eq!(modules, ["dedications", "match"]);
+    assert_eq!(first["shows"][0]["hours"][0]["start_hour"], 17);
+
+    // Writes find a show on and open, or say why not.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 7], "start_hour": 0, "end_hour": 24}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let open = |module| crate::gateway::open_show(&station.state, &code, module);
+    let saturday_free = admin.get("/shows/dedications").await;
+    let open_now = saturday_free["status"]["open"].as_bool().unwrap();
+    match open(Module::Dedications).await {
+        Ok((runtime, settings)) => {
+            assert!(open_now);
+            assert_eq!(runtime.code(), code);
+            assert!(settings.enabled);
+        }
+        Err(error) => assert!(
+            !open_now && matches!(error, ApiError::Conflict(_)),
+            "{error}"
+        ),
+    }
+    assert!(matches!(
+        crate::gateway::open_show(&station.state, "nope", Module::Dedications).await,
+        Err(ApiError::NotFound(_))
+    ));
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"match": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(matches!(
+        open(Module::Match).await,
+        Err(ApiError::ModuleOff(Module::Match))
+    ));
+    let (status, body) = admin.request(Method::GET, "/shows/match", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let state = gateway.get("/gateway/state").await;
+    assert_eq!(state["stations"][0]["shows"].as_array().unwrap().len(), 1);
+    let (status, _) = admin
+        .send(Method::PUT, "/shows/dedications", json!({"enabled": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(matches!(
+        open(Module::Dedications).await,
+        Err(ApiError::Conflict(_))
+    ));
+
+    // Notifications go to the webhooks the show chooses, with its message.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, webhook) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Chat", "url": format!("http://{receiver}/chat"),
+                   "events": ["queue.changed"], "body_template": "{\"content\": \"{{message}}\"}"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{webhook}");
+    let webhook_id = webhook["webhook"]["id"].as_u64().unwrap();
+    let (status, refused) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Shows", "url": format!("http://{receiver}/x"), "events": ["show.started"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{refused}");
+    let (status, saved) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1], "start_hour": 17, "end_hour": 18}],
+                   "website": {"title": "Your dedications"},
+                   "notifications": {"webhook_ids": [webhook_id],
+                       "events": {"show.started": {"enabled": true, "message": "{name} until {end}"},
+                                  "show.ended": {"enabled": false, "message": ""}}}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["webhooks"][0]["name"], "Chat");
+    // Monday 9 November 2026, 17:00 UTC.
+    let opens: jiff::Timestamp = "2026-11-09T17:00:00Z".parse().unwrap();
+    let from = opens
+        .checked_sub(jiff::SignedDuration::from_secs(10))
+        .unwrap();
+    let to = opens
+        .checked_add(jiff::SignedDuration::from_secs(5))
+        .unwrap();
+    crate::shows::notify_station(
+        &station.state.pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        from,
+        to,
+    )
+    .await
+    .unwrap();
+    let body = loop {
+        let (_, name, headers, body) =
+            tokio::time::timeout(Duration::from_secs(15), received.recv())
+                .await
+                .expect("a show notification")
+                .unwrap();
+        if name == "chat" && headers["x-heron-event"] == "show.started" {
+            break body;
+        }
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"content": "Your dedications until 18:00"})
+    );
+    // Ended is off: nothing for it.
+    let closes = opens
+        .checked_add(jiff::SignedDuration::from_hours(1))
+        .unwrap();
+    crate::shows::notify_station(
+        &station.state.pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        closes
+            .checked_sub(jiff::SignedDuration::from_secs(10))
+            .unwrap(),
+        closes,
+    )
+    .await
+    .unwrap();
+    let ended: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM webhook_deliveries WHERE event LIKE 'show.%'")
+            .fetch_one(&station.state.pool)
+            .await
+            .unwrap();
+    assert_eq!(ended, 1);
+    station.stop().await;
 }
 
 /// A clock slot at an exact time: hard, the track on air is cut and the

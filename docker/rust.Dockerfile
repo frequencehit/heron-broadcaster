@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Builds every Rust binary once, then one small image per service.
-# Targets: heron-engine, heron-api, heron-analyzer, heron-librarian.
+# Targets: heron-engine, heron-api, heron-analyzer, heron-librarian, heron-public.
 
 FROM rust:1.99.1-slim-trixie AS builder
 # LAME (MP3 encoding) is compiled from source by its build script (configure, make).
@@ -21,10 +21,10 @@ COPY migrations ./migrations
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release --locked -p heron-engine --features aac \
-    && cargo build --release --locked -p heron-api -p heron-analyzer -p heron-librarian \
+    && cargo build --release --locked -p heron-api -p heron-analyzer -p heron-librarian -p heron-public \
     && mkdir -p /out \
     && cp target/release/heron-engine target/release/heron-api target/release/heron-analyzer \
-        target/release/heron-librarian /out/
+        target/release/heron-librarian target/release/heron-public /out/
 
 FROM debian:trixie-slim AS runtime
 LABEL org.opencontainers.image.source="https://github.com/dehy/heron-broadcaster" \
@@ -97,3 +97,14 @@ EXPOSE 8083
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
     CMD ["heron-librarian", "healthcheck"]
 ENTRYPOINT ["heron-librarian"]
+
+# The shows' public gateway (docs/listener-interaction.md): no database, no
+# library. The public port, then /healthz and /metrics on their own.
+FROM runtime AS heron-public
+COPY --from=builder /out/heron-public /usr/local/bin/heron-public
+ENV HERON_HTTP_ADDR=0.0.0.0:8084 \
+    HERON_OPS_ADDR=0.0.0.0:8085
+EXPOSE 8084 8085
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["heron-public", "healthcheck"]
+ENTRYPOINT ["heron-public"]

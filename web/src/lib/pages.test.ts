@@ -16,6 +16,9 @@ describe("placeOf", () => {
     expect(placeOf("/webhooks")?.page.module).toBe("webhooks");
     expect(placeOf("/library")?.page.module).toBeUndefined();
     expect(placeOf("/modules")).toMatchObject({ section: "nav.administration", page: { admin: true } });
+    // Each show names its section: listed under it while the others are off.
+    expect(placeOf("/shows/match")).toMatchObject({ section: "nav.shows", page: { module: "match" } });
+    expect(placeOf("/shows/top30")).toMatchObject({ section: "nav.shows", page: { module: "top30" } });
   });
 
   it("knows a page inside a page", () => {
