@@ -3887,6 +3887,35 @@
         }
       }
     },
+    "/api/v1/library/todo": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "How many tracks to identify, and active songs missing an intro, a hook\nor a cover: the counts of the *To do* page, whose lists are\n`GET /library/review` and `GET /tracks?active_songs=true&filter=…`.",
+        "operationId": "todo_counts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoCounts"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/library/trash": {
       "get": {
         "tags": [
@@ -12755,6 +12784,15 @@
             }
           },
           {
+            "name": "active_songs",
+            "in": "query",
+            "description": "Only the enabled songs whose file is there: tracks in at least one\ncategory of the Song type (the one that exists from the start,\nwhatever its name), not disabled, not missing. What *To do* lists.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "filter",
             "in": "query",
             "required": false,
@@ -12767,7 +12805,9 @@
                 "silent",
                 "disabled",
                 "needs_review",
-                "no_cover"
+                "no_cover",
+                "no_intro",
+                "no_hook"
               ]
             }
           },
@@ -26293,6 +26333,44 @@
           "dark"
         ]
       },
+      "TodoCounts": {
+        "type": "object",
+        "description": "What there is to do on the library: the counts of the *To do* page.",
+        "required": [
+          "to_identify",
+          "no_intro",
+          "no_hook"
+        ],
+        "properties": {
+          "no_cover": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Active songs with no cover; `null` while cover art is turned off.",
+            "minimum": 0
+          },
+          "no_hook": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Active songs with no hook.",
+            "minimum": 0
+          },
+          "no_intro": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Active songs (`GET /tracks?active_songs=true`) with no intro point.",
+            "minimum": 0
+          },
+          "to_identify": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tracks waiting for review (`GET /library/review`'s `total`).",
+            "minimum": 0
+          }
+        }
+      },
       "TotpSetup": {
         "type": "object",
         "description": "An authenticator app to set up.",
@@ -26773,7 +26851,9 @@
           "silent",
           "disabled",
           "needs_review",
-          "no_cover"
+          "no_cover",
+          "no_intro",
+          "no_hook"
         ]
       },
       "TrackIdentification": {
@@ -27149,6 +27229,13 @@
         "type": "object",
         "description": "Which tracks: the filters of `GET /tracks`, also used to select tracks\nfor the actions on a selection. Lists of IDs are comma-separated.",
         "properties": {
+          "active_songs": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Only the enabled songs whose file is there: tracks in at least one\ncategory of the Song type (the one that exists from the start,\nwhatever its name), not disabled, not missing. What *To do* lists."
+          },
           "added_days": {
             "type": [
               "integer",
