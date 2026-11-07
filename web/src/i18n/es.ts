@@ -1637,6 +1637,7 @@ const es = {
   "settings.removeKey": "Quitar",
   "settings.analysisSaved": "Guardado: todas las pistas se vuelven a analizar, en segundo plano",
   "settings.analysis": "Análisis",
+  "settings.audio": "Audio",
   "settings.analysisHelp": "Los puntos de entrada, de salida y de fundido encadenado se detectan al importar las pistas. Cambiar estos valores vuelve a analizar toda la fonoteca (en segundo plano, la emisora sigue sonando).",
   "settings.startThreshold": "Umbral de inicio",
   "settings.startThresholdHint": "Por debajo de la sonoridad de la pista, se recorta al principio",
