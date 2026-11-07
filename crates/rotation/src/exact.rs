@@ -269,17 +269,25 @@ pub(crate) type Fitted<'l> = (&'l crate::Track, f64, Option<MedleyCut>);
 impl Fit<'_> {
     /// The candidates the method chooses among, from `start_ms`: the best
     /// class present. Empty when none fits.
+    ///
+    /// `late_ok: false` keeps none that would be cut, even in hard mode:
+    /// rotation tries a wider draw before cutting a track
+    /// ([`Fit::cuts`]).
     pub(crate) fn keep<'l>(
         &self,
         candidates: &[(&'l crate::Track, f64)],
         start_ms: i64,
+        late_ok: bool,
     ) -> Vec<Fitted<'l>> {
         let end = |length: u32| start_ms + i64::from(length);
         match self.mode {
-            FitMode::Prefer { late_ok } => {
+            FitMode::Prefer {
+                late_ok: mode_late_ok,
+            } => {
+                let late_ok = late_ok && mode_late_ok;
                 let classes: Vec<Landing> = candidates
                     .iter()
-                    .map(|(track, _)| self.window.landing(end(track.length_ms)))
+                    .map(|(track, _)| self.window.landing(end(track.next_ms())))
                     .collect();
                 let Some(best) = classes.iter().min().copied() else {
                     return Vec::new();
@@ -299,7 +307,7 @@ impl Fit<'_> {
                 let fitting: Vec<(u32, Fitted<'l>)> = candidates
                     .iter()
                     .filter_map(|(track, weight)| {
-                        if self.window.landing(end(track.length_ms)) == Landing::Lands {
+                        if self.window.landing(end(track.next_ms())) == Landing::Lands {
                             return Some((0, (*track, *weight, None)));
                         }
                         let medley = self.medleys?.get(&track.id)?;
@@ -320,6 +328,13 @@ impl Fit<'_> {
                     .collect()
             }
         }
+    }
+}
+
+impl Fit<'_> {
+    /// A track crossing the window may be kept, and cut (hard mode).
+    pub(crate) fn cuts(&self) -> bool {
+        self.mode == FitMode::Prefer { late_ok: true }
     }
 }
 

@@ -532,6 +532,7 @@ mod tests {
                 continues: false,
             },
             linked_to: None,
+            next_start_ms: None,
         }
     }
 
