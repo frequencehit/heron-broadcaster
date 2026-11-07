@@ -85,7 +85,7 @@ A match is **confident** when its AcoustID score is at least `min_score` (0.9) a
 | `the audio could not be fingerprinted` | Undecodable, or too short |
 | `identification failed: …` | AcoustID or MusicBrainz unreachable three times (the folder waits 1, then 2 minutes between tries) |
 
-Tracks imported while they need review wait on the **review screen** of the web UI (*To organize*; `heron-librarian review` lists them too). For each track, pick one of its candidate releases, or keep the file's own tags (`kept`). A picked release is applied by the librarian like an import: MusicBrainz tags written into the file, filed where the layout says, cover saved, as a `review` batch that can be undone (the track then needs review again).
+Tracks imported while they need review wait on the **review screen** of the web UI (*To do › To identify*; `heron-librarian review` lists them too). For each track, pick one of its candidate releases, or keep the file's own tags (`kept`). A picked release is applied by the librarian like an import: MusicBrainz tags written into the file, filed where the layout says, cover saved, as a `review` batch that can be undone (the track then needs review again).
 
 **Rate limits:** one request per second to MusicBrainz and to the Cover Art Archive, three per second to AcoustID, with a User-Agent that identifies Heron (`HeronBroadcaster/<version> ( https://heronbroadcaster.org )`). Each request waits a full interval after the previous response, so requests never arrive closer than the limit, even when one was delayed on the way. A `503` or `429` answer slows down and retries.
 
@@ -169,7 +169,7 @@ A `fetch_covers` library task looks up albums without a cover, at one request a 
 
 1. An album with a MusicBrainz release ID gets that release's front cover (500 px).
 2. Otherwise, MusicBrainz is searched for releases by the album and its album artist (or artist). The best result is taken when its score is at least 90 out of 100 and it has a front cover (the next ones are tried, while they score 90 or more).
-3. An unsure search (no result that high, or none with a cover) sets no cover: its results scoring at least 50, at most 5, wait on the **review screen** (*To organize*) as candidates, with their cover. An operator picks one, which is then fetched, or refuses them all.
+3. An unsure search (no result that high, or none with a cover) sets no cover: its results scoring at least 50, at most 5, wait on the **review screen** (*To do › Missing covers*) as candidates, with their cover. An operator picks one, which is then fetched, or refuses them all.
 
 An album looked up is not looked up again by itself (found, unsure, not found or failed); asking for it does. Ask from the track list (*Find covers* on a selection), from *Settings › Library* (*Find missing covers now*: every album without a cover), or with `POST /api/v1/covers/fetch`. A track's page can also *search the Cover Art Archive*: the results are shown as candidates, even when one is sure.
 
@@ -218,7 +218,7 @@ The one replacement Heron makes is re-tagging a file in place: the re-tagged cop
 
 ## Reorganizing an existing library
 
-Only on request, after a dry run: from the web UI (*To organize*, admins), or on the command line:
+Only on request, after a dry run: from the web UI (*To do › Organize*, admins), or on the command line:
 
 ```sh
 docker compose exec heron-librarian heron-librarian organize           # dry run: lists every move, changes nothing
