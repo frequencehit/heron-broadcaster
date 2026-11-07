@@ -30,7 +30,6 @@ import {
   LabelChip,
   LabelsDialog,
   ProgrammingDialog,
-  TAG_FIELDS,
   TagsDialog,
   type TagValues,
 } from "../components/SelectionActions";
@@ -139,13 +138,6 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
   const [playing, setPlaying] = useState(false);
   const [playhead, setPlayhead] = useState<number | null>(null);
   const [editingTags, setEditingTags] = useState(false);
-  const fileTags = useAction(
-    () =>
-      unwrap(
-        api.POST("/api/v1/tracks/tag-overrides/clear", { body: { selection: { track_ids: [track.id] } } }),
-      ),
-    { success: t("track.fileTagsDone"), invalidate: [["tracks"], ["track"]] },
-  );
 
   useEffect(() => {
     setDraft(normalize(track.overrides));
@@ -425,24 +417,6 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
               {!track.missing && (
                 <button type="button" className="btn" onClick={() => setEditingTags(true)}>
                   <Icon name="edit" /> {t("track.editTags")}
-                </button>
-              )}
-              {track.tag_overrides.length > 0 && (
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={fileTags.isPending}
-                  onClick={() => fileTags.mutate(undefined)}
-                  title={t("track.fileTagsHelp", {
-                    fields: track.tag_overrides
-                      .map((field) => {
-                        const known = TAG_FIELDS.find((tag) => tag.field === field);
-                        return known ? t(known.label) : field;
-                      })
-                      .join(", "),
-                  })}
-                >
-                  {t("track.fileTags")}
                 </button>
               )}
               <button
