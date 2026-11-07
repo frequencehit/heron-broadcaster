@@ -22,7 +22,7 @@ import { ago, clockTime, dateTime } from "../lib/format";
 import { DaypartBadge, daypartNote } from "../components/Dayparts";
 import { describeDrawLog } from "../components/DrawDepth";
 import { daypartsList } from "../lib/dayparts";
-import { describeWindows, methodLabel, stepLabel } from "../lib/rotation";
+import { describeFill, describeMet, describeWindows, methodLabel, stepLabel } from "../lib/rotation";
 import { ratioLabel } from "../lib/ratio";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
@@ -160,8 +160,26 @@ function Where({ explanation }: { explanation: Explanation }) {
       </span>
     );
   }
+  if (explanation.fill) {
+    return (
+      <span>
+        <Link to={`/clocks/${explanation.clock_id}`}>{explanation.clock_name ?? t("rotationPage.clock")}</Link>
+        {", "}
+        {t("exact.gap", { time: clockTime(explanation.fill.exact_at_unix_ms), fill: describeFill(explanation.fill) })}
+        {schedule}
+      </span>
+    );
+  }
   return (
     <span>
+      {explanation.exact && (
+        <div className={explanation.exact.in_window ? "small" : "small warn"}>
+          {t("exact.exactSlot", {
+            time: clockTime(explanation.exact.at_unix_ms),
+            met: describeMet(explanation.exact),
+          })}
+        </div>
+      )}
       {rich("rotationPage.where", {
         clock: <Link to={`/clocks/${explanation.clock_id}`}>{explanation.clock_name ?? t("rotationPage.clock")}</Link>,
         slot: (explanation.slot ?? 0) + 1,
@@ -533,6 +551,12 @@ function skippedSlot(slot: Schemas["SkippedSlot"]): string {
       return t("rotationPage.slotLinkedNotFound", { slot: number });
     case "module_off":
       return t("rotationPage.slotModuleOff", { slot: number });
+    case "exact_time_due":
+      return t("rotationPage.slotExactDue", { slot: number });
+    case "no_longer_fits":
+      return t("rotationPage.slotNoLongerFits", { slot: number });
+    case "exact_time_passed":
+      return t("rotationPage.slotExactPassed", { slot: number });
     default:
       return t("rotationPage.slot", { slot: number });
   }

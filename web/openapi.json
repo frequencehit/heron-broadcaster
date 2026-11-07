@@ -15717,6 +15717,17 @@
             "type": "boolean",
             "description": "Off, the slot skips the separation rules (restrictions still apply)."
           },
+          "exact": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExactTime",
+                "description": "Starts at a time of the hour, hard or soft\n(`docs/rotation.md#exact-times`); none by default."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "linked_to_next": {
             "type": "boolean",
             "description": "Plays only if the next slot's track plays right after it (a jingle\nannouncing it); the next slot of the last one is the first. A\nlinked slot cannot be followed by another linked slot."
@@ -16126,7 +16137,7 @@
               "boolean",
               "null"
             ],
-            "description": "`false` plays the transition out of this track back to back, without overlap.",
+            "description": "`false` plays the transition out of this track back to back, without\noverlap; `true` crossfades it at its own point whatever the two\ntracks' lengths (the first span of a shortened medley).",
             "default": null
           },
           "fade_in": {
@@ -17127,6 +17138,109 @@
           }
         }
       },
+      "ExactLog": {
+        "type": "object",
+        "description": "An exact slot's pick: its exact time, and how rotation met it.",
+        "required": [
+          "at_unix_ms",
+          "mode",
+          "before_s",
+          "after_s",
+          "met",
+          "offset_ms",
+          "in_window",
+          "faded",
+          "cut_at_unix_ms"
+        ],
+        "properties": {
+          "after_s": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The exact time (Unix ms)."
+          },
+          "before_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The soft window, in seconds; 0 in hard mode.",
+            "minimum": 0
+          },
+          "cut_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the engine fades out what still plays and starts the slot: the\nexact time (hard) or the end of the window (soft)."
+          },
+          "faded": {
+            "type": "boolean",
+            "description": "What plays before it is faded out at `cut_at_unix_ms`."
+          },
+          "in_window": {
+            "type": "boolean",
+            "description": "The planned start is inside the window (the exact time in hard mode)."
+          },
+          "met": {
+            "$ref": "#/components/schemas/Met"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ExactMode"
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Planned start minus the exact time; negative when early."
+          }
+        }
+      },
+      "ExactMode": {
+        "type": "string",
+        "enum": [
+          "hard",
+          "soft"
+        ]
+      },
+      "ExactTime": {
+        "type": "object",
+        "description": "A clock slot's exact time.",
+        "required": [
+          "at_s"
+        ],
+        "properties": {
+          "after_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Soft: how late it may start; a track ending later is faded out then.",
+            "minimum": 0
+          },
+          "at_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Seconds into the station hour, 0 to 3599.",
+            "minimum": 0
+          },
+          "before_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Soft: how early the slot may start, in seconds (0 to 300).",
+            "minimum": 0
+          },
+          "cut_live": {
+            "type": "boolean",
+            "description": "The exact time cuts a live DJ (ad breaks). Stored for M11: there is\nno live DJ yet."
+          },
+          "medley_fill": {
+            "type": "boolean",
+            "description": "Soft: a gap before the window is filled with a station medley,\nshortened from its end when too long."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ExactMode"
+          }
+        },
+        "additionalProperties": false
+      },
       "Explanation": {
         "type": "object",
         "description": "Why a track was picked: the rotation log.",
@@ -17231,6 +17345,28 @@
           },
           "enforce_rules": {
             "type": "boolean"
+          },
+          "exact": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExactLog",
+                "description": "The slot has an exact time: how it was met."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fill": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FillLog",
+                "description": "The pick fills the gap before an exact time: with a medley or a\nfiller track."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "held_by_ratio": {
             "type": "array",
@@ -17442,6 +17578,69 @@
           }
         },
         "additionalProperties": false
+      },
+      "FillKind": {
+        "type": "string",
+        "enum": [
+          "medley",
+          "filler"
+        ]
+      },
+      "FillLog": {
+        "type": "object",
+        "description": "A pick filling the gap before an exact time, in the rotation log.",
+        "required": [
+          "kind",
+          "slot",
+          "exact_at_unix_ms",
+          "length_ms"
+        ],
+        "properties": {
+          "exact_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The exact time (Unix ms)."
+          },
+          "hooks_left_out": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Hooks left out of the medley (0: whole).",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FillKind"
+          },
+          "length_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How long it plays.",
+            "minimum": 0
+          },
+          "medley_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The medley's ID.",
+            "minimum": 0
+          },
+          "parts_left_out": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "The parts left out, by their position in the medley from 0."
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The exact slot it fills the gap before (index in its clock).",
+            "minimum": 0
+          }
+        }
       },
       "FinalMode": {
         "type": "string",
@@ -19811,6 +20010,15 @@
         },
         "additionalProperties": false
       },
+      "Met": {
+        "type": "string",
+        "description": "How an exact time was met, in the rotation log.",
+        "enum": [
+          "on_time",
+          "early",
+          "late"
+        ]
+      },
       "Method": {
         "type": "string",
         "description": "How a clock slot picks among the tracks its category allows.",
@@ -21613,7 +21821,8 @@
           "cue_out_ms",
           "source",
           "no_metadata",
-          "over_intro"
+          "over_intro",
+          "continues"
         ],
         "properties": {
           "album": {
@@ -21627,6 +21836,10 @@
               "string",
               "null"
             ]
+          },
+          "continues": {
+            "type": "boolean",
+            "description": "The rest of the entry before it (the second part of a shortened\nmedley): not a new play."
           },
           "cue_in_ms": {
             "type": "integer",
@@ -21667,6 +21880,14 @@
           },
           "source": {
             "$ref": "#/components/schemas/PlaySource"
+          },
+          "start_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "An exact time (Unix ms): if it still waits then, the engine fades\nout what plays and starts it, dropping the entries before it."
           },
           "title": {
             "type": [
@@ -22396,6 +22617,18 @@
               {
                 "$ref": "#/components/schemas/u64",
                 "description": "Where relaxation ends (steps 9 and 10). The station's library when\nunset."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "filler_category_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/u64",
+                "description": "Where a gap before an exact time is filled from when no medley\nfits: short jingles, liners. None: the slot starts early."
               },
               {
                 "type": "null"
@@ -23242,7 +23475,10 @@
           "same_type_in_a_row",
           "module_off",
           "linked_track_after_hour",
-          "linked_track_not_found"
+          "linked_track_not_found",
+          "exact_time_due",
+          "no_longer_fits",
+          "exact_time_passed"
         ]
       },
       "SkippedFile": {
@@ -27016,6 +27252,39 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A slot with an exact time missed its window (it started early, or\nis not logged as an exact pick): `at_unix_ms` is its exact time,\nmissing when the pick does not say it.",
+            "required": [
+              "pick",
+              "start_unix_ms",
+              "kind"
+            ],
+            "properties": {
+              "at_unix_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "exact_time"
+                ]
+              },
+              "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "start_unix_ms": {
+                "type": "integer",
+                "format": "int64"
               }
             }
           }

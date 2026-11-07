@@ -244,6 +244,16 @@ function Item({
               <Icon name="link" size={12} /> {t("queue.linked")}
             </span>
           )}
+          {track.start_at_unix_ms !== null && track.start_at_unix_ms !== undefined && (
+            <span className="badge accent" title={t("queue.startsAtHint")}>
+              <Icon name="clock" size={12} /> {t("queue.startsAt", { time: clockTime(track.start_at_unix_ms) })}
+            </span>
+          )}
+          {track.continues && (
+            <span className="badge" title={t("queue.continuesHint")}>
+              {t("queue.continues")}
+            </span>
+          )}
           {overIntro && (
             <span className="badge accent" title={t("queue.overIntroHint")}>
               {jingleAt !== null && jingleAt !== undefined

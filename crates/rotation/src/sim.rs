@@ -12,8 +12,9 @@ use crate::restrict::{Subject, forbidding};
 use crate::rules::{FALLBACK_STEP, LAST_STEP};
 use crate::select::{Call, SeparationRule};
 use crate::{
-    AcrossWindows, CategoryId, DrawDepth, Elsewhere, Explanation, History, Library, Method, Play,
-    Position, Rng, Track, TrackId, Windows, dayparts, draw, next_outcome, ratio,
+    AcrossWindows, CategoryId, DrawDepth, Elsewhere, ExactTime, Explanation, FillKind, History,
+    Library, Method, Play, Position, Rng, Track, TrackId, Windows, dayparts, draw, next_outcome,
+    ratio,
 };
 
 /// Shortest length a simulated track is counted for.
@@ -83,6 +84,14 @@ pub enum Violation {
     /// by the restrictions, played longer ago than it (or never), and its
     /// draw had `tracks`.
     Draw { pick: u32, rank: u32, tracks: u32 },
+    /// A slot with an exact time missed its window (it started early, or
+    /// is not logged as an exact pick): `at_unix_ms` is its exact time,
+    /// missing when the pick does not say it.
+    ExactTime {
+        pick: u32,
+        at_unix_ms: Option<i64>,
+        start_unix_ms: i64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -115,7 +124,7 @@ pub fn simulate(
     let before = history.plays().to_vec();
     let horizon = library.horizon_ms();
     let mut rng = Rng::new(seed);
-    let mut picks = Vec::new();
+    let mut picks: Vec<SimulatedPick> = Vec::new();
     let mut gap_minutes = 0;
     let end = start_ms + duration_ms;
     let mut at = start_ms;
@@ -140,14 +149,25 @@ pub fn simulate(
             let Some(track) = working.tracks.get(&pick.track) else {
                 break 'run;
             };
+            // An exact time starts its slot at its own planned start: the
+            // track before is cut there.
+            let start = pick.explanation.at_unix_ms;
+            if start < at
+                && let Some(previous) = picks.last_mut()
+            {
+                let played = start - previous.start_unix_ms;
+                previous.length_ms = u32::try_from(played.max(0)).unwrap_or(0);
+            }
+            at = start;
+            let length_ms = pick.length_ms(&working);
             history.push(Play::of(track, at));
             picks.push(SimulatedPick {
                 track_id: pick.track,
                 start_unix_ms: at,
-                length_ms: track.length_ms,
+                length_ms,
                 explanation: pick.explanation,
             });
-            at += i64::from(track.length_ms).max(MIN_LENGTH_MS);
+            at += i64::from(length_ms).max(MIN_LENGTH_MS);
             if pick.position.is_some() {
                 last = pick.position;
             }
@@ -181,6 +201,11 @@ fn expected(
 ) -> (Windows, Option<CategoryId>) {
     let step = explanation.step;
     let relaxed = |windows| library.for_track(windows, track).at_step(step);
+    // A gap filled before an exact time: its category's rules, never relaxed.
+    if let Some(category) = fill_category(library, explanation) {
+        let separation = library.categories.get(&category).map(|c| &c.separation);
+        return (relaxed(library.windows(separation, None)), Some(category));
+    }
     if step >= FALLBACK_STEP {
         let fallback = library.fallback_category();
         let windows = if step >= LAST_STEP {
@@ -211,6 +236,28 @@ fn expected(
     }
 }
 
+/// The category a pick filling the gap before an exact time comes from.
+fn fill_category(library: &Library, explanation: &Explanation) -> Option<CategoryId> {
+    match explanation.fill.as_ref()?.kind {
+        FillKind::Medley => library.medley_category,
+        FillKind::Filler => library.settings.filler_category_id,
+    }
+}
+
+/// The exact time a pick of an exact slot must meet, from its clock: its
+/// slot, or the next one when it is linked to it. `None` for other picks.
+fn expected_exact(library: &Library, explanation: &Explanation) -> Option<ExactTime> {
+    if explanation.fill.is_some() {
+        return None;
+    }
+    let clock = library.clocks.get(&explanation.clock_id?)?;
+    let index = explanation.slot? as usize;
+    if index >= clock.slots.len() || clock.follows_linked(index) {
+        return None;
+    }
+    clock.exact(index)
+}
+
 /// The draw depth a pick must come from, from its slot and step, and the
 /// category its pool is (`None`: the station's library); no depth for a
 /// random slot and at step 12.
@@ -226,6 +273,10 @@ fn expected_draw(
         .clock_id
         .zip(explanation.slot)
         .and_then(|(clock, slot)| library.clocks.get(&clock)?.slots.get(slot as usize));
+    if let Some(category) = fill_category(library, explanation) {
+        let separation = library.categories.get(&category).map(|c| &c.separation);
+        return Some((library.draw(separation, None), Some(category)));
+    }
     if slot.is_some_and(|slot| slot.method == Method::Random) {
         return None;
     }
@@ -449,6 +500,23 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
                 });
             }
         }
+        if let Some(exact) = expected_exact(library, &pick.explanation) {
+            let logged = pick.explanation.exact.map(|log| log.at_unix_ms);
+            let met = logged.is_some_and(|at_ms| {
+                let local = library.local(at_ms);
+                let into_hour =
+                    u32::from(local.minute() as u8) * 60 + u32::from(local.second() as u8);
+                let window = exact.window(at_ms);
+                into_hour == exact.at_s && (window.from_ms..=window.cut_ms).contains(&at)
+            });
+            if !met {
+                violations.push(Violation::ExactTime {
+                    pick: index,
+                    at_unix_ms: logged,
+                    start_unix_ms: at,
+                });
+            }
+        }
         last_played.insert(track.id, at);
         timeline.push(Play::of(track, at));
     }
@@ -574,6 +642,7 @@ mod tests {
                         method: Method::Random,
                         enforce_rules: true,
                         linked_to_next: false,
+                        exact: None,
                         separation: SeparationOverrides::default(),
                     }],
                 }],
@@ -625,6 +694,8 @@ mod tests {
                 daypart: None,
                 draw: None,
                 linked: false,
+                exact: None,
+                fill: None,
             },
         }
     }

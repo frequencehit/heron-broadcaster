@@ -103,6 +103,21 @@ Until its first render a medley has no name: the page shows the name it would ge
 
 A medley track **sends no metadata**: while it plays, the stream servers, the public now-playing and the public history keep the last song (as jingles do, see [Outputs – Metadata](outputs.md#metadata)). It is played like any other track otherwise.
 
+## Where the parts are in the file
+
+The layout the librarian saves at each render (`rendered_layout`, see [Listening](#listening)) says where each part lands in the **rendered** file: its start (`at_ms`), how long it plays, and its fades, worked out from the crossfades, the moves and the extensions under liners over the music, exactly as the mix places it. The parts (`medley_parts`) keep the span chosen in each part's **source** file; the layout is what the cut points of a shortened play come from. A test mixes a medley of marked parts and finds each of them in the file where the layout says.
+
+## Shortened plays
+
+A medley can fill the gap before a soft [exact time](rotation.md#exact-times). Too long, it is **shortened from the end**, without a new render: the last *liner + hook* pairs are left out, the closing liner always kept. `[opening liner] hook1 liner1 hook2 liner2 hook3 [closing liner]`, 46 s, becomes `[opening liner] hook1 liner1 hook2 [closing liner]`, 31 s. Several pairs can be left out, never below 2 hooks.
+
+- It plays as **two spans of the rendered file**, two entries of the queue with their own cue points: from the start to the cut, then from the closing liner to the end, the second linked to the first like a [linked slot](rotation.md#linked-slots)'s pair, and marked as its continuation (one play in the history, one pick in the rotation log).
+- **The cut:** the first span ends where the first part left out starts, so nothing of it is heard; the music before it fades out over the recipe's crossfade (at least 100 ms). The second span starts the crossfade before the closing liner (and the music's going down before it, with liners over the music), so it fades in on the last hook's music, then the closing liner comes as mixed. With liners over the music, the cut is at the end of the kept hook's chosen span, faded: never in a liner.
+- Its length is the two spans less the crossfade between them. Rotation chooses the medley whose length lands inside the window, the fewest parts left out first (a whole medley first).
+- Only a medley with a **closing liner** and a layout that matches its file can be shortened (one rendered before layouts were saved, or whose file does not last as long as its layout, plays whole); one with fewer than 3 hooks never is.
+- The engine crossfades the two spans with the recipe's crossfade whatever their lengths (the first span's crossfade overrides set `"crossfade": true`, see [Audio engine – Transitions](audio-engine.md#transitions)).
+- The rotation log names the medley, how many hooks were left out and the parts left out (their positions in the medley, from 0).
+
 ## Duplicating
 
 **Duplicate** makes a new medley with the same recipe and parts. It is not rendered: no name, no file and no track until it is, so it can be edited, or built anew, then rendered. That is how to make a variant of a medley, or a new one from the same recipe.

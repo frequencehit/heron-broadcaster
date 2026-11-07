@@ -66,6 +66,12 @@ pub struct QueuedTrack {
     pub over_intro: bool,
     /// Where the intro ends (the vocals start), on the file's timeline.
     pub intro_ms: Option<u32>,
+    /// An exact time (Unix ms): if it still waits then, the engine fades
+    /// out what plays and starts it, dropping the entries before it.
+    pub start_at_unix_ms: Option<i64>,
+    /// The rest of the entry before it (the second part of a shortened
+    /// medley): not a new play.
+    pub continues: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -634,6 +640,8 @@ fn entry(entry: pb::QueueEntry) -> QueueEntry {
             no_metadata: track.no_metadata,
             over_intro: track.over_intro,
             intro_ms: track.intro_ms,
+            start_at_unix_ms: track.start_at_unix_ms,
+            continues: track.continues,
         },
         linked_to: entry.linked_to,
     }

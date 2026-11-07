@@ -413,6 +413,9 @@ fn prepare(library_dir: &Path, file: &Path) -> anyhow::Result<pb::Track> {
         no_metadata: false,
         over_intro: false,
         intro_ms: None,
+        start_at_unix_ms: None,
+        cut_fade_ms: 0,
+        continues: false,
     })
 }
 

@@ -128,7 +128,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 | Table | Columns |
 |---|---|
 | `clocks` | id, name, looping (carries on across hours instead of starting over at each hour) |
-| `clock_slots` | clock_id, position, category_id, selection_method (least_recently_played, random, weighted), enforce_rules, separation (JSON: the windows it overrides and its `draw_start_pct` and `draw_max_pct`; never `dayparts` or `daypart_days`), linked_to_next (plays only with the next slot's track, see [Linked slots](rotation.md#linked-slots)) |
+| `clock_slots` | clock_id, position, category_id, selection_method (least_recently_played, random, weighted), enforce_rules, separation (JSON: the windows it overrides and its `draw_start_pct` and `draw_max_pct`; never `dayparts` or `daypart_days`), linked_to_next (plays only with the next slot's track, see [Linked slots](rotation.md#linked-slots)), exact_time (JSON, null for none: `at_s`, `mode`, `before_s`, `after_s`, `medley_fill`, `cut_live`, see [Exact times](rotation.md#exact-times)) |
 | `schedules` | id, station_id, name (unique for the station), is_default (one per station) — see [Rotation – Scheduling](rotation.md#scheduling) |
 | `schedule_periods` | id, schedule_id (not the default one), starts_at, ends_at (station time, on the hour, the end excluded), every_year (the years are ignored; the range may run over the new year) |
 | `clock_schedule` | schedule_id, day_of_week (ISO: 1 = Monday), hour (station time), clock_id |

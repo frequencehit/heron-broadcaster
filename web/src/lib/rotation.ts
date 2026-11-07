@@ -3,7 +3,7 @@
 // Words for rotation: days, hours, rules, methods, separation windows and
 // draw depths.
 
-import type { ClockSlot, Method, Rule, SeparationOverrides, Target, Windows } from "../api";
+import type { ClockSlot, Method, Rule, Schemas, SeparationOverrides, Target, Windows } from "../api";
 import { type PlainKey, locale, number, t } from "../i18n";
 
 /** Monday (`1`) to Sunday (`7`). */
@@ -229,4 +229,45 @@ export function linkBlocked(slots: readonly ClockSlot[], index: number): boolean
   const previous = slots[(index - 1 + count) % count];
   const next = slots[(index + 1) % count];
   return !!previous?.linked_to_next || !!next?.linked_to_next;
+}
+
+/** `:00:00`, `:30:15`: minutes and seconds into the hour. */
+export function exactTimeLabel(atS: number): string {
+  const minutes = Math.floor(atS / 60);
+  const seconds = atS % 60;
+  return `:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** A slot's exact time: `:00:00 · hard`, `:30:00 · soft, −10 to +30 s`. */
+export function describeExact(exact: Schemas["ExactTime"]): string {
+  const time = exactTimeLabel(exact.at_s);
+  if ((exact.mode ?? "hard") === "hard") {
+    return t("exact.hardValue", { time });
+  }
+  return t("exact.softValue", { time, before: exact.before_s ?? 10, after: exact.after_s ?? 30 });
+}
+
+/** How an exact time was met: `on time`, `early by 12 s, outside its window`, `late by 30 s, the track before faded`. */
+export function describeMet(log: Schemas["ExactLog"]): string {
+  const seconds = Math.round(Math.abs(log.offset_ms) / 1000);
+  let met =
+    log.met === "on_time"
+      ? t("exact.onTime")
+      : log.met === "early"
+        ? t("exact.early", { seconds })
+        : t("exact.late", { seconds });
+  if (!log.in_window) {
+    met = t("exact.outside", { met });
+  }
+  return log.faded ? t("exact.faded", { met }) : met;
+}
+
+/** A gap filled before an exact time: `medley 7, 1 hook left out`, `a filler`. */
+export function describeFill(fill: Schemas["FillLog"]): string {
+  if (fill.kind === "filler") {
+    return t("exact.filler");
+  }
+  const id = String(fill.medley_id ?? "?");
+  const left = fill.hooks_left_out ?? 0;
+  return left > 0 ? t("exact.medleyShortened", { id, count: left }) : t("exact.medley", { id });
 }
