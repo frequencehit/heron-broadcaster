@@ -33,7 +33,7 @@ pub struct Show {
     pub placeholders: &'static [&'static str],
 }
 
-pub const SHOWS: [Show; 3] = [
+pub const SHOWS: [Show; 4] = [
     Show {
         module: Module::Dedications,
         name: "Dedications",
@@ -52,6 +52,14 @@ pub const SHOWS: [Show; 3] = [
         module: Module::Top30,
         name: "Top 30",
         has_hours: true,
+        events: &[],
+        placeholders: &[],
+    },
+    // No notification per vote: too many (#133).
+    Show {
+        module: Module::Likes,
+        name: "Likes",
+        has_hours: false,
         events: &[],
         placeholders: &[],
     },
@@ -94,13 +102,16 @@ impl Show {
         match self.module {
             Module::Dedications => "show_dedications",
             Module::Match => "show_match",
+            Module::Likes => "show_likes",
             _ => "show_top30",
         }
     }
 
-    /// Every event it sends: the common ones, then its own.
+    /// Every event it sends: the common ones (for a show with hours,
+    /// which opens and closes), then its own.
     pub fn all_events(self) -> impl Iterator<Item = (&'static str, &'static str, bool)> {
-        COMMON_EVENTS.into_iter().chain(self.events.iter().copied())
+        let common: &[_] = if self.has_hours { &COMMON_EVENTS } else { &[] };
+        common.iter().copied().chain(self.events.iter().copied())
     }
 
     pub fn all_placeholders(self) -> impl Iterator<Item = &'static str> {
@@ -925,6 +936,28 @@ mod tests {
         ok.hours = vec![range(&[1, 2], 0, 24)];
         ok.website.closed_message = "Back {day} at {hour}, {unknown".to_owned();
         assert_eq!(ok.check(show), Ok(()));
+    }
+
+    #[test]
+    fn likes_have_no_hours_and_no_events() {
+        let likes = Show::of(Module::Likes).unwrap();
+        let mut settings = ShowSettings::default();
+        settings.complete(likes);
+        assert!(settings.notifications.events.is_empty());
+        assert_eq!(settings.check(likes), Ok(()));
+        settings.hours = vec![range(&[1], 17, 18)];
+        assert!(settings.check(likes).unwrap_err().contains("no hours"));
+        let public = ShowPublic::new(Module::Likes, &ShowSettings::default(), "Europe/Paris");
+        assert!(public.status(Timestamp::now()).open);
+        let off = ShowSettings {
+            enabled: false,
+            ..ShowSettings::default()
+        };
+        assert!(
+            !ShowPublic::new(Module::Likes, &off, "UTC")
+                .status(Timestamp::now())
+                .open
+        );
     }
 
     #[test]

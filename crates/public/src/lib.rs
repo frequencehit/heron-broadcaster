@@ -103,8 +103,38 @@ struct ApiHealth {
     last_ok: Option<Instant>,
 }
 
-/// Votes added up, by path (`main/match/vote`), then by fields.
-type Batches = HashMap<String, HashMap<String, (Map<String, Value>, u64)>>;
+/// Writes waiting for the next batch, by path (`main/match/vote`).
+type Batches = HashMap<String, Batch>;
+
+/// The writes of one path until they are sent.
+enum Batch {
+    /// Added up by fields: the fields and their count.
+    Counts(HashMap<String, (Map<String, Value>, u64)>),
+    /// The last write of each device, by its hash.
+    Latest(HashMap<String, Map<String, Value>>),
+}
+
+impl Batch {
+    /// The body sent to the API.
+    fn body(self) -> Value {
+        match self {
+            Self::Counts(counts) => {
+                let counts: Vec<Value> = counts
+                    .into_values()
+                    .map(|(fields, count)| json!({"fields": fields, "count": count}))
+                    .collect();
+                json!({ "counts": counts })
+            }
+            Self::Latest(writes) => {
+                let writes: Vec<Value> = writes
+                    .into_iter()
+                    .map(|(device, fields)| json!({"device": device, "fields": fields}))
+                    .collect();
+                json!({ "writes": writes })
+            }
+        }
+    }
+}
 
 pub struct Gateway {
     pub config: Config,
@@ -321,12 +351,24 @@ impl Gateway {
     fn add_to_batch(&self, path: String, fields: Map<String, Value>) {
         let key = Value::Object(fields.clone()).to_string();
         let mut batches = self.batches.lock().unwrap_or_else(PoisonError::into_inner);
-        batches
+        let batch = batches
             .entry(path)
-            .or_default()
-            .entry(key)
-            .or_insert((fields, 0))
-            .1 += 1;
+            .or_insert_with(|| Batch::Counts(HashMap::new()));
+        if let Batch::Counts(counts) = batch {
+            counts.entry(key).or_insert((fields, 0)).1 += 1;
+        }
+    }
+
+    /// Keeps a device's write for the next batch, in place of its earlier
+    /// one.
+    fn keep_latest(&self, path: String, device: &str, fields: Map<String, Value>) {
+        let mut batches = self.batches.lock().unwrap_or_else(PoisonError::into_inner);
+        let batch = batches
+            .entry(path)
+            .or_insert_with(|| Batch::Latest(HashMap::new()));
+        if let Batch::Latest(writes) = batch {
+            writes.insert(device.to_owned(), fields);
+        }
     }
 
     /// Sends the writes added up since the last time, one request per path.
@@ -336,16 +378,12 @@ impl Gateway {
         let Some(token) = self.config.token.as_deref() else {
             return;
         };
-        for (path, counts) in batches {
-            let counts: Vec<Value> = counts
-                .into_values()
-                .map(|(fields, count)| json!({"fields": fields, "count": count}))
-                .collect();
+        for (path, batch) in batches {
             let sent = self
                 .http
                 .post(self.api(&format!("/api/v1/gateway/stations/{path}")))
                 .bearer_auth(token)
-                .json(&json!({ "counts": counts }))
+                .json(&batch.body())
                 .send()
                 .await
                 .and_then(reqwest::Response::error_for_status);
