@@ -1701,6 +1701,22 @@ mod tests {
     }
 
     #[test]
+    fn an_announcement_follows_a_jingle() {
+        // Categories 1 and 2 are jingles: never two in a row.
+        let mut library = library(vec![slot(1, Method::Random)]);
+        library.no_two_in_a_row = HashMap::from([(1, 7), (2, 7)]);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 9 * HOUR));
+        let at = 9 * HOUR + MIN;
+        let mut rng = Rng::new(3);
+        // A slot's pick keeps the rule; an announcement, over the next
+        // track's intro, does not.
+        assert!(from_category(&library, &history, at, 2, &[], true, &mut rng).is_none());
+        let pick = from_category(&library, &history, at, 2, &[], false, &mut rng).unwrap();
+        assert_eq!(pick.explanation.category_id, Some(2));
+    }
+
+    #[test]
     fn a_category_gives_its_tracks_with_its_rules_and_nothing_else() {
         let library = library(vec![slot(1, Method::Random)]);
         let mut history = History::default();
