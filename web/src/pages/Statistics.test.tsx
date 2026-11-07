@@ -40,6 +40,7 @@ function show(
   window.history.replaceState(null, "", `/statistics${search}`);
   chooseStation(1);
   answer({
+    "GET /api/v1/stations": [station(1, "Heron")],
     "GET /api/v1/stations/{id}/modules": { on: { medleys: true, cover_art: true, listener_statistics: true, webhooks: true } },
     "GET /api/v1/stations/{station_id}/settings/station": { timezone: "UTC", public_url: null },
     "GET /api/v1/stations/{station_id}/outputs": [],
@@ -86,6 +87,56 @@ function show(
     ...more,
   });
   renderApp(<Statistics />);
+}
+
+function station(id: number, name: string): Schemas["StationInfo"] {
+  return { id, name, code: name.toLowerCase().replace(/[^a-z0-9]/g, ""), enabled: true, position: id, engine_variable: "", engine_configured: true, engine_taken_by: null };
+}
+
+const STATIONS = [station(1, "Heron"), station(2, "Hits 80"), station(3, "Jazz")];
+
+function ref(id: number) {
+  const s = STATIONS.find((x) => x.id === id) ?? station(id, `#${id}`);
+  return { station_id: s.id, code: s.code, name: s.name };
+}
+
+/** The ids a route of several stations was asked for. */
+function asked(stations: unknown): number[] {
+  return stations === "all" ? [1, 2, 3] : String(stations).split(",").map(Number);
+}
+
+/** The routes of several stations, answered for the stations asked. */
+function several(count: number): Record<string, unknown> {
+  const ids = (options: unknown) => asked((options as { params: { query: { stations: string } } }).params.query.stations).filter((id) => id <= count);
+  const share = (name: string, listener_share: number) => ({ kind: "named", name, listeners: 4, listener_share, sessions: 4, ttsl_hours: 1, ttsl_share: listener_share });
+  return {
+    "GET /api/v1/stations": STATIONS.slice(0, count),
+    "GET /api/v1/stations/listeners/now": (o: unknown) => ({ stations: ids(o).map((id) => ({ ...ref(id), total: id * 2 })), total: 12 }),
+    "GET /api/v1/stations/listeners/samples": (o: unknown) => ({
+      stations: ids(o).map((id) => ({ ...ref(id), samples: [{ at_unix_ms: Date.UTC(2026, 10, 7, 8), listeners: id }] })),
+      total: [{ at_unix_ms: Date.UTC(2026, 10, 7, 8), listeners: 6 }],
+    }),
+    "GET /api/v1/stations/listeners/audience": (o: unknown) => ({
+      stations: ids(o).map((id) => ({ ...ref(id), current: { ...CURRENT, cume: 10 * id, sessions: 10 * id }, previous: PREVIOUS })),
+      total: { current: { ...CURRENT, cume: 25 }, previous: PREVIOUS },
+    }),
+    "GET /api/v1/stations/listeners/days": (o: unknown) => ({
+      stations: ids(o).map((id) => ({
+        ...ref(id),
+        periods: [{ day: "2026-11-06", hour: null, days: 1, minutes: 60, peak: id, average: id, listening_hours: id, sessions: null, average_session_s: null, distinct_listeners: null, listener_days: null }],
+      })),
+      total: [],
+    }),
+    "GET /api/v1/stations/listeners/hours-of-day": (o: unknown) => ({
+      stations: ids(o).map((id) => ({ ...ref(id), hours: [{ hour: 8, days: 30, average: id, peak: id, listening_hours: id, tune_in: null, tune_out: null }] })),
+      total: [{ hour: 8, days: 30, average: 3, peak: 3, listening_hours: 3, tune_in: null, tune_out: null }],
+    }),
+    "GET /api/v1/stations/listeners/breakdown": (o: unknown) => ({
+      geoip: "DBIP-Country-Lite",
+      stations: ids(o).map((id) => ({ ...ref(id), groups: id === 1 ? [share("FR", 1)] : [share("FR", 0.5), share("BE", 0.5)] })),
+      total: [share("FR", 0.75), share("BE", 0.25)],
+    }),
+  };
 }
 
 function query(route: string): Record<string, unknown> | undefined {
@@ -209,5 +260,70 @@ describe("Statistics", () => {
     const none: Audience = { ...CURRENT, sessions: null, ttsl_hours: null, atsl_s: null, median_session_s: null, cume: null, listener_days: null, aqh: null, session_lengths: null };
     show("", { current: none, previous: none });
     expect(await screen.findByText(t("statistics.noAudience"))).toBeTruthy();
+  });
+
+  it("offers no choice of stations to a user with one", async () => {
+    show("?stations=all");
+    expect(await screen.findByText(t("statistics.devicesPlayers"))).toBeTruthy();
+    expect(screen.queryByLabelText(t("statistics.stationsView"))).toBeNull();
+    // The address asks for all of them: one station is shown all the same.
+    expect(sent("GET /api/v1/stations/listeners/audience")).toHaveLength(0);
+  });
+
+  it("adds up every station but the tracks listeners leave", async () => {
+    show("?stations=all", undefined, several(2));
+    const choice = (await screen.findByLabelText(t("statistics.stationsView"))) as HTMLSelectElement;
+    await waitFor(() => expect(choice.value).toBe("all"));
+    for (const route of ["audience", "days", "hours-of-day", "breakdown", "samples", "now"]) {
+      await waitFor(() => expect(sent(`GET /api/v1/stations/listeners/${route}`).length).toBeGreaterThan(0));
+      const call = sent(`GET /api/v1/stations/listeners/${route}`).at(-1);
+      expect((call?.options as { params: { query: { stations: string } } }).params.query.stations).toBe("all");
+    }
+    // The stations' total: their cume, a listener of two stations once.
+    expect(await screen.findByRole("button", { name: t("statistics.about", { name: t("statistics.cume") }), description: t("statistics.cumeTipStations") })).toBeTruthy();
+    expect(screen.getByText("25")).toBeTruthy();
+    // Outputs and servers are not shared: All, disabled.
+    const output = screen.getByLabelText(t("statistics.output")) as HTMLSelectElement;
+    expect(output.disabled).toBe(true);
+    expect(screen.getByText(t("statistics.allOutputs"))).toBeTruthy();
+    // The tracks listeners leave: the switcher's station, named.
+    expect(screen.getByText(`${t("statistics.departures")} · Heron`)).toBeTruthy();
+    expect(query("tracks")).toBeTruthy();
+    expect(screen.getByText(t("statistics.howStations"))).toBeTruthy();
+    // CSV of the stations, with their column.
+    const csv = screen.getAllByRole("link", { name: t("statistics.csv") }).map((a) => a.getAttribute("href") ?? "");
+    expect(csv.some((href) => href.startsWith("/api/v1/stations/listeners/audience?") && href.includes("stations=all"))).toBe(true);
+  });
+
+  it("compares the station with another one, side by side", async () => {
+    show("", undefined, several(2));
+    const choice = await screen.findByLabelText(t("statistics.stationsView"));
+    // Only two stations: no comparison of all of them.
+    expect(screen.queryByText(t("statistics.compareAll"))).toBeNull();
+    fireEvent.change(choice, { target: { value: "1,2" } });
+    await waitFor(() => expect(window.location.search).toBe("?stations=1%2C2"));
+    // Hits 80 against Heron: twice the cume and the sessions (and today).
+    expect((await screen.findAllByText(t("statistics.versus", { name: "Hits 80", other: "Heron", change: "+100%" }))).length).toBeGreaterThan(1);
+    // Lines, one per station, and a column of shares per station.
+    expect(await screen.findByRole("img", { name: t("statistics.todayChart") })).toBeTruthy();
+    expect(await screen.findByRole("img", { name: t("statistics.hoursOfDayChart") })).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByRole("columnheader", { name: "Hits 80" }).length).toBeGreaterThan(0));
+    expect(screen.getAllByText("Belgium").length).toBeGreaterThan(0);
+    const call = sent("GET /api/v1/stations/listeners/audience").at(-1);
+    expect((call?.options as { params: { query: { stations: string } } }).params.query.stations).toBe("1,2");
+    // Back to this station.
+    fireEvent.change(choice, { target: { value: "" } });
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  it("compares all stations in a table", async () => {
+    show("?stations=compare-all", undefined, several(3));
+    expect(await screen.findByRole("columnheader", { name: t("statistics.station") })).toBeTruthy();
+    const rows = screen.getAllByRole("row").map((row) => row.textContent ?? "");
+    for (const name of ["Heron", "Hits 80", "Jazz", t("statistics.allStations")]) {
+      expect(rows.some((row) => row.startsWith(` ${name}`) || row.startsWith(name))).toBe(true);
+    }
+    expect(screen.getByText(t("statistics.compareHelp"))).toBeTruthy();
+    expect(await screen.findByRole("img", { name: `${t("statistics.overTime")}: ${t("statistics.listeningHours")}` })).toBeTruthy();
   });
 });

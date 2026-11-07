@@ -141,6 +141,7 @@ An existing user keeps their role, as their shared role and their role on the fi
 - Shared resources keep their routes: tracks, artists, categories (with `station_ids`), medleys (with `station_ids`), labels, encoder profiles, users (with their roles per station).
 - Track and artist answers carry their plays and last play per station and in total.
 - **Public endpoints** per station: `/api/v1/public/stations/{code}/now-playing`, `/queue`, `/history`.
+- **Listener statistics of several stations** at once, each and added up: `/api/v1/stations/listeners/…?stations=all` or `?stations=1,2`, among the stations the user sees ([Listener statistics – Several stations](statistics.md#several-stations)).
 - **Webhooks** belong to a station; their deliveries carry the station's code.
 - **Live WebSocket:** one per station, `/api/v1/stations/{id}/live` (`/api/v1/live` for the first station).
 - **Compatibility:** the routes of a single station (`/queue`, `/player`, `/public/now-playing`…) keep answering, for the first station, until the next major version, so existing scripts and station websites keep working.
@@ -150,6 +151,7 @@ An existing user keeps their role, as their shared role and their role on the fi
 - A **station switcher** at the top of the menu, when there is more than one station the user can see: the On air, Queue, History, programming and station pages show the chosen station, kept per user. Library pages are shared and show the station badges; the Tracks, Categories and Medleys pages show the switcher's station at first, or another one, or all of them ([Web UI – Station filter](web.md#station-filter)).
 - **Stations** page (admins): create, rename, enable or disable, and see each station's engine variable and whether it is set.
 - **Users**: a role per station.
+- The **Statistics** page adds up or compares the stations the user sees ([Listener statistics – Web UI](statistics.md#web-ui)).
 - Track and artist pages show plays per station and in total. The track page's grids of plays by day and hour show one station or all of them added up.
 - A category created on the spot, from a track, a selection of tracks or the buffer, belongs to the station shown; the Categories page changes its stations.
 

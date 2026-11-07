@@ -1896,6 +1896,44 @@ ul.steps .bar {
   z-index: 1;
 }
 
+/* The stations of a chart comparing them. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.25rem;
+  border-radius: 2px;
+}
+
+/* A tile comparing stations: a value per station, then the difference. */
+.stat .compared {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.75rem;
+  align-items: baseline;
+}
+
+.stat .compared .value {
+  border-left: 3px solid var(--station-color, var(--accent));
+  padding-left: 0.35rem;
+}
+
 .stats-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
