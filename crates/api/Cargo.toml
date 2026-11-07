@@ -34,6 +34,8 @@ heron-service = { workspace = true, features = ["mysql", "openapi"] }
 jiff.workspace = true
 # Reads Icecast's listener lists.
 quick-xml.workspace = true
+# Listener countries, from a local GeoIP country database.
+maxminddb.workspace = true
 metrics.workspace = true
 notify.workspace = true
 # The account in an authenticator app's setup URI.

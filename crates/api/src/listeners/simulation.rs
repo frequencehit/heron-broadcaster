@@ -350,7 +350,17 @@ async fn simulated_listeners_are_counted() {
             at(24, 2, 0),
         ),
     ];
-    let collector = Collector::new(pool.clone()).unwrap();
+    // Countries from a local database: 192.0.2.0/24 is in France.
+    let geoip_dir = tempfile::tempdir().unwrap();
+    let geoip_path = geoip_dir.path().join("country.mmdb");
+    std::fs::write(
+        &geoip_path,
+        super::geoip::test_database(&[("192.0.2.0/24", "FR")]),
+    )
+    .unwrap();
+    let collector =
+        Collector::with_geoip(pool.clone(), super::geoip::GeoIp::new(Some(geoip_path))).unwrap();
+    assert_eq!(collector.geoip_database().as_deref(), Some("Test-Country"));
     let mut polls: Vec<i64> = (0..=70).map(|m| at(10, m, 1)).collect();
     polls.extend([at(23, 59, 1), at(24, 0, 1), at(24, 1, 1)]);
     let mut next_purge = 0;
@@ -425,6 +435,40 @@ async fn simulated_listeners_are_counted() {
             .await
             .unwrap()
             == 0
+    );
+
+    // The country, looked up when each session started.
+    let countries: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT user_agent, country FROM listener_sessions WHERE output_id = ? ORDER BY id",
+    )
+    .bind(live)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    for (player, country) in &countries {
+        let expected = (player != "Probe/1.0").then_some("FR");
+        assert_eq!(country.as_deref(), expected, "{player}");
+    }
+    let by_country = super::breakdown::shares(
+        &super::counted(
+            &pool,
+            1,
+            (date(2026, 10, 20), date(2026, 10, 20)),
+            super::Filter::default(),
+            super::breakdown::By::Country,
+        )
+        .await
+        .unwrap(),
+    );
+    // 4 listeners in France: fewer than 5, Other; the probe not found.
+    let kinds: Vec<(super::breakdown::ShareKind, u32)> =
+        by_country.iter().map(|s| (s.kind, s.listeners)).collect();
+    assert_eq!(
+        kinds,
+        [
+            (super::breakdown::ShareKind::Unknown, 1),
+            (super::breakdown::ShareKind::Other, 4)
+        ]
     );
 
     // The gap: three minutes without samples.

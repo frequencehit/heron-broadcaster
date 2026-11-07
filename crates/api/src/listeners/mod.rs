@@ -3,8 +3,11 @@
 //! Listener statistics, read from the stream servers (`collector`), and
 //! the routes that show them. See `docs/statistics.md`.
 
+pub mod agents;
 pub mod audience;
+pub mod breakdown;
 pub mod collector;
+pub mod geoip;
 mod icecast;
 mod sessions;
 pub mod totals;
@@ -43,7 +46,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(days))
         .routes(routes!(hours_of_day))
         .routes(routes!(tracks))
-        .routes(routes!(players))
+        .routes(routes!(breakdown_route))
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -739,71 +742,6 @@ pub async fn track_listeners(
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-pub struct PlayersQuery {
-    /// First day (`YYYY-MM-DD`, station time).
-    pub from: String,
-    /// Last day, included.
-    pub to: String,
-    /// Only this output; the whole station otherwise.
-    pub output_id: Option<u64>,
-    /// Only this server's part; every server's otherwise.
-    pub server_id: Option<u64>,
-    /// 1 to 100, 20 by default.
-    pub limit: Option<u32>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, ToSchema, sqlx::FromRow)]
-pub struct PlayerListening {
-    /// As the player sends it.
-    pub user_agent: String,
-    /// Sessions of the minimum length.
-    pub sessions: i64,
-    pub listening_hours: f64,
-}
-
-/// Sessions and listening hours by player (user agent), most listened
-/// first.
-#[utoipa::path(get, path = "/listeners/players", tag = "listeners",
-    params(PlayersQuery),
-    responses((status = 200, body = Vec<PlayerListening>), (status = "4XX", body = ErrorBody)))]
-async fn players(
-    _user: CurrentUser,
-    State(state): State<AppState>,
-    station: Station,
-    Query(query): Query<PlayersQuery>,
-) -> ApiResult<Json<Vec<PlayerListening>>> {
-    let (from, to) = period(&query.from, &query.to)?;
-    let limit = query.limit.unwrap_or(20);
-    if !(1..=100).contains(&limit) {
-        return Err(ApiError::BadRequest("limit is 1 to 100".to_owned()));
-    }
-    let statistics: StatisticsSettings =
-        settings::load(&state.pool, StatisticsSettings::SETTINGS_NAME).await?;
-    let mut sql = sqlx::QueryBuilder::new(
-        "SELECT user_agent, COUNT(*) AS sessions,
-                CAST(SUM(duration_s) / 3600 AS DOUBLE) AS listening_hours
-         FROM listener_sessions
-         WHERE output_id IN (SELECT id FROM outputs WHERE station_id = ",
-    );
-    sql.push_bind(station.id())
-        .push(") AND day >= ")
-        .push_bind(from.to_string())
-        .push(" AND day <= ")
-        .push_bind(to.to_string())
-        .push(" AND duration_s >= ")
-        .push_bind(statistics.min_session_s);
-    Filter {
-        output_id: query.output_id,
-        server_id: query.server_id,
-    }
-    .push(&mut sql, "listener_sessions");
-    sql.push(" GROUP BY user_agent ORDER BY listening_hours DESC, sessions DESC LIMIT ")
-        .push_bind(limit);
-    Ok(Json(sql.build_query_as().fetch_all(&state.pool).await?))
-}
-
-#[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
 pub struct AudienceQuery {
     /// First day (`YYYY-MM-DD`, station time).
     pub from: String,
@@ -1027,6 +965,156 @@ async fn audience_route(
             &audience_csv(&figures, &tz),
         ),
     })
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct BreakdownQuery {
+    /// First day (`YYYY-MM-DD`, station time).
+    pub from: String,
+    /// Last day, included.
+    pub to: String,
+    /// Only this output; the whole station otherwise.
+    pub output_id: Option<u64>,
+    /// Only this server's part; every server's otherwise.
+    pub server_id: Option<u64>,
+    /// By country (by default), device or player.
+    #[param(inline)]
+    pub by: Option<breakdown::By>,
+    #[param(inline)]
+    pub format: Option<Format>,
+}
+
+/// The shares of a period by country, device or player.
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct Breakdown {
+    /// The GeoIP country database's type when countries are on (a
+    /// database by DB-IP asks to be credited), `null` otherwise.
+    pub geoip: Option<String>,
+    /// The most listened first, then *Unknown* and *Other*.
+    pub groups: Vec<breakdown::Share>,
+}
+
+/// The sessions of a period of at least [`audience::PROBE_S`], each in its
+/// group.
+async fn counted(
+    pool: &sqlx::MySqlPool,
+    station_id: u64,
+    (from, to): (Date, Date),
+    filter: Filter,
+    by: breakdown::By,
+) -> ApiResult<Vec<breakdown::Counted>> {
+    type Row = (String, Vec<u8>, String, Option<String>, u32);
+    let mut sql = sqlx::QueryBuilder::new(
+        "SELECT CAST(s.day AS CHAR), s.listener_key, s.user_agent, s.country, s.duration_s
+         FROM listener_sessions s JOIN outputs o ON o.id = s.output_id
+         WHERE o.station_id = ",
+    );
+    sql.push_bind(station_id)
+        .push(" AND s.day >= ")
+        .push_bind(from.to_string())
+        .push(" AND s.day <= ")
+        .push_bind(to.to_string())
+        .push(" AND s.duration_s >= ")
+        .push_bind(audience::PROBE_S);
+    filter.push(&mut sql, "s");
+    let rows: Vec<Row> = sql.build_query_as().fetch_all(pool).await?;
+    // Many sessions share a user agent: each is read once.
+    let mut agents: std::collections::HashMap<String, (agents::Device, String)> =
+        std::collections::HashMap::new();
+    Ok(rows
+        .into_iter()
+        .filter_map(|(day, key, user_agent, country, duration_s)| {
+            let group = match by {
+                breakdown::By::Country => {
+                    country.map_or(breakdown::Group::Unknown, breakdown::Group::Named)
+                }
+                breakdown::By::Device | breakdown::By::Player => {
+                    let (device, family) = agents
+                        .entry(user_agent)
+                        .or_insert_with_key(|agent| agents::classify(agent))
+                        .clone();
+                    match by {
+                        breakdown::By::Device if device == agents::Device::Other => {
+                            breakdown::Group::Other
+                        }
+                        breakdown::By::Device => breakdown::Group::Named(device.key().to_owned()),
+                        _ if family == "Other" => breakdown::Group::Other,
+                        _ => breakdown::Group::Named(family),
+                    }
+                }
+            };
+            Some(breakdown::Counted {
+                day: day.parse().ok()?,
+                key: key.try_into().ok()?,
+                group,
+                duration_s,
+            })
+        })
+        .collect())
+}
+
+/// The shares of the listeners and of the time spent listening by
+/// country, device or player, small groups as *Other*. No address and no
+/// user agent: countries, devices and player families only.
+#[utoipa::path(get, path = "/listeners/breakdown", tag = "listeners",
+    params(BreakdownQuery),
+    responses(
+        (status = 200, body = Breakdown, content_type = "application/json"),
+        (status = "4XX", body = ErrorBody)))]
+async fn breakdown_route(
+    _user: CurrentUser,
+    State(state): State<AppState>,
+    station: Station,
+    Query(query): Query<BreakdownQuery>,
+) -> ApiResult<Response> {
+    let (from, to) = period(&query.from, &query.to)?;
+    let by = query.by.unwrap_or_default();
+    let filter = Filter {
+        output_id: query.output_id,
+        server_id: query.server_id,
+    };
+    let sessions = counted(&state.pool, station.id(), (from, to), filter, by).await?;
+    let figures = Breakdown {
+        geoip: state.listeners.geoip_database(),
+        groups: breakdown::shares(&sessions),
+    };
+    Ok(match query.format.unwrap_or_default() {
+        Format::Json => Json(figures).into_response(),
+        Format::Csv => {
+            let by = match by {
+                breakdown::By::Country => "country",
+                breakdown::By::Device => "device",
+                breakdown::By::Player => "player",
+            };
+            csv_response(
+                &format!("listeners-{by}-{from}-{to}.csv"),
+                &breakdown_csv(by, &figures.groups),
+            )
+        }
+    })
+}
+
+fn breakdown_csv(by: &str, groups: &[breakdown::Share]) -> String {
+    let mut csv = format!("{by},listeners,listener_share,sessions,ttsl_hours,ttsl_share\n");
+    for g in groups {
+        let name = match g.kind {
+            breakdown::ShareKind::Named => g.name.clone().unwrap_or_default(),
+            breakdown::ShareKind::Unknown => "unknown".to_owned(),
+            breakdown::ShareKind::Other => "other".to_owned(),
+        };
+        let _ = writeln!(
+            csv,
+            "{},{},{:.4},{},{},{:.4}",
+            field(&name),
+            g.listeners,
+            g.listener_share,
+            g.sessions,
+            number(g.ttsl_hours),
+            g.ttsl_share,
+        );
+    }
+    csv
 }
 
 fn csv_response(filename: &str, body: &str) -> Response {

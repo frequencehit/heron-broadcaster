@@ -1304,9 +1304,9 @@ async fn listener_statistics_through_the_api() {
     );
     assert_eq!(
         viewer
-            .get("/listeners/players?from=2026-10-19&to=2026-10-25")
+            .get("/listeners/breakdown?from=2026-10-19&to=2026-10-25&by=player")
             .await,
-        json!([])
+        json!({"geoip": null, "groups": []})
     );
     assert_eq!(
         viewer
@@ -1319,7 +1319,7 @@ async fn listener_statistics_through_the_api() {
         "/listeners/days?from=2026-10-25&to=2026-10-19",
         "/listeners/days?from=yesterday&to=2026-10-19",
         "/listeners/tracks?from=2026-10-19&to=2026-10-25&limit=0",
-        "/listeners/players?from=2026-10-19&to=2026-10-25&limit=101",
+        "/listeners/breakdown?from=2026-10-25&to=2026-10-19",
         "/listeners/audience?from=2026-10-25&to=2026-10-19",
     ] {
         let (status, _) = viewer.request(Method::GET, bad, None).await;
@@ -1327,12 +1327,115 @@ async fn listener_statistics_through_the_api() {
     }
     for path in [
         format!("/listeners/samples?from_unix_ms=0&to_unix_ms=60000&output_id={id}"),
-        format!("/listeners/players?from=2026-10-19&to=2026-10-25&output_id={id}&limit=5"),
         "/listeners/tracks?from=2026-10-19&to=2026-10-25&min_plays=1&limit=5".to_owned(),
         format!("/listeners/tracks?from=2026-10-19&to=2026-10-25&output_id={id}&server_id=7"),
-        "/listeners/players?from=2026-10-19&to=2026-10-25&server_id=7".to_owned(),
     ] {
         assert_eq!(viewer.get(&path).await, json!([]), "{path}");
+    }
+
+    // Sessions from known countries and players: shares by country, device
+    // and player, small groups as Other, never a user agent.
+    let players = [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) Version/17.4 Mobile/15E148 Safari/604.1",
+        "VLC/3.0.20 LibVLC/3.0.20",
+        "VLC/3.0.21 LibVLC/3.0.21",
+        "AlexaMediaPlayer/2.1.4676.0 (Linux;Android 5.1.1)",
+    ];
+    // (country, player, listeners): FR 6 on VLC (two versions), BE 5 on
+    // iPhones, IS 1 on a smart speaker, 2 not found.
+    let mut n = 0u8;
+    for (country, player, listeners) in [
+        (Some("FR"), players[1], 3),
+        (Some("FR"), players[2], 3),
+        (Some("BE"), players[0], 5),
+        (Some("IS"), players[3], 1),
+        (None, players[0], 2),
+    ] {
+        for _ in 0..listeners {
+            n += 1;
+            sqlx::query(
+                "INSERT INTO listener_sessions (output_id, server_id, listener_key, user_agent,
+                     country, client_id, day, started_at, last_seen_at, ended_at, duration_s)
+                 VALUES (?, 7, ?, ?, ?, ?, '2026-10-20', '2026-10-20 10:00:00',
+                         '2026-10-20 10:30:00', '2026-10-20 10:30:00', 1800)",
+            )
+            .bind(id)
+            .bind([n; 32].as_slice())
+            .bind(player)
+            .bind(country)
+            .bind(u64::from(n))
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+    }
+    let by = |what: &str| format!("/listeners/breakdown?from=2026-10-19&to=2026-10-25&by={what}");
+    let groups = |answer: &serde_json::Value| -> Vec<(String, Option<String>, u64)> {
+        answer["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|g| {
+                (
+                    g["kind"].as_str().unwrap().to_owned(),
+                    g["name"].as_str().map(str::to_owned),
+                    g["listeners"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let named = |kind: &str, name: Option<&str>, listeners: u64| {
+        (kind.to_owned(), name.map(str::to_owned), listeners)
+    };
+    let countries = viewer.get(&by("country")).await;
+    assert_eq!(
+        groups(&countries),
+        [
+            named("named", Some("FR"), 6),
+            named("named", Some("BE"), 5),
+            named("unknown", None, 2),
+            named("other", None, 1),
+        ]
+    );
+    assert_eq!(countries["groups"][0]["listener_share"], 6.0 / 14.0);
+    let devices = viewer.get(&by("device")).await;
+    assert_eq!(
+        groups(&devices),
+        [
+            named("named", Some("mobile"), 7),
+            named("named", Some("desktop"), 6),
+            named("other", None, 1),
+        ]
+    );
+    let player_groups = viewer.get(&by("player")).await;
+    assert_eq!(
+        groups(&player_groups),
+        [
+            named("named", Some("Safari"), 7),
+            named("named", Some("VLC"), 6),
+            named("other", None, 1),
+        ]
+    );
+    // One server, one output: the same; another server: nothing.
+    assert_eq!(
+        groups(
+            &viewer
+                .get(&format!("{}&output_id={id}&server_id=7", by("player")))
+                .await
+        )
+        .len(),
+        3
+    );
+    assert_eq!(
+        viewer.get(&format!("{}&server_id=8", by("player"))).await["groups"],
+        json!([])
+    );
+    for answer in [&countries, &devices, &player_groups] {
+        let text = answer.to_string();
+        assert!(
+            !text.contains("Mozilla") && !text.contains("3.0.2"),
+            "{text}"
+        );
     }
     let csv = |path: &str| {
         let request = viewer
@@ -1351,6 +1454,12 @@ async fn listener_statistics_through_the_api() {
     assert_eq!(lines[1], "from,2026-10-19,2026-10-12");
     assert!(lines.contains(&"ttsl_hours,,"), "{audience}");
     assert!(lines.contains(&"min_session_s,5,5"), "{audience}");
+    assert_eq!(
+        csv(&format!("{}&format=csv", by("country"))).await,
+        "country,listeners,listener_share,sessions,ttsl_hours,ttsl_share\n\
+         FR,6,0.4286,6,3.00,0.4286\nBE,5,0.3571,5,2.50,0.3571\n\
+         unknown,2,0.1429,2,1.00,0.1429\nother,1,0.0714,1,0.50,0.0714\n"
+    );
     assert_eq!(
         csv("/listeners/tracks?from=2026-10-19&to=2026-10-25&format=csv").await,
         "track_id,artist,title,plays,listeners_start,listeners_end,departures,departure_rate\n"
