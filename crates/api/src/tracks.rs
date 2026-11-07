@@ -1028,8 +1028,8 @@ pub struct TrackDetail {
     pub analysis: Option<TrackAnalysis>,
     pub overrides: TrackOverrides,
     /// Tags kept in Heron's database (library setting `write_tags` off),
-    /// shown instead of the file's: `POST /tracks/tag-overrides/clear`
-    /// gives them back to the file.
+    /// shown instead of the file's: `POST /library/tag-overrides/write`
+    /// writes them into the files.
     pub tag_overrides: Vec<TagField>,
     /// Intro, hook and next-track points, from an import.
     pub markers: Option<crate::import::TrackMarkers>,

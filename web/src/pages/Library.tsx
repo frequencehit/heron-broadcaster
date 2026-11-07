@@ -343,13 +343,6 @@ export function Library() {
       onSuccess: () => setDialog(null),
     },
   );
-  const backToFileTags = useAction(
-    () => unwrap(api.POST("/api/v1/tracks/tag-overrides/clear", { body: { selection } })),
-    {
-      success: (result) => t("library.overridesCleared", { count: result.changed }),
-      invalidate: [["tracks"], ["track"]],
-    },
-  );
   const findCovers = useAction(
     () => unwrap(api.POST("/api/v1/covers/fetch", { body: { selection } })),
     { success: t("library.findCoversQueued") },
@@ -646,15 +639,6 @@ export function Library() {
                       title: t("library.disableHelp"),
                       onSelect: () => setDialog("disable"),
                       disabled: setEnabled.isPending,
-                    },
-                    {
-                      label: t("library.backToFileTags"),
-                      title:
-                        selectedCount > MAX_TAG_EDIT
-                          ? t("library.tagsLimit", { max: MAX_TAG_EDIT })
-                          : t("library.backToFileTagsHelp"),
-                      onSelect: () => backToFileTags.mutate(undefined),
-                      disabled: selectedCount > MAX_TAG_EDIT || backToFileTags.isPending,
                     },
                     ...(coverArt
                       ? [

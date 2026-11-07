@@ -42,6 +42,10 @@ pub enum TaskRequest {
         #[serde(default)]
         from_details: Vec<TagField>,
     },
+    /// Writes every track's tags kept in Heron's database
+    /// (`track_tag_overrides`) into its file, as one `edit` batch, whatever
+    /// `write_tags` says. The tags stay kept in Heron.
+    WriteTagOverrides,
     /// Fetches the programming details of identified tracks from
     /// MusicBrainz (album, record label, ISRC, first release year, genres):
     /// every one, or only those never fetched.
@@ -92,6 +96,7 @@ impl TaskRequest {
             Self::ReviewApply { .. } => "review_apply",
             Self::ArtistRelations => "artist_relations",
             Self::EditTags { .. } => "edit_tags",
+            Self::WriteTagOverrides => "write_tag_overrides",
             Self::MusicbrainzDetails { .. } => "musicbrainz_details",
             Self::StagingImport { .. } => "staging_import",
             Self::Delete { .. } => "delete",
@@ -409,6 +414,9 @@ mod tests {
         assert_eq!(json["kind"], request.kind());
         let plan: TaskRequest = serde_json::from_str(r#"{"kind": "organize_plan"}"#).unwrap();
         assert_eq!(plan, TaskRequest::OrganizePlan);
+        let write: TaskRequest =
+            serde_json::from_str(r#"{"kind": "write_tag_overrides"}"#).unwrap();
+        assert_eq!(write.kind(), "write_tag_overrides");
         let edit: TaskRequest = serde_json::from_str(
             r#"{"kind": "edit_tags", "track_ids": [1], "set": {"genre": "Jazz", "year": null}}"#,
         )
