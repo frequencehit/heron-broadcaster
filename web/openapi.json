@@ -3087,6 +3087,59 @@
         ]
       }
     },
+    "/api/v1/gateway/stations/{code}/likes/vote": {
+      "post": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "Each device's last like or dislike, from the gateway, every second. A\nvote counts while its play is on air and up to 10 seconds after; a\ndevice's vote on a play replaces its earlier one.",
+        "operationId": "gateway_votes",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VotesTaken"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/api/v1/history": {
       "get": {
         "tags": [
@@ -3996,6 +4049,106 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryTask"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/likes/current": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The votes on the track playing, as they come.",
+        "operationId": "current",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikesNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/likes/tracks/{id}": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "A track's likes and dislikes on the station: this week, 30 days and\nalways, and its latest plays with votes.",
+        "operationId": "track_likes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The track's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackLikes"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/likes/week": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The most liked and least liked tracks of the week so far, from\nMonday 00:00 in the station's time zone, among those with at least\n`min_votes` votes.",
+        "operationId": "week",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekLikes"
                 }
               }
             }
@@ -7654,7 +7807,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or top30",
+            "description": "dedications, match, top30 or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -7692,7 +7845,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or top30",
+            "description": "dedications, match, top30 or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -8875,6 +9028,137 @@
                   "items": {
                     "$ref": "#/components/schemas/Play"
                   }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/likes/current": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The votes on the track playing, as they come.",
+        "operationId": "current_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikesNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/likes/tracks/{id}": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "A track's likes and dislikes on the station: this week, 30 days and\nalways, and its latest plays with votes.",
+        "operationId": "track_likes_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The track's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackLikes"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/likes/week": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The most liked and least liked tracks of the week so far, from\nMonday 00:00 in the station's time zone, among those with at least\n`min_votes` votes.",
+        "operationId": "week_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekLikes"
                 }
               }
             }
@@ -11614,7 +11898,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or top30",
+            "description": "dedications, match, top30 or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -11661,7 +11945,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or top30",
+            "description": "dedications, match, top30 or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -12544,6 +12828,50 @@
             }
           },
           {
+            "name": "likes_days",
+            "in": "query",
+            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, every station's when left\nout.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "liked_min",
+            "in": "query",
+            "description": "Tracks with at least this share of likes, in percent (0 to 100);\ntracks without votes are left out.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "liked_max",
+            "in": "query",
+            "description": "Tracks with at most this share of likes, in percent.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "votes_min",
+            "in": "query",
+            "description": "Tracks with at least this many votes (likes and dislikes).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -12565,7 +12893,8 @@
                 "genre",
                 "level_min",
                 "level_max",
-                "play_ratio"
+                "play_ratio",
+                "liked"
               ]
             }
           },
@@ -16870,6 +17199,23 @@
         },
         "additionalProperties": false
       },
+      "DeviceVote": {
+        "type": "object",
+        "description": "A device's last vote.",
+        "required": [
+          "device",
+          "fields"
+        ],
+        "properties": {
+          "device": {
+            "type": "string",
+            "description": "The gateway's hash of the device."
+          },
+          "fields": {
+            "$ref": "#/components/schemas/LikeFields"
+          }
+        }
+      },
       "Discarded": {
         "type": "object",
         "required": [
@@ -17990,12 +18336,25 @@
           "date",
           "time",
           "station_id",
-          "source"
+          "source",
+          "likes",
+          "dislikes"
         ],
         "properties": {
           "date": {
             "type": "string",
             "description": "`2026-10-12`, in the grid's time zone."
+          },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Listeners' likes and dislikes of the play.",
+            "minimum": 0
           },
           "source": {
             "$ref": "#/components/schemas/PlaySource"
@@ -19546,6 +19905,61 @@
           }
         }
       },
+      "LikeFields": {
+        "type": "object",
+        "description": "What a listener sent.",
+        "required": [
+          "play_id",
+          "vote"
+        ],
+        "properties": {
+          "play_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "vote": {
+            "$ref": "#/components/schemas/Vote"
+          }
+        }
+      },
+      "LikesNow": {
+        "type": "object",
+        "description": "The play on air that listeners can vote on.",
+        "required": [
+          "likes",
+          "dislikes"
+        ],
+        "properties": {
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "play_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "None while nothing can be voted on (a jingle, nothing on air).",
+            "minimum": 0
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "LinerMode": {
         "type": "string",
         "enum": [
@@ -20174,12 +20588,13 @@
           "webhooks",
           "dedications",
           "match",
-          "top30"
+          "top30",
+          "likes"
         ]
       },
       "Modules": {
         "type": "object",
-        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: for the installation, the\nmodules that existed before they could be turned off are on and the\nshows off; for a station, everything is on ([`Modules::ALL_ON`]), so a\nstation only turns off what the installation has on.",
+        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: for the installation, the\nmodules that existed before they could be turned off are on, and the\nshows off but Likes; for a station, everything is on ([`Modules::ALL_ON`]), so a\nstation only turns off what the installation has on.",
         "properties": {
           "cover_art": {
             "type": "boolean",
@@ -20188,6 +20603,10 @@
           "dedications": {
             "type": "boolean",
             "default": false
+          },
+          "likes": {
+            "type": "boolean",
+            "default": true
           },
           "listener_statistics": {
             "type": "boolean",
@@ -21362,6 +21781,37 @@
           "manual"
         ]
       },
+      "PlayVotes": {
+        "type": "object",
+        "description": "A play's votes.",
+        "required": [
+          "play_id",
+          "started_at_unix_ms",
+          "likes",
+          "dislikes"
+        ],
+        "properties": {
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "play_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "started_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "PlayerListening": {
         "type": "object",
         "required": [
@@ -22076,6 +22526,57 @@
           "start_ms": {
             "type": "integer",
             "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RankedTrack": {
+        "type": "object",
+        "description": "A track in the week's ranking.",
+        "required": [
+          "track_id",
+          "likes",
+          "dislikes",
+          "share",
+          "plays"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "plays": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its plays with votes.",
+            "minimum": 0
+          },
+          "share": {
+            "type": "number",
+            "format": "double",
+            "description": "The share of likes, 0 to 1."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
             "minimum": 0
           }
         }
@@ -25995,6 +26496,43 @@
           }
         }
       },
+      "TrackLikes": {
+        "type": "object",
+        "description": "A track's votes on a station.",
+        "required": [
+          "week",
+          "days_30",
+          "total",
+          "min_votes",
+          "plays"
+        ],
+        "properties": {
+          "days_30": {
+            "$ref": "#/components/schemas/Votes",
+            "description": "The last 30 days."
+          },
+          "min_votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Votes a track needs to be ranked.",
+            "minimum": 0
+          },
+          "plays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlayVotes"
+            },
+            "description": "Its latest plays with votes, the latest first."
+          },
+          "total": {
+            "$ref": "#/components/schemas/Votes"
+          },
+          "week": {
+            "$ref": "#/components/schemas/Votes",
+            "description": "Since Monday 00:00, in the station's time zone."
+          }
+        }
+      },
       "TrackListeners": {
         "type": "object",
         "description": "A track's listeners over its plays of a period.",
@@ -26369,6 +26907,33 @@
             ],
             "description": "Tracks with none of these labels."
           },
+          "liked_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks with at most this share of likes, in percent.",
+            "minimum": 0
+          },
+          "liked_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks with at least this share of likes, in percent (0 to 100);\ntracks without votes are left out.",
+            "minimum": 0
+          },
+          "likes_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, every station's when left\nout.",
+            "minimum": 0
+          },
           "limit": {
             "type": [
               "integer",
@@ -26474,6 +27039,15 @@
             "description": "Count plays on this station only: play counts, last played, their\nsort, `never_played` and `not_played_days`. Every station's when\nleft out.",
             "minimum": 0
           },
+          "votes_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks with at least this many votes (likes and dislikes).",
+            "minimum": 0
+          },
           "year_max": {
             "type": [
               "integer",
@@ -26540,7 +27114,8 @@
           "genre",
           "level_min",
           "level_max",
-          "play_ratio"
+          "play_ratio",
+          "liked"
         ]
       },
       "TrackSummary": {
@@ -26555,6 +27130,8 @@
           "added_at_unix_ms",
           "play_count",
           "play_ratio",
+          "likes",
+          "dislikes",
           "labels"
         ],
         "properties": {
@@ -26652,6 +27229,11 @@
             ],
             "description": "Who disabled it everywhere (a username; none for a user since\ndeleted), while it is disabled."
           },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "duration_ms": {
             "type": [
               "integer",
@@ -26710,6 +27292,12 @@
             ],
             "format": "double",
             "description": "The lowest and highest peak between the cue points, in dBFS (−72:\nthat or below); none until computed from the waveform."
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Listeners' likes and dislikes over `likes_days`\n(`docs/listener-interaction.md#likes`).",
+            "minimum": 0
           },
           "missing": {
             "type": "boolean"
@@ -27477,6 +28065,70 @@
           }
         ]
       },
+      "Vote": {
+        "type": "string",
+        "description": "Like or dislike.",
+        "enum": [
+          "like",
+          "dislike"
+        ]
+      },
+      "VoteBatch": {
+        "type": "object",
+        "description": "Each device's last vote since the last batch.",
+        "required": [
+          "writes"
+        ],
+        "properties": {
+          "writes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceVote"
+            }
+          }
+        }
+      },
+      "Votes": {
+        "type": "object",
+        "description": "Likes and dislikes.",
+        "required": [
+          "likes",
+          "dislikes"
+        ],
+        "properties": {
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "VotesTaken": {
+        "type": "object",
+        "required": [
+          "counted",
+          "dropped"
+        ],
+        "properties": {
+          "counted": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The votes counted.",
+            "minimum": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Those dropped: their play ended, is not music, or is another\nstation's.",
+            "minimum": 0
+          }
+        }
+      },
       "Waveform": {
         "type": "object",
         "required": [
@@ -27717,6 +28369,41 @@
         },
         "additionalProperties": false
       },
+      "WeekLikes": {
+        "type": "object",
+        "description": "The week's most and least liked tracks.",
+        "required": [
+          "from_unix_ms",
+          "min_votes",
+          "most_liked",
+          "least_liked"
+        ],
+        "properties": {
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monday 00:00, in the station's time zone."
+          },
+          "least_liked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankedTrack"
+            }
+          },
+          "min_votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Votes a track needs to be ranked.",
+            "minimum": 0
+          },
+          "most_liked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankedTrack"
+            }
+          }
+        }
+      },
       "WeightSettings": {
         "type": "object",
         "description": "Weights move with plays and requests (multiplied by these factors).",
@@ -27909,6 +28596,10 @@
     {
       "name": "shows",
       "description": "The shows listeners take part in from the website: hours, website, notifications"
+    },
+    {
+      "name": "likes",
+      "description": "Listeners' likes and dislikes of the tracks played, per station"
     },
     {
       "name": "gateway",
