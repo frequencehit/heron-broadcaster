@@ -34,15 +34,15 @@ pub use draw::{DrawDepth, DrawLog};
 pub use exact::{
     ExactLog, ExactMode, ExactTime, FillKind, FillLog, Medley, MedleyCut, Met, Window,
 };
-pub use lookahead::LookaheadLog;
+pub use lookahead::{LookaheadLog, Plan};
 pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
 pub use rules::{AcrossWindows, SeparationOverrides, StationWindows, Windows};
 pub use schedule::{Period, Schedule, ScheduleId};
 pub use select::{
-    Blocked, Explanation, Outcome, Pick, SeparationRule, SkipReason, SkippedSlot, from_category,
-    next, next_outcome,
+    Blocked, Explanation, Outcome, Pick, SeparationRule, SkipReason, SkippedSlot, exact_ahead,
+    from_category, next, next_outcome, next_planned,
 };
 pub use sim::{SimulatedPick, Simulation, Violation, audit, simulate};
 

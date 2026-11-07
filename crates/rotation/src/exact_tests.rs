@@ -166,9 +166,22 @@ fn before_an_exact_time_tracks_landing_in_the_window_are_preferred() {
         let pick = pick(&library, &History::default(), 57 * MIN, at(0, 0), seed);
         assert_eq!(pick.track, 2, "seed {seed}");
     }
-    // Far from it, every track ends before the window: all are drawn.
+    // Far from it, every track ends before the window: all are drawn (one
+    // pick at a time, without the fills, which choose by how they end).
     let picked: std::collections::HashSet<TrackId> = (0..40)
-        .map(|seed| pick(&library, &History::default(), 10 * MIN, at(0, 0), seed).track)
+        .filter_map(|seed| {
+            crate::select::outcome(
+                &library,
+                &History::default(),
+                10 * MIN,
+                Some(&at(0, 0)),
+                &mut Rng::new(seed),
+                false,
+                &mut None,
+            )
+            .pick
+        })
+        .map(|pick| pick.track)
         .collect();
     assert_eq!(picked.len(), 3);
 }
@@ -253,7 +266,8 @@ fn hard_cuts_what_plays_at_the_exact_time() {
     assert_eq!(news.explanation.at_unix_ms, HOUR);
     assert_eq!(news.start_at_ms, Some(HOUR));
     assert!(log.faded && log.in_window);
-    assert_eq!((log.met, log.before_s, log.after_s), (Met::OnTime, 0, 0));
+    // Its window is the early tolerance.
+    assert_eq!((log.met, log.before_s, log.after_s), (Met::OnTime, 10, 0));
     // In hard mode a track crossing the exact time still plays: it is cut.
     let first = pick(&library, &History::default(), 58 * MIN, at(1, 0), 1);
     assert_eq!(first.track, 1);
@@ -600,6 +614,7 @@ fn a_hard_exact_time_draws_wider_before_cutting_a_track() {
             Some(&at(1, 0)),
             &mut Rng::new(seed),
             false,
+            &mut None,
         )
         .pick
         .unwrap();
