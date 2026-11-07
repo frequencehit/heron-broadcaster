@@ -48,13 +48,13 @@ A [module](modules.md) turned off for the station shown disappears: its entries 
 | Cover art | Covers everywhere (On air, Queue, History, the track list with its column, *No cover* filter and *Find covers*, the track's page), the covers to check on *To organize*, the Cover Art Archive lookup in the library settings, the station logo |
 | Listener statistics | The Statistics page, the listeners of the status bar, On air and the Outputs page (with the stream servers' admin credentials and relays), the statistics settings |
 | Webhooks | The Webhooks page |
-| Restrictions | The Restrictions page, the restrictions link of an artist |
-| Equalizer | The EQ page |
+| Restrictions | The Restrictions page, the restrictions link and *Restrict* button of an artist |
+| Equalizer | The EQ page, the *EQ* badge of the decks On air |
 | Processing | The Processing page |
 | Trash | The Trash page, its links from the track list and a track's page |
-| To organize | The To organize page, the link from a track's page |
-| Artists | The Artists page, the links to it (restrictions, the track's page) |
-| Labels | The Labels page, the track list's labels column, filters and *Labels* action, the same in the import buffer, a track's labels, *Fill from a label* on the Categories page |
+| To organize | The To organize page, a track's *needs review* banner, the link from the tags dialog |
+| Artists | The Artists page, the links to it from the Restrictions page |
+| Labels | The Labels page, the track list's labels column, filters and *Labels* action, the same in the import buffer, a track's labels, *Fill from a label* on the Categories page, the label of a medley's recipe |
 
 An address of a page that is off (a bookmark, a link) shows *This module is turned off* instead, with a link to where an admin turns it on.
 
