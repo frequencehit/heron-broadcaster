@@ -9,6 +9,7 @@ import { type Schemas, api, done, unwrap } from "../api";
 import { CoverImage, sendImage } from "../components/Cover";
 import { ModuleSwitches } from "../components/Modules";
 import { DaypartSettings } from "../components/Dayparts";
+import { DrawDepthDiagram } from "../components/DrawDepth";
 import { Card, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
 import { type PlainKey, number, rich, t } from "../i18n";
 import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
@@ -254,34 +255,39 @@ function RotationCard() {
           <fieldset>
             <legend>{t("draw.title")}</legend>
             <p className="muted small">{t("settings.drawHelp")}</p>
-            <div className="form-grid">
-              <Field label={t("draw.start")}>
-                <NumberInput
-                  value={draft.draw.start_pct}
-                  min={1}
-                  max={draft.draw.max_pct}
-                  step={1}
-                  suffix="%"
-                  disabled={!canEdit}
-                  onChange={(pct) => set({ draw: { ...draft.draw, start_pct: Math.round(pct) } })}
-                />
-              </Field>
-              <Field label={t("draw.max")}>
-                <NumberInput
-                  value={draft.draw.max_pct}
-                  min={draft.draw.start_pct}
-                  max={100}
-                  step={1}
-                  suffix="%"
-                  disabled={!canEdit}
-                  onChange={(pct) => set({ draw: { ...draft.draw, max_pct: Math.round(pct) } })}
-                />
-              </Field>
+            <div className="draw-columns">
+              <div>
+              <div>
+                <Field label={t("draw.start")}>
+                  <NumberInput
+                    value={draft.draw.start_pct}
+                    min={1}
+                    max={draft.draw.max_pct}
+                    step={1}
+                    suffix="%"
+                    disabled={!canEdit}
+                    onChange={(pct) => set({ draw: { ...draft.draw, start_pct: Math.round(pct) } })}
+                  />
+                </Field>
+                <Field label={t("draw.max")}>
+                  <NumberInput
+                    value={draft.draw.max_pct}
+                    min={draft.draw.start_pct}
+                    max={100}
+                    step={1}
+                    suffix="%"
+                    disabled={!canEdit}
+                    onChange={(pct) => set({ draw: { ...draft.draw, max_pct: Math.round(pct) } })}
+                  />
+                </Field>
+              </div>
+              <details className="small">
+                <summary>{t("settings.drawMethods")}</summary>
+                <p className="muted">{t("draw.methods")}</p>
+              </details>
+              </div>
+              <DrawDepthDiagram start={draft.draw.start_pct} max={draft.draw.max_pct} />
             </div>
-            <details className="small">
-              <summary>{t("settings.drawMethods")}</summary>
-              <p className="muted">{t("draw.methods")}</p>
-            </details>
           </fieldset>
           <fieldset>
             <legend>{t("settings.relaxTitle")}</legend>
