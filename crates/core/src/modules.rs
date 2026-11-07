@@ -207,7 +207,11 @@ mod tests {
         let stored = Modules::parse(Some(r#"{"medleys": false, "later": true}"#));
         assert!(!stored.is_on(Module::Medleys));
         assert!(Module::ALL[1..4].iter().all(|module| stored.is_on(*module)));
-        assert!(Module::SHOWS[..3].iter().all(|module| !stored.is_on(*module)));
+        assert!(
+            Module::SHOWS[..3]
+                .iter()
+                .all(|module| !stored.is_on(*module))
+        );
         assert!(stored.is_on(Module::Likes), "likes are on by default");
         assert_eq!(Modules::parse(Some("not json")), Modules::default());
     }

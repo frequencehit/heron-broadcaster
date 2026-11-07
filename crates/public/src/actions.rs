@@ -216,7 +216,10 @@ pub(crate) mod tests {
             .check(&serde_json::json!({"play_id": 12, "vote": "like"}))
             .unwrap();
         for (body, error) in [
-            (serde_json::json!({"play_id": 12, "vote": "love"}), "one of like, dislike"),
+            (
+                serde_json::json!({"play_id": 12, "vote": "love"}),
+                "one of like, dislike",
+            ),
             (serde_json::json!({"play_id": 12, "vote": 1}), "one of"),
             (serde_json::json!({"vote": "like"}), "play_id is required"),
         ] {

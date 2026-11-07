@@ -24,8 +24,18 @@
 
   var TEXT = {
     en: {
-      names: { dedications: "Dedications", match: "The match", top30: "Top 30" },
+      names: { dedications: "Dedications", match: "The match", top30: "Top 30", likes: "Do you like it?" },
       until: "Until {hour}",
+      likes: {
+        sub: "Only the track playing can be voted on",
+        like: "I like it",
+        dislike: "I don't like it",
+        nothing: "Nothing to vote on right now.",
+        sending: "Sending…",
+        thanks: "Thank you! You can change your mind while it plays.",
+        refused: "Your vote could not be counted. Try again.",
+        closed: "This track has ended: the vote is closed.",
+      },
       open: "Open now",
       closed: "{name}: closed",
       back: "Back {day} at {hour}.",
@@ -33,8 +43,18 @@
       sep: " to ",
     },
     fr: {
-      names: { dedications: "Dédicaces", match: "Le match", top30: "Top 30" },
+      names: { dedications: "Dédicaces", match: "Le match", top30: "Top 30", likes: "Vous aimez ?" },
       until: "Jusqu'à {hour}",
+      likes: {
+        sub: "On ne vote que pour le titre en cours",
+        like: "J'aime",
+        dislike: "J'aime pas",
+        nothing: "Rien à voter pour l'instant.",
+        sending: "Envoi…",
+        thanks: "Merci ! Vous pouvez changer d'avis tant que le titre passe.",
+        refused: "Votre vote n'a pas pu être compté. Réessayez.",
+        closed: "Ce titre est fini : vote fermé.",
+      },
       open: "Ouvert en ce moment",
       closed: "{name} : fermé",
       back: "Réouverture {day} à {hour}.",
@@ -42,8 +62,18 @@
       sep: " au ",
     },
     es: {
-      names: { dedications: "Dedicatorias", match: "El duelo", top30: "Top 30" },
+      names: { dedications: "Dedicatorias", match: "El duelo", top30: "Top 30", likes: "¿Te gusta?" },
       until: "Hasta las {hour}",
+      likes: {
+        sub: "Solo se vota la canción que suena",
+        like: "Me gusta",
+        dislike: "No me gusta",
+        nothing: "Nada que votar ahora.",
+        sending: "Enviando…",
+        thanks: "¡Gracias! Puedes cambiar de opinión mientras suena.",
+        refused: "No se pudo contar tu voto. Inténtalo de nuevo.",
+        closed: "Esta canción terminó: votación cerrada.",
+      },
       open: "Abierto ahora",
       closed: "{name}: cerrado",
       back: "Vuelve el {day} a las {hour}.",
@@ -51,8 +81,18 @@
       sep: " a ",
     },
     de: {
-      names: { dedications: "Widmungen", match: "Das Duell", top30: "Top 30" },
+      names: { dedications: "Widmungen", match: "Das Duell", top30: "Top 30", likes: "Gefällt's dir?" },
       until: "Bis {hour}",
+      likes: {
+        sub: "Abgestimmt wird nur über den laufenden Titel",
+        like: "Gefällt mir",
+        dislike: "Gefällt mir nicht",
+        nothing: "Gerade gibt es nichts abzustimmen.",
+        sending: "Wird gesendet…",
+        thanks: "Danke! Solange der Titel läuft, kannst du deine Meinung ändern.",
+        refused: "Deine Stimme konnte nicht gezählt werden. Versuch es noch einmal.",
+        closed: "Dieser Titel ist vorbei: Abstimmung geschlossen.",
+      },
       open: "Jetzt geöffnet",
       closed: "{name}: geschlossen",
       back: "Wieder da am {day} um {hour}.",
@@ -125,6 +165,14 @@
     ".muted{color:#5f6067;margin:0}" +
     ".np{display:flex;gap:10px;align-items:center;margin-top:10px}" +
     ".np img{width:48px;height:48px;border-radius:6px;object-fit:cover}" +
+    ".track{margin:0}.track strong{display:block;font-size:17px}" +
+    ".page .track strong{font-size:22px}" +
+    ".votes{display:flex;gap:10px;margin:12px 0 8px;flex-wrap:wrap}" +
+    ".vote{font:inherit;font-weight:600;display:inline-flex;align-items:center;gap:8px;padding:9px 18px;" +
+    "border-radius:999px;border:1.5px solid #c9c9c4;background:transparent;color:inherit;cursor:pointer}" +
+    ".vote[aria-pressed=true]{background:var(--color);border-color:var(--color);color:#fff}" +
+    ".vote svg{width:20px;height:20px}" +
+    ".page .vote{font-size:18px;padding:12px 24px}" +
     "@media (prefers-color-scheme: dark){.card{background:#1f1f1e;color:#ededea;border-color:#3a3a37}.muted,.closed svg{color:#b5b5b0}}";
   root.appendChild(style);
   var box = el("div", mode);
@@ -152,6 +200,66 @@
     }
   }
 
+  // Likes (docs/listener-interaction.md#likes): the track playing, liked or
+  // not. The vote is kept for its play only, in memory.
+  var THUMBS = {
+    like:
+      "M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 " +
+      "2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z",
+    dislike:
+      "M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 " +
+      "2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z",
+  };
+  var mine = { play: null, vote: null, note: null };
+
+  RENDERERS.likes = function (body, show, state, api) {
+    var play = show.state && show.state.play_id;
+    var now = state.now_playing && state.now_playing.now;
+    if (!play || !now) {
+      body.appendChild(el("p", "muted", mine.vote ? t.likes.closed : t.likes.nothing));
+      return;
+    }
+    if (mine.play !== play) mine = { play: play, vote: null, note: null };
+    var track = el("p", "track");
+    track.appendChild(el("strong", "", now.title || ""));
+    if (now.artist) track.appendChild(el("span", "muted", now.artist));
+    body.appendChild(track);
+    var votes = el("div", "votes");
+    ["like", "dislike"].forEach(function (vote) {
+      var button = el("button", "vote");
+      button.type = "button";
+      button.setAttribute("aria-pressed", mine.vote === vote ? "true" : "false");
+      button.insertAdjacentHTML(
+        "beforeend",
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round" aria-hidden="true"><path d="' + THUMBS[vote] + '"/></svg>'
+      );
+      button.appendChild(document.createTextNode(t.likes[vote]));
+      button.addEventListener("click", function () {
+        if (mine.vote === vote) return;
+        var voted = mine;
+        voted.vote = vote;
+        voted.note = t.likes.sending;
+        render(latest);
+        api.send("vote", { play_id: play, vote: vote }).then(
+          function (response) {
+            voted.note = response.ok ? t.likes.thanks : response.status === 409 ? t.likes.closed : t.likes.refused;
+            if (!response.ok) voted.vote = null;
+            render(latest);
+          },
+          function () {
+            voted.note = t.likes.refused;
+            voted.vote = null;
+            render(latest);
+          }
+        );
+      });
+      votes.appendChild(button);
+    });
+    body.appendChild(votes);
+    body.appendChild(el("p", "muted", mine.note || t.likes.sub + "."));
+  };
+
   function render(state) {
     box.textContent = "";
     var show = (state.shows || []).filter(function (s) { return s.module === module; })[0];
@@ -165,7 +273,9 @@
     var head = el("div", "head");
     head.appendChild(el("p", "title", name));
     var zone = show.timezone || state.timezone;
-    if (show.open && show.closes_at_unix_ms) {
+    if (show.open && module === "likes") {
+      head.appendChild(el("p", "sub", t.likes.sub));
+    } else if (show.open && show.closes_at_unix_ms) {
       head.appendChild(el("p", "sub", fill(t.until, { hour: hour(show.closes_at_unix_ms, zone) })));
     } else if (!show.open) {
       head.appendChild(el("p", "sub", state.name || ""));
