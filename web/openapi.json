@@ -4288,6 +4288,17 @@
               "format": "int64",
               "minimum": 0
             }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part (the master or a relay); every server's\notherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -5160,7 +5171,7 @@
         "tags": [
           "outputs"
         ],
-        "summary": "Replaces an output. Credentials left out of `config` are kept, and so\nare the statistics settings when `statistics` is left out. Admins only.",
+        "summary": "Replaces an output. Credentials left out of `config` are kept. Admins\nonly.",
         "operationId": "update_output",
         "parameters": [
           {
@@ -5225,6 +5236,47 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/outputs/{id}/duplicate": {
+      "post": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Copies an output: the same server, profile and details, its name\nfollowed by `(copy)`, its mount by `-copy`, and disabled, so that two\noutputs never send to one mount. Admins only.",
+        "operationId": "duplicate_output",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputView"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -7513,6 +7565,72 @@
         }
       }
     },
+    "/api/v1/settings/stream-details": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station details sent to the stream servers.",
+        "operationId": "get_stream_details",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Replaces the station details. The outputs that follow them are pushed\nagain, and reconnect. Admins only.",
+        "operationId": "put_stream_details",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamDetails"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings/two-factor": {
       "get": {
         "tags": [
@@ -9094,6 +9212,17 @@
               "format": "int64",
               "minimum": 0
             }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part (the master or a relay); every server's\notherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -9410,7 +9539,7 @@
         "tags": [
           "outputs"
         ],
-        "summary": "Replaces an output. Credentials left out of `config` are kept, and so\nare the statistics settings when `statistics` is left out. Admins only.",
+        "summary": "Replaces an output. Credentials left out of `config` are kept. Admins\nonly.",
         "operationId": "update_output_on_station",
         "parameters": [
           {
@@ -9493,6 +9622,56 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/outputs/{id}/duplicate": {
+      "post": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Copies an output: the same server, profile and details, its name\nfollowed by `(copy)`, its mount by `-copy`, and disabled, so that two\noutputs never send to one mount. Admins only.",
+        "operationId": "duplicate_output_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputView"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -11399,6 +11578,332 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/settings/stream-details": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station details sent to the stream servers.",
+        "operationId": "get_stream_details_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Replaces the station details. The outputs that follow them are pushed\nagain, and reconnect. Admins only.",
+        "operationId": "put_stream_details_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamDetails"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/stream-servers": {
+      "get": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "The station's stream servers and relays, without their passwords.",
+        "operationId": "list_servers_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamServerView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Adds a stream server, or a relay of one. Admins only.",
+        "operationId": "create_server_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/stream-servers/{id}": {
+      "get": {
+        "tags": [
+          "outputs"
+        ],
+        "operationId": "get_server_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Replaces a stream server. Passwords left out are kept. Outputs using it\nare pushed again: those whose settings changed reconnect. Admins only.",
+        "operationId": "update_server_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Deletes a stream server no output uses and no relay repeats: `409`\notherwise, naming them. Admins only.",
+        "operationId": "delete_server_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/webhook-deliveries/{id}/retry": {
       "post": {
         "tags": [
@@ -11891,6 +12396,195 @@
         "security": [
           {}
         ]
+      }
+    },
+    "/api/v1/stream-servers": {
+      "get": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "The station's stream servers and relays, without their passwords.",
+        "operationId": "list_servers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamServerView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Adds a stream server, or a relay of one. Admins only.",
+        "operationId": "create_server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stream-servers/{id}": {
+      "get": {
+        "tags": [
+          "outputs"
+        ],
+        "operationId": "get_server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Replaces a stream server. Passwords left out are kept. Outputs using it\nare pushed again: those whose settings changed reconnect. Admins only.",
+        "operationId": "update_server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Deletes a stream server no output uses and no relay repeats: `409`\notherwise, naming them. Admins only.",
+        "operationId": "delete_server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/tokens": {
@@ -16557,6 +17251,43 @@
           }
         }
       },
+      "DetailOverrides": {
+        "type": "object",
+        "description": "The station details an output sends instead of the station's: a field\nleft out follows the station's; an empty text sends none.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "genre": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "DetailsReport": {
         "type": "object",
         "description": "What a MusicBrainz details lookup did.",
@@ -19446,7 +20177,8 @@
       "ListenersNow": {
         "type": "object",
         "required": [
-          "outputs"
+          "outputs",
+          "servers"
         ],
         "properties": {
           "outputs": {
@@ -19455,6 +20187,13 @@
               "$ref": "#/components/schemas/OutputListeners"
             },
             "description": "Each enabled output read at the last minute."
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerListeners"
+            },
+            "description": "Each server's listeners (master and relays), its outputs' parts\nadded up; missing when it could not be read."
           },
           "total": {
             "type": [
@@ -20377,7 +21116,11 @@
         "properties": {
           "config": {
             "type": "object",
-            "description": "Sink settings. Credentials left out keep their stored value."
+            "description": "Its own settings: Icecast's `mount`. Credentials left out keep\ntheir stored value."
+          },
+          "details": {
+            "$ref": "#/components/schemas/DetailOverrides",
+            "description": "The station details it overrides; left out, it follows the\nstation's."
           },
           "enabled": {
             "type": "boolean"
@@ -20396,16 +21139,14 @@
           "name": {
             "type": "string"
           },
-          "statistics": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/OutputStatisticsInput",
-                "description": "The stream server's admin credentials, for listener statistics.\nLeft out, the stored ones are kept."
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "server_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The stream server, required for Icecast: one of the station's, not\na relay.",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -20428,7 +21169,8 @@
           "output_id",
           "name",
           "sampled_at_unix_ms",
-          "sessions"
+          "sessions",
+          "servers"
         ],
         "properties": {
           "error": {
@@ -20436,7 +21178,7 @@
               "string",
               "null"
             ],
-            "description": "Why the server, or its listener list, could not be read."
+            "description": "Why a server, or its listener list, could not be read."
           },
           "listeners": {
             "type": [
@@ -20444,7 +21186,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Missing when its server could not be read.",
+            "description": "Its servers' parts added up; missing when none could be read.",
             "minimum": 0
           },
           "name": {
@@ -20459,50 +21201,16 @@
             "type": "integer",
             "format": "int64"
           },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerPart"
+            },
+            "description": "Each server's part: the master's first, then the relays'."
+          },
           "sessions": {
             "type": "boolean",
-            "description": "Whether the listener list was read: sessions are up to date."
-          }
-        }
-      },
-      "OutputStatisticsInput": {
-        "type": "object",
-        "description": "Replaces the statistics settings of an output.",
-        "properties": {
-          "admin_password": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Its password: left out, the stored one is kept; `null` removes it."
-          },
-          "admin_username": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The server's admin user; `admin` when missing."
-          }
-        },
-        "additionalProperties": false
-      },
-      "OutputStatisticsView": {
-        "type": "object",
-        "description": "What listener statistics read the stream server with.",
-        "required": [
-          "admin_password_set"
-        ],
-        "properties": {
-          "admin_password_set": {
-            "type": "boolean",
-            "description": "Whether its password is set (never sent back): without it, only\nconcurrent listeners are counted."
-          },
-          "admin_username": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The server's admin user (`admin` when missing)."
+            "description": "Whether every listener list was read: sessions are up to date."
           }
         }
       },
@@ -20567,15 +21275,19 @@
           "kind",
           "encoder_profile_id",
           "config",
+          "details",
           "secrets_set",
           "metadata_enabled",
-          "enabled",
-          "statistics"
+          "enabled"
         ],
         "properties": {
           "config": {
             "type": "object",
-            "description": "Sink settings (Icecast: host, port, mount…), without credentials."
+            "description": "Its own settings (Icecast: the mount), without credentials."
+          },
+          "details": {
+            "$ref": "#/components/schemas/DetailOverrides",
+            "description": "The station details it sends instead of the station's."
           },
           "enabled": {
             "type": "boolean"
@@ -20613,8 +21325,14 @@
             },
             "description": "Credentials set in the settings (e.g. `password`), never sent back."
           },
-          "statistics": {
-            "$ref": "#/components/schemas/OutputStatisticsView"
+          "server_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The stream server it sends to (Icecast).",
+            "minimum": 0
           },
           "status": {
             "oneOf": [
@@ -22214,6 +22932,27 @@
           }
         }
       },
+      "RelayMount": {
+        "type": "object",
+        "description": "A mount a relay repeats.",
+        "required": [
+          "mount"
+        ],
+        "properties": {
+          "mount": {
+            "type": "string",
+            "description": "The mount on the master."
+          },
+          "relay_mount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its name on the relay, when it differs."
+          }
+        },
+        "additionalProperties": false
+      },
       "ReleaseChoice": {
         "type": "object",
         "required": [
@@ -23192,6 +23931,118 @@
           "daypart",
           "daypart_days"
         ]
+      },
+      "ServerKind": {
+        "type": "string",
+        "enum": [
+          "icecast"
+        ]
+      },
+      "ServerListeners": {
+        "type": "object",
+        "description": "A stream server's listeners at the last minute.",
+        "required": [
+          "server_id",
+          "name"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listeners": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The master it relays, for a relay.",
+            "minimum": 0
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ServerPart": {
+        "type": "object",
+        "description": "A server's part of an output's listeners at the last minute: its\nmaster, or a relay.",
+        "required": [
+          "server_id",
+          "name",
+          "sessions"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listeners": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Missing when the server could not be read.",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The master it relays, for a relay.",
+            "minimum": 0
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "boolean",
+            "description": "Whether its listener list was read."
+          }
+        }
+      },
+      "ServerUse": {
+        "type": "object",
+        "description": "An output or a relay using a server.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        }
       },
       "ServiceConfig": {
         "type": "object",
@@ -24451,6 +25302,238 @@
           }
         },
         "additionalProperties": false
+      },
+      "StreamDetails": {
+        "type": "object",
+        "description": "What the station tells the stream servers about itself, shown in stream\ndirectories. Each output can override each of them.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "genre": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "public": {
+            "type": "boolean",
+            "description": "List the streams in public directories.",
+            "default": false
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The station's website.",
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "StreamServerInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "host"
+        ],
+        "properties": {
+          "admin_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Left out, the stored one is kept; `null` removes it."
+          },
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ServerKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "8000 when left out.",
+            "minimum": 0
+          },
+          "public_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relay_mounts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelayMount"
+            }
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Makes it a relay of this server of the station.",
+            "minimum": 0
+          },
+          "relay_subtract_one": {
+            "type": "boolean"
+          },
+          "source_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Left out, the stored one is kept; `null` removes it. Required for a\nserver outputs send to."
+          },
+          "source_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls": {
+            "type": "boolean",
+            "description": "Relays only for now: the engine does not send over TLS yet."
+          }
+        },
+        "additionalProperties": false
+      },
+      "StreamServerView": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "host",
+          "port",
+          "tls",
+          "source_password_set",
+          "admin_password_set",
+          "relay_subtract_one",
+          "outputs",
+          "relays"
+        ],
+        "properties": {
+          "admin_password_set": {
+            "type": "boolean",
+            "description": "Never sent back: without it, only concurrent listeners are counted."
+          },
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For the listener statistics; `admin` when missing."
+          },
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ServerKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerUse"
+            },
+            "description": "Outputs streaming to it."
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "public_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "As listeners reach the server; `http://host:port` when missing."
+          },
+          "relay_mounts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelayMount"
+            },
+            "description": "The mounts a relay repeats; missing: all of the master's."
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The master server, for a relay.",
+            "minimum": 0
+          },
+          "relay_subtract_one": {
+            "type": "boolean",
+            "description": "The relay's connection to the master counts as 1 listener per mount."
+          },
+          "relays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerUse"
+            },
+            "description": "Relays repeating it."
+          },
+          "source_password_set": {
+            "type": "boolean",
+            "description": "Never sent back."
+          },
+          "source_username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`source` when missing."
+          },
+          "tls": {
+            "type": "boolean"
+          }
+        }
       },
       "SuggestionReview": {
         "type": "object",

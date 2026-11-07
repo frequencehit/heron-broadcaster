@@ -218,8 +218,9 @@ impl ConfigSync {
         }
 
         let mut connection = self.pool.acquire().await?;
-        let outputs = outputs::load_config(&mut connection, Some(self.station_id)).await?;
+        let mut outputs = outputs::load_config(&mut connection, Some(self.station_id)).await?;
         drop(connection);
+        outputs::keep_engine_shape(&mut outputs, &engine_outputs);
         if outputs != engine_outputs {
             let json = serde_json::to_string(&outputs)
                 .map_err(|error| ApiError::Internal(error.to_string()))?;

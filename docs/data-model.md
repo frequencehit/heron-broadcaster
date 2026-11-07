@@ -157,7 +157,8 @@ See [Encoders and outputs](outputs.md). The engine never reads these tables: the
 | Table | Columns |
 |---|---|
 | `encoder_profiles` | id, name, encoder (mp3, aac, opus, vorbis, external_ffmpeg), bitrate_kbps, sample_rate, channels, options (JSON: VBR/CBR, ffmpeg binary path and arguments, …). A fresh install has `MP3 128k` |
-| `outputs` | id, name, kind (icecast, shoutcast_v1, shoutcast_v2, hls, file, pipe), encoder_profile_id, config (JSON: host, port, mount, credentials, HLS directory and segment settings, …), metadata_enabled, enabled |
+| `stream_servers` | id, station_id, name (unique on the station), kind (icecast), host, port, tls, source_username, source_password, admin_username, admin_password, public_url, relay_of (the master, for a relay), relay_mounts (JSON: the mounts a relay repeats, NULL for all), relay_subtract_one |
+| `outputs` | id, station_id, name, kind (icecast, shoutcast_v1, shoutcast_v2, hls, file, pipe), server_id (the stream server; kept from being deleted while used), encoder_profile_id, config (JSON: the sink's own settings: Icecast's mount, HLS directory and segment settings, …), details (JSON: the station details it overrides), metadata_enabled, enabled |
 
 ## Listener statistics
 
@@ -165,9 +166,9 @@ See [Listener statistics](statistics.md). No IP address is ever stored.
 
 | Table | Columns |
 |---|---|
-| `outputs` (added) | statistics (JSON: the stream server's `admin_username`, `admin_password`; never pushed to the engine) |
-| `listener_samples` | output_id (deleted with the output), sampled_at (the minute), listeners. Kept `retention_days` |
-| `listener_sessions` | id, output_id (deleted with the output), listener_key (BLAKE3 of address and player, keyed with the day's key), user_agent, client_id (the server's ID for the connection), day (station time), started_at, last_seen_at, ended_at (NULL while connected), split (ended at midnight, still connected), duration_s. Kept `retention_days` |
+| `outputs` (added) | statistics: no longer used (the admin credentials are the stream server's), NULL; older backups restore their credentials through it |
+| `listener_samples` | output_id (deleted with the output), server_id (the master or relay read), sampled_at (the minute), listeners. Kept `retention_days` |
+| `listener_sessions` | id, output_id (deleted with the output), server_id, listener_key (BLAKE3 of address and player, keyed with the day's key), user_agent, client_id (the server's ID for the connection), day (station time), started_at, last_seen_at, ended_at (NULL while connected), split (ended at midnight, still connected), duration_s. Kept `retention_days` |
 | `listener_day_keys` | day, key (random, 32 bytes). Deleted once its day can get no more sessions |
 | `listener_totals` | output_id (NULL: the whole station; deleted with the output), day, hour (NULL: the whole day), minutes (measured), peak, average, listening_hours, sessions, session_s (their total length), distinct_listeners (NULL without sessions). Kept |
 
@@ -217,4 +218,6 @@ webhooks 1──* webhook_deliveries
 users 1──* sessions, api_tokens, user_webauthn, user_recovery_codes
 users 1──1 user_totp
 encoder_profiles 1──* outputs
+stream_servers 1──* outputs
+stream_servers 1──* stream_servers   (relays, through relay_of)
 ```

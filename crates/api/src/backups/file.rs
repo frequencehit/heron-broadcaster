@@ -314,6 +314,32 @@ const TABLES: &[Table] = &[
         Mode::Upsert,
         &["name"],
     ),
+    // Rows are read in the order of their columns: `relay_of` first puts
+    // the masters (NULL) before their relays, which refer to them.
+    table(
+        "stream_servers",
+        &[
+            Plain("relay_of"),
+            Plain("id"),
+            Plain("station_id"),
+            Plain("name"),
+            Plain("kind"),
+            Plain("host"),
+            Plain("port"),
+            Plain("tls"),
+            Plain("source_username"),
+            Plain("source_password"),
+            Plain("admin_username"),
+            Plain("admin_password"),
+            Plain("public_url"),
+            Json("relay_mounts"),
+            Plain("relay_subtract_one"),
+        ],
+        Mode::Upsert,
+        &["name"],
+    ),
+    // `statistics`: NULL since stream servers; older files bring their
+    // admin credentials through it (UPGRADES).
     table(
         "outputs",
         &[
@@ -321,8 +347,10 @@ const TABLES: &[Table] = &[
             Plain("station_id"),
             Plain("name"),
             Plain("kind"),
+            Plain("server_id"),
             Plain("encoder_profile_id"),
             Json("config"),
+            Json("details"),
             Json("statistics"),
             Plain("metadata_enabled"),
             Plain("enabled"),
@@ -987,10 +1015,14 @@ fn push_value(query: &mut QueryBuilder<MySql>, col: Col, value: Value) {
 /// Migrations that change configuration a backup holds, run again on the
 /// rows of a file of an older schema once they are written. Each one does
 /// nothing to rows already in the new shape.
-const UPGRADES: &[(i64, &str)] = &[(
-    20261130000000,
-    include_str!("../../../../migrations/20261130000000_daypart_separation_per_category.sql"),
-)];
+const UPGRADES: &[(i64, &str)] = &[
+    (
+        20261130000000,
+        include_str!("../../../../migrations/20261130000000_daypart_separation_per_category.sql"),
+    ),
+    // Outputs holding their server's settings, grouped into servers.
+    (20270301000001, crate::outputs::GROUP_INTO_SERVERS),
+];
 
 /// Writes the file's configuration over the database's, in `tx`.
 pub async fn restore(
