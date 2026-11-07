@@ -144,3 +144,29 @@ impl ScratchDatabase {
 
 #[cfg(feature = "test-util")]
 static SCRATCH_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+#[cfg(test)]
+mod tests {
+    use super::MIGRATOR;
+
+    /// Two migrations with the same version break every upgrade: the
+    /// database keeps the checksum of the one applied first, and the API
+    /// then refuses to start ("previously applied but has been modified").
+    #[test]
+    fn migration_versions_are_unique() {
+        let mut seen = std::collections::HashMap::new();
+        for migration in MIGRATOR.iter() {
+            if let Some(other) = seen.insert(migration.version, &migration.description) {
+                panic!(
+                    "migrations {} share version {}: give one of them the next free version",
+                    if other < &migration.description {
+                        format!("{other} and {}", migration.description)
+                    } else {
+                        format!("{} and {other}", migration.description)
+                    },
+                    migration.version
+                );
+            }
+        }
+    }
+}
