@@ -145,4 +145,17 @@ describe("the rotation log", () => {
       "2 tracks held back by their daypart; 1 track held back by the same daypart on the days before",
     );
   });
+
+  it("says when the track's own values applied, even off", () => {
+    const own = explanation({
+      last_played_unix_ms: null,
+      daypart: { count: 4, daypart: 1, separation: 0, separation_from: "track", days: 0, last_daypart: 0 },
+    });
+    expect(daypartNote(own)).toBe("the track's own: dayparts 0");
+    const both = explanation({
+      last_played_unix_ms: null,
+      daypart: { count: 4, daypart: 1, separation: 2, separation_from: "track", days: 1, days_from: "track" },
+    });
+    expect(daypartNote(both)).toBe("the track's own: dayparts 2, same daypart 1 d");
+  });
 });

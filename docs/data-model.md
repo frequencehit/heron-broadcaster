@@ -24,7 +24,7 @@ See [M5b](roadmap/m5b-track-details-tags.md). The date a track was added is `tra
 | `tracks` (added) | album_artist, genre, year, track_number, disc_number (tags); musicbrainz_recording_id, musicbrainz_release_id (tags); codec, bitrate_kbps, bitrate_mode (cbr, vbr, lossless), sample_rate, channels; details_version (what the scanner read: older tracks are read again) |
 | `track_analysis` (added) | bpm (measured) |
 | `track_musicbrainz` | track_id, release_id and recording_id (looked up for), album, record_label, catalog_number, isrc, first_release_year, genres (JSON), fetched_at |
-| `track_programming` | track_id, bpm (set by hand, replaces the measured one), mood, sound_code (values of the scales in the `programming` settings), play_ratio (tenths, 1 to 10; NULL is 10: see [Rotation – Play ratio](rotation.md#play-ratio)), updated_at |
+| `track_programming` | track_id, bpm (set by hand, replaces the measured one), mood, sound_code (values of the scales in the `programming` settings), play_ratio (tenths, 1 to 10; NULL is 10: see [Rotation – Play ratio](rotation.md#play-ratio)), dayparts (0 to 10) and daypart_days (0 to 7): the track's own [daypart separation](rotation.md#daypart-separation), replacing its categories' (NULL: theirs), updated_at |
 | `labels` | id, name (unique ignoring case), color |
 | `track_labels` | track_id, label_id, created_at |
 

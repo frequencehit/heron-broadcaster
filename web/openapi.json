@@ -12243,6 +12243,15 @@
             }
           },
           {
+            "name": "own_dayparts",
+            "in": "query",
+            "description": "`true`: the tracks with their own daypart separation or same\ndaypart on the following days; `false`: those that follow their\ncategories'.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -12523,7 +12532,7 @@
         "tags": [
           "library"
         ],
-        "summary": "Sets the mood, sound code, tempo or play ratio of every selected track.\nOperators and admins.",
+        "summary": "Sets the mood, sound code, tempo, play ratio or own daypart separation\nof every selected track. Operators and admins.",
         "operationId": "apply_programming",
         "requestBody": {
           "content": {
@@ -16237,6 +16246,14 @@
           }
         }
       },
+      "DaypartFrom": {
+        "type": "string",
+        "description": "Where a daypart value comes from: the slot's category, or the track's\nown, which replaces it.",
+        "enum": [
+          "category",
+          "track"
+        ]
+      },
       "DaypartLog": {
         "type": "object",
         "description": "The dayparts at a pick, for the rotation log.",
@@ -16261,8 +16278,12 @@
           "days": {
             "type": "integer",
             "format": "int32",
-            "description": "The days the same daypart is kept out on after a play, from the\nslot's category, before relaxation; `windows.daypart_days` is the\none applied. Missing in picks logged before it.",
+            "description": "The days the same daypart is kept out on after a play, before\nrelaxation: the track's own, else the slot's category's\n(`days_from`); `windows.daypart_days` is the one applied. Missing\nin picks logged before it.",
             "minimum": 0
+          },
+          "days_from": {
+            "$ref": "#/components/schemas/DaypartFrom",
+            "description": "Whose `days` they are."
           },
           "last_daypart": {
             "type": [
@@ -16276,8 +16297,12 @@
           "separation": {
             "type": "integer",
             "format": "int32",
-            "description": "The daypart separation of the slot's category, before relaxation;\n`windows.dayparts` is the one applied.",
+            "description": "The daypart separation of the picked track, before relaxation: its\nown, else the slot's category's (`separation_from`);\n`windows.dayparts` is the one applied.",
             "minimum": 0
+          },
+          "separation_from": {
+            "$ref": "#/components/schemas/DaypartFrom",
+            "description": "Whose `separation` it is. Missing in picks logged before tracks had\ntheir own: the category's."
           }
         }
       },
@@ -21206,6 +21231,24 @@
             "format": "double",
             "description": "The tempo, replacing the measured one; `null` goes back to it."
           },
+          "daypart_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Their own same daypart on the following days, 0 to 7; `null` goes\nback to their categories'.",
+            "minimum": 0
+          },
+          "dayparts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Their own daypart separation, 0 to 10 (0: off for them), in place\nof their categories', on every station; `null` goes back to their\ncategories'. Missing: kept.",
+            "minimum": 0
+          },
           "mood": {
             "type": [
               "string",
@@ -25769,6 +25812,13 @@
             "description": "Only the tracks on this station: in one of its categories and in\nnone it keeps out of its library (`kept_out_category_ids` of its\n`rotation` settings), what rotation can play there.",
             "minimum": 0
           },
+          "own_dayparts": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true`: the tracks with their own daypart separation or same\ndaypart on the following days; `false`: those that follow their\ncategories'."
+          },
           "q": {
             "type": [
               "string",
@@ -25981,6 +26031,24 @@
               "null"
             ],
             "format": "int64",
+            "minimum": 0
+          },
+          "daypart_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its own same daypart on the following days, 0 to 7; none: its\ncategory's.",
+            "minimum": 0
+          },
+          "dayparts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its own daypart separation, 0 to 10, in place of its categories'\n(0: off for it); none: its category's.",
             "minimum": 0
           },
           "disabled_at_unix_ms": {

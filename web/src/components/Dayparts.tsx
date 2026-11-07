@@ -249,15 +249,32 @@ export function DaypartBadge({ explanation }: Readonly<{ explanation: Explanatio
 /**
  * What daypart separation and the same daypart on the following days did
  * for a pick: where the track last played, how far they were relaxed, how
- * many tracks they held back. Nothing when both are off.
+ * many tracks they held back, and the track's own values when it has
+ * them. Nothing when both are off and the category's.
  */
 export function daypartNote(explanation: Explanation): string | null {
   const daypart = explanation.daypart;
   const days = daypart?.days ?? 0;
-  if (!daypart || !explanation.enforce_rules || (daypart.separation === 0 && days === 0)) {
+  const ownSeparation = daypart?.separation_from === "track";
+  const ownDays = daypart?.days_from === "track";
+  if (
+    !daypart ||
+    !explanation.enforce_rules ||
+    (daypart.separation === 0 && days === 0 && !ownSeparation && !ownDays)
+  ) {
     return null;
   }
   const parts: string[] = [];
+  if (ownSeparation || ownDays) {
+    const values: string[] = [];
+    if (ownSeparation) {
+      values.push(`${t("rotation.window.dayparts")} ${daypart.separation}`);
+    }
+    if (ownDays) {
+      values.push(`${t("rotation.window.daypartDays")} ${t("format.days", { count: days })}`);
+    }
+    parts.push(t("trackDayparts.logOwn", { values: values.join(", ") }));
+  }
   const last = daypart.last_daypart;
   const step = explanation.step;
   if (step === 3 && daypart.separation > 0 && last !== null && last !== undefined) {

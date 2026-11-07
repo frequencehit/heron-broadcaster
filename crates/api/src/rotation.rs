@@ -73,13 +73,22 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
             .into_iter()
             .collect()
     };
-    // ID, title, album, playable length, default play ratio.
-    type Row = (u64, Option<String>, Option<String>, i64, u64);
+    // ID, title, album, playable length, default play ratio, own daypart
+    // separation and same daypart on the following days.
+    type Row = (
+        u64,
+        Option<String>,
+        Option<String>,
+        i64,
+        u64,
+        Option<u8>,
+        Option<u8>,
+    );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT t.id, t.title, t.album,
                 CAST(COALESCE(o.cue_out_ms, a.cue_out_ms) AS SIGNED)
                   - CAST(COALESCE(o.cue_in_ms, a.cue_in_ms) AS SIGNED),
-                CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED)
+                CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED), p.dayparts, p.daypart_days
          FROM tracks t
          JOIN track_analysis a ON a.track_id = t.id
          LEFT JOIN track_overrides o ON o.track_id = t.id
@@ -103,15 +112,19 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     }
     let tracks = rows
         .into_iter()
-        .map(|(id, title, album, length_ms, ratio)| Track {
-            id,
-            title_key: title_key(title.as_deref()),
-            album_key: title_key(album.as_deref()),
-            artists: artists.remove(&id).unwrap_or_default(),
-            categories: Vec::new(),
-            length_ms: u32::try_from(length_ms).unwrap_or(0),
-            ratio: u8::try_from(ratio).unwrap_or(heron_rotation::ratio::FULL),
-        })
+        .map(
+            |(id, title, album, length_ms, ratio, dayparts, daypart_days)| Track {
+                id,
+                title_key: title_key(title.as_deref()),
+                album_key: title_key(album.as_deref()),
+                artists: artists.remove(&id).unwrap_or_default(),
+                categories: Vec::new(),
+                length_ms: u32::try_from(length_ms).unwrap_or(0),
+                ratio: u8::try_from(ratio).unwrap_or(heron_rotation::ratio::FULL),
+                dayparts,
+                daypart_days,
+            },
+        )
         .collect();
 
     let mut members: HashMap<u64, Vec<Member>> = HashMap::new();

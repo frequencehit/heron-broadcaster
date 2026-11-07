@@ -24,7 +24,7 @@ pub mod schedule;
 mod select;
 mod sim;
 
-pub use dayparts::DaypartLog;
+pub use dayparts::{DaypartFrom, DaypartLog};
 pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
@@ -194,6 +194,12 @@ pub struct Track {
     /// Play ratio in tenths, 1 to 10: plays this many times out of the 10
     /// times rotation picks it ([`ratio`]).
     pub ratio: u8,
+    /// The track's own daypart separation, in place of its categories'
+    /// (0: off for it); `None`: its category's ([`Library::for_track`]).
+    pub dayparts: Option<u8>,
+    /// The track's own same daypart on the following days, 0 to 7, in
+    /// place of its categories'; `None`: its category's.
+    pub daypart_days: Option<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -486,10 +492,23 @@ impl Library {
         windows
     }
 
+    /// `windows`, a slot's before relaxation, with the track's own daypart
+    /// separation and same daypart on the following days in place of the
+    /// category's, cut like them to the station's division.
+    pub fn for_track(&self, mut windows: Windows, track: &Track) -> Windows {
+        if let Some(separation) = track.dayparts {
+            windows.dayparts = separation.min(dayparts::max_separation(self.daypart_count()));
+        }
+        if let Some(days) = track.daypart_days {
+            windows.daypart_days = days.min(dayparts::MAX_DAYS);
+        }
+        windows
+    }
+
     /// How far back separation can look, in ms: the longest window the
     /// settings, a category or a slot uses (an hour at least), or the
     /// dayparts the longest daypart separation covers, or the days the
-    /// same daypart is kept out on.
+    /// same daypart is kept out on (a category's or a track's own).
     pub fn horizon_ms(&self) -> i64 {
         let count = self.daypart_count();
         let reach = |windows: Windows| {
@@ -505,6 +524,12 @@ impl Library {
         for slot in self.clocks.values().flat_map(|clock| &clock.slots) {
             let category = self.categories.get(&slot.category).map(|c| &c.separation);
             longest = longest.max(reach(self.windows(category, Some(&slot.separation))));
+        }
+        // Tracks with their own daypart values.
+        for track in self.tracks.values() {
+            if track.dayparts.is_some() || track.daypart_days.is_some() {
+                longest = longest.max(reach(self.for_track(Windows::OFF, track)));
+            }
         }
         i64::from(longest.max(60)) * 60_000
     }
@@ -669,6 +694,8 @@ mod tests {
             categories: vec![],
             length_ms: 180_000,
             ratio: 10,
+            dayparts: None,
+            daypart_days: None,
         };
         let library = Library::new(
             LibraryParts {

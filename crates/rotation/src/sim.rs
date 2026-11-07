@@ -13,7 +13,7 @@ use crate::rules::{FALLBACK_STEP, LAST_STEP};
 use crate::select::SeparationRule;
 use crate::{
     AcrossWindows, CategoryId, Elsewhere, Explanation, History, Library, Play, Position, Rng,
-    TrackId, Windows, dayparts, next_outcome, ratio,
+    Track, TrackId, Windows, dayparts, next_outcome, ratio,
 };
 
 /// Shortest length a simulated track is counted for.
@@ -168,17 +168,21 @@ pub fn simulate(
     }
 }
 
-/// The windows and category a pick must respect, from its slot and step.
-fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<CategoryId>) {
+/// The windows and category a pick of `track` must respect, from its
+/// slot, the track's own daypart values and its step.
+fn expected(
+    library: &Library,
+    explanation: &Explanation,
+    track: &Track,
+) -> (Windows, Option<CategoryId>) {
     let step = explanation.step;
+    let relaxed = |windows| library.for_track(windows, track).at_step(step);
     if step >= FALLBACK_STEP {
         let fallback = library.fallback_category();
         let windows = if step >= LAST_STEP {
             Windows::OFF
         } else {
-            library
-                .windows(fallback.map(|c| &c.separation), None)
-                .at_step(step)
+            relaxed(library.windows(fallback.map(|c| &c.separation), None))
         };
         return (windows, fallback.map(|c| c.id));
     }
@@ -188,7 +192,7 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
         .and_then(|(clock, slot)| library.clocks.get(&clock)?.slots.get(slot as usize));
     match slot {
         // No clock: the whole library, rules enforced.
-        None => (library.windows(None, None).at_step(step), None),
+        None => (relaxed(library.windows(None, None)), None),
         Some(slot) if !slot.enforce_rules => (Windows::OFF, Some(slot.category)),
         Some(slot) => {
             let category = library
@@ -196,9 +200,7 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
                 .get(&slot.category)
                 .map(|c| &c.separation);
             (
-                library
-                    .windows(category, Some(&slot.separation))
-                    .at_step(step),
+                relaxed(library.windows(category, Some(&slot.separation))),
                 Some(slot.category),
             )
         }
@@ -246,7 +248,7 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
             });
         }
         let at = pick.start_unix_ms;
-        let (windows, category) = expected(library, &pick.explanation);
+        let (windows, category) = expected(library, &pick.explanation, track);
         if pick.explanation.category_id != category
             || category.is_some_and(|c| !track.categories.contains(&c))
         {
@@ -453,6 +455,8 @@ mod tests {
             categories: vec![],
             length_ms: 200_000,
             ratio: 10,
+            dayparts: None,
+            daypart_days: None,
         };
         Library::new(
             LibraryParts {
@@ -615,6 +619,8 @@ mod tests {
                 categories: vec![],
                 length_ms: 200_000,
                 ratio: 10,
+                dayparts: None,
+                daypart_days: None,
             })
             .collect();
         let library = Library::new(
@@ -801,6 +807,39 @@ mod tests {
         assert_eq!(audit(&library, &before, &at_five).len(), 1);
         let before = [before[0].clone(), Play::of(&library.tracks[&1], 30 * MIN)];
         assert!(audit(&library, &before, &at_five).is_empty());
+    }
+
+    #[test]
+    fn audits_a_track_s_own_daypart_values() {
+        let mut library = library();
+        library.settings.separation = Windows::OFF.into();
+        library.categories.get_mut(&1).unwrap().separation.dayparts = Some(1);
+        let hour = 60 * MIN;
+        let again = |library: &Library, at| [pick(library, 1, hour, 0), pick(library, 1, at, 0)];
+        // Its own 0 replaces the category's 1: B is free.
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(0);
+        assert!(audit(&library, &[], &again(&library, 7 * hour)).is_empty());
+        // Its own 2 keeps C out too.
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(2);
+        assert_eq!(
+            audit(&library, &[], &again(&library, 13 * hour)),
+            [Violation::Daypart {
+                pick: 1,
+                earlier_unix_ms: hour,
+                dayparts: 2,
+            }]
+        );
+        // Its own days in the same daypart, the category having none.
+        library.tracks.get_mut(&1).unwrap().dayparts = None;
+        library.tracks.get_mut(&1).unwrap().daypart_days = Some(1);
+        assert_eq!(
+            audit(&library, &[], &again(&library, 25 * hour)),
+            [Violation::DaypartDays {
+                pick: 1,
+                earlier_unix_ms: hour,
+                days: 1,
+            }]
+        );
     }
 
     #[test]
