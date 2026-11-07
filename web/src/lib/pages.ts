@@ -25,6 +25,7 @@ export const PAGES: Page[] = [
   { path: "/queue", label: "nav.queue", icon: "queue", station: true },
   { path: "/history", label: "nav.history", icon: "history", station: true },
   { path: "/statistics", label: "nav.statistics", icon: "chart", station: true, module: "listener_statistics" },
+  { path: "/certification", label: "nav.certification", icon: "shield", admin: true, station: true, module: "certification" },
   { path: "/library", label: "nav.tracks", icon: "library", section: "nav.library" },
   { path: "/import-music", label: "nav.buffer", icon: "upload" },
   { path: "/labels", label: "nav.labels", icon: "label", module: "labels" },

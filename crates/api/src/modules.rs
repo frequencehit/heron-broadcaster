@@ -79,6 +79,9 @@ pub fn module_of(path: &str) -> Option<Module> {
         ["top30", ..] => Module::Top30,
         ["dedications", ..] => Module::Dedications,
         ["match", ..] => Module::Match,
+        ["certification", ..]
+        | ["settings", "certification"]
+        | ["stream-servers", _, "access-log", ..] => Module::Certification,
         _ => return None,
     };
     Some(module)
@@ -270,6 +273,12 @@ mod tests {
             ("/api/v1/shows/likes", Some(Module::Likes)),
             ("/api/v1/likes/week", Some(Module::Likes)),
             ("/api/v1/likes/tracks/12", Some(Module::Likes)),
+            ("/api/v1/certification/export", Some(Module::Certification)),
+            (
+                "/api/v1/stream-servers/3/access-log",
+                Some(Module::Certification),
+            ),
+            ("/api/v1/stream-servers/3", None),
             ("/api/v1/top30/chart", Some(Module::Top30)),
             ("/api/v1/dedications/12/accept", Some(Module::Dedications)),
             ("/api/v1/match/current/close", Some(Module::Match)),

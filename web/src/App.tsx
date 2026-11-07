@@ -51,6 +51,7 @@ import { Top30Page } from "./components/Top30";
 import { ShowPage } from "./pages/Show";
 import { Stations } from "./pages/Stations";
 import { Statistics } from "./pages/Statistics";
+import { Certification } from "./pages/Certification";
 import { Track } from "./pages/Track";
 import { Trash } from "./pages/Trash";
 import { Users } from "./pages/Users";
@@ -158,6 +159,8 @@ function pageAt(pathname: string): ReactNode {
       return <History />;
     case "/statistics":
       return <Statistics />;
+    case "/certification":
+      return <Certification />;
     case "/library":
       return <Library />;
     case "/import-music":

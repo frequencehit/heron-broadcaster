@@ -14,6 +14,7 @@ mod auth;
 mod backups;
 mod categories;
 mod category_types;
+mod certification;
 mod clocks;
 mod covers;
 mod dedications;
@@ -114,6 +115,15 @@ struct Cli {
     /// heron-librarian, which imports them).
     #[arg(long, env = "HERON_STAGING_DIR", default_value = "/staging")]
     staging_dir: PathBuf,
+
+    /// The stream servers' access logs, mounted read-only, for audience
+    /// certification (docs/certification.md).
+    #[arg(
+        long,
+        env = "HERON_ACCESS_LOGS_DIR",
+        default_value = "/var/lib/heron/access-logs"
+    )]
+    access_logs_dir: PathBuf,
 
     /// Where backups are written (docs/backups.md).
     #[arg(
@@ -320,6 +330,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     tasks.push(tokio::spawn(levels::run(pool.clone())));
     tasks.push(tokio::spawn(users::purge_sessions(pool.clone())));
     tasks.push(tokio::spawn(likes::purge(pool.clone())));
+    tasks.push(tokio::spawn(certification::run(
+        pool.clone(),
+        cli.access_logs_dir.clone(),
+    )));
     tasks.push(tokio::spawn(dedications::run(
         pool.clone(),
         Arc::clone(&stations),

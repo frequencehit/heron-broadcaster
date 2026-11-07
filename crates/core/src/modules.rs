@@ -30,10 +30,13 @@ pub enum Module {
     /// A show without hours: listeners like or dislike the track playing
     /// (#133). On by default.
     Likes,
+    /// The stream servers' access logs, kept and exported for audience
+    /// certification (`docs/certification.md`, #189). Off by default.
+    Certification,
 }
 
 impl Module {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Medleys,
         Self::CoverArt,
         Self::ListenerStatistics,
@@ -49,6 +52,7 @@ impl Module {
         Self::Match,
         Self::Top30,
         Self::Likes,
+        Self::Certification,
     ];
 
     /// The show modules, which listeners take part in from the website.
@@ -82,6 +86,7 @@ impl Module {
             Self::Match => "match",
             Self::Top30 => "top30",
             Self::Likes => "likes",
+            Self::Certification => "certification",
         }
     }
 
@@ -103,6 +108,7 @@ impl Module {
             Self::Match => "the match",
             Self::Top30 => "the top 30",
             Self::Likes => "likes",
+            Self::Certification => "audience certification",
         }
     }
 
@@ -120,7 +126,7 @@ impl Module {
 /// installation) and the `station_modules` settings of each station; a
 /// module never stored takes its default: for the installation, the
 /// modules that existed before they could be turned off are on, and the
-/// shows off but Likes; for a station, everything is on ([`Modules::ALL_ON`]), so a
+/// shows off but Likes, and certification off; for a station, everything is on ([`Modules::ALL_ON`]), so a
 /// station only turns off what the installation has on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -142,6 +148,7 @@ pub struct Modules {
     pub r#match: bool,
     pub top30: bool,
     pub likes: bool,
+    pub certification: bool,
 }
 
 impl Default for Modules {
@@ -162,6 +169,7 @@ impl Default for Modules {
             r#match: false,
             top30: false,
             likes: true,
+            certification: false,
         }
     }
 }
@@ -189,6 +197,7 @@ impl Modules {
         r#match: true,
         top30: true,
         likes: true,
+        certification: true,
     };
 
     pub fn is_on(&self, module: Module) -> bool {
@@ -208,6 +217,7 @@ impl Modules {
             Module::Match => self.r#match,
             Module::Top30 => self.top30,
             Module::Likes => self.likes,
+            Module::Certification => self.certification,
         }
     }
 
@@ -243,6 +253,7 @@ impl Modules {
             Module::Match => &mut self.r#match,
             Module::Top30 => &mut self.top30,
             Module::Likes => &mut self.likes,
+            Module::Certification => &mut self.certification,
         };
         *field = on;
     }
@@ -263,6 +274,7 @@ impl Modules {
             r#match: self.r#match && station.r#match,
             top30: self.top30 && station.top30,
             likes: self.likes && station.likes,
+            certification: self.certification && station.certification,
             ..self
         }
     }
@@ -298,7 +310,7 @@ mod tests {
         assert!(
             Module::ALL[1..]
                 .iter()
-                .filter(|module| !module.is_show())
+                .filter(|module| !module.is_show() && **module != Module::Certification)
                 .all(|module| stored.is_on(*module))
         );
         assert!(
@@ -307,6 +319,7 @@ mod tests {
                 .all(|module| !stored.is_on(*module))
         );
         assert!(stored.is_on(Module::Likes), "likes are on by default");
+        assert!(!stored.is_on(Module::Certification), "off until turned on");
         assert_eq!(Modules::parse(Some("not json")), Modules::default());
     }
 
@@ -370,8 +383,8 @@ mod tests {
         for module in Module::ALL {
             assert_eq!(
                 json[module.key()],
-                !module.is_show() || module == Module::Likes,
-                "{module:?}: the shows are off by default, but likes"
+                (!module.is_show() || module == Module::Likes) && module != Module::Certification,
+                "{module:?}: the shows and certification are off by default, but likes"
             );
             assert_eq!(Module::from_key(module.key()), Some(module));
             assert_eq!(

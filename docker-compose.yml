@@ -97,6 +97,9 @@ services:
       - covers:/var/lib/heron/covers
       # The GeoIP country database the admin provides, read-only.
       - ${HERON_GEOIP_FOLDER:-./data/geoip}:/var/lib/heron/geoip:ro
+      # The stream servers' access logs, read-only, for audience
+      # certification (docs/certification.md).
+      - ${HERON_ACCESS_LOGS_FOLDER:-./data/access-logs}:/var/lib/heron/access-logs:ro
     depends_on:
       mariadb:
         condition: service_healthy
