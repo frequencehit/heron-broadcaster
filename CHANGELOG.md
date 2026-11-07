@@ -35,6 +35,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 ### Changed
 
 - **The server is a filter of the whole Statistics page**, like the output: every card and CSV download follows it, and both are kept in the address (`?output=`, `?server=`). The totals per day and hour are kept per server too (a relay's own listeners), and the statistics routes take a `server_id`; the tracks listeners leave follow the output and server as well ([Listener statistics – Relay servers](docs/statistics.md#relay-servers)).
+- **Transitions and level:** the transition preview's graph is drawn at the waveform's height, as on a track's page, whatever the page's width.
 
 - **Planned starts count the crossfades:** rotation, the queue manager and the queue's expected starts start each track where the one before hands over to it (its mix point, as the engine plans the transition), instead of at its end. The engine's state gives it for each waiting entry (`next_start_ms`) ([Rotation – Exact times](docs/rotation.md#exact-times)).
 - **Least recently played slots draw among the oldest tracks** instead of always taking the oldest one, and so do hours without a clock: see *Draw depth* above. Random slots are unchanged.
