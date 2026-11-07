@@ -139,7 +139,12 @@ impl EngineRpc for EngineService {
     }
 
     async fn get_state(&self, _: Request<pb::GetStateRequest>) -> Reply<pb::EngineState> {
-        let snapshot = self.engine.player().snapshot();
+        let mut snapshot = self.engine.player().snapshot();
+        let next_starts = std::mem::take(&mut snapshot.next_starts);
+        let entry_to_proto = |entry: QueueEntry| pb::QueueEntry {
+            next_start_ms: next_starts.get(&entry.entry_id).copied(),
+            ..entry_to_proto(entry)
+        };
         let outputs = self
             .engine
             .outputs()
@@ -425,6 +430,7 @@ fn entry_to_proto(entry: QueueEntry) -> pb::QueueEntry {
         entry_id: entry.entry_id,
         track: Some(track_to_proto(entry.track)),
         linked_to: entry.linked_to,
+        next_start_ms: None,
     }
 }
 

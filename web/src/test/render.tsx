@@ -92,6 +92,7 @@ export function user(role: Role = "admin"): User {
     theme: "system",
     language: "en",
     width: "normal",
+    on_air_whole_queue: false,
     created_at_unix_ms: 0,
     station_roles: [],
     two_factor: { totp: false, passkeys: 0, required: false },
