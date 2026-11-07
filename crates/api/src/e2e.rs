@@ -9710,7 +9710,8 @@ async fn modules_are_turned_off_and_on_again() {
     let pool = &station.db.pool;
     let t = station.tracks.clone();
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
-                        "webhooks": true});
+                        "webhooks": true, "restrictions": true, "eq": true, "processing": true,
+                        "trash": true, "review": true, "artists": true, "labels": true});
 
     // Everything is on after an upgrade.
     assert_eq!(viewer.get("/modules").await, all_on);
@@ -9891,6 +9892,181 @@ async fn modules_are_turned_off_and_on_again() {
         .await
         .expect("a delivery once webhooks are on again")
         .unwrap();
+    station.stop().await;
+}
+
+/// Restrictions, the equalizer and processing turned off for a station:
+/// hidden and not applied (rotation ignores the restrictions, the engine
+/// gets the EQ and the AGC chain bypassed), their settings kept. The
+/// library's modules, off for the installation: their routes answer 404
+/// (docs/modules.md).
+#[tokio::test(flavor = "multi_thread")]
+async fn more_modules_are_turned_off_and_on_again() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let engine = station.state.stations.first().engine.clone();
+
+    // A restriction, an EQ and a chain in use.
+    let (status, restriction) = admin
+        .send(
+            Method::POST,
+            "/restrictions",
+            json!({"target": {"kind": "track", "id": t[1]},
+                   "rule": {"kind": "daypart", "mode": "ban", "days": [1, 2, 3, 4, 5, 6, 7],
+                            "start_hour": 0, "end_hour": 24}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{restriction}");
+    let eq = json!({
+        "music": {"enabled": true, "gains_db": [3.0, 2.0, 0.0, 0.0, -1.5, 0.0, 0.0, 1.0, 1.0, 0.0]},
+        "fx": {"enabled": true, "gains_db": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    });
+    let (status, body) = admin.send(Method::PUT, "/settings/eq", eq.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let mut agc = admin.get("/settings/agc").await;
+    agc["bypass_all"] = json!(false);
+    let (status, agc) = admin.send(Method::PUT, "/settings/agc", agc).await;
+    assert_eq!(status, StatusCode::OK, "{agc}");
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert_eq!(library.restrictions.len(), 1);
+
+    // What the engine has, once the configuration sync has run.
+    let engine_has = async |eq_enabled: bool, bypass_all: bool| {
+        for _ in 0..100 {
+            let config = engine.config().await.unwrap();
+            let engine_eq: Value = serde_json::from_str(&config.eq_settings_json).unwrap();
+            let engine_agc: Value = serde_json::from_str(&config.agc_settings_json).unwrap();
+            if engine_eq["music"]["enabled"] == eq_enabled
+                && engine_eq["fx"]["enabled"] == eq_enabled
+                && engine_agc["bypass_all"] == bypass_all
+            {
+                return (engine_eq, engine_agc);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("the engine never had eq enabled {eq_enabled}, bypass_all {bypass_all}");
+    };
+    let (engine_eq, _) = engine_has(true, false).await;
+    assert_eq!(engine_eq, eq);
+
+    // Off for the station.
+    let (status, modules) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"restrictions": false, "eq": false, "processing": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{modules}");
+    assert_eq!(modules["on"]["eq"], false);
+    for path in ["/settings/eq", "/stations/1/settings/agc"] {
+        let (status, body) = admin.request(Method::GET, path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    // Shared: they answer while the installation has them on.
+    for path in ["/restrictions", "/eq-presets", "/agc-presets"] {
+        admin.get(path).await;
+    }
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert!(
+        library.restrictions.is_empty(),
+        "restrictions still applied"
+    );
+    // Bypassed on air, the gains and blocks kept.
+    let (engine_eq, engine_agc) = engine_has(false, true).await;
+    assert_eq!(engine_eq["music"]["gains_db"], eq["music"]["gains_db"]);
+    assert_eq!(engine_agc["final_stage"], agc["final_stage"]);
+    let stored: Value = serde_json::from_str(
+        &sqlx::query_scalar::<_, String>(
+            "SELECT CAST(value AS CHAR) FROM station_settings WHERE station_id = 1 AND name = 'eq'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(stored, eq, "the station's EQ is kept");
+
+    // Off for the installation, the shared routes too.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"restrictions": false, "eq": false, "processing": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for path in [
+        "/restrictions".to_owned(),
+        format!("/restrictions/{}", restriction["id"]),
+        "/eq-presets".to_owned(),
+        "/agc-presets".to_owned(),
+    ] {
+        let (status, body) = admin.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+
+    // On again: applied as they were.
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (engine_eq, engine_agc) = engine_has(true, false).await;
+    assert_eq!(engine_eq, eq);
+    assert_eq!(engine_agc, agc);
+    assert_eq!(admin.get("/settings/eq").await, eq);
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert_eq!(library.restrictions.len(), 1);
+
+    // The library's modules: a station cannot turn them off.
+    let library_off = json!({"trash": false, "review": false, "artists": false, "labels": false});
+    let (status, modules) = admin
+        .send(Method::PUT, "/stations/1/modules", library_off.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{modules}");
+    assert_eq!(modules["station"]["trash"], true);
+    assert_eq!(modules["on"]["labels"], true);
+    admin.get("/labels").await;
+    // Off for the installation.
+    let (status, _) = admin.send(Method::PUT, "/modules", library_off).await;
+    assert_eq!(status, StatusCode::OK);
+    let modules = admin.get("/stations/1/modules").await;
+    assert_eq!(modules["on"]["trash"], false);
+    for path in [
+        "/library/trash".to_owned(),
+        "/library/review".to_owned(),
+        "/library/batches".to_owned(),
+        // Refused before the artist is looked for.
+        "/artists/1".to_owned(),
+        "/artist-suggestions".to_owned(),
+        "/labels".to_owned(),
+    ] {
+        let (status, body) = admin.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/tracks/labels",
+            json!({"selection": {"track_ids": [t[0]]}, "add": [], "remove": []}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    // The artist pickers' search still answers.
+    let (status, _) = admin.request(Method::GET, "/artists", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    admin.get("/library/trash").await;
     station.stop().await;
 }
 

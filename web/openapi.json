@@ -20797,7 +20797,19 @@
         "type": "object",
         "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: the modules that existed before\nthey could be turned off are on.",
         "properties": {
+          "artists": {
+            "type": "boolean",
+            "default": true
+          },
           "cover_art": {
+            "type": "boolean",
+            "default": true
+          },
+          "eq": {
+            "type": "boolean",
+            "default": true
+          },
+          "labels": {
             "type": "boolean",
             "default": true
           },
@@ -20806,6 +20818,22 @@
             "default": true
           },
           "medleys": {
+            "type": "boolean",
+            "default": true
+          },
+          "processing": {
+            "type": "boolean",
+            "default": true
+          },
+          "restrictions": {
+            "type": "boolean",
+            "default": true
+          },
+          "review": {
+            "type": "boolean",
+            "default": true
+          },
+          "trash": {
             "type": "boolean",
             "default": true
           },

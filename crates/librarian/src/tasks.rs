@@ -162,10 +162,12 @@ impl TaskRunner {
             .map_err(|error| error.to_string())?;
         match request {
             TaskRequest::OrganizePlan => {
+                self.module_on(Module::Review).await?;
                 let layout = Layout::from_settings(&settings);
                 json(organize::plan(&self.pool, &self.roots, &layout).await)
             }
             TaskRequest::OrganizeApply { plan_task_id } => {
+                self.module_on(Module::Review).await?;
                 let plan = self.plan(id, *plan_task_id).await?;
                 json(organize::apply(&self.pool, &self.roots, &plan).await)
             }
@@ -179,6 +181,7 @@ impl TaskRunner {
                 disc,
                 track,
             } => {
+                self.module_on(Module::Review).await?;
                 // Looking a release up needs no AcoustID key.
                 let key = settings.acoustid_key.clone().unwrap_or_default();
                 let identifier = Identifier::new(self.endpoints.clone(), key, settings.min_score)
@@ -193,6 +196,7 @@ impl TaskRunner {
                 json(review::apply(&self.pool, &self.roots, &identifier, &settings, &choice).await)
             }
             TaskRequest::ArtistRelations => {
+                self.module_on(Module::Artists).await?;
                 json(relations::look_up(&self.pool, &self.musicbrainz()?).await)
             }
             // Asked before `write_tags` was turned off: the files are left alone.
@@ -222,7 +226,10 @@ impl TaskRunner {
             TaskRequest::Delete { track_ids } => {
                 json(trash::delete(&self.pool, &self.roots, track_ids).await)
             }
-            TaskRequest::EmptyTrash => json(trash::purge(&self.pool, &self.roots, None).await),
+            TaskRequest::EmptyTrash => {
+                self.module_on(Module::Trash).await?;
+                json(trash::purge(&self.pool, &self.roots, None).await)
+            }
             TaskRequest::PreviewMedley { medley_id, parts } => {
                 self.module_on(Module::Medleys).await?;
                 let report = medley::preview(&self.pool, &self.roots, *medley_id, parts).await?;
