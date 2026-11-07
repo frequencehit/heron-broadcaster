@@ -892,6 +892,93 @@ pub fn layout(recipe: &Recipe, parts: &[Part], lengths: &[Option<u32>]) -> Layou
     }
 }
 
+/// The shortest crossfade between the two spans of a shortened medley.
+pub const MIN_SHORTENED_CROSSFADE_MS: u32 = 100;
+
+/// A medley played shorter, from its rendered file: its last liner + hook
+/// pairs left out, the closing liner kept (`docs/medleys.md#shortened-plays`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Shortened {
+    pub hooks_left_out: u32,
+    /// The parts left out, by their position in the medley from 0.
+    pub parts_left_out: Vec<u32>,
+    /// The first span ends here (ms in the file): where the first part left
+    /// out starts.
+    pub first_to_ms: u32,
+    /// The second span starts here: the crossfade before the closing liner
+    /// (and the music's going down before it, over the music).
+    pub second_from_ms: u32,
+    /// How long it plays from `cue_in_ms` to `cue_out_ms`: both spans, less
+    /// the crossfade between them.
+    pub length_ms: u32,
+    pub crossfade_ms: u32,
+}
+
+/// The ways of playing a rendered medley shorter, from its rendered layout,
+/// the fewest hooks left out first: never below 2 hooks, and only with a
+/// closing liner (a liner after the last hook). `cue_in_ms` and
+/// `cue_out_ms` are the track's, on the file's timeline.
+pub fn shortened(
+    layout: &Layout,
+    crossfade_ms: u32,
+    cue_in_ms: u32,
+    cue_out_ms: u32,
+) -> Vec<Shortened> {
+    let parts = &layout.parts;
+    let hooks: Vec<usize> = (0..parts.len())
+        .filter(|&i| parts[i].kind == PartKind::Hook)
+        .collect();
+    let (Some(&last_hook), true) = (hooks.last(), hooks.len() >= 3) else {
+        return Vec::new();
+    };
+    let closing = last_hook + 1;
+    if closing >= parts.len() {
+        return Vec::new();
+    }
+    let crossfade = crossfade_ms.max(MIN_SHORTENED_CROSSFADE_MS);
+    let closing_at = parts[closing..]
+        .iter()
+        .map(|part| part.at_ms)
+        .min()
+        .unwrap_or(0);
+    let pre = if parts[closing].over {
+        layout.ducking().before()
+    } else {
+        0
+    };
+    let last = &parts[last_hook];
+    let second_from_ms = closing_at
+        .saturating_sub(crossfade + pre)
+        .max(last.at_ms + last.fade_in_ms);
+    if second_from_ms + crossfade >= cue_out_ms {
+        return Vec::new();
+    }
+    let mut cuts = Vec::new();
+    // Keeping hooks 1 to k, k from the last but one down to 2.
+    for kept in (2..hooks.len()).rev() {
+        let left_out: Vec<usize> = (hooks[kept - 1] + 1..closing).collect();
+        let Some(first_to_ms) = left_out.iter().map(|&i| parts[i].at_ms).min() else {
+            continue;
+        };
+        if first_to_ms <= cue_in_ms + crossfade || first_to_ms > second_from_ms {
+            continue;
+        }
+        let length_ms = (first_to_ms - cue_in_ms) + (cue_out_ms - second_from_ms) - crossfade;
+        cuts.push(Shortened {
+            hooks_left_out: u32::try_from(hooks.len() - kept).unwrap_or(u32::MAX),
+            parts_left_out: left_out
+                .iter()
+                .map(|&i| u32::try_from(i).unwrap_or(u32::MAX))
+                .collect(),
+            first_to_ms,
+            second_from_ms,
+            length_ms,
+            crossfade_ms: crossfade,
+        });
+    }
+    cuts
+}
+
 /// When the music is lowered: the liners over it, those in a row (their
 /// ramps would meet) as one, from the first's start to the last's end.
 pub fn duck_windows(layout: &Layout) -> Vec<(u32, u32)> {
@@ -1647,5 +1734,120 @@ mod tests {
             .iter()
             .fold(0.0f32, |peak, sample| peak.max(sample.abs()));
         assert!((peak - PEAK_LIMIT).abs() < 1e-6, "{peak}");
+    }
+
+    /// `[opening liner] hook1 liner1 hook2 liner2 hook3 [closing liner]`.
+    fn medley_of(hooks: usize, liner_mode: LinerMode) -> (Recipe, Vec<Part>) {
+        let recipe = Recipe {
+            crossfade_ms: 500,
+            liners: true,
+            liner_every: 1,
+            liner_at_start: true,
+            liner_at_end: true,
+            liner_mode,
+            ..recipe()
+        };
+        let mut parts = vec![part(PartKind::Liner, 0, 2_000)];
+        for hook in 0..hooks {
+            if hook > 0 {
+                parts.push(part(PartKind::Liner, 0, 4_000));
+            }
+            parts.push(part(PartKind::Hook, 20_000, 32_000));
+        }
+        parts.push(part(PartKind::Liner, 0, 3_000));
+        (recipe, parts)
+    }
+
+    #[test]
+    fn a_medley_is_shortened_by_its_last_liner_and_hook() {
+        let (recipe, parts) = medley_of(3, LinerMode::Between);
+        let layout = layout(&recipe, &parts, &[]);
+        // 2 + 3 × 12 + 2 × 4 + 3 s, less six crossfades of 0.5 s.
+        assert_eq!(layout.length_ms, 46_000);
+        let cuts = shortened(&layout, recipe.crossfade_ms, 0, layout.length_ms);
+        assert_eq!(cuts.len(), 1, "never below 2 hooks");
+        let cut = &cuts[0];
+        assert_eq!(
+            (cut.hooks_left_out, cut.parts_left_out.clone()),
+            (1, vec![4, 5])
+        );
+        assert_eq!(cut.length_ms, 31_000);
+        // The first span ends where liner 2 starts; the second starts the
+        // crossfade before the closing liner.
+        assert_eq!(cut.first_to_ms, layout.parts[4].at_ms);
+        assert_eq!(cut.second_from_ms, layout.parts[6].at_ms - 500);
+    }
+
+    #[test]
+    fn several_pairs_can_be_left_out_the_fewest_first() {
+        let (recipe, parts) = medley_of(5, LinerMode::Between);
+        let laid = layout(&recipe, &parts, &[]);
+        let cuts = shortened(&laid, recipe.crossfade_ms, 0, laid.length_ms);
+        let left_out: Vec<u32> = cuts.iter().map(|cut| cut.hooks_left_out).collect();
+        assert_eq!(left_out, [1, 2, 3]);
+        // Each pair left out takes a liner and a hook, less their crossfades.
+        assert_eq!(cuts[0].length_ms - cuts[1].length_ms, 15_000);
+        // No closing liner, or 2 hooks: never shortened.
+        let mut open = parts.clone();
+        open.pop();
+        assert!(shortened(&layout(&recipe, &open, &[]), 500, 0, 60_000).is_empty());
+        let (recipe, two) = medley_of(2, LinerMode::Between);
+        let two = layout(&recipe, &two, &[]);
+        assert!(shortened(&two, 500, 0, two.length_ms).is_empty());
+    }
+
+    #[test]
+    fn over_the_music_the_cut_is_never_in_a_liner() {
+        let (recipe, parts) = medley_of(3, LinerMode::Over);
+        let layout = layout(&recipe, &parts, &[]);
+        let cuts = shortened(&layout, recipe.crossfade_ms, 0, layout.length_ms);
+        let cut = &cuts[0];
+        // The first span ends before liner 2 and hook 3 start.
+        assert!(cut.first_to_ms <= layout.parts[4].at_ms);
+        assert!(cut.first_to_ms <= layout.parts[5].at_ms);
+        // and after liner 1 ends.
+        assert!(cut.first_to_ms >= layout.parts[2].end_ms());
+        // The second span starts on the last hook, before the closing liner.
+        assert!(cut.second_from_ms < layout.parts[6].at_ms);
+        assert!(cut.second_from_ms >= layout.parts[5].at_ms);
+    }
+
+    #[test]
+    fn each_part_lands_in_the_rendered_file_where_the_layout_says() {
+        // Each part silent but for one sample in its middle, at its own level.
+        for mode in [LinerMode::Between, LinerMode::Over] {
+            let (recipe, parts) = medley_of(3, mode);
+            let recipe = Recipe {
+                duck_db: 0.0,
+                ..recipe
+            };
+            let layout = layout(&recipe, &parts, &[]);
+            let audio: Vec<PartAudio> = layout
+                .parts
+                .iter()
+                .enumerate()
+                .map(|(index, placed)| {
+                    let frames = ms_to_frames(placed.to_ms - placed.from_ms);
+                    let mut samples = vec![0.0; frames * CHANNELS];
+                    samples[(frames / 2) * CHANNELS] = 0.01 * (index + 1) as f32;
+                    PartAudio {
+                        kind: placed.kind,
+                        samples,
+                        gain: 1.0,
+                    }
+                })
+                .collect();
+            let out = mix(&recipe, &layout, &audio);
+            for (index, placed) in layout.parts.iter().enumerate() {
+                let frames = ms_to_frames(placed.to_ms - placed.from_ms);
+                let frame = ms_to_frames(placed.at_ms) + frames / 2;
+                let level = 0.01 * (index + 1) as f32;
+                assert!(
+                    (out[frame * CHANNELS] - level).abs() < 1e-6,
+                    "{mode:?}: part {index} is not at {} ms",
+                    placed.at_ms
+                );
+            }
+        }
     }
 }

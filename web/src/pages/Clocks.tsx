@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type Category,
@@ -35,6 +35,7 @@ import {
   query,
   unwrap,
 } from "../api";
+import { DEFAULT_DRAW, DrawDepthEditor, applyDraw } from "../components/DrawDepth";
 import { SeparationEditor, applyOverrides } from "../components/Separation";
 import { useDebounced } from "../components/TrackSearch";
 import {
@@ -47,11 +48,21 @@ import {
   Icon,
   Loading,
   Modal,
+  NumberInput,
   PageHead,
 } from "../components/ui";
 import { number, rich, t } from "../i18n";
 import { duration } from "../lib/format";
-import { METHODS_LIST, describeOverrides, linkBlocked, methodLabel, stepLabel } from "../lib/rotation";
+import {
+  METHODS_LIST,
+  describeExact,
+  describeMet,
+  describeOverrides,
+  linkBlocked,
+  methodLabel,
+  stepLabel,
+} from "../lib/rotation";
+import { type Schemas, errorMessage } from "../api";
 import { Link, navigate } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { here, useStation } from "../lib/station";
@@ -155,6 +166,40 @@ export function Clocks() {
   );
 }
 
+/** How long a clock waits after a change before it saves itself. */
+const AUTOSAVE_MS = 800;
+
+/** Where an existing clock's changes stand: saving, saved, or not saved and why. */
+function SaveState({
+  dirty,
+  saving,
+  error,
+  named,
+}: Readonly<{ dirty: boolean; saving: boolean; error: unknown; named: boolean }>) {
+  if (!named) {
+    return <span className="badge bad">{t("clocks.needsName")}</span>;
+  }
+  if (saving || (dirty && !error)) {
+    return (
+      <span className="muted small" role="status">
+        {t("clocks.saving")}
+      </span>
+    );
+  }
+  if (error && dirty) {
+    return (
+      <span className="badge bad" role="alert" title={errorMessage(error)}>
+        {t("clocks.notSaved", { error: errorMessage(error) })}
+      </span>
+    );
+  }
+  return (
+    <span className="muted small" role="status">
+      <Icon name="check" size={12} /> {t("clocks.savedAuto")}
+    </span>
+  );
+}
+
 /** A slot as edited, with a key that stays when slots move. */
 interface Draft extends ClockSlot {
   key: number;
@@ -188,6 +233,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
   const [looping, setLooping] = useState(clock?.looping ?? false);
   const [slots, setSlots] = useState<Draft[]>(() => withKeys(clock?.slots ?? []));
   const [separating, setSeparating] = useState<number | null>(null);
+  const [timing, setTiming] = useState<number | null>(null);
   const saved = useMemo(
     () => JSON.stringify({ name: clock?.name ?? "", looping: clock?.looping ?? false, slots: clock?.slots ?? [] }),
     [clock],
@@ -202,23 +248,56 @@ function Editor({ clock }: { clock: ClockView | null }) {
     placeholderData: keepPreviousData,
   });
 
-  const save = useAction(
-    () => {
-      const body = { name, looping, slots: plain };
-      return clock
-        ? unwrap(api.PUT("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock.id }) }, body }))
-        : unwrap(api.POST("/api/v1/stations/{station_id}/clocks", { params: { path: here() }, body }));
-    },
+  // A new clock is created with its button; an existing one saves itself
+  // a moment after each change.
+  const body = { name, looping, slots: plain };
+  const client = useQueryClient();
+  const create = useAction(
+    () => unwrap(api.POST("/api/v1/stations/{station_id}/clocks", { params: { path: here() }, body })),
     {
       success: t("clocks.saved"),
       invalidate: [["clocks"]],
-      onSuccess: (saved) => {
-        if (!clock) {
-          navigate(`/clocks/${saved.id}`, { replace: true });
-        }
-      },
+      onSuccess: (created) => navigate(`/clocks/${created.id}`, { replace: true }),
     },
   );
+  const autosave = useMutation({
+    mutationFn: (next: typeof body) =>
+      unwrap(api.PUT("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock?.id ?? 0 }) }, body: next })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["clocks"] }),
+  });
+  const pending = useRef<typeof body | null>(null);
+  pending.current = clock && canEdit && dirty && name.trim() ? body : null;
+  const draftKey = JSON.stringify(body);
+  useEffect(() => {
+    if (!pending.current) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (pending.current) {
+        autosave.mutate(pending.current);
+      }
+    }, AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  // Leaving the page saves what is left.
+  useEffect(
+    () => () => {
+      if (pending.current) {
+        autosave.mutate(pending.current);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  useEffect(() => {
+    if (!pending.current) {
+      return;
+    }
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [draftKey]);
   const remove = useAction(
     () => done(api.DELETE("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock?.id ?? 0 }) } })),
     { success: t("clocks.deleted"), invalidate: [["clocks"], ["schedule"]], onSuccess: () => navigate("/clocks") },
@@ -245,6 +324,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
   const byId = new Map((categories.data ?? []).map((c) => [c.id, c]));
   const firstCategory = categories.data?.[0];
   const editingSlot = slots.find((slot) => slot.key === separating);
+  const timingSlot = slots.find((slot) => slot.key === timing);
   const shown = preview.data && preview.data.slots.length === slots.length ? preview.data : undefined;
 
   return (
@@ -264,14 +344,18 @@ function Editor({ clock }: { clock: ClockView | null }) {
                   <Icon name="trash" /> {t("categories.deleteButton")}
                 </ConfirmButton>
               )}
-              <button
-                type="button"
-                className="btn primary"
-                disabled={!dirty || !name.trim() || save.isPending}
-                onClick={() => save.mutate(undefined)}
-              >
-                {t("common.save")}
-              </button>
+              {clock ? (
+                <SaveState dirty={dirty} saving={autosave.isPending} error={autosave.error} named={!!name.trim()} />
+              ) : (
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!name.trim() || create.isPending}
+                  onClick={() => create.mutate(undefined)}
+                >
+                  {t("clocks.create")}
+                </button>
+              )}
             </>
           )
         }
@@ -326,6 +410,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
                         canEdit={canEdit}
                         onChange={(changes) => update(slot.key, changes)}
                         onSeparation={() => setSeparating(slot.key)}
+                        onExact={() => setTiming(slot.key)}
                         onRemove={() => setSlots(slots.filter((s) => s.key !== slot.key))}
                       />
                     ))}
@@ -379,6 +464,24 @@ function Editor({ clock }: { clock: ClockView | null }) {
           {clock && <SimulateCard clockId={clock.id} dirty={dirty} />}
         </div>
       </div>
+      {timingSlot && (
+        <Modal
+          title={t("clocks.exactTitle", { slot: slots.indexOf(timingSlot) + 1 })}
+          open
+          onClose={() => setTiming(null)}
+          footer={
+            <button type="button" className="btn primary" onClick={() => setTiming(null)}>
+              {t("clocks.done")}
+            </button>
+          }
+        >
+          <ExactEditor
+            value={timingSlot.exact ?? null}
+            disabled={!canEdit}
+            onChange={(exact) => update(timingSlot.key, { exact })}
+          />
+        </Modal>
+      )}
       {editingSlot && (
         <Modal
           title={t("clocks.slotSeparation", { slot: slots.indexOf(editingSlot) + 1 })}
@@ -403,6 +506,21 @@ function Editor({ clock }: { clock: ClockView | null }) {
             disabled={!canEdit}
             onChange={(separation) => update(editingSlot.key, { separation })}
           />
+          <fieldset>
+            <legend>{t("draw.title")}</legend>
+            <DrawDepthEditor
+              value={editingSlot.separation ?? {}}
+              inherited={applyDraw(
+                rotation.data?.draw ?? DEFAULT_DRAW,
+                byId.get(editingSlot.category_id)?.separation,
+              )}
+              disabled={!canEdit}
+              onChange={(separation) => update(editingSlot.key, { separation })}
+            />
+            <p className="muted small" style={{ marginBottom: 0 }}>
+              {t("draw.methods")}
+            </p>
+          </fieldset>
         </Modal>
       )}
     </>
@@ -418,6 +536,7 @@ function SlotRow({
   canEdit,
   onChange,
   onSeparation,
+  onExact,
   onRemove,
 }: {
   slot: Draft;
@@ -429,6 +548,7 @@ function SlotRow({
   canEdit: boolean;
   onChange: (changes: Partial<ClockSlot>) => void;
   onSeparation: () => void;
+  onExact: () => void;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -474,6 +594,7 @@ function SlotRow({
           <select
             className="input"
             aria-label={t("clocks.slotMethod", { slot: index + 1 })}
+            title={t("clocks.methodHelp")}
             value={slot.method}
             disabled={!canEdit}
             onChange={(event) => onChange({ method: event.target.value as Method })}
@@ -532,6 +653,16 @@ function SlotRow({
           <button type="button" className="link-button" onClick={onSeparation}>
             {overrides ? t("clocks.separationValue", { windows: overrides }) : canEdit ? t("clocks.overrideSeparation") : t("categories.separation")}
           </button>
+          <span>·</span>
+          <button type="button" className="link-button" onClick={onExact}>
+            {slot.exact ? (
+              <>
+                <Icon name="clock" size={12} /> {describeExact(slot.exact)}
+              </>
+            ) : (
+              t("clocks.setExact")
+            )}
+          </button>
         </div>
       </div>
       {canEdit && (
@@ -545,6 +676,134 @@ function SlotRow({
         </button>
       )}
     </li>
+  );
+}
+
+const DEFAULT_EXACT: Schemas["ExactTime"] = {
+  at_s: 0,
+  mode: "hard",
+  before_s: 10,
+  after_s: 30,
+  medley_fill: false,
+  cut_live: false,
+};
+
+/** A slot's exact time: off, or a time of the hour, hard or soft. */
+export function ExactEditor({
+  value,
+  disabled,
+  onChange,
+}: Readonly<{
+  value: Schemas["ExactTime"] | null;
+  disabled: boolean;
+  onChange: (value: Schemas["ExactTime"] | null) => void;
+}>) {
+  const exact = { ...DEFAULT_EXACT, ...value };
+  const set = (changes: Partial<Schemas["ExactTime"]>) => onChange({ ...exact, ...changes });
+  const minutes = Math.floor(exact.at_s / 60);
+  const seconds = exact.at_s % 60;
+  const soft = exact.mode === "soft";
+  return (
+    <div className="stack">
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={value !== null}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.checked ? exact : null)}
+        />
+        {t("clocks.exactOn")}
+      </label>
+      <p className="muted small" style={{ margin: 0 }}>
+        {t("clocks.exactHelp")}
+      </p>
+      {value !== null && (
+        <>
+          <div className="form-grid">
+            <Field label={t("clocks.exactMinutes")}>
+              <NumberInput
+                value={minutes}
+                min={0}
+                max={59}
+                disabled={disabled}
+                onChange={(m) => set({ at_s: Math.min(59, Math.max(0, m)) * 60 + seconds })}
+              />
+            </Field>
+            <Field label={t("clocks.exactSeconds")}>
+              <NumberInput
+                value={seconds}
+                min={0}
+                max={59}
+                disabled={disabled}
+                onChange={(sec) => set({ at_s: minutes * 60 + Math.min(59, Math.max(0, sec)) })}
+              />
+            </Field>
+            <Field label={t("clocks.exactMode")}>
+              <select
+                className="input"
+                value={exact.mode}
+                disabled={disabled}
+                onChange={(event) => set({ mode: event.target.value as Schemas["ExactMode"] })}
+              >
+                <option value="hard">{t("clocks.hard")}</option>
+                <option value="soft">{t("clocks.soft")}</option>
+              </select>
+            </Field>
+          </div>
+          <p className="muted small" style={{ margin: 0 }}>
+            {soft ? t("clocks.softHelp") : t("clocks.hardHelp")}
+          </p>
+          {soft && (
+            <>
+              <div className="form-grid">
+                <Field label={t("clocks.windowBefore")}>
+                  <NumberInput
+                    value={exact.before_s ?? 10}
+                    min={0}
+                    max={300}
+                    disabled={disabled}
+                    onChange={(before_s) => set({ before_s })}
+                  />
+                </Field>
+                <Field label={t("clocks.windowAfter")}>
+                  <NumberInput
+                    value={exact.after_s ?? 30}
+                    min={0}
+                    max={300}
+                    disabled={disabled}
+                    onChange={(after_s) => set({ after_s })}
+                  />
+                </Field>
+              </div>
+              <label className="check" title={t("clocks.medleyFillHelp")}>
+                <input
+                  type="checkbox"
+                  checked={exact.medley_fill ?? false}
+                  disabled={disabled}
+                  onChange={(event) => set({ medley_fill: event.target.checked })}
+                />
+                {t("clocks.medleyFill")}
+              </label>
+              <p className="muted small" style={{ margin: 0 }}>
+                {t("clocks.medleyFillHelp")}
+              </p>
+            </>
+          )}
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={exact.cut_live ?? false}
+              disabled={disabled}
+              onChange={(event) => set({ cut_live: event.target.checked })}
+            />
+            {t("clocks.cutLive")}
+          </label>
+          <p className="muted small" style={{ margin: 0 }}>
+            {t("clocks.cutLiveHelp")}
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -731,6 +990,11 @@ function SimulateCard({ clockId, dirty }: { clockId: number; dirty: boolean }) {
                       {track ? `${track.artist ?? "?"} – ${track.title ?? "?"}` : t("clocks.trackNumber", { id: String(pick.track_id) })}
                     </Link>
                   </span>
+                  {pick.explanation.exact && (
+                    <span className={`badge${pick.explanation.exact.in_window ? " good" : " warn"}`}>
+                      {describeMet(pick.explanation.exact)}
+                    </span>
+                  )}
                   {pick.explanation.step > 0 && (
                     <span className="badge warn" title={stepLabel(pick.explanation.step)}>
                       {t("clocks.relaxed", { step: pick.explanation.step })}

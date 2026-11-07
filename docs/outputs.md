@@ -18,7 +18,8 @@ How audio leaves `heron-engine`. Outputs are pluggable ("bring your own streamer
 ```
 
 - An **encoder profile** describes one encoding: encoder kind, bitrate, sample rate, channels and encoder-specific options.
-- An **output** is one destination: a sink kind, its connection settings (host, port, mount, credentials…), the encoder profile it uses, metadata settings and an enabled flag.
+- A **stream server** is a server a station streams to (Icecast today): its address, port and credentials, kept once per station and shared by its outputs ([Stream servers](#stream-servers)).
+- An **output** is one destination: a sink kind, the stream server it goes to and what is its own there (Icecast: its mount), the encoder profile it uses, the station details it sends, metadata settings and an enabled flag.
 - Several outputs can share one encoder profile: identical encodings are produced **once** and fanned out to every output that uses them.
 - Any number of outputs can be configured, to the same or different stream servers.
 
@@ -118,24 +119,52 @@ All sinks implement the `OutputSink` trait: they receive encoded frames and now-
 
 ### Icecast
 
-Source client for Icecast 2.4 and later (HTTP `PUT`). Metadata goes through `/admin/metadata` as `Artist - Title`, with the source credentials. Settings (`outputs.config`):
+Source client for Icecast 2.4 and later (HTTP `PUT`). Metadata goes through `/admin/metadata` as `Artist - Title`, with the source credentials. An Icecast output picks a [stream server](#stream-servers) (`server_id`) and has only its own settings in `outputs.config`:
 
 | Setting | Default |
 |---|---|
-| `host` | required |
-| `port` | 8000 |
 | `mount` | required, starts with `/` |
-| `username` | `source` |
-| `password` | required |
-| `name`, `description`, `genre`, `url` | none (shown in stream directories) |
-| `public` | `false` (list in public directories) |
-| `public_url` | none: `http://host:port` (server address as listeners reach it, e.g. `https://stream.example.org`) |
 
-The stream plays at the public URL followed by the mount. The **Outputs** and **On air** pages link to it (**Listen**).
+What it sends to the server about the station (name, description, genre, website, public or not) are the [station details](#station-details), each one overridable on the output.
 
-Listener statistics read the server's status page, and its listener list with the server's **admin** credentials: an optional setting of the output, kept apart from `outputs.config` and never pushed to the engine ([Listener statistics](statistics.md#settings)).
+The stream plays at the server's public address followed by the mount. The **Outputs** and **On air** pages link to it (**Listen**).
 
-TLS is not supported yet.
+TLS is not supported yet for sending: a server outputs send to cannot have TLS on. A relay server, which Heron only reads, can.
+
+### Stream servers
+
+A station keeps a list of **stream servers** (*Outputs › Servers*). Several outputs going to the same server (an MP3 and an AAC stream, two mounts) pick it instead of each typing its address and passwords.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `name` | required | Unique on the station; shown in the outputs list |
+| `kind` | `icecast` | Icecast only for now |
+| `host` | required | The server's address, as the engine and the API reach it |
+| `port` | 8000 | |
+| `tls` | `false` | Relays only for now (see above) |
+| `source_username` | `source` | The source login outputs connect with |
+| `source_password` | required (except relays) | Never sent back by the API |
+| `admin_username` | `admin` | The admin login, for the [listener statistics](statistics.md#settings) |
+| `admin_password` | none | Never sent back; without it, Heron only counts concurrent listeners |
+| `public_url` | none: `http://host:port` | The server's address as listeners reach it, e.g. `https://stream.example.org` |
+| `relay_of` | none | The master server, for a [relay](statistics.md#relay-servers) |
+| `relay_mounts` | none: all of the master's | A relay's mounts: `[{"mount": "/live"}, {"mount": "/aac", "relay_mount": "/aac-relay"}]`, with the mount's name on the relay when it differs |
+| `relay_subtract_one` | `false` | A relay whose address the master does not see (behind NAT): its connection to the master counts as 1 listener per mount, subtracted |
+
+- **The engine still gets the full configuration of each output**, as before: the API joins the server's address, port and source credentials, the output's mount and the station details into the output's settings when it pushes them ([Configuration flow](#configuration-flow)). The engine never reads the database.
+- **Changing a server changes every output using it**: the API pushes the outputs again, and the engine reconnects those whose settings changed (a new address or source password). The admin credentials, the public address and the relay settings are not pushed: changing only them reconnects nothing.
+- A server used by an output, or the master of a relay, cannot be deleted: `409`, with the outputs and relays that use it.
+- A **relay** (`relay_of` set) is a server repeating the master's mounts: Heron sends nothing to it and no output can pick it; it is only read for the statistics, and needs no source credentials. Its master must be a server of the same station that is not itself a relay.
+
+### Station details
+
+What an output tells the server about the station, shown in stream directories: `name`, `description`, `genre`, `url` (the website) and `public` (listed in public directories, `false` by default). They **come from the station** (*Settings › Station*, `GET`, `PUT /settings/stream-details`): set once, every output sends them.
+
+An output can **override each of them** (`details` of the output: a field set there replaces the station's, one left out follows it, so it changes when the station's does). An empty text overrides with nothing: that output sends none. The 256k stream can be called "My station HD" while the others send the station's name.
+
+### Duplicate
+
+**Duplicate** (`POST /outputs/{id}/duplicate`) copies an output: the same server, encoder profile, metadata setting and station details, the name followed by `(copy)` and the mount by `-copy` (`/live-copy`; `-copy-2` and on when taken), and **disabled**, so that two outputs never fight for one mount. Change its mount and profile, then enable it.
 
 ### Metadata
 
@@ -155,16 +184,21 @@ Encoder profiles and outputs are edited in the web UI and stored by `heron-api` 
 
 A new configuration is validated as a whole: an invalid one changes nothing. Outputs whose settings and encoder profile are unchanged keep streaming without a reconnection; an encoder runs only while an enabled output uses it.
 
-Manage them through the API (`/api/v1/encoder-profiles`, `/api/v1/outputs`, admins only; [API and control plane](api.md#engine-configuration)) until the web UI's editor ([M5](roadmap/m5-web-ui.md)). For example, to the local Icecast of the `icecast` Compose profile:
+Manage them on the **Outputs** page, or through the API (`/api/v1/encoder-profiles`, `/api/v1/stream-servers`, `/api/v1/outputs`, admins only; [API and control plane](api.md#engine-configuration)). For example, to the local Icecast of the `icecast` Compose profile:
 
 ```json
+POST /api/v1/stream-servers
+{"name": "Local Icecast", "host": "icecast", "port": 8000, "source_password": "hackme",
+ "public_url": "http://localhost:8010"}
+
 POST /api/v1/outputs
-{"name": "Local Icecast", "kind": "icecast", "encoder_profile_id": 1,
- "config": {"host": "icecast", "port": 8000, "mount": "/live", "password": "hackme", "name": "My station",
-            "public_url": "http://localhost:8010"}}
+{"name": "Live MP3", "kind": "icecast", "encoder_profile_id": 1, "server_id": 1,
+ "config": {"mount": "/live"}, "details": {"name": "My station HD"}}
 ```
 
 The API never sends passwords back; an update without one keeps the stored password. Each output in `GET /api/v1/outputs` carries its live state from the engine and, for Icecast, its `listen_url`.
+
+When it pushes the outputs, the API keeps the engine's own settings of an output when they mean the same as the database's (the same server, mount and details, written differently: a default left out, an empty text): such an output is unchanged for the engine, and keeps streaming.
 
 ## Delivery
 

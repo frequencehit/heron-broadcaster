@@ -124,17 +124,48 @@ pub struct DaypartLog {
     pub count: u8,
     /// The pick's daypart, from 0 (A).
     pub daypart: u8,
-    /// The daypart separation of the slot's category, before relaxation;
+    /// The daypart separation of the picked track, before relaxation: its
+    /// own, else the slot's category's (`separation_from`);
     /// `windows.dayparts` is the one applied.
     pub separation: u8,
-    /// The days the same daypart is kept out on after a play, from the
-    /// slot's category, before relaxation; `windows.daypart_days` is the
-    /// one applied. Missing in picks logged before it.
+    /// The days the same daypart is kept out on after a play, before
+    /// relaxation: the track's own, else the slot's category's
+    /// (`days_from`); `windows.daypart_days` is the one applied. Missing
+    /// in picks logged before it.
     #[serde(default)]
     pub days: u8,
+    /// Whose `separation` it is. Missing in picks logged before tracks had
+    /// their own: the category's.
+    #[serde(default)]
+    pub separation_from: DaypartFrom,
+    /// Whose `days` they are.
+    #[serde(default)]
+    pub days_from: DaypartFrom,
     /// The daypart the picked track last played in, from 0; missing if
     /// never.
     pub last_daypart: Option<u8>,
+}
+
+/// Where a daypart value comes from: the slot's category, or the track's
+/// own, which replaces it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DaypartFrom {
+    #[default]
+    Category,
+    Track,
+}
+
+impl DaypartFrom {
+    /// The track's when it sets its own.
+    pub fn of(own: Option<u8>) -> Self {
+        if own.is_some() {
+            Self::Track
+        } else {
+            Self::Category
+        }
+    }
 }
 
 #[cfg(test)]

@@ -117,6 +117,8 @@ pub struct CategoriesQuery {
 pub fn separation_json(overrides: &SeparationOverrides) -> ApiResult<Option<String>> {
     let windows = heron_rotation::Windows::default().with(overrides);
     windows.check().map_err(ApiError::Invalid)?;
+    heron_rotation::draw::check_pct(overrides.draw_start_pct, overrides.draw_max_pct)
+        .map_err(ApiError::Invalid)?;
     if overrides.is_empty() {
         return Ok(None);
     }
@@ -514,5 +516,20 @@ mod tests {
             ..SeparationOverrides::default()
         };
         assert!(separation_json(&too_long).is_err());
+        let draw = SeparationOverrides {
+            draw_start_pct: Some(30),
+            draw_max_pct: Some(60),
+            ..SeparationOverrides::default()
+        };
+        let json = separation_json(&draw).unwrap().unwrap();
+        assert_eq!(crate::rotation::overrides(Some(&json)), draw);
+        for (start, max) in [(Some(0), None), (None, Some(101)), (Some(60), Some(30))] {
+            let draw = SeparationOverrides {
+                draw_start_pct: start,
+                draw_max_pct: max,
+                ..SeparationOverrides::default()
+            };
+            assert!(separation_json(&draw).is_err());
+        }
     }
 }

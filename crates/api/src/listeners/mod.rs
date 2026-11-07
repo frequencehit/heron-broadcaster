@@ -51,6 +51,44 @@ pub struct ListenersNow {
     /// The outputs' listeners added up; missing before the first reading or
     /// when no server could be read.
     pub total: Option<u32>,
+    /// Each server's listeners (master and relays), its outputs' parts
+    /// added up; missing when it could not be read.
+    pub servers: Vec<ServerListeners>,
+}
+
+/// A stream server's listeners at the last minute.
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct ServerListeners {
+    pub server_id: u64,
+    pub name: String,
+    /// The master it relays, for a relay.
+    pub relay_of: Option<u64>,
+    pub listeners: Option<u32>,
+    pub error: Option<String>,
+}
+
+/// Each server's listeners, from the outputs' parts.
+fn servers_of(outputs: &[OutputListeners]) -> Vec<ServerListeners> {
+    let mut servers: Vec<ServerListeners> = Vec::new();
+    for part in outputs.iter().flat_map(|output| &output.servers) {
+        match servers.iter_mut().find(|s| s.server_id == part.server_id) {
+            Some(server) => {
+                server.listeners = match (server.listeners, part.listeners) {
+                    (Some(a), Some(b)) => Some(a + b),
+                    (known, None) | (None, known) => known,
+                };
+                server.error = server.error.take().or_else(|| part.error.clone());
+            }
+            None => servers.push(ServerListeners {
+                server_id: part.server_id,
+                name: part.name.clone(),
+                relay_of: part.relay_of,
+                listeners: part.listeners,
+                error: part.error.clone(),
+            }),
+        }
+    }
+    servers
 }
 
 /// Each output's listeners at the last minute, and the station's.
@@ -74,6 +112,7 @@ async fn now(
     let read: Vec<u32> = outputs.iter().filter_map(|o| o.listeners).collect();
     Ok(Json(ListenersNow {
         total: (!read.is_empty()).then(|| read.iter().sum()),
+        servers: servers_of(&outputs),
         outputs,
     }))
 }
@@ -87,6 +126,9 @@ pub struct SamplesQuery {
     pub to_unix_ms: i64,
     /// Only this output; the whole station otherwise.
     pub output_id: Option<u64>,
+    /// Only this server's part (the master or a relay); every server's
+    /// otherwise.
+    pub server_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema, sqlx::FromRow)]
@@ -128,6 +170,9 @@ async fn samples(
         .push(")");
     if let Some(output_id) = query.output_id {
         sql.push(" AND output_id = ").push_bind(output_id);
+    }
+    if let Some(server_id) = query.server_id {
+        sql.push(" AND server_id = ").push_bind(server_id);
     }
     sql.push(" GROUP BY sampled_at ORDER BY sampled_at");
     Ok(Json(sql.build_query_as().fetch_all(&state.pool).await?))

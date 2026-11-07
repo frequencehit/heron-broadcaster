@@ -8,6 +8,7 @@ import { CoverThumb } from "../components/Cover";
 import { useModule } from "../lib/modules";
 import { StationFilter, useStationFilter, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioDialog, RatioImportDialog } from "../components/Ratio";
+import { DaypartsCell, TrackDaypartsDialog } from "../components/TrackDayparts";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
@@ -78,6 +79,12 @@ const SORTS: { value: TrackSort; label: PlainKey }[] = [
   { value: "play_ratio", label: "library.sort.playRatio" },
 ];
 
+const DAYPART_CHOICES: { value: "" | "own" | "category"; label: PlainKey }[] = [
+  { value: "", label: "library.filter.all" },
+  { value: "own", label: "trackDayparts.filterOwn" },
+  { value: "category", label: "trackDayparts.filterCategory" },
+];
+
 const RATIO_CHOICES: { value: RatioFilter | ""; label: PlainKey }[] = [
   { value: "", label: "library.filter.all" },
   { value: "below", label: "ratio.filter.below" },
@@ -102,6 +109,7 @@ type Column =
   | "level_min"
   | "level_max"
   | "ratio"
+  | "dayparts"
   | "labels";
 
 const COLUMNS: { value: Column; label: PlainKey }[] = [
@@ -121,6 +129,7 @@ const COLUMNS: { value: Column; label: PlainKey }[] = [
   { value: "level_min", label: "library.column.levelMin" },
   { value: "level_max", label: "library.column.levelMax" },
   { value: "ratio", label: "ratio.short" },
+  { value: "dayparts", label: "trackDayparts.column" },
   { value: "labels", label: "library.column.labels" },
 ];
 
@@ -184,11 +193,22 @@ export function filtersOf(search: URLSearchParams, q: string, station: number | 
     sound_code: text("sound_code"),
     genre: text("genre"),
     ...ratioFilter(search.get("ratio")),
+    own_dayparts: ownDayparts(search.get("dayparts")),
   });
 }
 
-/** Filters of the URL beyond search, show and category. */
+/** The daypart filter: the tracks' own values, or their categories'. */
+function ownDayparts(value: string | null): boolean | undefined {
+  if (value === "own") {
+    return true;
+  }
+  return value === "category" ? false : undefined;
+}
+
+/** Filters of the URL beyond search, category, ratio and sort: under *More filters*. */
 const MORE_FILTERS = [
+  "filter",
+  "dayparts",
   "station",
   "labels_all",
   "labels_any",
@@ -203,14 +223,24 @@ const MORE_FILTERS = [
   "genre",
 ];
 
-type Dialog = "labels" | "category" | "programming" | "ratio" | "tags" | "disable" | "enable" | "import-ratios" | null;
+type Dialog =
+  | "labels"
+  | "category"
+  | "programming"
+  | "ratio"
+  | "dayparts"
+  | "tags"
+  | "disable"
+  | "enable"
+  | "import-ratios"
+  | null;
 
 export function Library() {
   const { search } = useLocation();
   const canEdit = useCan("operator");
   const coverArt = useModule("cover_art");
+  const labelsOn = useModule("labels");
   const preview = usePreview();
-  const filter = (search.get("filter") ?? "") as TrackFilter | "";
   const sort = (search.get("sort") ?? "artist") as TrackSort;
   const desc = search.get("desc") === "true";
   const category = search.get("category") ?? "";
@@ -367,7 +397,9 @@ export function Library() {
   };
   // The cover goes before the title; the others after the artist.
   const showCover = coverArt && columns.includes("cover");
-  const shown = COLUMNS.filter((c) => c.value !== "cover" && columns.includes(c.value));
+  const shown = COLUMNS.filter(
+    (c) => c.value !== "cover" && (labelsOn || c.value !== "labels") && columns.includes(c.value),
+  );
 
   return (
     <>
@@ -398,36 +430,23 @@ export function Library() {
             </span>
           </div>
         )}
-        <div className="card-head">
-          <div className="row" style={{ flex: 1 }}>
-            <label className="row" style={{ flex: "1 1 16rem", flexWrap: "nowrap" }}>
-              <Icon name="search" />
-              <span className="visually-hidden">{t("library.search")}</span>
-              <input
-                className="input"
-                type="search"
-                placeholder={t("library.searchPlaceholder")}
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-              />
-            </label>
-            <label>
-              <span className="visually-hidden">{t("library.show")}</span>
-              <select
-                className="input"
-                value={filter}
-                onChange={(event) => setSearch({ filter: event.target.value, page: undefined })}
-              >
-                {FILTERS.filter((option) => coverArt || option.value !== "no_cover").map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </option>
-                ))}
-              </select>
-            </label>
+        <div className="card-head" style={{ flexDirection: "column", alignItems: "stretch" }}>
+          <label className="row" style={{ flexWrap: "nowrap" }}>
+            <Icon name="search" />
+            <span className="visually-hidden">{t("library.search")}</span>
+            <input
+              className="input"
+              type="search"
+              style={{ flex: 1 }}
+              placeholder={t("library.searchPlaceholder")}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+          </label>
+          <div className="row filter-bar">
             <StationFilter filter={stationFilter} disabled={category === "none"} />
-            <label>
-              <span className="visually-hidden">{t("library.category")}</span>
+            <label className="stacked">
+              <span>{t("library.categories")}</span>
               <select
                 className="input"
                 value={category}
@@ -456,9 +475,9 @@ export function Library() {
                 ))}
               </select>
             </label>
-            <span className="row" style={{ flexWrap: "nowrap" }}>
-              <label>
-                <span className="visually-hidden">{t("library.sortBy")}</span>
+            <span className="row" style={{ flexWrap: "nowrap", alignItems: "flex-end" }}>
+              <label className="stacked">
+                <span>{t("library.sortLabel")}</span>
                 <select
                   className="input"
                   value={sort}
@@ -466,7 +485,7 @@ export function Library() {
                 >
                   {SORTS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {t("library.sortOption", { sort: t(option.label) })}
+                      {t(option.label)}
                     </option>
                   ))}
                 </select>
@@ -492,7 +511,14 @@ export function Library() {
             <ColumnsMenu columns={columns} onToggle={toggleColumn} />
           </div>
         </div>
-        {moreOpen && <MoreFilters search={search} labels={labels.data ?? []} programming={programming.data} />}
+        {moreOpen && (
+          <MoreFilters
+            search={search}
+            labels={labelsOn ? (labels.data ?? []) : []}
+            programming={programming.data}
+            coverArt={coverArt}
+          />
+        )}
         {deletingNow && (
           <div className="card-head">
             <span>{t("library.deleting")}</span>
@@ -553,10 +579,11 @@ export function Library() {
                 <Menu
                   label={t("library.moreActions")}
                   items={[
-                    { label: t("library.labelsAction"), onSelect: () => setDialog("labels") },
+                    ...(labelsOn ? [{ label: t("library.labelsAction"), onSelect: () => setDialog("labels") }] : []),
                     { label: t("library.categoryAction"), onSelect: () => setDialog("category") },
                     { label: t("library.programmingAction"), onSelect: () => setDialog("programming") },
                     { label: t("ratio.action"), onSelect: () => setDialog("ratio") },
+                    { label: t("trackDayparts.action"), onSelect: () => setDialog("dayparts") },
                     { label: t("library.enable"), onSelect: () => setDialog("enable"), disabled: setEnabled.isPending },
                     {
                       label: t("library.disable"),
@@ -719,6 +746,12 @@ export function Library() {
         station={ratioStation}
       />
       <RatioImportDialog open={dialog === "import-ratios"} onClose={() => setDialog(null)} />
+      <TrackDaypartsDialog
+        open={dialog === "dayparts"}
+        onClose={() => setDialog(null)}
+        selection={selection}
+        tracks={selectedCount}
+      />
       <DisableDialog
         open={dialog === "disable"}
         onClose={() => setDialog(null)}
@@ -747,11 +780,14 @@ function sameRatio(tracks: TrackSummary[]): number | null {
 
 function ColumnsMenu({ columns, onToggle }: { columns: Column[]; onToggle: (column: Column, shown: boolean) => void }) {
   const coverArt = useModule("cover_art");
+  const labelsOn = useModule("labels");
   return (
     <details className="menu">
       <summary className="btn ghost small">{t("library.columns")}</summary>
       <div className="menu-panel stack">
-        {COLUMNS.filter((column) => coverArt || column.value !== "cover").map((column) => (
+        {COLUMNS.filter(
+          (column) => (coverArt || column.value !== "cover") && (labelsOn || column.value !== "labels"),
+        ).map((column) => (
           <label key={column.value} className="check">
             <input
               type="checkbox"
@@ -773,10 +809,12 @@ function MoreFilters({
   search,
   labels,
   programming,
+  coverArt,
 }: {
   search: URLSearchParams;
   labels: Schemas["Label"][];
   programming: Schemas["ProgrammingSettings"] | undefined;
+  coverArt: boolean;
 }) {
   const value = (name: string) => search.get(name) ?? "";
   const set = (name: string, next: string | undefined) => setSearch({ [name]: next || undefined, page: undefined });
@@ -831,6 +869,26 @@ function MoreFilters({
   return (
     <div className="card-body stack">
       <div className="filters-grid">
+        <label className="field">
+          <span>{t("library.show")}</span>
+          <select className="input" value={value("filter")} onChange={(event) => set("filter", event.target.value)}>
+            {FILTERS.filter((option) => coverArt || option.value !== "no_cover").map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>{t("trackDayparts.column")}</span>
+          <select className="input" value={value("dayparts")} onChange={(event) => set("dayparts", event.target.value)}>
+            {DAYPART_CHOICES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+        </label>
         {stations.length > 1 && (
           <label className="field">
             <span>{t("library.playsOn")}</span>
@@ -1002,6 +1060,7 @@ function Row({
     level_min: <span className="num small">{levelText(track.level_min_db)}</span>,
     level_max: <span className="num small">{levelText(track.level_max_db)}</span>,
     ratio: <RatioPill track={track} />,
+    dayparts: <DaypartsCell track={track} />,
     labels: (
       <span className="chips">
         {track.labels.map((label) => (
@@ -1123,13 +1182,14 @@ function RatioPill({ track }: { track: TrackSummary }) {
 
 /** What a deletion takes, before it is confirmed. */
 export function DeleteQuestion({ tracks }: { tracks: TrackSummary[] }) {
+  const trashOn = useModule("trash");
   const shown = tracks.slice(0, 15);
   return (
     <>
       <p>
         {rich("library.deleteQuestion", {
           count: tracks.length,
-          trash: <Link to="/trash">{t("nav.trash")}</Link>,
+          trash: trashOn ? <Link to="/trash">{t("nav.trash")}</Link> : t("nav.trash"),
         })}
       </p>
       <ul className="small" style={{ margin: 0 }}>

@@ -14,6 +14,13 @@ pub enum Module {
     CoverArt,
     ListenerStatistics,
     Webhooks,
+    Restrictions,
+    Eq,
+    Processing,
+    Trash,
+    Review,
+    Artists,
+    Labels,
     /// A show (`docs/listener-interaction.md`): dedications (#131).
     Dedications,
     /// A show: listeners choose the next song (#132).
@@ -23,11 +30,18 @@ pub enum Module {
 }
 
 impl Module {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 14] = [
         Self::Medleys,
         Self::CoverArt,
         Self::ListenerStatistics,
         Self::Webhooks,
+        Self::Restrictions,
+        Self::Eq,
+        Self::Processing,
+        Self::Trash,
+        Self::Review,
+        Self::Artists,
+        Self::Labels,
         Self::Dedications,
         Self::Match,
         Self::Top30,
@@ -53,6 +67,13 @@ impl Module {
             Self::CoverArt => "cover_art",
             Self::ListenerStatistics => "listener_statistics",
             Self::Webhooks => "webhooks",
+            Self::Restrictions => "restrictions",
+            Self::Eq => "eq",
+            Self::Processing => "processing",
+            Self::Trash => "trash",
+            Self::Review => "review",
+            Self::Artists => "artists",
+            Self::Labels => "labels",
             Self::Dedications => "dedications",
             Self::Match => "match",
             Self::Top30 => "top30",
@@ -66,10 +87,26 @@ impl Module {
             Self::CoverArt => "cover art",
             Self::ListenerStatistics => "listener statistics",
             Self::Webhooks => "webhooks",
+            Self::Restrictions => "restrictions",
+            Self::Eq => "equalizer",
+            Self::Processing => "processing",
+            Self::Trash => "trash",
+            Self::Review => "to organize",
+            Self::Artists => "artists",
+            Self::Labels => "labels",
             Self::Dedications => "dedications",
             Self::Match => "the match",
             Self::Top30 => "the top 30",
         }
+    }
+
+    /// A module of the library, which the stations share: turned on and
+    /// off for the installation only.
+    pub fn installation_only(self) -> bool {
+        matches!(
+            self,
+            Self::Trash | Self::Review | Self::Artists | Self::Labels
+        )
     }
 }
 
@@ -88,6 +125,13 @@ pub struct Modules {
     pub cover_art: bool,
     pub listener_statistics: bool,
     pub webhooks: bool,
+    pub restrictions: bool,
+    pub eq: bool,
+    pub processing: bool,
+    pub trash: bool,
+    pub review: bool,
+    pub artists: bool,
+    pub labels: bool,
     pub dedications: bool,
     #[serde(rename = "match")]
     pub r#match: bool,
@@ -101,6 +145,13 @@ impl Default for Modules {
             cover_art: true,
             listener_statistics: true,
             webhooks: true,
+            restrictions: true,
+            eq: true,
+            processing: true,
+            trash: true,
+            review: true,
+            artists: true,
+            labels: true,
             dedications: false,
             r#match: false,
             top30: false,
@@ -120,6 +171,13 @@ impl Modules {
         cover_art: true,
         listener_statistics: true,
         webhooks: true,
+        restrictions: true,
+        eq: true,
+        processing: true,
+        trash: true,
+        review: true,
+        artists: true,
+        labels: true,
         dedications: true,
         r#match: true,
         top30: true,
@@ -131,6 +189,13 @@ impl Modules {
             Module::CoverArt => self.cover_art,
             Module::ListenerStatistics => self.listener_statistics,
             Module::Webhooks => self.webhooks,
+            Module::Restrictions => self.restrictions,
+            Module::Eq => self.eq,
+            Module::Processing => self.processing,
+            Module::Trash => self.trash,
+            Module::Review => self.review,
+            Module::Artists => self.artists,
+            Module::Labels => self.labels,
             Module::Dedications => self.dedications,
             Module::Match => self.r#match,
             Module::Top30 => self.top30,
@@ -158,6 +223,13 @@ impl Modules {
             Module::CoverArt => &mut self.cover_art,
             Module::ListenerStatistics => &mut self.listener_statistics,
             Module::Webhooks => &mut self.webhooks,
+            Module::Restrictions => &mut self.restrictions,
+            Module::Eq => &mut self.eq,
+            Module::Processing => &mut self.processing,
+            Module::Trash => &mut self.trash,
+            Module::Review => &mut self.review,
+            Module::Artists => &mut self.artists,
+            Module::Labels => &mut self.labels,
             Module::Dedications => &mut self.dedications,
             Module::Match => &mut self.r#match,
             Module::Top30 => &mut self.top30,
@@ -165,17 +237,34 @@ impl Modules {
         *field = on;
     }
 
-    /// What is on at both levels: a module off for the installation is
-    /// off for every station.
-    pub fn and(self, other: Self) -> Self {
+    /// What is on at both levels, `self` the installation's and `station`
+    /// a station's: a module off for the installation is off for every
+    /// station, and the library's follow the installation alone.
+    pub fn and(self, station: Self) -> Self {
         Self {
-            medleys: self.medleys && other.medleys,
-            cover_art: self.cover_art && other.cover_art,
-            listener_statistics: self.listener_statistics && other.listener_statistics,
-            webhooks: self.webhooks && other.webhooks,
-            dedications: self.dedications && other.dedications,
-            r#match: self.r#match && other.r#match,
-            top30: self.top30 && other.top30,
+            medleys: self.medleys && station.medleys,
+            cover_art: self.cover_art && station.cover_art,
+            listener_statistics: self.listener_statistics && station.listener_statistics,
+            webhooks: self.webhooks && station.webhooks,
+            restrictions: self.restrictions && station.restrictions,
+            eq: self.eq && station.eq,
+            processing: self.processing && station.processing,
+            dedications: self.dedications && station.dedications,
+            r#match: self.r#match && station.r#match,
+            top30: self.top30 && station.top30,
+            ..self
+        }
+    }
+
+    /// A station's switches as stored: the library's modules on, since
+    /// only the installation turns them off.
+    pub fn for_station(self) -> Self {
+        Self {
+            trash: true,
+            review: true,
+            artists: true,
+            labels: true,
+            ..self
         }
     }
 
@@ -195,7 +284,12 @@ mod tests {
         assert_eq!(Modules::parse(None), Modules::default());
         let stored = Modules::parse(Some(r#"{"medleys": false, "later": true}"#));
         assert!(!stored.is_on(Module::Medleys));
-        assert!(Module::ALL[1..4].iter().all(|module| stored.is_on(*module)));
+        assert!(
+            Module::ALL[1..]
+                .iter()
+                .filter(|module| !module.is_show())
+                .all(|module| stored.is_on(*module))
+        );
         assert!(Module::SHOWS.iter().all(|module| !stored.is_on(*module)));
         assert_eq!(Modules::parse(Some("not json")), Modules::default());
     }
@@ -226,6 +320,32 @@ mod tests {
         );
         let installation = Modules::over(Modules::default(), &serde_json::json!({"top30": true}));
         assert!(installation.top30 && !installation.dedications);
+    }
+
+    #[test]
+    fn the_library_modules_follow_the_installation_alone() {
+        let library_off = Modules {
+            trash: false,
+            review: false,
+            artists: false,
+            labels: false,
+            ..Modules::default()
+        };
+        assert_eq!(Modules::default().and(library_off), Modules::default());
+        assert_eq!(library_off.and(Modules::default()), library_off);
+        assert_eq!(library_off.for_station(), Modules::default());
+        // A station that turns everything off keeps the library's on.
+        let all_off: Modules = serde_json::from_value(serde_json::Value::Object(
+            Module::ALL
+                .iter()
+                .map(|module| (module.key().to_owned(), false.into()))
+                .collect(),
+        ))
+        .unwrap();
+        let on = Modules::default().and(all_off);
+        for module in Module::ALL {
+            assert_eq!(on.is_on(module), module.installation_only(), "{module:?}");
+        }
     }
 
     #[test]

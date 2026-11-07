@@ -10,10 +10,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{FALLBACK_STEP, LAST_STEP};
-use crate::select::SeparationRule;
+use crate::select::{Call, SeparationRule};
 use crate::{
-    AcrossWindows, CategoryId, Elsewhere, Explanation, History, Library, Play, Position, Rng,
-    TrackId, Windows, dayparts, next_outcome, ratio,
+    AcrossWindows, CategoryId, DrawDepth, Elsewhere, ExactTime, Explanation, FillKind, History,
+    Library, Method, Play, Position, Rng, Track, TrackId, Windows, dayparts, draw, next_outcome,
+    ratio,
 };
 
 /// Shortest length a simulated track is counted for.
@@ -79,6 +80,18 @@ pub enum Violation {
         earlier_unix_ms: i64,
         days: u8,
     },
+    /// Drawn from beyond its draw depth: `rank` tracks of its pool, allowed
+    /// by the restrictions, played longer ago than it (or never), and its
+    /// draw had `tracks`.
+    Draw { pick: u32, rank: u32, tracks: u32 },
+    /// A slot with an exact time missed its window (it started early, or
+    /// is not logged as an exact pick): `at_unix_ms` is its exact time,
+    /// missing when the pick does not say it.
+    ExactTime {
+        pick: u32,
+        at_unix_ms: Option<i64>,
+        start_unix_ms: i64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -111,7 +124,7 @@ pub fn simulate(
     let before = history.plays().to_vec();
     let horizon = library.horizon_ms();
     let mut rng = Rng::new(seed);
-    let mut picks = Vec::new();
+    let mut picks: Vec<SimulatedPick> = Vec::new();
     let mut gap_minutes = 0;
     let end = start_ms + duration_ms;
     let mut at = start_ms;
@@ -136,14 +149,25 @@ pub fn simulate(
             let Some(track) = working.tracks.get(&pick.track) else {
                 break 'run;
             };
+            // An exact time starts its slot at its own planned start: the
+            // track before is cut there.
+            let start = pick.explanation.at_unix_ms;
+            if start < at
+                && let Some(previous) = picks.last_mut()
+            {
+                let played = start - previous.start_unix_ms;
+                previous.length_ms = u32::try_from(played.max(0)).unwrap_or(0);
+            }
+            at = start;
+            let length_ms = pick.length_ms(&working);
             history.push(Play::of(track, at));
             picks.push(SimulatedPick {
                 track_id: pick.track,
                 start_unix_ms: at,
-                length_ms: track.length_ms,
+                length_ms,
                 explanation: pick.explanation,
             });
-            at += i64::from(track.length_ms).max(MIN_LENGTH_MS);
+            at += i64::from(length_ms).max(MIN_LENGTH_MS);
             if pick.position.is_some() {
                 last = pick.position;
             }
@@ -168,17 +192,26 @@ pub fn simulate(
     }
 }
 
-/// The windows and category a pick must respect, from its slot and step.
-fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<CategoryId>) {
+/// The windows and category a pick of `track` must respect, from its
+/// slot, the track's own daypart values and its step.
+fn expected(
+    library: &Library,
+    explanation: &Explanation,
+    track: &Track,
+) -> (Windows, Option<CategoryId>) {
     let step = explanation.step;
+    let relaxed = |windows| library.for_track(windows, track).at_step(step);
+    // A gap filled before an exact time: its category's rules, never relaxed.
+    if let Some(category) = fill_category(library, explanation) {
+        let separation = library.categories.get(&category).map(|c| &c.separation);
+        return (relaxed(library.windows(separation, None)), Some(category));
+    }
     if step >= FALLBACK_STEP {
         let fallback = library.fallback_category();
         let windows = if step >= LAST_STEP {
             Windows::OFF
         } else {
-            library
-                .windows(fallback.map(|c| &c.separation), None)
-                .at_step(step)
+            relaxed(library.windows(fallback.map(|c| &c.separation), None))
         };
         return (windows, fallback.map(|c| c.id));
     }
@@ -188,7 +221,7 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
         .and_then(|(clock, slot)| library.clocks.get(&clock)?.slots.get(slot as usize));
     match slot {
         // No clock: the whole library, rules enforced.
-        None => (library.windows(None, None).at_step(step), None),
+        None => (relaxed(library.windows(None, None)), None),
         Some(slot) if !slot.enforce_rules => (Windows::OFF, Some(slot.category)),
         Some(slot) => {
             let category = library
@@ -196,21 +229,85 @@ fn expected(library: &Library, explanation: &Explanation) -> (Windows, Option<Ca
                 .get(&slot.category)
                 .map(|c| &c.separation);
             (
-                library
-                    .windows(category, Some(&slot.separation))
-                    .at_step(step),
+                relaxed(library.windows(category, Some(&slot.separation))),
                 Some(slot.category),
             )
         }
     }
 }
 
+/// The category a pick filling the gap before an exact time comes from.
+fn fill_category(library: &Library, explanation: &Explanation) -> Option<CategoryId> {
+    match explanation.fill.as_ref()?.kind {
+        FillKind::Medley => library.medley_category,
+        FillKind::Filler => library.settings.filler_category_id,
+    }
+}
+
+/// The exact time a pick of an exact slot must meet, from its clock: its
+/// slot, or the next one when it is linked to it. `None` for other picks.
+fn expected_exact(library: &Library, explanation: &Explanation) -> Option<ExactTime> {
+    if explanation.fill.is_some() {
+        return None;
+    }
+    let clock = library.clocks.get(&explanation.clock_id?)?;
+    let index = explanation.slot? as usize;
+    if index >= clock.slots.len() || clock.follows_linked(index) {
+        return None;
+    }
+    clock.exact(index)
+}
+
+/// The draw depth a pick must come from, from its slot and step, and the
+/// category its pool is (`None`: the station's library); no depth for a
+/// random slot and at step 12.
+fn expected_draw(
+    library: &Library,
+    explanation: &Explanation,
+) -> Option<(DrawDepth, Option<CategoryId>)> {
+    let step = explanation.step;
+    if step >= LAST_STEP {
+        return None;
+    }
+    let slot = explanation
+        .clock_id
+        .zip(explanation.slot)
+        .and_then(|(clock, slot)| library.clocks.get(&clock)?.slots.get(slot as usize));
+    if let Some(category) = fill_category(library, explanation) {
+        let separation = library.categories.get(&category).map(|c| &c.separation);
+        return Some((library.draw(separation, None), Some(category)));
+    }
+    if slot.is_some_and(|slot| slot.method == Method::Random) {
+        return None;
+    }
+    if step >= FALLBACK_STEP {
+        let fallback = library.fallback_category();
+        return Some((
+            library.draw(fallback.map(|c| &c.separation), None),
+            fallback.map(|c| c.id),
+        ));
+    }
+    Some(match slot {
+        None => (library.draw(None, None), None),
+        Some(slot) => {
+            let category = library.categories.get(&slot.category);
+            (
+                library.draw(category.map(|c| &c.separation), Some(&slot.separation)),
+                Some(slot.category),
+            )
+        }
+    })
+}
+
 /// Checks each pick against the plays before it (`before`, then the
 /// earlier picks): separation as relaxed at its step (daypart separation
 /// against the track's last play, the same daypart against its plays on
 /// the days before), restrictions always,
-/// and the play ratio always: the counters start from the library's and
-/// move with the tracks each pick lists as held back, then with the pick.
+/// the draw depth (the tracks of its pool played longer ago than it are
+/// fewer than its draw had: the one logged at step 0 and 11, within the
+/// start and the maximum, the maximum at the other steps), and the play
+/// ratio always: the counters start from the library's and move with the
+/// tracks each pick lists as held back, then with the pick.
 pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec<Violation> {
     let mut violations = Vec::new();
     // Counters moved so far; the library's before.
@@ -225,6 +322,13 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
     };
     let mut timeline: Vec<Play> = before.to_vec();
     timeline.sort_by_key(|play| play.start_ms);
+    // When each track last played, so far.
+    let mut last_played: std::collections::HashMap<TrackId, i64> = std::collections::HashMap::new();
+    for play in &timeline {
+        if let Some(track) = play.track {
+            last_played.insert(track, play.start_ms);
+        }
+    }
     for (index, pick) in picks.iter().enumerate() {
         let index = u32::try_from(index).unwrap_or(u32::MAX);
         let Some(track) = library.tracks.get(&pick.track_id) else {
@@ -246,7 +350,7 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
             });
         }
         let at = pick.start_unix_ms;
-        let (windows, category) = expected(library, &pick.explanation);
+        let (windows, category) = expected(library, &pick.explanation, track);
         if pick.explanation.category_id != category
             || category.is_some_and(|c| !track.categories.contains(&c))
         {
@@ -366,6 +470,54 @@ pub fn audit(library: &Library, before: &[Play], picks: &[SimulatedPick]) -> Vec
                 type_id,
             });
         }
+        if let Some((depth, category)) = expected_draw(library, &pick.explanation) {
+            let logged = pick.explanation.draw.map(|draw| draw.pct);
+            let step = pick.explanation.step;
+            let pct = if step == 0 || step == FALLBACK_STEP {
+                logged
+                    .unwrap_or(depth.start_pct)
+                    .clamp(depth.start_pct, depth.max_pct)
+            } else {
+                depth.max_pct
+            };
+            let (pool, _) = Call::new(library, category, None).allowed(library, local, previous);
+            let key = last_played.get(&track.id).copied();
+            let rank = if key.is_none() {
+                0
+            } else {
+                pool.iter()
+                    .filter(|(other, _)| {
+                        other.id != track.id && last_played.get(&other.id).copied() < key
+                    })
+                    .count()
+            };
+            let tracks = draw::size(pool.len(), pct);
+            if rank >= tracks {
+                violations.push(Violation::Draw {
+                    pick: index,
+                    rank: u32::try_from(rank).unwrap_or(u32::MAX),
+                    tracks: u32::try_from(tracks).unwrap_or(u32::MAX),
+                });
+            }
+        }
+        if let Some(exact) = expected_exact(library, &pick.explanation) {
+            let logged = pick.explanation.exact.map(|log| log.at_unix_ms);
+            let met = logged.is_some_and(|at_ms| {
+                let local = library.local(at_ms);
+                let into_hour =
+                    u32::from(local.minute() as u8) * 60 + u32::from(local.second() as u8);
+                let window = exact.window(at_ms);
+                into_hour == exact.at_s && (window.from_ms..=window.cut_ms).contains(&at)
+            });
+            if !met {
+                violations.push(Violation::ExactTime {
+                    pick: index,
+                    at_unix_ms: logged,
+                    start_unix_ms: at,
+                });
+            }
+        }
+        last_played.insert(track.id, at);
         timeline.push(Play::of(track, at));
     }
     violations
@@ -453,6 +605,8 @@ mod tests {
             categories: vec![],
             length_ms: 200_000,
             ratio: 10,
+            dayparts: None,
+            daypart_days: None,
         };
         Library::new(
             LibraryParts {
@@ -488,6 +642,7 @@ mod tests {
                         method: Method::Random,
                         enforce_rules: true,
                         linked_to_next: false,
+                        exact: None,
                         separation: SeparationOverrides::default(),
                     }],
                 }],
@@ -537,7 +692,10 @@ mod tests {
                 counter: None,
                 held_by_ratio: vec![],
                 daypart: None,
+                draw: None,
                 linked: false,
+                exact: None,
+                fill: None,
             },
         }
     }
@@ -615,6 +773,8 @@ mod tests {
                 categories: vec![],
                 length_ms: 200_000,
                 ratio: 10,
+                dayparts: None,
+                daypart_days: None,
             })
             .collect();
         let library = Library::new(
@@ -801,6 +961,110 @@ mod tests {
         assert_eq!(audit(&library, &before, &at_five).len(), 1);
         let before = [before[0].clone(), Play::of(&library.tracks[&1], 30 * MIN)];
         assert!(audit(&library, &before, &at_five).is_empty());
+    }
+
+    #[test]
+    fn audits_a_track_s_own_daypart_values() {
+        let mut library = library();
+        library.settings.separation = Windows::OFF.into();
+        library.categories.get_mut(&1).unwrap().separation.dayparts = Some(1);
+        let hour = 60 * MIN;
+        let again = |library: &Library, at| [pick(library, 1, hour, 0), pick(library, 1, at, 0)];
+        // Its own 0 replaces the category's 1: B is free.
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(0);
+        assert!(audit(&library, &[], &again(&library, 7 * hour)).is_empty());
+        // Its own 2 keeps C out too.
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(2);
+        assert_eq!(
+            audit(&library, &[], &again(&library, 13 * hour)),
+            [Violation::Daypart {
+                pick: 1,
+                earlier_unix_ms: hour,
+                dayparts: 2,
+            }]
+        );
+        // Its own days in the same daypart, the category having none.
+        library.tracks.get_mut(&1).unwrap().dayparts = None;
+        library.tracks.get_mut(&1).unwrap().daypart_days = Some(1);
+        assert_eq!(
+            audit(&library, &[], &again(&library, 25 * hour)),
+            [Violation::DaypartDays {
+                pick: 1,
+                earlier_unix_ms: hour,
+                days: 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn catches_a_pick_from_beyond_its_draw() {
+        let mut library = library();
+        library.clocks.get_mut(&1).unwrap().slots[0].method = Method::LeastRecentlyPlayed;
+        // 10 tracks in the category: 1, 2, 3, 10 to 16, played in that order
+        // long ago (no separation).
+        let ids = [1, 2, 3, 10, 11, 12, 13, 14, 15, 16];
+        for id in 10..=16 {
+            let mut track = library.tracks[&4].clone();
+            track.id = id;
+            track.title_key = Some(format!("t{id}"));
+            track.artists = vec![100 + id];
+            track.categories = vec![1];
+            library.tracks.insert(id, track);
+            let members = &mut library.categories.get_mut(&1).unwrap().members;
+            members.push(Member {
+                track: id,
+                weight: 1.0,
+            });
+        }
+        let before: Vec<_> = ids
+            .iter()
+            .enumerate()
+            .map(|(rank, id)| Play::of(&library.tracks[id], -(2_000 - rank as i64 * 10) * MIN))
+            .collect();
+        let drawn = |track, step, pct: Option<u8>| {
+            let mut pick = pick(&library, track, 0, step);
+            pick.explanation.draw = pct.map(|pct| crate::DrawLog {
+                pct,
+                start_pct: 20,
+                max_pct: 50,
+                tracks: 0,
+                blocked: crate::Blocked::default(),
+            });
+            audit(&library, &before, &[pick])
+        };
+        // The oldest is in any draw; the most recent in none.
+        assert_eq!(drawn(1, 0, Some(20)), []);
+        assert_eq!(
+            drawn(16, 0, Some(20)),
+            [Violation::Draw {
+                pick: 0,
+                rank: 9,
+                tracks: 3
+            }]
+        );
+        // The fifth oldest: in a draw widened to 50 %, not in one of 20 %.
+        assert_eq!(drawn(11, 0, Some(50)), []);
+        assert_eq!(
+            drawn(11, 0, Some(20)),
+            [Violation::Draw {
+                pick: 0,
+                rank: 4,
+                tracks: 3
+            }]
+        );
+        // Past step 0 the draw is at its maximum, whatever is logged; never
+        // beyond it.
+        assert_eq!(drawn(11, 5, Some(20)), []);
+        assert!(matches!(
+            drawn(13, 5, Some(100))[..],
+            [Violation::Draw { tracks: 5, .. }]
+        ));
+        // Step 12 has no draw.
+        assert!(
+            !drawn(16, 12, None)
+                .iter()
+                .any(|v| matches!(v, Violation::Draw { .. }))
+        );
     }
 
     #[test]

@@ -60,7 +60,8 @@ impl Station {
             }
             let audio = decode_to_memory(&file.path, cue_in_ms, cue_out_ms);
             Ok(Box::new(VecSource::new(audio)))
-        });
+        })
+        .with_wall_clock(test_now);
         if let Some(fallback) = fallback {
             player = player.with_fallback(fallback);
         }
@@ -101,6 +102,8 @@ impl Station {
             no_metadata: false,
             over_intro: false,
             intro_ms: None,
+            start_at: None,
+            continues: false,
         }
     }
 }
@@ -1198,4 +1201,140 @@ fn a_jingle_on_air_plays_on_when_its_track_is_removed() {
         .map(|(_, path)| path)
         .collect();
     assert_eq!(order, ["j.wav"]);
+}
+
+thread_local! {
+    /// The server's clock in the tests: moved on by `timed_play`.
+    static NOW_MS: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+}
+
+fn test_now() -> i64 {
+    NOW_MS.with(std::cell::Cell::get)
+}
+
+impl Station {
+    /// A station whose server clock follows the audio rendered, from 0.
+    fn timed() -> Self {
+        NOW_MS.with(|now| now.set(0));
+        Self::new()
+    }
+
+    /// As [`Self::play`], the server clock moving with each 100 ms block.
+    fn timed_play(&mut self, seconds: f64) {
+        let mut block = vec![0.0; BLOCK * CHANNELS];
+        for _ in 0..(seconds * 10.0).round() as usize {
+            self.player.tick();
+            self.mixer.render(&mut block);
+            NOW_MS.with(|now| now.set(now.get() + 100));
+        }
+        self.player.tick();
+    }
+
+    fn at(&self, name: &str, seconds: f64, start_at_ms: i64) -> TrackRequest {
+        TrackRequest {
+            start_at: Some(StartAt {
+                unix_ms: start_at_ms,
+                fade_ms: 1_500,
+            }),
+            ..self.file(name, seconds)
+        }
+    }
+}
+
+fn started_at(events: &[PlayerEvent], name: &str) -> bool {
+    started(events).iter().any(|(_, path)| path == name)
+}
+
+#[test]
+fn an_exact_time_cuts_what_plays_and_drops_what_waits_before_it() {
+    let mut station = Station::timed();
+    let tracks = vec![
+        station.file("song.wav", 10.0),
+        station.file("other.wav", 10.0),
+        station.at("news.wav", 3.0, 3_000),
+    ];
+    station.player.enqueue(tracks, None).unwrap();
+    station.timed_play(2.5);
+    // A second before, the entry before it is dropped and the news cued.
+    assert_eq!(waiting(&station), ["news.wav"]);
+    let events = station.events();
+    assert!(!started_at(&events, "news.wav"));
+    station.timed_play(0.6);
+    let mut events = station.events();
+    assert!(started_at(&events, "news.wav"), "{events:?}");
+    // The song fades out over 1.5 s.
+    station.timed_play(2.0);
+    events.extend(station.events());
+    assert!(events.iter().any(|event| matches!(
+        event,
+        PlayerEvent::Ended {
+            reason: EndReason::Skipped,
+            ..
+        }
+    )));
+    assert!(!started_at(&events, "other.wav"));
+    // Used once.
+    assert!(station.player.next_start_at().is_none());
+}
+
+#[test]
+fn an_entry_that_starts_before_its_time_is_not_cut() {
+    let mut station = Station::timed();
+    let tracks = vec![
+        station.file("jingle.wav", 1.0),
+        station.at("news.wav", 3.0, 30_000),
+    ];
+    station.player.enqueue(tracks, None).unwrap();
+    station.timed_play(2.0);
+    assert!(started_at(&station.events(), "news.wav"));
+    station.timed_play(1.0);
+    assert!(!station.events().iter().any(|event| matches!(
+        event,
+        PlayerEvent::Ended {
+            reason: EndReason::Skipped,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn a_start_time_is_kept_across_a_restart() {
+    let mut station = Station::timed();
+    let tracks = vec![
+        station.file("song.wav", 20.0),
+        station.at("news.wav", 3.0, 60_000),
+    ];
+    station.player.enqueue(tracks, None).unwrap();
+    station.timed_play(1.0);
+    let saved = station.player.saved();
+    assert_eq!(
+        saved.waiting[0].track.start_at.map(|start| start.unix_ms),
+        Some(60_000)
+    );
+    let json = serde_json::to_string(&saved).unwrap();
+    let back: SavedQueue = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, saved);
+    // An older queue file, without start times, reads as before.
+    let old: TrackRequest = serde_json::from_str(
+        r#"{"track_id": null, "path": "a.wav", "title": null, "artist": null, "album": null,
+            "playout": {"duration_ms": 1000, "cue_in_ms": 0, "cue_out_ms": 1000, "mix_point_ms": null,
+                        "integrated_lufs": null, "true_peak_db": null, "crossfade": {}},
+            "source": "manual"}"#,
+    )
+    .unwrap();
+    assert!(old.start_at.is_none() && !old.continues);
+}
+
+#[test]
+fn a_handover_waits_for_an_exact_time_to_pass() {
+    let mut station = Station::timed();
+    let tracks = vec![
+        station.file("song.wav", 30.0),
+        station.at("news.wav", 3.0, 4_000),
+    ];
+    station.player.enqueue(tracks, None).unwrap();
+    station.timed_play(1.0);
+    assert_eq!(station.player.handover_point(2_000), HandoverPoint::Wait);
+    station.timed_play(4.0);
+    assert!(started_at(&station.events(), "news.wav"));
 }
