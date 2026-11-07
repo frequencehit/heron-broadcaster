@@ -25,7 +25,9 @@ use crate::auth::{CurrentUser, Role};
 use crate::error::{ApiResult, ErrorBody};
 
 pub fn router() -> OpenApiRouter<AppState> {
-    OpenApiRouter::new().routes(routes!(about))
+    OpenApiRouter::new()
+        .routes(routes!(about))
+        .routes(routes!(clear_stopped))
 }
 
 /// What the API knows of itself from its start.
@@ -322,4 +324,32 @@ async fn about(user: CurrentUser, State(state): State<AppState>) -> ApiResult<Js
         dependencies: Some(Dependencies { database, ffmpeg }),
         configuration: Some(configuration),
     }))
+}
+
+/// How many stopped workers `DELETE /about/stopped` took off the list.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StoppedCleared {
+    pub removed: u64,
+}
+
+/// Takes the workers that have stopped reporting off the list: the
+/// containers of earlier runs, each with its own instance name. One that
+/// runs again reports again and comes back. Admins.
+#[utoipa::path(delete, path = "/about/stopped", tag = "system",
+    responses((status = 200, body = StoppedCleared), (status = "4XX", body = ErrorBody)))]
+async fn clear_stopped(
+    user: CurrentUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<StoppedCleared>> {
+    user.require(Role::Admin)?;
+    let removed = sqlx::query(
+        "DELETE FROM service_heartbeats
+         WHERE seen_at < UTC_TIMESTAMP(6) - INTERVAL ? SECOND",
+    )
+    .bind(HEARTBEAT_STALE.as_secs())
+    .execute(&state.pool)
+    .await?
+    .rows_affected();
+    tracing::info!(removed, "stopped workers taken off the About page");
+    Ok(Json(StoppedCleared { removed }))
 }

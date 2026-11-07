@@ -438,7 +438,17 @@ async fn about_page_roles_and_secrets() {
     assert_eq!(worker(&about, "heron-librarian")["running"], false);
     assert_eq!(worker(&about, "heron-librarian")["version"], "0.2.0");
 
+    // The stopped ones are taken off the list by an admin, the running ones stay.
+    let (status, _) = viewer.request(Method::DELETE, "/about/stopped", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     let admin = station.signed_in("admin").await;
+    let (status, cleared) = admin.request(Method::DELETE, "/about/stopped", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(cleared["removed"], 1);
+    let about = viewer.get("/about").await;
+    assert_eq!(worker(&about, "heron-analyzer")["running"], true);
+    assert!(worker(&about, "heron-librarian")["version"].is_null());
+
     let about = admin.get("/about").await;
     assert!(about["runtime"]["cpu_cores"].as_u64().unwrap() >= 1);
     assert!(about["dependencies"]["database"]["version"].is_string());
@@ -8936,7 +8946,8 @@ async fn an_older_backup_turns_full_width_into_a_width() {
     for user in file["tables"]["users"].as_array_mut().unwrap() {
         let user = user.as_object_mut().unwrap();
         user.remove("width");
-        let full = user["username"] == "admin";
+        // As backups write booleans: 1 or 0.
+        let full = i64::from(user["username"] == "admin");
         user.insert("full_width".to_owned(), json!(full));
     }
     let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;

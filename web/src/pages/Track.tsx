@@ -553,21 +553,6 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
                   >
                     <Icon name={playing ? "pause" : "play"} size={14} /> {playing ? t("dashboard.pause") : t("track.listen")}
                   </button>
-                  <span
-                    className="num small playhead-time"
-                    title={t("track.playheadHelp", { fromCueIn: duration((playhead ?? cueIn) - cueIn, true) })}
-                  >
-                    <span className="visually-hidden">{t("track.playhead")} </span>
-                    {duration(playhead ?? 0, true)} / {duration(length)}
-                    {waveform.data && (
-                      <>
-                        {" · "}
-                        <span title={t("track.levelHelp")}>
-                          {levelText(levelAt(waveform.data.peaks, waveform.data.intervalMs, playhead ?? 0))}
-                        </span>
-                      </>
-                    )}
-                  </span>
                   <button type="button" className="btn small" onClick={() => playFrom(cueIn)}>
                     {t("track.fromCueIn")}
                   </button>
@@ -613,6 +598,25 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
                 onSeek={playFrom}
                 {...(view && { view })}
               />
+            )}
+            {!track.missing && (
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: "-0.4rem" }}>
+                <span
+                  className="num small playhead-time"
+                  title={t("track.playheadHelp", { fromCueIn: duration((playhead ?? cueIn) - cueIn, true) })}
+                >
+                  <span className="visually-hidden">{t("track.playhead")} </span>
+                  {duration(playhead ?? 0, true)} / {duration(length)}
+                  {waveform.data && (
+                    <>
+                      {" · "}
+                      <span title={t("track.levelHelp")}>
+                        {levelText(levelAt(waveform.data.peaks, waveform.data.intervalMs, playhead ?? 0))}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </div>
             )}
             <div className="legend muted">
               <span>

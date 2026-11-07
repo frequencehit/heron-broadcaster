@@ -23,6 +23,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/about/stopped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Takes the workers that have stopped reporting off the list: the
+         *     containers of earlier runs, each with its own instance name. One that
+         *     runs again reports again and comes back. Admins.
+         */
+        delete: operations["clear_stopped"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agc-presets": {
         parameters: {
             query?: never;
@@ -9376,6 +9397,11 @@ export interface components {
              */
             threshold_db: number;
         };
+        /** @description How many stopped workers `DELETE /about/stopped` took off the list. */
+        StoppedCleared: {
+            /** Format: int64 */
+            removed: number;
+        };
         /**
          * @description What the station tells the stream servers about itself, shown in stream
          *     directories. Each output can override each of them.
@@ -10566,6 +10592,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["About"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    clear_stopped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoppedCleared"];
                 };
             };
             "4XX": {

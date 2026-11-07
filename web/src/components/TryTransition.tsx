@@ -12,6 +12,9 @@ import { db, trackName } from "../lib/format";
 import { useTransitionPlayer } from "../lib/transitionPlayer";
 import { TrackSearch, useDebounced } from "./TrackSearch";
 import { TransitionGraph } from "./TransitionGraph";
+
+/** The track page's waveform height (11rem, see `.waveform canvas`), in pixels. */
+const WAVEFORM_HEIGHT = 176;
 import { useWaveform } from "./Waveform";
 import { Card, Empty, ErrorView, Icon, Loading, Modal, Segmented, useToast } from "./ui";
 import { here } from "../lib/station";
@@ -147,6 +150,7 @@ export function TryTransition({
             outgoingWave={outgoingWave.data ?? null}
             incomingWave={incomingWave.data ?? null}
             playhead={listening.position}
+            height={WAVEFORM_HEIGHT}
           />
         ) : (
           <Loading />
