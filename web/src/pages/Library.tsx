@@ -427,19 +427,20 @@ export function Library() {
             </span>
           </div>
         )}
-        <div className="card-head">
-          <div className="row filter-bar" style={{ flex: 1 }}>
-            <label className="row" style={{ flex: "1 1 16rem", flexWrap: "nowrap" }}>
-              <Icon name="search" />
-              <span className="visually-hidden">{t("library.search")}</span>
-              <input
-                className="input"
-                type="search"
-                placeholder={t("library.searchPlaceholder")}
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-              />
-            </label>
+        <div className="card-head" style={{ flexDirection: "column", alignItems: "stretch" }}>
+          <label className="row" style={{ flexWrap: "nowrap" }}>
+            <Icon name="search" />
+            <span className="visually-hidden">{t("library.search")}</span>
+            <input
+              className="input"
+              type="search"
+              style={{ flex: 1 }}
+              placeholder={t("library.searchPlaceholder")}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+          </label>
+          <div className="row filter-bar">
             <StationFilter filter={stationFilter} disabled={category === "none"} />
             <label className="stacked">
               <span>{t("library.categories")}</span>
