@@ -13,7 +13,7 @@ use std::time::SystemTime;
 
 use axum::Json;
 use axum::extract::{Query, State};
-use heron_core::{PlayoutSettings, TrackPlayout, next_start_ms};
+use heron_core::{PlaySource, PlayoutSettings, TrackPlayout, next_start_ms};
 use heron_rotation::names::{normalize, title_key};
 use heron_rotation::{
     Category, Clock, ExactTime, Explanation, History, Library, LibraryParts, Medley, MedleyCut,
@@ -650,9 +650,25 @@ pub fn planned_length_ms(entry: &QueueEntry) -> i64 {
 /// How long from an entry's start to the next one's: the engine's
 /// transition into it, else the entry's length.
 pub fn planned_next_ms(entry: &QueueEntry) -> i64 {
-    entry
-        .next_start_ms
-        .map_or_else(|| planned_length_ms(entry), i64::from)
+    known(
+        entry
+            .next_start_ms
+            .map_or_else(|| planned_length_ms(entry), i64::from),
+    )
+}
+
+/// A length of a day or more is not a length: the engine plays a track it
+/// knows nothing of (an unanalyzed fallback file) whole, and says so with
+/// `u32::MAX`. Planning takes a usual track's length instead, or the picks
+/// after it would be planned weeks ahead.
+const NOT_A_LENGTH_MS: i64 = 24 * 3_600_000;
+
+fn known(length_ms: i64) -> i64 {
+    if length_ms >= NOT_A_LENGTH_MS {
+        UNKNOWN_LENGTH_MS
+    } else {
+        length_ms
+    }
 }
 
 /// When each waiting track should start, and when a track added after
@@ -666,13 +682,23 @@ pub fn planned_starts(state: &PlayerState, now_ms: i64) -> (Vec<(&QueueEntry, i6
         .filter_map(|deck| {
             let entry = deck.entry.as_ref()?;
             let until = entry.next_start_ms.map_or(deck.length_ms, u64::from);
-            Some(i64::try_from(until.saturating_sub(deck.position_ms)).unwrap_or(0))
+            let until = i64::try_from(until).unwrap_or(i64::MAX);
+            let position = i64::try_from(deck.position_ms).unwrap_or(0);
+            // A track of unknown length: a usual one's, from where it is.
+            if until >= NOT_A_LENGTH_MS {
+                return Some((UNKNOWN_LENGTH_MS - position).max(0));
+            }
+            Some((until - position).max(0))
         })
         .max()
         .unwrap_or(0);
     let mut at = now_ms + remaining;
     let mut planned = Vec::new();
     for entry in state.waiting() {
+        // A cued fallback track gives way to anything queued.
+        if entry.track.source == PlaySource::Fallback {
+            continue;
+        }
         // An exact time: the engine starts it then at the latest.
         if let Some(start_at) = entry.track.start_at_unix_ms {
             at = at.min(start_at.max(now_ms));
@@ -1007,4 +1033,88 @@ async fn simulate(
         simulation,
         tracks,
     }))
+}
+
+#[cfg(test)]
+mod planning_tests {
+    use super::*;
+    use crate::engine::{DeckName, DeckState, QueuedTrack};
+
+    fn entry(entry_id: u64, cue_out_ms: u32, source: PlaySource) -> QueueEntry {
+        QueueEntry {
+            entry_id,
+            track: QueuedTrack {
+                track_id: None,
+                path: format!("{entry_id}.mp3"),
+                title: None,
+                artist: None,
+                album: None,
+                duration_ms: 0,
+                cue_in_ms: 0,
+                cue_out_ms,
+                source,
+                no_metadata: false,
+                over_intro: false,
+                intro_ms: None,
+                start_at_unix_ms: None,
+                continues: false,
+            },
+            linked_to: None,
+            next_start_ms: None,
+        }
+    }
+
+    fn state(on_air: QueueEntry, length_ms: u64, queue: Vec<QueueEntry>) -> PlayerState {
+        PlayerState {
+            paused: false,
+            decks: vec![DeckState {
+                deck: DeckName::A,
+                entry: Some(on_air),
+                position_ms: 10_000,
+                length_ms,
+                on_air: true,
+            }],
+            cued: None,
+            cued_jingle: None,
+            pending_jingle: None,
+            queue,
+            outputs: Vec::new(),
+            rendered_ms: 0,
+            underruns: 0,
+            engine_started_at_unix_ms: 0,
+        }
+    }
+
+    #[test]
+    fn a_fallback_track_of_unknown_length_does_not_push_the_plan_weeks_ahead() {
+        // An unanalyzed fallback file on air: the engine says u32::MAX.
+        let fallback = entry(1, u32::MAX, PlaySource::Fallback);
+        let state = state(
+            fallback,
+            u64::from(u32::MAX),
+            vec![entry(2, 180_000, PlaySource::Rotation)],
+        );
+        let (planned, at) = planned_starts(&state, 0);
+        // A usual track's length from where it is, then the queued one.
+        assert_eq!(planned[0].1, UNKNOWN_LENGTH_MS - 10_000);
+        assert_eq!(at, UNKNOWN_LENGTH_MS - 10_000 + 180_000);
+    }
+
+    #[test]
+    fn a_cued_fallback_track_gives_way_in_the_plan() {
+        let on_air = entry(1, 200_000, PlaySource::Rotation);
+        let state = state(
+            on_air,
+            200_000,
+            vec![entry(2, u32::MAX, PlaySource::Fallback)],
+        );
+        let (planned, at) = planned_starts(&state, 0);
+        assert!(planned.is_empty());
+        assert_eq!(at, 190_000);
+        // A track of unknown length in the queue counts as a usual one.
+        assert_eq!(
+            planned_next_ms(&entry(3, u32::MAX, PlaySource::Manual)),
+            UNKNOWN_LENGTH_MS
+        );
+    }
 }
