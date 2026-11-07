@@ -49,9 +49,7 @@ pub struct User {
     /// The web UI's language: a language tag (`en`, `fr`…), or `system` to
     /// follow the browser's languages.
     pub language: String,
-    /// The web UI uses the whole width of the screen instead of a centred
-    /// column.
-    pub full_width: bool,
+    pub width: Width,
     pub last_login_at_unix_ms: Option<i64>,
     pub created_at_unix_ms: i64,
     /// Their role on each station; a station left out is `none`. `role` is
@@ -207,6 +205,37 @@ impl Theme {
     }
 }
 
+/// The web UI's width.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Width {
+    /// A centred column.
+    #[default]
+    Normal,
+    /// 80 % of the window, centred.
+    Wide,
+    /// The whole window.
+    Full,
+}
+
+impl Width {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Wide => "wide",
+            Self::Full => "full",
+        }
+    }
+
+    fn parse(width: &str) -> Self {
+        match width {
+            "wide" => Self::Wide,
+            "full" => Self::Full,
+            _ => Self::Normal,
+        }
+    }
+}
+
 type UserRow = (
     u64,
     String,
@@ -214,18 +243,18 @@ type UserRow = (
     bool,
     String,
     String,
-    bool,
+    String,
     Option<i64>,
     i64,
 );
 
 const USER_COLUMNS: &str =
-    "id, username, CAST(role AS CHAR), enabled, CAST(theme AS CHAR), language, full_width,
+    "id, username, CAST(role AS CHAR), enabled, CAST(theme AS CHAR), language, CAST(width AS CHAR),
     CAST(UNIX_TIMESTAMP(last_login_at) * 1000 AS SIGNED),
     CAST(UNIX_TIMESTAMP(created_at) * 1000 AS SIGNED)";
 
 fn user(
-    (id, username, role, enabled, theme, language, full_width, last_login, created): UserRow,
+    (id, username, role, enabled, theme, language, width, last_login, created): UserRow,
 ) -> User {
     User {
         id,
@@ -234,7 +263,7 @@ fn user(
         enabled,
         theme: Theme::parse(&theme),
         language,
-        full_width,
+        width: Width::parse(&width),
         last_login_at_unix_ms: last_login,
         created_at_unix_ms: created,
         station_roles: Vec::new(),
@@ -461,9 +490,8 @@ pub struct Preferences {
     /// lacks.
     #[serde(default)]
     pub language: Option<String>,
-    /// Use the whole width of the screen instead of a centred column.
     #[serde(default)]
-    pub full_width: Option<bool>,
+    pub width: Option<Width>,
 }
 
 /// `system`, or a language tag: a 2 or 3 letter language and optional
@@ -501,12 +529,12 @@ async fn set_preferences(
     }
     sqlx::query(
         "UPDATE users SET theme = COALESCE(?, theme), language = COALESCE(?, language),
-             full_width = COALESCE(?, full_width)
+             width = COALESCE(?, width)
          WHERE id = ?",
     )
     .bind(preferences.theme.map(Theme::as_str))
     .bind(preferences.language)
-    .bind(preferences.full_width)
+    .bind(preferences.width.map(Width::as_str))
     .bind(user.id)
     .execute(&state.pool)
     .await?;

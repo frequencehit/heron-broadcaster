@@ -15,8 +15,9 @@ use axum::Json;
 use axum::extract::{Query, State};
 use heron_rotation::names::{normalize, title_key};
 use heron_rotation::{
-    Category, Clock, Explanation, History, Library, LibraryParts, Member, Method, Play, Position,
-    Restriction, RotationSettings, Rule, SeparationOverrides, Simulation, Slot, Target, Track,
+    Category, Clock, ExactTime, Explanation, History, Library, LibraryParts, Medley, MedleyCut,
+    Member, Method, Play, Position, Restriction, RotationSettings, Rule, SeparationOverrides,
+    Simulation, Slot, Target, Track,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{MySqlPool, QueryBuilder};
@@ -63,23 +64,32 @@ pub fn target(kind: &str, id: u64) -> Option<Target> {
 pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Library> {
     // Medleys turned off: no medley track plays, and the slots calling
     // the medley category are passed over (docs/modules.md).
-    let medleys = crate::modules::on_for(pool, station_id).await?.medleys;
+    let modules = crate::modules::on_for(pool, station_id).await?;
+    let medleys = modules.medleys;
+    let medley_category = crate::medleys::categories_of(pool, station_id)
+        .await?
+        .category_id;
     let modules_off = if medleys {
         Vec::new()
     } else {
-        crate::medleys::categories_of(pool, station_id)
-            .await?
-            .category_id
-            .into_iter()
-            .collect()
+        medley_category.into_iter().collect()
     };
-    // ID, title, album, playable length, default play ratio.
-    type Row = (u64, Option<String>, Option<String>, i64, u64);
+    // ID, title, album, playable length, default play ratio, own daypart
+    // separation and same daypart on the following days.
+    type Row = (
+        u64,
+        Option<String>,
+        Option<String>,
+        i64,
+        u64,
+        Option<u8>,
+        Option<u8>,
+    );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT t.id, t.title, t.album,
                 CAST(COALESCE(o.cue_out_ms, a.cue_out_ms) AS SIGNED)
                   - CAST(COALESCE(o.cue_in_ms, a.cue_in_ms) AS SIGNED),
-                CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED)
+                CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED), p.dayparts, p.daypart_days
          FROM tracks t
          JOIN track_analysis a ON a.track_id = t.id
          LEFT JOIN track_overrides o ON o.track_id = t.id
@@ -103,15 +113,19 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     }
     let tracks = rows
         .into_iter()
-        .map(|(id, title, album, length_ms, ratio)| Track {
-            id,
-            title_key: title_key(title.as_deref()),
-            album_key: title_key(album.as_deref()),
-            artists: artists.remove(&id).unwrap_or_default(),
-            categories: Vec::new(),
-            length_ms: u32::try_from(length_ms).unwrap_or(0),
-            ratio: u8::try_from(ratio).unwrap_or(heron_rotation::ratio::FULL),
-        })
+        .map(
+            |(id, title, album, length_ms, ratio, dayparts, daypart_days)| Track {
+                id,
+                title_key: title_key(title.as_deref()),
+                album_key: title_key(album.as_deref()),
+                artists: artists.remove(&id).unwrap_or_default(),
+                categories: Vec::new(),
+                length_ms: u32::try_from(length_ms).unwrap_or(0),
+                ratio: u8::try_from(ratio).unwrap_or(heron_rotation::ratio::FULL),
+                dayparts,
+                daypart_days,
+            },
+        )
         .collect();
 
     let mut members: HashMap<u64, Vec<Member>> = HashMap::new();
@@ -144,9 +158,10 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
         .collect();
 
     let mut slots: HashMap<u64, Vec<Slot>> = HashMap::new();
-    let rows: Vec<(u64, u64, String, bool, Option<String>, bool)> = sqlx::query_as(
+    type SlotRow = (u64, u64, String, bool, Option<String>, bool, Option<String>);
+    let rows: Vec<SlotRow> = sqlx::query_as(
         "SELECT s.clock_id, s.category_id, CAST(s.selection_method AS CHAR), s.enforce_rules,
-                CAST(s.separation AS CHAR), s.linked_to_next
+                CAST(s.separation AS CHAR), s.linked_to_next, CAST(s.exact_time AS CHAR)
          FROM clock_slots s JOIN clocks c ON c.id = s.clock_id
          WHERE c.station_id = ?
          ORDER BY s.clock_id, s.position",
@@ -154,13 +169,14 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     .bind(station_id)
     .fetch_all(pool)
     .await?;
-    for (clock, category, method, enforce_rules, separation, linked_to_next) in rows {
+    for (clock, category, method, enforce_rules, separation, linked_to_next, exact) in rows {
         slots.entry(clock).or_default().push(Slot {
             category,
             method: Method::parse(&method).unwrap_or_default(),
             enforce_rules,
             separation: overrides(separation.as_deref()),
             linked_to_next,
+            exact: exact_time(exact.as_deref()),
         });
     }
     let rows: Vec<(u64, String, bool)> =
@@ -179,15 +195,18 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
         .collect();
     let (schedule, schedules) = crate::schedules::load(pool, station_id).await?;
 
+    // Restrictions turned off: none applies on the station, and they are
+    // kept (docs/modules.md).
     let rows: Vec<(u64, String, u64, String)> = sqlx::query_as(
         "SELECT r.id, CAST(r.target AS CHAR), r.target_id, CAST(r.rule AS CHAR)
          FROM restrictions r
-         WHERE r.enabled
+         WHERE r.enabled AND ?
            AND (NOT EXISTS (SELECT 1 FROM restriction_stations rs WHERE rs.restriction_id = r.id)
                 OR EXISTS (SELECT 1 FROM restriction_stations rs
                            WHERE rs.restriction_id = r.id AND rs.station_id = ?))
          ORDER BY r.id",
     )
+    .bind(modules.restrictions)
     .bind(station_id)
     .fetch_all(pool)
     .await?;
@@ -244,9 +263,90 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
                 .map(|(track, ratio)| (track, u8::try_from(ratio).unwrap_or(0)))
                 .collect(),
             modules_off,
+            medley_category,
+            medleys: if medleys {
+                load_medleys(pool).await?
+            } else {
+                Vec::new()
+            },
         },
         station.time_zone(),
     ))
+}
+
+/// A medley whose file lasts longer or shorter than its layout by more
+/// than this has a layout that is not its file's (as the web page says).
+const LAYOUT_TOLERANCE_MS: u32 = 250;
+
+/// A slot's exact time as stored; invalid JSON counts as none.
+pub fn exact_time(json: Option<&str>) -> Option<ExactTime> {
+    let json = json?;
+    serde_json::from_str(json)
+        .inspect_err(|error| tracing::warn!(%error, "ignoring an invalid exact time"))
+        .ok()
+}
+
+/// The rendered medleys' tracks and how each can be shortened, from the
+/// layout saved at its render (`docs/medleys.md#shortened-plays`). A
+/// medley whose file does not last as long as its layout plays whole.
+async fn load_medleys(pool: &MySqlPool) -> ApiResult<Vec<(u64, Medley)>> {
+    type Row = (
+        u64,
+        u64,
+        String,
+        Option<String>,
+        Option<u32>,
+        Option<u32>,
+        Option<u32>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT md.id, md.track_id, CAST(md.recipe AS CHAR), CAST(md.rendered_layout AS CHAR),
+                t.duration_ms, COALESCE(o.cue_in_ms, a.cue_in_ms), COALESCE(o.cue_out_ms, a.cue_out_ms)
+         FROM medleys md
+         JOIN tracks t ON t.id = md.track_id
+         LEFT JOIN track_analysis a ON a.track_id = t.id
+         LEFT JOIN track_overrides o ON o.track_id = t.id
+         WHERE md.track_id IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(id, track_id, recipe, layout, duration, cue_in, cue_out)| {
+                let cuts = (|| {
+                    let layout: heron_core::medley::Layout =
+                        serde_json::from_str(layout.as_deref()?).ok()?;
+                    let recipe: heron_core::medley::Recipe = serde_json::from_str(&recipe).ok()?;
+                    let duration = duration?;
+                    if duration.abs_diff(layout.length_ms) > LAYOUT_TOLERANCE_MS {
+                        return None;
+                    }
+                    let cue_out = cue_out.filter(|&out| out > 0).unwrap_or(duration);
+                    Some(
+                        heron_core::medley::shortened(
+                            &layout,
+                            recipe.crossfade_ms,
+                            cue_in.unwrap_or(0),
+                            cue_out,
+                        )
+                        .into_iter()
+                        .map(|cut| MedleyCut {
+                            hooks_left_out: cut.hooks_left_out,
+                            parts_left_out: cut.parts_left_out,
+                            length_ms: cut.length_ms,
+                            first_to_ms: cut.first_to_ms,
+                            second_from_ms: cut.second_from_ms,
+                            crossfade_ms: cut.crossfade_ms,
+                        })
+                        .collect(),
+                    )
+                })()
+                .unwrap_or_default();
+                (track_id, Medley { id, cuts })
+            },
+        )
+        .collect())
 }
 
 /// A play as recorded, or a queued track.
@@ -525,6 +625,10 @@ pub fn planned_starts(state: &PlayerState, now_ms: i64) -> (Vec<(&QueueEntry, i6
     let mut at = now_ms + remaining;
     let mut planned = Vec::new();
     for entry in state.waiting() {
+        // An exact time: the engine starts it then at the latest.
+        if let Some(start_at) = entry.track.start_at_unix_ms {
+            at = at.min(start_at.max(now_ms));
+        }
         planned.push((entry, at));
         // A jingle over the cued track's intro takes no time of its own.
         if state.cued_jingle.as_deref() != Some(entry) {

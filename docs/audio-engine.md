@@ -67,6 +67,8 @@ The player plans each transition when it loads the next track, as soon as the cu
 4. **Fade-in** of the incoming track over `fade_in.time_ms`, from `fade_in.level_pct`.
 5. If the audio of a track ends before its cue-out (truncated file), the next track starts on that frame.
 
+A track whose overrides set `"crossfade": true` (Heron sets it on the first part of a [shortened medley](medleys.md#shortened-plays)) is crossfaded into the next track at its own point, with its fades, whatever the two tracks' lengths: rule 2 does not apply to it.
+
 **Skip** fades the current track out over `skip_fade_ms` and starts the next one at once. **Pause** fades out over 10 ms and holds the decks; the stream keeps going with silence. Back-to-back tracks alternate between Deck A and Deck B. The **FX player** plays on top of the decks and does not change what is on air.
 
 ### Jingles over the intro
@@ -83,6 +85,20 @@ A track whose category type plays **over the intro** (on for *Jingle*, set on th
 - *On air* shows it coming: the FX player card says *Next* with a countdown to the jingle's start (in the warning color for its last 5 s), and the song's progress bar marks where the jingle starts. The engine's state gives the waiting jingle as `pending_jingle`; in the queue, before the song starts, its badge says where in the song it starts.
 
 Every deck playing a track with an intro point also counts down to the vocals (*Vocals in 0:08.0*) until they start, and marks the end of the intro on its progress bar.
+
+### Exact times
+
+A queue entry can have a **start time** (`start_at_unix_ms`, with `cut_fade_ms`): the [exact time](rotation.md#exact-times) of a clock slot, on the server's clock (synchronized by NTP: `/healthz` warns when it is not). When it comes and the entry is still waiting, the engine:
+
+1. drops the entries waiting before it (they would never start), and cues it if it is not cued yet;
+2. fades out what plays over `cut_fade_ms` (1.5 s from rotation), as a skip does, and starts the entry.
+
+An entry that started before its time (the track before it ended first) is not concerned. The player does it, not the audio thread: it looks at the time on every tick (10 ms), 50 ms early to make up for the audio thread rendering ahead of real time, and 1 s before the time it already drops the entries before it and cues the entry, so its first audio is decoded when the time comes. The audio thread only gets the usual commands (uncue, cue, skip): nothing new runs on it.
+
+- The start time is part of the entry: it is saved in `queue.json` and handed over with the queue, so it holds across a restart and a [handover](handover.md). An engine that starts after the time (it was down) starts the entry at once, if it still waits.
+- A start time is used once: the entry starts, and the time is forgotten.
+- Paused, or held as a standby, the engine does not cut: it does when it plays again.
+- In the state, the entry carries its start time (`start_at_unix_ms`); the queue shows it.
 
 Fade curves (shape of a fade-in; a fade-out is its mirror):
 
@@ -146,7 +162,7 @@ The filters run as trapezoidal state-variable filters (Andrew Simper's *bell* an
  "fx":    {"enabled": false, "gains_db": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}}
 ```
 
-Ten slider gains, from 60 Hz up, each from −12 to +12 dB. By default both EQs are flat and bypassed. The engine receives them over gRPC (`SetEqSettings`) and keeps them in `config.json` under `eq`: it restarts with them, and a new engine taking over ([Upgrades and handover](#upgrades-and-handover)) loads them before its first sample. Engines from before M9 ignore the key.
+Ten slider gains, from 60 Hz up, each from −12 to +12 dB. By default both EQs are flat and bypassed. While the [equalizer module](modules.md) is off for a station, the API pushes its EQs with `enabled` false and their gains kept: they glide to flat and stop, and come back with a glide once it is on. The engine receives them over gRPC (`SetEqSettings`) and keeps them in `config.json` under `eq`: it restarts with them, and a new engine taking over ([Upgrades and handover](#upgrades-and-handover)) loads them before its first sample. Engines from before M9 ignore the key.
 
 ## Master AGC chain
 
@@ -210,7 +226,7 @@ Both are followed by a hard clip at the ceiling, which only catches rounding. Th
 | Band settings | `mode`: `compressor`, `expander` or `limiter` (`compressor`); `threshold_db`: −60 to 0 (−20); `ratio`: 1 to 20 (3); `attack_ms`: 0.5 to 200 (20); `release_ms`: 10 to 2,000 (250); `hold_ms`: 0 to 500 (0); `gain_db`: −12 to +12 (0) |
 | `final_stage` | `enabled` (true); `mode`: `limiter` or `clipper` (`limiter`); `ceiling_db`: −6 to 0 dBFS (−1); `release_ms`: 10 to 1,000 (100) |
 
-By default the chain is bypassed, so a new or upgraded station sounds the same as before; turned on as it is, it is the final limiter alone. The engine receives the settings over gRPC (`SetAgcSettings`) and keeps them in `config.json` under `agc`: it restarts with them, and a new engine taking over loads them before its first sample. Engines from before M10 ignore the key, and play on without the chain. One that takes over from a newer engine (a rollback) saves its configuration without it: when a newer engine takes over again, the chain stays bypassed until the API pushes it back, as it does whenever an engine reconnects.
+By default the chain is bypassed, so a new or upgraded station sounds the same as before; turned on as it is, it is the final limiter alone. While the [processing module](modules.md) is off for a station, the API pushes its chain with `bypass_all` set and its blocks kept: it crossfades out, and back in once the module is on. The engine receives the settings over gRPC (`SetAgcSettings`) and keeps them in `config.json` under `agc`: it restarts with them, and a new engine taking over loads them before its first sample. Engines from before M10 ignore the key, and play on without the chain. One that takes over from a newer engine (a rollback) saves its configuration without it: when a newer engine takes over again, the chain stays bypassed until the API pushes it back, as it does whenever an engine reconnects.
 
 ### Switching and changes
 
@@ -230,7 +246,7 @@ By default the chain is bypassed, so a new or upgraded station sounds the same a
 
 ## Control interface
 
-gRPC service `heron.engine.v1.Engine` ([engine.proto](../crates/proto/proto/heron/engine/v1/engine.proto)), on `HERON_GRPC_ADDR` (port 50051, inside the Docker network only): queue (enqueue, remove, clear, move, replace), skip, pause, resume, FX player, state, levels, a stream of track changes, playout settings, outputs, the deck EQ and the AGC chain. Tracks carry everything needed to play them: library path, tags, cue points, crossfade point, loudness, overrides, and the reason they play (rotation, manual…), carried back in the track changes for the play history. Queue positions count the waiting tracks: 0 is before the cued track. An entry can be linked to the entry after it (`linked_to`, a jingle of a [linked slot](rotation.md#linked-slots) and its track, enqueued together): removing the track removes the jingle, moving either moves both, and an entry enqueued or moved between them goes before the jingle. The link is saved with the queue and handed over.
+gRPC service `heron.engine.v1.Engine` ([engine.proto](../crates/proto/proto/heron/engine/v1/engine.proto)), on `HERON_GRPC_ADDR` (port 50051, inside the Docker network only): queue (enqueue, remove, clear, move, replace), skip, pause, resume, FX player, state, levels, a stream of track changes, playout settings, outputs, the deck EQ and the AGC chain. Tracks carry everything needed to play them: library path, tags, cue points, crossfade point, loudness, overrides, and the reason they play (rotation, manual…), carried back in the track changes for the play history. Queue positions count the waiting tracks: 0 is before the cued track. An entry can be linked to the entry after it (`linked_to`, a jingle of a [linked slot](rotation.md#linked-slots) and its track, enqueued together): removing the track removes the jingle, moving either moves both, and an entry enqueued or moved between them goes before the jingle. The link is saved with the queue and handed over. A track can have a start time ([Exact times](#exact-times)), and be the rest of the entry before it (`continues`, the second part of a [shortened medley](medleys.md#shortened-plays)): it is not a new play, and the API records no play for it.
 
 The engine keeps its state in `HERON_STATE_DIR`, so it restarts streaming even when the API and the database are down:
 
@@ -344,7 +360,7 @@ Dashboards, alerts and the full list: [Monitoring](monitoring.md).
 
 - Crossfades are rendered offline by the same mixer code and compared, sample by sample, with references computed independently (`crates/engine/src/mixer/tests.rs`).
 - The player is tested against real files with the mixer rendered offline.
-- The player is tested with the fallback directory, the silence watchdog, and a restart resuming the saved queue.
+- The player is tested with the fallback directory, the silence watchdog, a restart resuming the saved queue, and start times (a cut on time, the entries before dropped, a start time kept across a restart).
 - The handover is tested with two engines on one state directory and a fake Icecast server: one source connection throughout, the same queue and position after the cut, and every failure case ending in a cold start.
 - `scripts/chaos-test.sh` breaks a running stack (database, API, Icecast, deleted files, a silent file, engine restarts, an engine upgrade through `scripts/upgrade.sh`) while listening to the stream.
 - `scripts/soak-test.sh` plays the library to two Icecast servers for a given time and checks the clock kept time and nothing was lost; `scripts/check-streaming.sh` checks a Compose stack goes on air through the API (run in CI on amd64 and arm64).

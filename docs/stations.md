@@ -32,7 +32,7 @@ An existing Heron becomes **one station**, named after the station name setting 
 | **Queue and playout** | — | Queue, autofill, playout (crossfade, loudness), deck EQ, AGC chain; EQ and AGC presets are shared |
 | **History** | Plays in total | Each play is a station's ([Plays](#plays)) |
 | **Medleys** | Medleys, their recipes and parts, rendered files | Which stations a medley plays on ([Medleys](#medleys)) |
-| **Outputs** | Encoder profiles | Outputs, their listener statistics |
+| **Outputs** | Encoder profiles | Stream servers, outputs, their listener statistics |
 | **Webhooks, public endpoints** | — | Per station ([API](#api)) |
 | **Users** | Users, sign-in, API tokens | Roles ([Roles](#roles)) |
 | **Backups** | One backup holds every station | — |
@@ -84,7 +84,7 @@ A restriction (daypart, date range, category sequence) **applies to the stations
 
 - Each play in the history is a station's (`play_history.station_id`), recorded from that station's engine.
 - A track and an artist show their **plays and last play per station** and **in total**: the track and artist pages (`plays`), the library list and its sort and filters (`station_id`: a station's plays; without it, every station's).
-- Separation (daypart separation included), weights and the rotation log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
+- Separation (daypart separation included), the [draw depth](rotation.md#draw-depth)'s order, weights and the rotation log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
 - Listener statistics are per output, so per station, and for a whole station (an output's totals with no output: the station's).
 
 ## Rules across stations
@@ -136,7 +136,7 @@ An existing user keeps their role, as their shared role and their role on the fi
 
 ## API
 
-- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedules, restrictions, rotation and its simulations, rotation log, playout, EQ, AGC, queue and rotation settings, outputs, webhooks, listener statistics.
+- What is per station lives under **`/api/v1/stations/{id}/…`**: queue, player, deck controls, history, clocks, schedules, restrictions, rotation and its simulations, rotation log, playout, EQ, AGC, queue and rotation settings, stream servers, outputs, webhooks, listener statistics.
 - `GET`, `POST /stations`; `GET`, `PUT`, `DELETE /stations/{id}` (admins).
 - Shared resources keep their routes: tracks, artists, categories (with `station_ids`), medleys (with `station_ids`), labels, encoder profiles, users (with their roles per station).
 - Track and artist answers carry their plays and last play per station and in total.

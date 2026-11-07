@@ -54,13 +54,18 @@ export function useWaiting(): QueueEntry[] | undefined {
  * When each waiting track should start (Unix ms), without crossfades. A
  * jingle over an intro takes no time of its own.
  */
-function startTimes(
+export function startTimes(
   entries: QueueEntry[],
   firstStart: number | null,
   overIntro: number | null,
 ): (number | null)[] {
   let at = firstStart;
   return entries.map((entry) => {
+    // An exact time: the engine starts it then at the latest.
+    const exact = entry.track.start_at_unix_ms;
+    if (exact !== null && exact !== undefined) {
+      at = at === null ? exact : Math.min(at, Math.max(exact, Date.now()));
+    }
     const start = at;
     if (at !== null && entry.entry_id !== overIntro) {
       at += Math.max(0, entry.track.cue_out_ms - entry.track.cue_in_ms);
@@ -244,6 +249,11 @@ function Item({
               <Icon name="link" size={12} /> {t("queue.linked")}
             </span>
           )}
+          {track.continues && (
+            <span className="badge" title={t("queue.continuesHint")}>
+              {t("queue.continues")}
+            </span>
+          )}
           {overIntro && (
             <span className="badge accent" title={t("queue.overIntroHint")}>
               {jingleAt !== null && jingleAt !== undefined
@@ -258,9 +268,19 @@ function Item({
           <CategoryChips categories={categories} />
         </div>
       </div>
-      <span className="start" title={t("queue.expectedStart")}>
-        {start !== null ? `≈ ${clockTime(start)}` : ""}
-      </span>
+      {track.start_at_unix_ms !== null && track.start_at_unix_ms !== undefined && start !== null ? (
+        <span
+          className="start badge accent"
+          title={t("queue.startsAtHint")}
+          aria-label={t("queue.startsAt", { time: clockTime(start) })}
+        >
+          <Icon name="clock" size={12} /> {clockTime(start)}
+        </span>
+      ) : (
+        <span className="start" title={t("queue.expectedStart")}>
+          {start !== null ? `≈ ${clockTime(start)}` : ""}
+        </span>
+      )}
       {canEdit && (
         <div className="row" style={{ flexWrap: "nowrap", gap: "0.25rem" }}>
           {index > 0 && (

@@ -4,7 +4,7 @@
 // (prefers-color-scheme); the choice is saved per user by the API and
 // remembered in this browser so the first paint already uses it.
 
-import type { Theme } from "../api";
+import type { Theme, Width } from "../api";
 
 const KEY = "heron.theme";
 
@@ -34,28 +34,33 @@ export function applyTheme(theme: Theme) {
   }
 }
 
-// The page's width: a centred column, or the whole screen (wide screens,
-// long tables). Saved per user by the API, remembered in this browser too.
+// The page's width: a centred column, 80 % of the window or the whole
+// window (wide screens, long tables). Saved per user by the API, remembered
+// in this browser too.
 
-const WIDTH_KEY = "heron.fullWidth";
+const WIDTH_KEY = "heron.width";
 
-export function storedFullWidth(): boolean {
+export function storedWidth(): Width {
   try {
-    return window.localStorage.getItem(WIDTH_KEY) === "true";
+    const value = window.localStorage.getItem(WIDTH_KEY);
+    if (value === "wide" || value === "full") {
+      return value;
+    }
   } catch {
-    return false;
+    // Storage blocked: the centred column.
   }
+  return "normal";
 }
 
-export function applyFullWidth(fullWidth: boolean) {
+export function applyWidth(width: Width) {
   const root = document.documentElement;
-  if (fullWidth) {
-    root.dataset.width = "full";
-  } else {
+  if (width === "normal") {
     delete root.dataset.width;
+  } else {
+    root.dataset.width = width;
   }
   try {
-    window.localStorage.setItem(WIDTH_KEY, String(fullWidth));
+    window.localStorage.setItem(WIDTH_KEY, width);
   } catch {
     // Not remembered in this browser; the API still has it.
   }

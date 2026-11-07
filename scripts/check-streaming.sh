@@ -32,8 +32,12 @@ echo "$password" | docker compose exec -T heron-api heron-api user add check-str
 call POST /auth/login -d "{\"username\": \"check-streaming\", \"password\": \"$password\"}" >/dev/null
 
 profile=$(call GET /encoder-profiles | tr '{' '\n' | grep '"name":"MP3 128k"' | sed 's/.*"id":\([0-9]*\).*/\1/')
+# The stream server, then the output sending to it (docs/outputs.md#stream-servers).
+call POST /stream-servers -d '{"name": "check-streaming", "host": "icecast", "port": 8000, "source_password": "hackme"}' \
+    >/dev/null || echo "stream server already configured"
+server=$(call GET /stream-servers | tr '{' '\n' | grep '"name":"check-streaming"' | sed 's/.*"id":\([0-9]*\).*/\1/' | head -n 1)
 call POST /outputs -d "{\"name\": \"check-streaming\", \"kind\": \"icecast\", \"encoder_profile_id\": $profile,
-    \"config\": {\"host\": \"icecast\", \"port\": 8000, \"mount\": \"/live\", \"password\": \"hackme\"}}" >/dev/null ||
+    \"server_id\": $server, \"config\": {\"mount\": \"/live\"}}" >/dev/null ||
     echo "output already configured"
 
 start=$(date +%s)

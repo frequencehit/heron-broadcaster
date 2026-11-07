@@ -9,6 +9,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type DeckEq, type EqSettings, api, unwrap } from "../api";
 import { useLive } from "./live";
+import { useModule } from "./modules";
 import { here } from "./station";
 
 /** Frequency of each band, in Hz: where the curve meets its slider. */
@@ -148,11 +149,14 @@ export const EQ_KEY = ["settings", "eq"] as const;
 export function useEqSettings(): { data: EqSettings | undefined; error: unknown } {
   const connected = useLive((live) => live.connected);
   const live = useLive((live) => live.eq);
+  // Not asked for while the module is off for the station (docs/modules.md).
+  const on = useModule("eq");
   const query = useQuery({
     queryKey: [...EQ_KEY, connected],
+    enabled: on,
     queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/eq", { params: { path: here() } })),
   });
-  return { data: live ?? query.data, error: query.error };
+  return { data: on ? (live ?? query.data) : undefined, error: query.error };
 }
 
 /** "+3.5", "0.0", "-12.0". */

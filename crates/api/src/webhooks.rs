@@ -1572,6 +1572,8 @@ mod tests {
                 no_metadata: false,
                 over_intro: false,
                 intro_ms: None,
+                start_at_unix_ms: None,
+                continues: false,
             },
             linked_to: None,
         }
@@ -1911,6 +1913,8 @@ mod delivery_tests {
                     no_metadata: false,
                     over_intro: false,
                     intro_ms: None,
+                    start_at_unix_ms: None,
+                    continues: false,
                 },
                 linked_to: None,
             },

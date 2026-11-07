@@ -149,8 +149,13 @@ print(next((s["id"] for s in json.load(sys.stdin) if s["code"] == "hits80"), "")
     echo "  station $station: $(echo "$info" | json engine_variable), configured $(echo "$info" | json engine_configured)"
     [ "$(echo "$info" | json engine_configured)" = True ] && pass "its engine is configured" || fail "its engine is not configured"
     profile=$(call GET /encoder-profiles | json 0.id)
+    call POST "/stations/$station/stream-servers" -d '{"name": "icecast", "host": "icecast", "port": 8000, "source_password": "hackme"}' \
+        >/dev/null || echo "  stream server already configured"
+    server=$(call GET "/stations/$station/stream-servers" | python3 -c '
+import json, sys
+print(next(s["id"] for s in json.load(sys.stdin) if s["name"] == "icecast"))')
     call POST "/stations/$station/outputs" -d "{\"name\": \"hits80\", \"kind\": \"icecast\", \"encoder_profile_id\": $profile,
-        \"config\": {\"host\": \"icecast\", \"port\": 8000, \"mount\": \"/hits80\", \"password\": \"hackme\"}}" >/dev/null ||
+        \"server_id\": $server, \"config\": {\"mount\": \"/hits80\"}}" >/dev/null ||
         echo "  output already configured"
     if wait_for 90 on_mount /hits80 && wait_for 30 on_mount /live; then
         pass "both stations on air"

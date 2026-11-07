@@ -6,6 +6,7 @@ import { useModule } from "../lib/modules";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type EncoderProfileView, type OutputView, type Schemas, api, done, unwrap } from "../api";
+import { type DetailTexts, overridesFrom, parseRelayMounts, relayMountsText, serverAddress } from "../lib/servers";
 import {
   Banner,
   Card,
@@ -25,10 +26,11 @@ import { statisticsInput, useListenersNow } from "../lib/listeners";
 import { useLive } from "../lib/live";
 import { useAction, useCan } from "../lib/session";
 import { ListenLink, OutputState } from "./Dashboard";
-import { here } from "../lib/station";
+import { here, useStation } from "../lib/station";
 
 type Encoder = Schemas["EncoderKind"];
 type Kind = Schemas["OutputKind"];
+type StreamServerView = Schemas["StreamServerView"];
 
 // Available so far: MP3 and AAC-LC built in, and the external FFmpeg encoder
 // (the station's own ffmpeg, for HE-AAC with libfdk_aac); the others arrive in
@@ -82,7 +84,16 @@ function ListenerCount({ now, sessions }: Readonly<{ now: Schemas["OutputListene
 
 export function Outputs() {
   const isAdmin = useCan("admin");
+  const stationId = useStation();
   const outputs = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/outputs", { params: { path: here() } })) });
+  const servers = useQuery({
+    queryKey: ["stream-servers", stationId],
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/stream-servers", { params: { path: here() } })),
+  });
+  const details = useQuery({
+    queryKey: ["settings", "stream-details", stationId],
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/stream-details", { params: { path: here() } })),
+  });
   const profiles = useQuery({
     queryKey: ["encoder-profiles"],
     queryFn: () => unwrap(api.GET("/api/v1/encoder-profiles")),
@@ -94,7 +105,11 @@ export function Outputs() {
   const [editingProfile, setEditingProfile] = useState<EncoderProfileView | "new" | null>(null);
   const removeOutput = useAction(
     (id: number) => done(api.DELETE("/api/v1/stations/{station_id}/outputs/{id}", { params: { path: here({ id }) } })),
-    { success: t("outputs.deleted"), invalidate: [["outputs"], ["encoder-profiles"]] },
+    { success: t("outputs.deleted"), invalidate: [["outputs"], ["encoder-profiles"], ["stream-servers"]] },
+  );
+  const duplicate = useAction(
+    (id: number) => unwrap(api.POST("/api/v1/stations/{station_id}/outputs/{id}/duplicate", { params: { path: here({ id }) } })),
+    { success: t("outputs.duplicated"), invalidate: [["outputs"], ["encoder-profiles"], ["stream-servers"]] },
   );
   const removeProfile = useAction(
     (id: number) => done(api.DELETE("/api/v1/encoder-profiles/{id}", { params: { path: { id } } })),
@@ -108,8 +123,10 @@ export function Outputs() {
           body: {
             name: output.name,
             kind: output.kind,
+            server_id: output.server_id ?? null,
             encoder_profile_id: output.encoder_profile_id,
             config: output.config,
+            details: output.details,
             metadata_enabled: output.metadata_enabled,
             enabled: !output.enabled,
           },
@@ -118,13 +135,14 @@ export function Outputs() {
     { invalidate: [["outputs"]] },
   );
 
-  if (outputs.isPending || profiles.isPending) {
+  if (outputs.isPending || profiles.isPending || servers.isPending) {
     return <Loading />;
   }
-  if (outputs.isError || profiles.isError) {
-    return <ErrorView error={outputs.error ?? profiles.error} />;
+  if (outputs.isError || profiles.isError || servers.isError) {
+    return <ErrorView error={outputs.error ?? profiles.error ?? servers.error} />;
   }
   const profileName = (id: number) => profiles.data.find((p) => p.id === id)?.name ?? `#${id}`;
+  const serverName = (id: number | null | undefined) => servers.data.find((s) => s.id === id)?.name;
 
   return (
     <>
@@ -167,10 +185,9 @@ export function Outputs() {
                         <div>{output.name}</div>
                         <div className="muted small">{KINDS.find((k) => k.value === output.kind)?.label()}</div>
                       </td>
-                      <td className="hide-narrow mono small">
-                        {typeof config.host === "string"
-                          ? `${config.host}:${String(config.port ?? 8000)}${String(config.mount ?? "")}`
-                          : "–"}
+                      <td className="hide-narrow">
+                        <div>{serverName(output.server_id) ?? "–"}</div>
+                        {typeof config.mount === "string" && <div className="mono small muted">{config.mount}</div>}
                       </td>
                       <td className="hide-narrow">{profileName(output.encoder_profile_id)}</td>
                       <td>
@@ -186,7 +203,7 @@ export function Outputs() {
                         <td className="num">
                           <ListenerCount
                             now={listeners.data?.outputs.find((o) => o.output_id === output.id)}
-                            sessions={output.statistics.admin_password_set}
+                            sessions={servers.data.find((s) => s.id === output.server_id)?.admin_password_set ?? false}
                           />
                         </td>
                       )}
@@ -196,6 +213,9 @@ export function Outputs() {
                           <>
                             <button type="button" className="btn small" onClick={() => toggle.mutate(output)}>
                               {output.enabled ? t("track.disable") : t("track.enable")}
+                            </button>
+                            <button type="button" className="btn small" onClick={() => duplicate.mutate(output.id)} disabled={duplicate.isPending}>
+                              {t("outputs.duplicate")}
                             </button>
                             <button
                               type="button"
@@ -225,6 +245,8 @@ export function Outputs() {
           </div>
         )}
       </Card>
+
+      <ServersCard servers={servers.data} />
 
       <Card
         title={t("outputs.profiles")}
@@ -288,6 +310,8 @@ export function Outputs() {
         <OutputDialog
           output={editingOutput === "new" ? null : editingOutput}
           profiles={profiles.data}
+          servers={servers.data}
+          station={details.data}
           onClose={() => setEditingOutput(null)}
         />
       )}
@@ -298,6 +322,101 @@ export function Outputs() {
         />
       )}
     </>
+  );
+}
+
+/** The station's stream servers and relays (Outputs › Servers). */
+function ServersCard({ servers }: Readonly<{ servers: StreamServerView[] }>) {
+  const isAdmin = useCan("admin");
+  const statistics = useModule("listener_statistics");
+  const [editing, setEditing] = useState<StreamServerView | "new" | null>(null);
+  const remove = useAction(
+    (id: number) => done(api.DELETE("/api/v1/stations/{station_id}/stream-servers/{id}", { params: { path: here({ id }) } })),
+    { success: t("outputs.serverDeleted"), invalidate: [["stream-servers"]] },
+  );
+  const name = (id: number | null | undefined) => servers.find((s) => s.id === id)?.name ?? `#${String(id)}`;
+  return (
+    <Card
+      title={t("outputs.servers")}
+      actions={
+        isAdmin && (
+          <button type="button" className="btn small" onClick={() => setEditing("new")}>
+            <Icon name="plus" size={14} /> {t("outputs.newServer")}
+          </button>
+        )
+      }
+      flush
+    >
+      <p className="muted small" style={{ margin: "0 1rem 0.75rem" }}>
+        {t("outputs.serversHelp")}
+      </p>
+      {servers.length === 0 ? (
+        <Empty>{t("outputs.noServers")}</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t("categories.name")}</th>
+                <th className="hide-narrow">{t("outputs.address")}</th>
+                <th>{t("outputs.usedBy")}</th>
+                {statistics && <th className="hide-narrow">{t("outputs.statistics")}</th>}
+                <th>
+                  <span className="visually-hidden">{t("library.actions")}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {servers.map((server) => {
+                const used = server.outputs.length + server.relays.length > 0;
+                return (
+                  <tr key={server.id}>
+                    <td>
+                      <div>{server.name}</div>
+                      {server.relay_of != null && <div className="muted small">{t("outputs.relayOf", { name: name(server.relay_of) })}</div>}
+                    </td>
+                    <td className="hide-narrow mono small">{serverAddress(server)}</td>
+                    <td className="small">
+                      {server.relay_of != null
+                        ? server.relay_mounts?.map((m) => m.mount).join(", ") ?? t("outputs.allMounts")
+                        : [...server.outputs, ...server.relays].map((u) => u.name).join(", ") || "–"}
+                    </td>
+                    {statistics && (
+                      <td className="hide-narrow small muted">{server.admin_password_set ? t("outputs.withSessions") : t("outputs.countOnly")}</td>
+                    )}
+                    <td className="actions">
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn ghost small icon"
+                            aria-label={t("categories.edit", { name: server.name })}
+                            onClick={() => setEditing(server)}
+                          >
+                            <Icon name="edit" />
+                          </button>
+                          <ConfirmButton
+                            className="btn ghost small icon danger"
+                            title={used ? t("outputs.serverUsed") : t("categories.delete", { name: server.name })}
+                            disabled={used}
+                            confirm={t("categories.deleteButton")}
+                            question={<p>{t("outputs.deleteServerQuestion", { name: server.name })}</p>}
+                            onConfirm={() => remove.mutate(server.id)}
+                          >
+                            <Icon name="trash" />
+                          </ConfirmButton>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {editing && <ServerDialog server={editing === "new" ? null : editing} servers={servers} onClose={() => setEditing(null)} />}
+    </Card>
   );
 }
 
@@ -351,59 +470,51 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
 function OutputDialog({
   output,
   profiles,
+  servers,
+  station,
   onClose,
 }: {
   output: OutputView | null;
   profiles: EncoderProfileView[];
+  servers: StreamServerView[];
+  station: Schemas["StreamDetails"] | undefined;
   onClose: () => void;
 }) {
   const initial = (output?.config ?? {}) as Record<string, unknown>;
+  const masters = servers.filter((s) => s.relay_of == null);
   const [name, setName] = useState(output?.name ?? "");
   const [kind, setKind] = useState<Kind>(output?.kind ?? "icecast");
   const [profile, setProfile] = useState(
     output?.encoder_profile_id ?? profiles.find((p) => p.name === "MP3 128k")?.id ?? profiles[0]?.id ?? 0,
   );
+  const [server, setServer] = useState(output?.server_id ?? masters[0]?.id ?? 0);
+  const [mount, setMount] = useState(text(initial.mount) || "/live");
   const [enabled, setEnabled] = useState(output?.enabled ?? true);
   const [metadata, setMetadata] = useState(output?.metadata_enabled ?? true);
-  const [config, setConfig] = useState<Record<string, unknown>>({
-    port: 8000,
-    mount: "/live",
-    username: "source",
-    ...initial,
+  const own = output?.details ?? {};
+  const [details, setDetails] = useState<DetailTexts>({
+    name: own.name ?? "",
+    description: own.description ?? "",
+    genre: own.genre ?? "",
+    url: own.url ?? "",
   });
+  const [listed, setListed] = useState<boolean | null>(own.public ?? null);
   const [json, setJson] = useState(JSON.stringify(initial, null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const passwordSet = output?.secrets_set.includes("password") ?? false;
-  // The stream server's admin credentials, for listener statistics.
-  const adminPasswordSet = output?.statistics.admin_password_set ?? false;
-  const [adminUser, setAdminUser] = useState(output?.statistics.admin_username ?? "");
-  const [adminPassword, setAdminPassword] = useState("");
-  const [removeAdmin, setRemoveAdmin] = useState(false);
-  const statistics = useModule("listener_statistics");
-  const set = (key: string, value: unknown) => setConfig((c) => ({ ...c, [key]: value }));
+  const setDetail = (key: keyof DetailTexts, value: string) => setDetails((d) => ({ ...d, [key]: value }));
 
   const save = useAction(
     () => {
-      let body: Record<string, unknown>;
-      if (kind === "icecast") {
-        body = {};
-        for (const [key, value] of Object.entries(config)) {
-          // Empty optional fields are left out; so is an unchanged password.
-          if (value !== "" && value !== undefined && value !== null) {
-            body[key] = value;
-          }
-        }
-      } else {
-        body = JSON.parse(json) as Record<string, unknown>;
-      }
+      const icecast = kind === "icecast";
       const input = {
         name,
         kind,
+        server_id: icecast ? server : null,
         encoder_profile_id: profile,
-        config: body as Record<string, never>,
+        config: (icecast ? { mount } : JSON.parse(json)) as Record<string, never>,
+        details: icecast ? overridesFrom(details, listed) : {},
         enabled,
         metadata_enabled: metadata,
-        statistics: kind === "icecast" ? statisticsInput(adminUser, adminPassword, removeAdmin) : null,
       };
       return output
         ? unwrap(api.PUT("/api/v1/stations/{station_id}/outputs/{id}", { params: { path: here({ id: output.id }) }, body: input }))
@@ -411,7 +522,7 @@ function OutputDialog({
     },
     {
       success: t("outputs.saved"),
-      invalidate: [["outputs"], ["encoder-profiles"], ["engine"]],
+      invalidate: [["outputs"], ["encoder-profiles"], ["stream-servers"], ["engine"]],
       onSuccess: onClose,
     },
   );
@@ -429,6 +540,17 @@ function OutputDialog({
     }
     save.mutate(undefined);
   };
+  const detail = (key: keyof DetailTexts, label: string, type = "text") => (
+    <Field label={label}>
+      <input
+        className="input"
+        type={type}
+        value={details[key]}
+        placeholder={station?.[key] ?? ""}
+        onChange={(e) => setDetail(key, e.target.value)}
+      />
+    </Field>
+  );
 
   return (
     <Modal
@@ -472,105 +594,246 @@ function OutputDialog({
           </label>
         </div>
         {kind === "icecast" ? (
-          <fieldset>
-            <legend>{t("outputs.icecastServer")}</legend>
+          <>
+            {masters.length === 0 && <Banner kind="warn">{t("outputs.noServerYet")}</Banner>}
             <div className="form-grid">
-              <Field label={t("outputs.host")}>
-                <input className="input" value={text(config.host)} onChange={(e) => set("host", e.target.value)} required />
-              </Field>
-              <Field label={t("outputs.port")}>
-                <NumberInput value={Number(config.port ?? 8000)} min={1} max={65535} step={1} onChange={(v) => set("port", v)} />
+              <Field label={t("outputs.serverField")}>
+                <select className="input" value={server} onChange={(e) => setServer(Number(e.target.value))} required>
+                  {masters.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({serverAddress(s)})
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label={t("outputs.mount")} hint={t("outputs.mountHint")}>
-                <input className="input" value={text(config.mount)} onChange={(e) => set("mount", e.target.value)} required pattern="/.*" />
-              </Field>
-              <Field label={t("login.username")}>
-                <input className="input" value={text(config.username)} onChange={(e) => set("username", e.target.value)} />
-              </Field>
-              <Field label={t("login.password")} hint={passwordSet ? t("outputs.keepPassword") : undefined}>
-                <input
-                  className="input"
-                  type="password"
-                  autoComplete="new-password"
-                  value={text(config.password)}
-                  placeholder={passwordSet ? "••••••••" : ""}
-                  onChange={(e) => set("password", e.target.value)}
-                  required={!passwordSet}
-                />
-              </Field>
-              <Field label={t("outputs.publicUrl")} hint={t("outputs.publicUrlHint")}>
-                <input
-                  className="input"
-                  type="url"
-                  value={text(config.public_url)}
-                  placeholder={`http://${text(config.host) || "host"}:${String(config.port ?? 8000)}`}
-                  onChange={(e) => set("public_url", e.target.value)}
-                />
+                <input className="input" value={mount} onChange={(e) => setMount(e.target.value)} required pattern="/.*" />
               </Field>
             </div>
-            <div className="form-grid" style={{ marginTop: "0.9rem" }}>
-              <Field label={t("outputs.stationName")}>
-                <input className="input" value={text(config.name)} onChange={(e) => set("name", e.target.value)} />
-              </Field>
-              <Field label={t("outputs.genre")}>
-                <input className="input" value={text(config.genre)} onChange={(e) => set("genre", e.target.value)} />
-              </Field>
-              <Field label={t("outputs.website")}>
-                <input className="input" type="url" value={text(config.url)} onChange={(e) => set("url", e.target.value)} />
-              </Field>
-              <Field label={t("outputs.descriptionField")}>
-                <input className="input" value={text(config.description)} onChange={(e) => set("description", e.target.value)} />
-              </Field>
-            </div>
-            <label className="check" style={{ marginTop: "0.75rem" }}>
-              <input type="checkbox" checked={config.public === true} onChange={(e) => set("public", e.target.checked)} />
-              {t("outputs.public")}
-            </label>
-          </fieldset>
-        ) : null}
-        {kind === "icecast" ? (
-          statistics && (
             <fieldset>
-              <legend>{t("outputs.statistics")}</legend>
+              <legend>{t("outputs.stationDetails")}</legend>
               <p className="muted small" style={{ marginTop: 0 }}>
-                {t("outputs.statisticsHelp")}
+                {t("outputs.stationDetailsHelp")}
               </p>
               <div className="form-grid">
-                <Field label={t("outputs.adminUser")}>
-                  <input
+                {detail("name", t("outputs.stationName"))}
+                {detail("genre", t("outputs.genre"))}
+                {detail("url", t("outputs.website"), "url")}
+                {detail("description", t("outputs.descriptionField"))}
+                <Field label={t("outputs.public")}>
+                  <select
                     className="input"
-                    value={adminUser}
-                    placeholder="admin"
-                    autoComplete="off"
-                    onChange={(e) => setAdminUser(e.target.value)}
-                  />
-                </Field>
-                <Field label={t("outputs.adminPassword")} hint={adminPasswordSet ? t("outputs.keepPassword") : undefined}>
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete="new-password"
-                    value={adminPassword}
-                    placeholder={adminPasswordSet && !removeAdmin ? "••••••••" : ""}
-                    disabled={removeAdmin}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                  />
+                    value={listed === null ? "" : String(listed)}
+                    onChange={(e) => setListed(e.target.value === "" ? null : e.target.value === "true")}
+                  >
+                    <option value="">
+                      {t("outputs.publicFollow", { value: station?.public ? t("outputs.yes") : t("outputs.no") })}
+                    </option>
+                    <option value="true">{t("outputs.publicYes")}</option>
+                    <option value="false">{t("outputs.publicNo")}</option>
+                  </select>
                 </Field>
               </div>
-              {adminPasswordSet && (
-                <label className="check" style={{ marginTop: "0.75rem" }}>
-                  <input type="checkbox" checked={removeAdmin} onChange={(e) => setRemoveAdmin(e.target.checked)} />
-                  {t("outputs.removeAdminPassword")}
-                </label>
-              )}
             </fieldset>
-          )
+          </>
         ) : (
           <Field label={t("outputs.json")} hint={t("outputs.jsonHint")}>
             <textarea className="input" value={json} onChange={(e) => setJson(e.target.value)} rows={8} />
           </Field>
         )}
         {jsonError && <Banner kind="bad">{jsonError}</Banner>}
+      </form>
+    </Modal>
+  );
+}
+
+/** A stream server, or a relay of one. */
+function ServerDialog({
+  server,
+  servers,
+  onClose,
+}: {
+  server: StreamServerView | null;
+  servers: StreamServerView[];
+  onClose: () => void;
+}) {
+  // A server outputs use, or with relays, cannot become a relay.
+  const masters = servers.filter((s) => s.relay_of == null && s.id !== server?.id);
+  const canRelay = !server || (server.outputs.length === 0 && server.relays.length === 0);
+  const [name, setName] = useState(server?.name ?? "");
+  const [relayOf, setRelayOf] = useState<number | null>(server?.relay_of ?? null);
+  const [host, setHost] = useState(server?.host ?? "");
+  const [port, setPort] = useState(server?.port ?? 8000);
+  const [tls, setTls] = useState(server?.tls ?? false);
+  const [sourceUser, setSourceUser] = useState(server?.source_username ?? "");
+  const [sourcePassword, setSourcePassword] = useState("");
+  const [publicUrl, setPublicUrl] = useState(server?.public_url ?? "");
+  const [mounts, setMounts] = useState(relayMountsText(server?.relay_mounts));
+  const [subtractOne, setSubtractOne] = useState(server?.relay_subtract_one ?? false);
+  const adminPasswordSet = server?.admin_password_set ?? false;
+  const [adminUser, setAdminUser] = useState(server?.admin_username ?? "");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [removeAdmin, setRemoveAdmin] = useState(false);
+  const relay = relayOf !== null;
+  const sourcePasswordSet = server?.source_password_set ?? false;
+
+  const save = useAction(
+    () => {
+      const input: Schemas["StreamServerInput"] = {
+        name,
+        host,
+        port,
+        tls: relay && tls,
+        source_username: relay ? null : sourceUser.trim() || null,
+        public_url: publicUrl.trim() || null,
+        relay_of: relayOf,
+        relay_mounts: relay ? parseRelayMounts(mounts) : null,
+        relay_subtract_one: relay && subtractOne,
+        ...statisticsInput(adminUser, adminPassword, removeAdmin),
+      };
+      if (!relay && sourcePassword) {
+        input.source_password = sourcePassword;
+      }
+      return server
+        ? unwrap(
+            api.PUT("/api/v1/stations/{station_id}/stream-servers/{id}", { params: { path: here({ id: server.id }) }, body: input }),
+          )
+        : unwrap(api.POST("/api/v1/stations/{station_id}/stream-servers", { params: { path: here() }, body: input }));
+    },
+    { success: t("outputs.saved"), invalidate: [["stream-servers"], ["outputs"], ["engine"]], onSuccess: onClose },
+  );
+
+  return (
+    <Modal
+      title={server ? t("categories.edit", { name: server.name }) : t("outputs.newServerTitle")}
+      open
+      wide
+      onClose={onClose}
+      footer={<SaveFooter form="server-form" onClose={onClose} busy={save.isPending} />}
+    >
+      <form
+        id="server-form"
+        className="stack"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate(undefined);
+        }}
+      >
+        <div className="form-grid">
+          <Field label={t("categories.name")}>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
+          </Field>
+          <Field label={t("outputs.kind")}>
+            <select className="input" value="icecast" disabled>
+              <option value="icecast">Icecast</option>
+            </select>
+          </Field>
+          <Field label={t("outputs.relayOfField")}>
+            <select
+              className="input"
+              value={relayOf ?? ""}
+              disabled={!canRelay}
+              onChange={(e) => setRelayOf(e.target.value === "" ? null : Number(e.target.value))}
+            >
+              <option value="">{t("outputs.notRelay")}</option>
+              {masters.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        {relay && (
+          <p className="muted small" style={{ margin: 0 }}>
+            {t("outputs.relayHelp")}
+          </p>
+        )}
+        <fieldset>
+          <legend>{t("outputs.icecastServer")}</legend>
+          <div className="form-grid">
+            <Field label={t("outputs.host")}>
+              <input className="input" value={host} onChange={(e) => setHost(e.target.value)} required />
+            </Field>
+            <Field label={t("outputs.port")}>
+              <NumberInput value={port} min={1} max={65535} step={1} onChange={setPort} />
+            </Field>
+            {!relay && (
+              <>
+                <Field label={t("outputs.sourceUser")}>
+                  <input className="input" value={sourceUser} placeholder="source" onChange={(e) => setSourceUser(e.target.value)} />
+                </Field>
+                <Field label={t("outputs.sourcePassword")} hint={sourcePasswordSet ? t("outputs.keepPassword") : undefined}>
+                  <input
+                    className="input"
+                    type="password"
+                    autoComplete="new-password"
+                    value={sourcePassword}
+                    placeholder={sourcePasswordSet ? "••••••••" : ""}
+                    onChange={(e) => setSourcePassword(e.target.value)}
+                    required={!sourcePasswordSet}
+                  />
+                </Field>
+              </>
+            )}
+            <Field label={t("outputs.publicUrl")} hint={t("outputs.publicUrlHint")}>
+              <input
+                className="input"
+                type="url"
+                value={publicUrl}
+                placeholder={`http://${host || "host"}:${String(port)}`}
+                onChange={(e) => setPublicUrl(e.target.value)}
+              />
+            </Field>
+          </div>
+          {relay && (
+            <label className="check" style={{ marginTop: "0.75rem" }} title={t("outputs.tlsHint")}>
+              <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} />
+              {t("outputs.tls")}
+            </label>
+          )}
+        </fieldset>
+        {relay && (
+          <fieldset>
+            <legend>{t("outputs.relayMounts")}</legend>
+            <Field label={t("outputs.relayMounts")} hint={t("outputs.relayMountsHint")}>
+              <textarea className="input mono" rows={3} value={mounts} placeholder={t("outputs.allMounts")} onChange={(e) => setMounts(e.target.value)} />
+            </Field>
+            <label className="check" style={{ marginTop: "0.75rem" }} title={t("outputs.relaySubtractOneHint")}>
+              <input type="checkbox" checked={subtractOne} onChange={(e) => setSubtractOne(e.target.checked)} />
+              {t("outputs.relaySubtractOne")}
+            </label>
+            <p className="muted small">{t("outputs.relaySubtractOneHint")}</p>
+          </fieldset>
+        )}
+        <fieldset>
+          <legend>{t("outputs.statistics")}</legend>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            {t("outputs.statisticsHelp")}
+          </p>
+          <div className="form-grid">
+            <Field label={t("outputs.adminUser")}>
+              <input className="input" value={adminUser} placeholder="admin" autoComplete="off" onChange={(e) => setAdminUser(e.target.value)} />
+            </Field>
+            <Field label={t("outputs.adminPassword")} hint={adminPasswordSet ? t("outputs.keepPassword") : undefined}>
+              <input
+                className="input"
+                type="password"
+                autoComplete="new-password"
+                value={adminPassword}
+                placeholder={adminPasswordSet && !removeAdmin ? "••••••••" : ""}
+                disabled={removeAdmin}
+                onChange={(e) => setAdminPassword(e.target.value)}
+              />
+            </Field>
+          </div>
+          {adminPasswordSet && (
+            <label className="check" style={{ marginTop: "0.75rem" }}>
+              <input type="checkbox" checked={removeAdmin} onChange={(e) => setRemoveAdmin(e.target.checked)} />
+              {t("outputs.removeAdminPassword")}
+            </label>
+          )}
+        </fieldset>
       </form>
     </Modal>
   );

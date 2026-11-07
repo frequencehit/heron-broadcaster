@@ -63,6 +63,16 @@ pub fn module_of(path: &str) -> Option<Module> {
         | ["settings", "station", "logo"] => Module::CoverArt,
         ["listeners", ..] | ["settings", "statistics"] => Module::ListenerStatistics,
         ["webhooks" | "webhook-deliveries", ..] => Module::Webhooks,
+        ["restrictions", ..] => Module::Restrictions,
+        ["settings", "eq"] | ["eq-presets", ..] => Module::Eq,
+        ["settings", "agc"] | ["agc-presets", ..] => Module::Processing,
+        ["library", "trash", ..] => Module::Trash,
+        ["library", "review" | "organize" | "batches", ..] | ["tracks", _, "review", ..] => {
+            Module::Review
+        }
+        // `GET /artists` is the search of the artist pickers: it answers.
+        ["artists", _, ..] | ["artist-names" | "artist-suggestions", ..] => Module::Artists,
+        ["labels", ..] | ["tracks", "labels"] => Module::Labels,
         ["shows", key, ..] => Module::from_key(key).filter(|module| module.is_show())?,
         ["likes", ..] => Module::Likes,
         ["top30", ..] => Module::Top30,
@@ -83,6 +93,15 @@ pub async fn guard(State(state): State<AppState>, request: Request, next: Next) 
         Ok(true) => next.run(request).await,
         Ok(false) => ApiError::ModuleOff(module).into_response(),
         Err(error) => error.into_response(),
+    }
+}
+
+/// What follows the modules: the queue (medleys, restrictions) and what
+/// the engine has (the deck EQ and the AGC chain, bypassed while off).
+fn changed(state: &AppState) {
+    state.stations.wake_all();
+    for station in state.stations.all() {
+        station.sync.changed();
     }
 }
 
@@ -152,7 +171,7 @@ async fn put_modules(
     user.require(Role::Admin)?;
     settings::save(&state.pool, Modules::SETTINGS_NAME, &modules).await?;
     tracing::info!(user = %user.username, ?modules, "installation modules changed");
-    state.stations.wake_all();
+    changed(&state);
     Ok(Json(modules))
 }
 
@@ -189,10 +208,10 @@ async fn put_station_modules(
         ));
     }
     // What the station leaves out stays on.
-    let modules = Modules::over(Modules::ALL_ON, &body);
+    let modules = Modules::over(Modules::ALL_ON, &body).for_station();
     settings::save_for(&state.pool, id, Modules::STATION_SETTINGS_NAME, &modules).await?;
     tracing::info!(user = %user.username, station = id, ?modules, "station modules changed");
-    state.stations.wake_all();
+    changed(&state);
     Ok(Json(station_modules(&state.pool, id).await?))
 }
 
@@ -217,6 +236,27 @@ mod tests {
             ),
             ("/api/v1/webhooks/2/test", Some(Module::Webhooks)),
             ("/api/v1/webhook-deliveries/9/retry", Some(Module::Webhooks)),
+            ("/api/v1/restrictions/4", Some(Module::Restrictions)),
+            ("/api/v1/settings/eq", Some(Module::Eq)),
+            ("/api/v1/eq-presets/2", Some(Module::Eq)),
+            ("/api/v1/settings/agc", Some(Module::Processing)),
+            ("/api/v1/agc-presets", Some(Module::Processing)),
+            ("/api/v1/library/trash/7/restore", Some(Module::Trash)),
+            ("/api/v1/library/review", Some(Module::Review)),
+            ("/api/v1/library/organize/3/apply", Some(Module::Review)),
+            ("/api/v1/library/batches/3/undo", Some(Module::Review)),
+            ("/api/v1/tracks/12/review/keep", Some(Module::Review)),
+            ("/api/v1/artists/5/merge", Some(Module::Artists)),
+            ("/api/v1/artist-names/5", Some(Module::Artists)),
+            (
+                "/api/v1/artist-suggestions/musicbrainz",
+                Some(Module::Artists),
+            ),
+            ("/api/v1/artists", None),
+            ("/api/v1/labels/3/merge", Some(Module::Labels)),
+            ("/api/v1/tracks/labels", Some(Module::Labels)),
+            ("/api/v1/library/tasks", None),
+            ("/api/v1/library/import", None),
             ("/api/v1/shows/dedications", Some(Module::Dedications)),
             ("/api/v1/shows/match", Some(Module::Match)),
             ("/api/v1/shows/likes", Some(Module::Likes)),

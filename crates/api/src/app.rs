@@ -151,6 +151,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(eq::router())
         .merge(agc::router())
         .merge(outputs::router())
+        .merge(crate::servers::router())
         .merge(listeners::router())
         .merge(live::router())
         .merge(webhooks::router())

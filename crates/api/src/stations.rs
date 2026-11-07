@@ -56,6 +56,7 @@ const PER_STATION: [&str; 17] = [
     "schedules",
     "rotation",
     "outputs",
+    "stream-servers",
     "webhooks",
     "webhook-deliveries",
     "listeners",
@@ -64,8 +65,15 @@ const PER_STATION: [&str; 17] = [
     "top30",
 ];
 /// The settings groups served per station (`/settings/{group}`).
-const STATION_SETTINGS: [&str; 7] = [
-    "playout", "eq", "agc", "queue", "rotation", "station", "medleys",
+const STATION_SETTINGS: [&str; 8] = [
+    "playout",
+    "eq",
+    "agc",
+    "queue",
+    "rotation",
+    "station",
+    "medleys",
+    "stream-details",
 ];
 /// The public routes per station (`/public/{route}`).
 const PUBLIC: [&str; 3] = ["now-playing", "queue", "history"];
