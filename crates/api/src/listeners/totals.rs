@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! A day's totals, per hour and for the whole day, per output and for the
-//! whole station, from its minute samples and sessions. See
+//! whole station, for every server and for each one, from its minute
+//! samples and sessions. See
 //! `docs/statistics.md#what-is-measured`.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -15,6 +16,8 @@ use super::sessions::ListenerKey;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sample {
     pub output_id: u64,
+    /// The server read: the master or a relay.
+    pub server_id: u64,
     pub minute_ms: i64,
     pub listeners: u32,
     /// The listener list was read too.
@@ -24,6 +27,7 @@ pub struct Sample {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Span {
     pub output_id: u64,
+    pub server_id: u64,
     pub key: ListenerKey,
     pub started_ms: i64,
     pub last_seen_ms: i64,
@@ -35,6 +39,8 @@ pub struct Span {
 pub struct Total {
     /// `None`: the whole station.
     pub output_id: Option<u64>,
+    /// `None`: every server.
+    pub server_id: Option<u64>,
     /// `None`: the whole day.
     pub hour: Option<u8>,
     pub minutes: u32,
@@ -47,7 +53,7 @@ pub struct Total {
     pub distinct_listeners: Option<u32>,
 }
 
-fn hour_of(ms: i64, tz: &TimeZone) -> u8 {
+pub(super) fn hour_of(ms: i64, tz: &TimeZone) -> u8 {
     Timestamp::from_millisecond(ms).map_or(0, |at| at.to_zoned(tz.clone()).hour().unsigned_abs())
 }
 
@@ -88,9 +94,61 @@ struct Listening<'a> {
     keys: HashSet<&'a ListenerKey>,
 }
 
-/// Every row of the day. `min_session_s`: sessions shorter than this do
-/// not count.
+/// Every row of the day: for every server (an output's minute adds up its
+/// servers), then for each server on its own. `min_session_s`: sessions
+/// shorter than this do not count.
 pub fn day_totals(
+    samples: &[Sample],
+    spans: &[Span],
+    tz: &TimeZone,
+    min_session_s: u32,
+) -> Vec<Total> {
+    let mut outputs: BTreeMap<(u64, i64), (u32, bool)> = BTreeMap::new();
+    for sample in samples {
+        let minute = outputs
+            .entry((sample.output_id, sample.minute_ms))
+            .or_default();
+        minute.0 += sample.listeners;
+        minute.1 |= sample.sessions;
+    }
+    let every: Vec<Sample> = outputs
+        .into_iter()
+        .map(|((output_id, minute_ms), (listeners, sessions))| Sample {
+            output_id,
+            server_id: 0,
+            minute_ms,
+            listeners,
+            sessions,
+        })
+        .collect();
+    let mut rows = scope_totals(&every, spans, tz, min_session_s);
+    let servers: BTreeSet<u64> = samples.iter().map(|sample| sample.server_id).collect();
+    for server_id in servers {
+        let samples: Vec<Sample> = samples
+            .iter()
+            .filter(|sample| sample.server_id == server_id)
+            .cloned()
+            .collect();
+        let spans: Vec<Span> = spans
+            .iter()
+            .filter(|span| span.server_id == server_id)
+            .cloned()
+            .collect();
+        rows.extend(
+            scope_totals(&samples, &spans, tz, min_session_s)
+                .into_iter()
+                .map(|row| Total {
+                    server_id: Some(server_id),
+                    ..row
+                }),
+        );
+    }
+    rows
+}
+
+/// The rows of one set of samples and sessions, per output and for the
+/// station, with `server_id` left to the caller.
+fn scope_totals(
     samples: &[Sample],
     spans: &[Span],
     tz: &TimeZone,
@@ -163,6 +221,7 @@ pub fn day_totals(
             };
             Total {
                 output_id,
+                server_id: None,
                 hour,
                 minutes: measured.minutes,
                 peak: measured.peak,
@@ -203,6 +262,7 @@ mod tests {
     fn sample(output_id: u64, minute: i64, listeners: u32) -> Sample {
         Sample {
             output_id,
+            server_id: 1,
             minute_ms: minute * MIN,
             listeners,
             sessions: true,
@@ -212,6 +272,7 @@ mod tests {
     fn span(output_id: u64, n: u8, from_min: i64, to_min: i64) -> Span {
         Span {
             output_id,
+            server_id: 1,
             key: [n; 32],
             started_ms: from_min * MIN,
             last_seen_ms: to_min * MIN,
@@ -222,7 +283,7 @@ mod tests {
     fn row(totals: &[Total], output_id: Option<u64>, hour: Option<u8>) -> &Total {
         totals
             .iter()
-            .find(|t| t.output_id == output_id && t.hour == hour)
+            .find(|t| t.output_id == output_id && t.server_id.is_none() && t.hour == hour)
             .unwrap()
     }
 
@@ -270,6 +331,48 @@ mod tests {
         assert_eq!(station.sessions, Some(5));
         assert_eq!(station.distinct_listeners, Some(4));
         assert!(totals.iter().all(|t| t.hour != Some(2)));
+    }
+
+    #[test]
+    fn each_server_has_its_own_rows() {
+        // Output 1: 2 listeners on the master (server 1), 3 on a relay
+        // (server 2) for 10 minutes; listener 1 on both.
+        let mut samples: Vec<Sample> = (0..10).map(|m| sample(1, m, 2)).collect();
+        samples.extend((0..10).map(|m| Sample {
+            server_id: 2,
+            ..sample(1, m, 3)
+        }));
+        let relay = |n| Span {
+            server_id: 2,
+            ..span(1, n, 0, 10)
+        };
+        let spans = [
+            span(1, 1, 0, 10),
+            span(1, 2, 0, 10),
+            relay(1),
+            relay(3),
+            relay(4),
+        ];
+        let totals = day_totals(&samples, &spans, &TimeZone::UTC, 60);
+        let find = |output_id: Option<u64>, server_id: Option<u64>| {
+            totals
+                .iter()
+                .find(|t| t.output_id == output_id && t.server_id == server_id && t.hour.is_none())
+                .unwrap()
+        };
+        let every = find(Some(1), None);
+        assert_eq!((every.peak, every.distinct_listeners), (5, Some(4)));
+        let master = find(Some(1), Some(1));
+        assert_eq!((master.peak, master.sessions), (2, Some(2)));
+        let own = find(Some(1), Some(2));
+        assert_eq!(
+            (own.peak, own.sessions, own.distinct_listeners),
+            (3, Some(3), Some(3))
+        );
+        assert!((own.listening_hours - 0.5).abs() < 1e-9);
+        // The station on one server.
+        assert_eq!(find(None, Some(2)).peak, 3);
+        assert_eq!(totals.iter().filter(|t| t.server_id == Some(2)).count(), 4);
     }
 
     #[test]
