@@ -41,6 +41,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Settings › Programming › Rotation** is split into titled sections (separation, dayparts, draw depth, when no track fits, weight after a play, the station's library, across stations), each with a one-line explanation; how each slot method draws is folded away, the draw depth has a diagram that follows its two values, and the two divisions of the day sit on one line.
 - **A track's page** is in tabs: *Sound*, *Programming*, *Details* and *Plays*.
 - **Clocks save themselves** a moment after each change: no *Save* button to forget. The page says *Saving…*, *Saved* or why a change was not saved; a new clock is still created with its button.
+- **A track's page:** the playhead's time and level sit under the waveform, on the right; *Try a transition* draws its graph at the waveform's height whatever the page's width.
 
 ### Fixed
 
