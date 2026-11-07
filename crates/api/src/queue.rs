@@ -480,7 +480,8 @@ impl QueueManager {
                 tracing::debug!("autofill: no playable track in the library");
             } else {
                 tracing::warn!(
-                    "rotation: restrictions forbid every track for now, \
+                    "rotation: no slot of the clock found a track for now \
+                     (restrictions, rules or an exact time), \
                      the engine's fallback directory takes over"
                 );
             }
