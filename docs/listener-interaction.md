@@ -33,10 +33,10 @@ Listeners take part from the station's website: they ask for a song with a dedic
 A write (a dedication, a vote) goes through, in order:
 
 1. **The address's limit**: requests per minute per address, reads and writes counted apart. Over it: `429`.
-2. **The show**: its module on for the station, and the show open now (else `404` or `409`).
+2. **The show**: its module on for the station, the write one it takes, and the show open now (else `404` or `409`). A website not listed in `HERON_PUBLIC_ALLOWED_ORIGINS` is refused before anything (`403`).
 3. **The anti-robot proof**: a proof of work computed by the browser (below). Missing or wrong: `403`.
-4. **The device's limit**: what one device may send, set by each show (one dedication per opening range, one vote per match).
-5. **The fields**: each text field has a maximum size; unknown fields are refused (`422`).
+4. **The fields**: each text field has a maximum size; unknown fields are refused (`422`).
+5. **The device's limit**: what one device may send, set by each show (one dedication per opening range, one vote per match). Over it: `429`.
 6. **The API's limit**: writes sent on to the API per second, for every listener together. Over it: `429`, and the API sees nothing more.
 
 Then a write is either **sent on** to the API at once (a dedication: one request, answered with the API's answer) or **added up** in the gateway and sent every second in one batch (votes: `202` for the listener).

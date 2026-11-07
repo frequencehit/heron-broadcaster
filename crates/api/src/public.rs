@@ -169,6 +169,14 @@ async fn now_playing(
     State(state): State<AppState>,
     station: Station,
 ) -> ([(header::HeaderName, &'static str); 1], Json<NowPlaying>) {
+    (
+        [(header::CACHE_CONTROL, "public, max-age=5")],
+        Json(now_playing_of(&state, &station).await),
+    )
+}
+
+/// What `GET /public/now-playing` answers, for the gateway's state too.
+pub async fn now_playing_of(state: &AppState, station: &Station) -> NowPlaying {
     let now = unix_ms(SystemTime::now());
     let mut jingle = false;
     let mut track_id = None;
@@ -197,7 +205,7 @@ async fn now_playing(
     });
     let mut track = match track {
         Some(track) => Some(track),
-        None if jingle => match last_song(&state, &station, now).await {
+        None if jingle => match last_song(state, station, now).await {
             Ok(Some((id, track))) => {
                 track_id = id;
                 Some(track)
@@ -217,13 +225,10 @@ async fn now_playing(
             Err(error) => tracing::warn!(%error, "cannot read the cover"),
         }
     }
-    (
-        [(header::CACHE_CONTROL, "public, max-age=5")],
-        Json(NowPlaying {
-            now: track,
-            server_time_unix_ms: now,
-        }),
-    )
+    NowPlaying {
+        now: track,
+        server_time_unix_ms: now,
+    }
 }
 
 /// What comes next, in airing order: the music only (no FX player, no

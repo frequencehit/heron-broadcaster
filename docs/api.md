@@ -183,11 +183,11 @@ Each [show](listener-interaction.md) has its settings per station, `GET`, `PUT /
                               "show.ended": {"enabled": false, "message": "{name} is closed. Back {next}"}}}}
 ```
 
-- `hours`: days 1 (Monday) to 7 (Sunday), `start_hour` 0 to 23, `end_hour` after it, up to 24, at most 50 ranges, in the station's time zone. Hours another show of the station has are refused, `409`, naming the show and the hours (`18:00–19:00 on Saturday is the match's`).
+- `hours`: days 1 (Monday) to 7 (Sunday), `start_hour` 0 to 23, `end_hour` after it, up to 24, at most 50 ranges, in the station's time zone. Hours another show of the station has are refused, `409`, naming the show and the hours (`18:00–19:00 on Saturday belongs to the match`).
 - `website`: `title` (60 characters at most; empty: the show's name in the listener's language), `color` (`#rrggbb`), `small_widget`, `closed` (`message` or `nothing`), `closed_message` (200 characters at most, with `{day}` and `{hour}`; empty: the widget's own sentence), `page_url` (the website's page of the show, for `{link}`).
 - `notifications`: `webhook_ids` (webhooks of the station), `lead_minutes` (1 to 1440), `language` (`en`, `fr`, `es`, `de`), and each event with `enabled` and `message` (500 characters at most, with `{name}`, `{link}`, `{end}`, `{next}`, and the show's own placeholders; an unknown one is refused, `422`).
 
-The answer of `GET` adds `module`, `open` (now), `closes_at_unix_ms` (while open), `next_opening_unix_ms`, `timezone` and `webhooks` (`id`, `name` of the station's webhooks). `GET /stations/{id}/shows` lists the shows on for the station, with the same answer, for the week grid of each show's page.
+`GET` answers `module`, `settings` (as above), `status` (`open` now, `closes_at_unix_ms` while open, `next_opening_unix_ms`), `timezone` and `webhooks` (`id`, `name` of the station's webhooks), and `PUT` answers the same. `GET /stations/{id}/shows` lists the shows on for the station, with the same answer, for the week grid of each show's page.
 
 ## Public endpoints
 
