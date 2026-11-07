@@ -11514,6 +11514,14 @@ async fn dedications_are_asked_accepted_into_the_queue_and_followed() {
         (open == 0).then_some(())
     })
     .await;
+    // What rotation played while the station started is not the test's:
+    // a request's checks (track played lately) start from an empty history,
+    // whichever tracks were drawn first.
+    sqlx::query("DELETE FROM play_history WHERE station_id = ?")
+        .bind(station.state.stations.first().id())
+        .execute(pool)
+        .await
+        .unwrap();
 
     // Off by default: nothing answers.
     let (status, body) = viewer.request(Method::GET, "/dedications", None).await;
