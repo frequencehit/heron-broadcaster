@@ -5095,6 +5095,9 @@ export interface components {
             runtime?: components["schemas"]["Runtime"] | null;
             services: components["schemas"]["ServiceInfo"][];
         };
+        AcceptDedication: {
+            place: components["schemas"]["DedicationPlace"];
+        };
         AcceptRequest: {
             /**
              * Format: int64
@@ -6009,33 +6012,6 @@ export interface components {
              */
             weeks: number;
         };
-        Check: {
-            /**
-             * Format: int64
-             * @description When the track queued already plays.
-             */
-            at_unix_ms?: number | null;
-            /** @description It cannot be accepted: a restriction forbids it, or it cannot play. */
-            blocking: boolean;
-            kind: components["schemas"]["CheckKind"];
-            /**
-             * Format: int64
-             * @description How long ago it played (the separation rules).
-             */
-            minutes_ago?: number | null;
-            /** Format: int64 */
-            restriction_id?: number | null;
-            /**
-             * Format: int32
-             * @description The rule's window.
-             */
-            separation_min?: number | null;
-        };
-        /**
-         * @description What the rules say about a waiting request now.
-         * @enum {string}
-         */
-        CheckKind: "rules_kept" | "artist_played" | "title_played" | "track_played" | "in_queue" | "restriction" | "unplayable";
         Checked: {
             /**
              * Format: int64
@@ -6169,19 +6145,6 @@ export interface components {
              * @description Counters that were not at 10.
              */
             reset: number;
-        };
-        /** @description The counts of the range's requests. */
-        Counts: {
-            /** Format: int64 */
-            accepted: number;
-            /** Format: int64 */
-            pending: number;
-            /** Format: int64 */
-            played: number;
-            /** Format: int64 */
-            received: number;
-            /** Format: int64 */
-            refused: number;
         };
         /** @description An image to fetch from an address. */
         CoverAddress: {
@@ -6409,7 +6372,7 @@ export interface components {
         Dedication: {
             artist?: string | null;
             /** @description While it waits: what the rules say about it now. */
-            checks: components["schemas"]["Check"][];
+            checks: components["schemas"]["DedicationCheck"][];
             /** Format: int64 */
             decided_at_unix_ms?: number | null;
             /** @description Who accepted or refused it. */
@@ -6424,14 +6387,54 @@ export interface components {
             play_id?: number | null;
             /** Format: int64 */
             played_at_unix_ms?: number | null;
-            reason?: components["schemas"]["Reason"] | null;
-            status: components["schemas"]["Status"];
+            reason?: components["schemas"]["DedicationReason"] | null;
+            status: components["schemas"]["DedicationStatus"];
             /** Format: int64 */
             submitted_at_unix_ms: number;
             title?: string | null;
             to: string;
             /** Format: int64 */
             track_id?: number | null;
+        };
+        DedicationCheck: {
+            /**
+             * Format: int64
+             * @description When the track queued already plays.
+             */
+            at_unix_ms?: number | null;
+            /** @description It cannot be accepted: a restriction forbids it, or it cannot play. */
+            blocking: boolean;
+            kind: components["schemas"]["DedicationCheckKind"];
+            /**
+             * Format: int64
+             * @description How long ago it played (the separation rules).
+             */
+            minutes_ago?: number | null;
+            /** Format: int64 */
+            restriction_id?: number | null;
+            /**
+             * Format: int32
+             * @description The rule's window.
+             */
+            separation_min?: number | null;
+        };
+        /**
+         * @description What the rules say about a waiting request now.
+         * @enum {string}
+         */
+        DedicationCheckKind: "rules_kept" | "artist_played" | "title_played" | "track_played" | "in_queue" | "restriction" | "unplayable";
+        /** @description The counts of the range's requests. */
+        DedicationCounts: {
+            /** Format: int64 */
+            accepted: number;
+            /** Format: int64 */
+            pending: number;
+            /** Format: int64 */
+            played: number;
+            /** Format: int64 */
+            received: number;
+            /** Format: int64 */
+            refused: number;
         };
         /** @description What a listener sends. */
         DedicationFields: {
@@ -6444,7 +6447,7 @@ export interface components {
         DedicationList: {
             /** Format: int64 */
             closes_at_unix_ms?: number | null;
-            counts: components["schemas"]["Counts"];
+            counts: components["schemas"]["DedicationCounts"];
             dedications: components["schemas"]["Dedication"][];
             /** Format: int32 */
             max_per_range: number;
@@ -6452,6 +6455,16 @@ export interface components {
             /** Format: int64 */
             opens_at_unix_ms?: number | null;
         };
+        /**
+         * @description Where an accepted request goes in the queue.
+         * @enum {string}
+         */
+        DedicationPlace: "next" | "hour" | "best";
+        /**
+         * @description Why a request was refused, or did not play.
+         * @enum {string}
+         */
+        DedicationReason: "just_played" | "unavailable" | "inappropriate" | "closed" | "removed";
         /**
          * @description A station's dedication settings (`station_settings`, `dedications`). Its
          *     hours, website and notifications are its show settings.
@@ -6488,6 +6501,11 @@ export interface components {
              */
             retention_days: number;
         };
+        /**
+         * @description Where a request stands.
+         * @enum {string}
+         */
+        DedicationStatus: "pending" | "accepted" | "played" | "refused";
         /** @enum {string} */
         DeliveryStatus: "pending" | "delivered" | "failed";
         DeliverySummary: {
@@ -7057,8 +7075,8 @@ export interface components {
             planned_at_unix_ms?: number | null;
             /** Format: int64 */
             played_at_unix_ms?: number | null;
-            reason?: components["schemas"]["Reason"] | null;
-            status: components["schemas"]["Status"];
+            reason?: components["schemas"]["DedicationReason"] | null;
+            status: components["schemas"]["DedicationStatus"];
             /** Format: int64 */
             submitted_at_unix_ms: number;
             title?: string | null;
@@ -8579,11 +8597,6 @@ export interface components {
             /** @description Where the liner goes, for a liner. */
             slot?: components["schemas"]["LinerSlot"];
         };
-        /**
-         * @description Where an accepted request goes in the queue.
-         * @enum {string}
-         */
-        Place: "next" | "hour" | "best";
         /** @description Where a part goes in the medley, in ms on the medley's timeline. */
         Placed: {
             /**
@@ -9062,11 +9075,6 @@ export interface components {
              */
             values: number;
         };
-        /**
-         * @description Why a request was refused, or did not play.
-         * @enum {string}
-         */
-        Reason: "just_played" | "unavailable" | "inappropriate" | "closed" | "removed";
         /** @description How a medley is built. */
         Recipe: {
             /**
@@ -9168,6 +9176,9 @@ export interface components {
         RecoveryCodes: {
             /** @description Shown once. */
             recovery_codes: string[];
+        };
+        RefuseDedication: {
+            reason?: components["schemas"]["DedicationReason"] | null;
         };
         RefuseRequest: {
             album_key: string;
@@ -13514,7 +13525,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Only the requests of this status. */
-                status?: components["schemas"]["Status"];
+                status?: components["schemas"]["DedicationStatus"];
                 /** @description 1 to 200, 100 by default. */
                 limit?: number;
             };
@@ -13612,7 +13623,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AcceptRequest"];
+                "application/json": components["schemas"]["AcceptDedication"];
             };
         };
         responses: {
@@ -13654,7 +13665,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RefuseRequest"];
+                "application/json": components["schemas"]["RefuseDedication"];
             };
         };
         responses: {
@@ -18435,7 +18446,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Only the requests of this status. */
-                status?: components["schemas"]["Status"];
+                status?: components["schemas"]["DedicationStatus"];
                 /** @description 1 to 200, 100 by default. */
                 limit?: number;
             };
@@ -18544,7 +18555,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AcceptRequest"];
+                "application/json": components["schemas"]["AcceptDedication"];
             };
         };
         responses: {
@@ -18588,7 +18599,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RefuseRequest"];
+                "application/json": components["schemas"]["RefuseDedication"];
             };
         };
         responses: {

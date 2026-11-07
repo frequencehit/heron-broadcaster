@@ -341,14 +341,14 @@ async fn is_requestable(
 /// Where a request stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum Status {
+pub enum DedicationStatus {
     Pending,
     Accepted,
     Played,
     Refused,
 }
 
-impl Status {
+impl DedicationStatus {
     fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -371,7 +371,7 @@ impl Status {
 /// Why a request was refused, or did not play.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum Reason {
+pub enum DedicationReason {
     /// The track just played.
     JustPlayed,
     /// The track cannot play now.
@@ -384,7 +384,7 @@ pub enum Reason {
     Removed,
 }
 
-impl Reason {
+impl DedicationReason {
     fn as_str(self) -> &'static str {
         match self {
             Self::JustPlayed => "just_played",
@@ -442,7 +442,7 @@ const FROM: &str = "FROM dedications d LEFT JOIN tracks t ON t.id = d.track_id
 /// What the rules say about a waiting request now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum CheckKind {
+pub enum DedicationCheckKind {
     RulesKept,
     ArtistPlayed,
     TitlePlayed,
@@ -453,8 +453,8 @@ pub enum CheckKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, ToSchema)]
-pub struct Check {
-    pub kind: CheckKind,
+pub struct DedicationCheck {
+    pub kind: DedicationCheckKind,
     /// How long ago it played (the separation rules).
     pub minutes_ago: Option<i64>,
     /// The rule's window.
@@ -466,15 +466,15 @@ pub struct Check {
     pub blocking: bool,
 }
 
-impl Check {
-    fn of(kind: CheckKind) -> Self {
+impl DedicationCheck {
+    fn of(kind: DedicationCheckKind) -> Self {
         Self {
             kind,
             minutes_ago: None,
             separation_min: None,
             at_unix_ms: None,
             restriction_id: None,
-            blocking: matches!(kind, CheckKind::Restriction | CheckKind::Unplayable),
+            blocking: matches!(kind, DedicationCheckKind::Restriction | DedicationCheckKind::Unplayable),
         }
     }
 }
@@ -489,8 +489,8 @@ pub struct Dedication {
     pub from: String,
     pub to: String,
     pub message: String,
-    pub status: Status,
-    pub reason: Option<Reason>,
+    pub status: DedicationStatus,
+    pub reason: Option<DedicationReason>,
     pub submitted_at_unix_ms: i64,
     pub decided_at_unix_ms: Option<i64>,
     /// Who accepted or refused it.
@@ -499,7 +499,7 @@ pub struct Dedication {
     pub played_at_unix_ms: Option<i64>,
     pub play_id: Option<u64>,
     /// While it waits: what the rules say about it now.
-    pub checks: Vec<Check>,
+    pub checks: Vec<DedicationCheck>,
 }
 
 impl From<Row> for Dedication {
@@ -512,8 +512,8 @@ impl From<Row> for Dedication {
             from: row.from_name,
             to: row.to_name,
             message: row.message,
-            status: Status::parse(&row.status),
-            reason: row.reason.as_deref().and_then(Reason::parse),
+            status: DedicationStatus::parse(&row.status),
+            reason: row.reason.as_deref().and_then(DedicationReason::parse),
             submitted_at_unix_ms: row.submitted_ms,
             decided_at_unix_ms: row.decided_ms,
             decided_by: row.decided_by,
@@ -530,9 +530,9 @@ impl From<Row> for Dedication {
 pub struct Followed {
     /// The key of the follow link.
     pub follow: String,
-    pub status: Status,
+    pub status: DedicationStatus,
     /// `null` for no reason, or an inappropriate message.
-    pub reason: Option<Reason>,
+    pub reason: Option<DedicationReason>,
     pub artist: Option<String>,
     pub title: Option<String>,
     pub from: String,
@@ -548,12 +548,12 @@ impl From<Row> for Followed {
     fn from(row: Row) -> Self {
         Self {
             follow: row.follow_key,
-            status: Status::parse(&row.status),
+            status: DedicationStatus::parse(&row.status),
             reason: row
                 .reason
                 .as_deref()
-                .and_then(Reason::parse)
-                .filter(|reason| *reason != Reason::Inappropriate),
+                .and_then(DedicationReason::parse)
+                .filter(|reason| *reason != DedicationReason::Inappropriate),
             artist: row.artist,
             title: row.title,
             from: row.from_name,
@@ -613,20 +613,20 @@ fn range_of(
 
 /// The first separation rule `track` breaks at `at_ms` against `plays`
 /// (before and after it), with how long before `at_ms` the play was.
-fn separation(library: &Library, plays: &[Play], track: u64, at_ms: i64) -> Option<Check> {
+fn separation(library: &Library, plays: &[Play], track: u64, at_ms: i64) -> Option<DedicationCheck> {
     let found = library.tracks.get(&track)?;
     let windows = library.settings.separation;
-    let mut broken: Option<(CheckKind, i64, u32)> = None;
+    let mut broken: Option<(DedicationCheckKind, i64, u32)> = None;
     for play in plays {
         let gap = at_ms - play.start_ms;
         let within = |window: u32| window > 0 && gap.abs() < i64::from(window) * 60_000;
         let kind = if play.track == Some(track) && within(windows.track_min) {
-            Some((CheckKind::TrackPlayed, windows.track_min))
+            Some((DedicationCheckKind::TrackPlayed, windows.track_min))
         } else if found.title_key.is_some()
             && play.title_key == found.title_key
             && within(windows.title_min)
         {
-            Some((CheckKind::TitlePlayed, windows.title_min))
+            Some((DedicationCheckKind::TitlePlayed, windows.title_min))
         } else if within(windows.artist_min)
             && found.artists.iter().any(|artist| {
                 play.artists
@@ -634,7 +634,7 @@ fn separation(library: &Library, plays: &[Play], track: u64, at_ms: i64) -> Opti
                     .any(|other| library.same_artist(*artist, *other))
             })
         {
-            Some((CheckKind::ArtistPlayed, windows.artist_min))
+            Some((DedicationCheckKind::ArtistPlayed, windows.artist_min))
         } else {
             None
         };
@@ -645,10 +645,10 @@ fn separation(library: &Library, plays: &[Play], track: u64, at_ms: i64) -> Opti
             broken = Some((kind, gap, window));
         }
     }
-    broken.map(|(kind, gap, window)| Check {
+    broken.map(|(kind, gap, window)| DedicationCheck {
         minutes_ago: Some(gap / 60_000),
         separation_min: Some(window),
-        ..Check::of(kind)
+        ..DedicationCheck::of(kind)
     })
 }
 
@@ -659,9 +659,9 @@ fn restricted(
     track: u64,
     at_ms: i64,
     previous: Option<&[u64]>,
-) -> Option<Check> {
+) -> Option<DedicationCheck> {
     let Some(found) = library.tracks.get(&track) else {
-        return Some(Check::of(CheckKind::Unplayable));
+        return Some(DedicationCheck::of(DedicationCheckKind::Unplayable));
     };
     let subject = Subject {
         track,
@@ -674,9 +674,9 @@ fn restricted(
         library.local(at_ms).datetime(),
         previous,
     )
-    .map(|restriction| Check {
+    .map(|restriction| DedicationCheck {
         restriction_id: Some(restriction.id),
-        ..Check::of(CheckKind::Restriction)
+        ..DedicationCheck::of(DedicationCheckKind::Restriction)
     })
 }
 
@@ -750,7 +750,7 @@ impl Context {
     }
 
     /// What the rules say about `track` now, as if it played next.
-    fn checks(&self, track: u64) -> Vec<Check> {
+    fn checks(&self, track: u64) -> Vec<DedicationCheck> {
         let mut checks = Vec::new();
         if let Some(blocking) = restricted(&self.library, track, self.start_at(0), self.previous(0))
         {
@@ -761,16 +761,16 @@ impl Context {
             .iter()
             .find(|(entry, _)| entry.track.track_id == Some(track))
         {
-            checks.push(Check {
+            checks.push(DedicationCheck {
                 at_unix_ms: Some(*at),
-                ..Check::of(CheckKind::InQueue)
+                ..DedicationCheck::of(DedicationCheckKind::InQueue)
             });
         }
         if let Some(broken) = separation(&self.library, &self.past, track, self.now_ms) {
             checks.push(broken);
         }
         if checks.is_empty() {
-            checks.push(Check::of(CheckKind::RulesKept));
+            checks.push(DedicationCheck::of(DedicationCheckKind::RulesKept));
         }
         checks
     }
@@ -779,7 +779,7 @@ impl Context {
 /// Where an accepted request goes in the queue.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum Place {
+pub enum DedicationPlace {
     /// Right after the track on air.
     Next,
     /// At the end of what is queued now, before the show closes.
@@ -790,14 +790,14 @@ pub enum Place {
 }
 
 /// The position among the waiting tracks for `place`: 0 is next.
-fn position(context: &Context, track: u64, place: Place, closes_ms: i64) -> usize {
+fn position(context: &Context, track: u64, place: DedicationPlace, closes_ms: i64) -> usize {
     let count = context.planned.len();
     let within = |position: usize| position == 0 || context.start_at(position) < closes_ms;
     let hour = (0..=count).rev().find(|p| within(*p)).unwrap_or(0);
     match place {
-        Place::Next => 0,
-        Place::Hour => hour,
-        Place::Best => (0..=count)
+        DedicationPlace::Next => 0,
+        DedicationPlace::Hour => hour,
+        DedicationPlace::Best => (0..=count)
             .filter(|p| within(*p))
             .find(|p| {
                 let at = context.start_at(*p);
@@ -815,14 +815,14 @@ fn position(context: &Context, track: u64, place: Place, closes_ms: i64) -> usiz
 #[into_params(parameter_in = Query)]
 pub struct ListQuery {
     /// Only the requests of this status.
-    pub status: Option<Status>,
+    pub status: Option<DedicationStatus>,
     /// 1 to 200, 100 by default.
     pub limit: Option<u32>,
 }
 
 /// The counts of the range's requests.
 #[derive(Clone, Debug, Default, Serialize, ToSchema)]
-pub struct Counts {
+pub struct DedicationCounts {
     pub pending: u64,
     pub accepted: u64,
     pub played: u64,
@@ -835,7 +835,7 @@ pub struct DedicationList {
     pub opens_at_unix_ms: Option<i64>,
     pub closes_at_unix_ms: Option<i64>,
     pub max_per_range: u32,
-    pub counts: Counts,
+    pub counts: DedicationCounts,
     pub dedications: Vec<Dedication>,
     /// The dedication of the track playing.
     pub on_air: Option<OnAirDedication>,
@@ -874,18 +874,18 @@ async fn list_dedications(
         .push_bind(limit);
     let rows: Vec<Row> = select.build_query_as().fetch_all(pool).await?;
     let mut dedications: Vec<Dedication> = rows.into_iter().map(Dedication::from).collect();
-    if dedications.iter().any(|d| d.status == Status::Pending) {
+    if dedications.iter().any(|d| d.status == DedicationStatus::Pending) {
         let player = station.engine.state().borrow().clone();
         let context = Context::load(pool, station.id(), player.as_deref()).await?;
         for dedication in &mut dedications {
-            if let (Status::Pending, Some(track)) = (dedication.status, dedication.track_id) {
+            if let (DedicationStatus::Pending, Some(track)) = (dedication.status, dedication.track_id) {
                 dedication.checks = context.checks(track);
-            } else if dedication.status == Status::Pending {
-                dedication.checks = vec![Check::of(CheckKind::Unplayable)];
+            } else if dedication.status == DedicationStatus::Pending {
+                dedication.checks = vec![DedicationCheck::of(DedicationCheckKind::Unplayable)];
             }
         }
     }
-    let mut counts = Counts::default();
+    let mut counts = DedicationCounts::default();
     if let Some((opens, _)) = range {
         let rows: Vec<(String, i64)> = sqlx::query_as(
             "SELECT CAST(status AS CHAR), COUNT(*) FROM dedications
@@ -898,11 +898,11 @@ async fn list_dedications(
         for (status, count) in rows {
             let count = u64::try_from(count).unwrap_or(0);
             counts.received += count;
-            match Status::parse(&status) {
-                Status::Pending => counts.pending = count,
-                Status::Accepted => counts.accepted = count,
-                Status::Played => counts.played = count,
-                Status::Refused => counts.refused = count,
+            match DedicationStatus::parse(&status) {
+                DedicationStatus::Pending => counts.pending = count,
+                DedicationStatus::Accepted => counts.accepted = count,
+                DedicationStatus::Played => counts.played = count,
+                DedicationStatus::Refused => counts.refused = count,
             }
         }
     }
@@ -934,8 +934,8 @@ async fn row(pool: &MySqlPool, station_id: u64, id: u64) -> ApiResult<Row> {
 
 #[derive(Clone, Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct AcceptRequest {
-    pub place: Place,
+pub struct AcceptDedication {
+    pub place: DedicationPlace,
 }
 
 /// Queues the request's track (source `request`) at the place asked and
@@ -943,7 +943,7 @@ pub struct AcceptRequest {
 /// a restriction forbids then or that cannot play. Operators.
 #[utoipa::path(post, path = "/dedications/{id}/accept", tag = "dedications",
     params(("id" = u64, Path, description = "The request's ID")),
-    request_body = AcceptRequest,
+    request_body = AcceptDedication,
     responses((status = 200, body = Dedication), (status = "4XX", body = ErrorBody),
               (status = 503, body = ErrorBody)))]
 async fn accept_dedication(
@@ -951,12 +951,12 @@ async fn accept_dedication(
     State(state): State<AppState>,
     station: Station,
     Path(id): Path<u64>,
-    Json(request): Json<AcceptRequest>,
+    Json(request): Json<AcceptDedication>,
 ) -> ApiResult<Json<Dedication>> {
     user.require(Role::Operator)?;
     let pool = &state.pool;
     let found = row(pool, station.id(), id).await?;
-    if Status::parse(&found.status) != Status::Pending {
+    if DedicationStatus::parse(&found.status) != DedicationStatus::Pending {
         return Err(ApiError::Conflict(format!(
             "dedication {id} is not waiting any more"
         )));
@@ -1048,26 +1048,26 @@ async fn accept_dedication(
 
 #[derive(Clone, Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct RefuseRequest {
+pub struct RefuseDedication {
     /// `null`: no reason. `closed` and `removed` are Heron's own.
-    pub reason: Option<Reason>,
+    pub reason: Option<DedicationReason>,
 }
 
 /// Refuses a waiting request, with a reason or none. `409` for a request
 /// not waiting. Operators.
 #[utoipa::path(post, path = "/dedications/{id}/refuse", tag = "dedications",
     params(("id" = u64, Path, description = "The request's ID")),
-    request_body = RefuseRequest,
+    request_body = RefuseDedication,
     responses((status = 200, body = Dedication), (status = "4XX", body = ErrorBody)))]
 async fn refuse_dedication(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
     Path(id): Path<u64>,
-    Json(request): Json<RefuseRequest>,
+    Json(request): Json<RefuseDedication>,
 ) -> ApiResult<Json<Dedication>> {
     user.require(Role::Operator)?;
-    if matches!(request.reason, Some(Reason::Closed | Reason::Removed)) {
+    if matches!(request.reason, Some(DedicationReason::Closed | DedicationReason::Removed)) {
         return Err(ApiError::Invalid(
             "the reason is just_played, unavailable, inappropriate or null".to_owned(),
         ));
@@ -1078,7 +1078,7 @@ async fn refuse_dedication(
         "UPDATE dedications SET status = 'refused', reason = ?, decided_at = NOW(6), decided_by = ?
          WHERE id = ? AND station_id = ? AND status = 'pending'",
     )
-    .bind(request.reason.map(Reason::as_str))
+    .bind(request.reason.map(DedicationReason::as_str))
     .bind(user.id)
     .bind(id)
     .bind(station.id())
@@ -1651,9 +1651,9 @@ mod tests {
             play_id: None,
         };
         let told = Followed::from(row.clone());
-        assert_eq!(told.status, Status::Refused);
+        assert_eq!(told.status, DedicationStatus::Refused);
         assert_eq!(told.reason, None);
         let operators = Dedication::from(row);
-        assert_eq!(operators.reason, Some(Reason::Inappropriate));
+        assert_eq!(operators.reason, Some(DedicationReason::Inappropriate));
     }
 }

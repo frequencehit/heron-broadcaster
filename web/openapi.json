@@ -2702,7 +2702,7 @@
             "description": "Only the requests of this status.",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/Status"
+              "$ref": "#/components/schemas/DedicationStatus"
             }
           },
           {
@@ -2829,7 +2829,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AcceptRequest"
+                "$ref": "#/components/schemas/AcceptDedication"
               }
             }
           },
@@ -2890,7 +2890,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RefuseRequest"
+                "$ref": "#/components/schemas/RefuseDedication"
               }
             }
           },
@@ -9324,7 +9324,7 @@
             "description": "Only the requests of this status.",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/Status"
+              "$ref": "#/components/schemas/DedicationStatus"
             }
           },
           {
@@ -9482,7 +9482,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AcceptRequest"
+                "$ref": "#/components/schemas/AcceptDedication"
               }
             }
           },
@@ -9552,7 +9552,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RefuseRequest"
+                "$ref": "#/components/schemas/RefuseDedication"
               }
             }
           },
@@ -16157,6 +16157,18 @@
           }
         }
       },
+      "AcceptDedication": {
+        "type": "object",
+        "required": [
+          "place"
+        ],
+        "properties": {
+          "place": {
+            "$ref": "#/components/schemas/DedicationPlace"
+          }
+        },
+        "additionalProperties": false
+      },
       "AcceptRequest": {
         "type": "object",
         "properties": {
@@ -17794,68 +17806,6 @@
           }
         }
       },
-      "Check": {
-        "type": "object",
-        "required": [
-          "kind",
-          "blocking"
-        ],
-        "properties": {
-          "at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "When the track queued already plays."
-          },
-          "blocking": {
-            "type": "boolean",
-            "description": "It cannot be accepted: a restriction forbids it, or it cannot play."
-          },
-          "kind": {
-            "$ref": "#/components/schemas/CheckKind"
-          },
-          "minutes_ago": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "How long ago it played (the separation rules)."
-          },
-          "restriction_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "separation_min": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "The rule's window.",
-            "minimum": 0
-          }
-        }
-      },
-      "CheckKind": {
-        "type": "string",
-        "description": "What the rules say about a waiting request now.",
-        "enum": [
-          "rules_kept",
-          "artist_played",
-          "title_played",
-          "track_played",
-          "in_queue",
-          "restriction",
-          "unplayable"
-        ]
-      },
       "Checked": {
         "type": "object",
         "required": [
@@ -18216,44 +18166,6 @@
             "type": "integer",
             "format": "int64",
             "description": "Counters that were not at 10.",
-            "minimum": 0
-          }
-        }
-      },
-      "Counts": {
-        "type": "object",
-        "description": "The counts of the range's requests.",
-        "required": [
-          "pending",
-          "accepted",
-          "played",
-          "refused",
-          "received"
-        ],
-        "properties": {
-          "accepted": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "pending": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "played": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "received": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "refused": {
-            "type": "integer",
-            "format": "int64",
             "minimum": 0
           }
         }
@@ -18727,7 +18639,7 @@
           "checks": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Check"
+              "$ref": "#/components/schemas/DedicationCheck"
             },
             "description": "While it waits: what the rules say about it now."
           },
@@ -18781,7 +18693,7 @@
           "reason": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/Reason"
+                "$ref": "#/components/schemas/DedicationReason"
               },
               {
                 "type": "null"
@@ -18789,7 +18701,7 @@
             ]
           },
           "status": {
-            "$ref": "#/components/schemas/Status"
+            "$ref": "#/components/schemas/DedicationStatus"
           },
           "submitted_at_unix_ms": {
             "type": "integer",
@@ -18809,6 +18721,106 @@
               "integer",
               "null"
             ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationCheck": {
+        "type": "object",
+        "required": [
+          "kind",
+          "blocking"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the track queued already plays."
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "It cannot be accepted: a restriction forbids it, or it cannot play."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DedicationCheckKind"
+          },
+          "minutes_ago": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long ago it played (the separation rules)."
+          },
+          "restriction_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "separation_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The rule's window.",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationCheckKind": {
+        "type": "string",
+        "description": "What the rules say about a waiting request now.",
+        "enum": [
+          "rules_kept",
+          "artist_played",
+          "title_played",
+          "track_played",
+          "in_queue",
+          "restriction",
+          "unplayable"
+        ]
+      },
+      "DedicationCounts": {
+        "type": "object",
+        "description": "The counts of the range's requests.",
+        "required": [
+          "pending",
+          "accepted",
+          "played",
+          "refused",
+          "received"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "played": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "received": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refused": {
+            "type": "integer",
             "format": "int64",
             "minimum": 0
           }
@@ -18859,7 +18871,7 @@
             "format": "int64"
           },
           "counts": {
-            "$ref": "#/components/schemas/Counts"
+            "$ref": "#/components/schemas/DedicationCounts"
           },
           "dedications": {
             "type": "array",
@@ -18891,6 +18903,26 @@
             "format": "int64"
           }
         }
+      },
+      "DedicationPlace": {
+        "type": "string",
+        "description": "Where an accepted request goes in the queue.",
+        "enum": [
+          "next",
+          "hour",
+          "best"
+        ]
+      },
+      "DedicationReason": {
+        "type": "string",
+        "description": "Why a request was refused, or did not play.",
+        "enum": [
+          "just_played",
+          "unavailable",
+          "inappropriate",
+          "closed",
+          "removed"
+        ]
       },
       "DedicationSettings": {
         "type": "object",
@@ -18936,6 +18968,16 @@
           }
         },
         "additionalProperties": false
+      },
+      "DedicationStatus": {
+        "type": "string",
+        "description": "Where a request stands.",
+        "enum": [
+          "pending",
+          "accepted",
+          "played",
+          "refused"
+        ]
       },
       "DeliveryStatus": {
         "type": "string",
@@ -20149,7 +20191,7 @@
           "reason": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/Reason",
+                "$ref": "#/components/schemas/DedicationReason",
                 "description": "`null` for no reason, or an inappropriate message."
               },
               {
@@ -20158,7 +20200,7 @@
             ]
           },
           "status": {
-            "$ref": "#/components/schemas/Status"
+            "$ref": "#/components/schemas/DedicationStatus"
           },
           "submitted_at_unix_ms": {
             "type": "integer",
@@ -23752,15 +23794,6 @@
         },
         "additionalProperties": false
       },
-      "Place": {
-        "type": "string",
-        "description": "Where an accepted request goes in the queue.",
-        "enum": [
-          "next",
-          "hour",
-          "best"
-        ]
-      },
       "Placed": {
         "type": "object",
         "description": "Where a part goes in the medley, in ms on the medley's timeline.",
@@ -24896,17 +24929,6 @@
           }
         }
       },
-      "Reason": {
-        "type": "string",
-        "description": "Why a request was refused, or did not play.",
-        "enum": [
-          "just_played",
-          "unavailable",
-          "inappropriate",
-          "closed",
-          "removed"
-        ]
-      },
       "Recipe": {
         "type": "object",
         "description": "How a medley is built.",
@@ -25054,6 +25076,23 @@
             "description": "Shown once."
           }
         }
+      },
+      "RefuseDedication": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DedicationReason",
+                "description": "`null`: no reason. `closed` and `removed` are Heron's own."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "RefuseRequest": {
         "type": "object",
