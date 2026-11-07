@@ -275,6 +275,13 @@ function Hours({
       </div>
       <div className="table-wrap" style={{ marginTop: 12 }}>
         <table className="show-week" aria-label={t("shows.week")}>
+          {/* The 24 hours share the width equally, labelled or not. */}
+          <colgroup>
+            <col className="show-week-day" />
+            {Array.from({ length: 24 }, (_, hour) => (
+              <col key={hour} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th />
