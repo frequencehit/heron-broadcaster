@@ -557,6 +557,8 @@ const TABLES: &[Table] = &[
             Plain("mood"),
             Plain("sound_code"),
             Plain("play_ratio"),
+            Plain("dayparts"),
+            Plain("daypart_days"),
         ],
         Mode::Library,
         &[],

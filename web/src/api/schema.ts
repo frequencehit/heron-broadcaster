@@ -3890,8 +3890,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Sets the mood, sound code, tempo or play ratio of every selected track.
-         *     Operators and admins.
+         * Sets the mood, sound code, tempo, play ratio or own daypart separation
+         *     of every selected track. Operators and admins.
          */
         post: operations["apply_programming"];
         delete?: never;
@@ -5519,6 +5519,12 @@ export interface components {
             /** @description `SELECT VERSION()`, e.g. `12.3.1-MariaDB`. */
             version?: string | null;
         };
+        /**
+         * @description Where a daypart value comes from: the slot's category, or the track's
+         *     own, which replaces it.
+         * @enum {string}
+         */
+        DaypartFrom: "category" | "track";
         /** @description The dayparts at a pick, for the rotation log. */
         DaypartLog: {
             /**
@@ -5533,11 +5539,14 @@ export interface components {
             daypart: number;
             /**
              * Format: int32
-             * @description The days the same daypart is kept out on after a play, from the
-             *     slot's category, before relaxation; `windows.daypart_days` is the
-             *     one applied. Missing in picks logged before it.
+             * @description The days the same daypart is kept out on after a play, before
+             *     relaxation: the track's own, else the slot's category's
+             *     (`days_from`); `windows.daypart_days` is the one applied. Missing
+             *     in picks logged before it.
              */
             days?: number;
+            /** @description Whose `days` they are. */
+            days_from?: components["schemas"]["DaypartFrom"];
             /**
              * Format: int32
              * @description The daypart the picked track last played in, from 0; missing if
@@ -5546,10 +5555,16 @@ export interface components {
             last_daypart?: number | null;
             /**
              * Format: int32
-             * @description The daypart separation of the slot's category, before relaxation;
+             * @description The daypart separation of the picked track, before relaxation: its
+             *     own, else the slot's category's (`separation_from`);
              *     `windows.dayparts` is the one applied.
              */
             separation: number;
+            /**
+             * @description Whose `separation` it is. Missing in picks logged before tracks had
+             *     their own: the category's.
+             */
+            separation_from?: components["schemas"]["DaypartFrom"];
         };
         /** @description One deck EQ. Flat and bypassed by default. */
         DeckEq: {
@@ -7689,6 +7704,19 @@ export interface components {
              * @description The tempo, replacing the measured one; `null` goes back to it.
              */
             bpm?: number | null;
+            /**
+             * Format: int32
+             * @description Their own same daypart on the following days, 0 to 7; `null` goes
+             *     back to their categories'.
+             */
+            daypart_days?: number | null;
+            /**
+             * Format: int32
+             * @description Their own daypart separation, 0 to 10 (0: off for them), in place
+             *     of their categories', on every station; `null` goes back to their
+             *     categories'. Missing: kept.
+             */
+            dayparts?: number | null;
             /** @description A value of the mood scale, or `null` to clear it. Missing: kept. */
             mood?: string | null;
             /**
@@ -9453,6 +9481,12 @@ export interface components {
              *     `rotation` settings), what rotation can play there.
              */
             on_station_id?: number | null;
+            /**
+             * @description `true`: the tracks with their own daypart separation or same
+             *     daypart on the following days; `false`: those that follow their
+             *     categories'.
+             */
+            own_dayparts?: boolean | null;
             /** @description Words found in the title, artist, album, album artist, genre or path. */
             q?: string | null;
             /**
@@ -9522,6 +9556,18 @@ export interface components {
             cue_in_ms?: number | null;
             /** Format: int64 */
             cue_out_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Its own same daypart on the following days, 0 to 7; none: its
+             *     category's.
+             */
+            daypart_days?: number | null;
+            /**
+             * Format: int32
+             * @description Its own daypart separation, 0 to 10, in place of its categories'
+             *     (0: off for it); none: its category's.
+             */
+            dayparts?: number | null;
             /** Format: int64 */
             disabled_at_unix_ms?: number | null;
             /**
@@ -18779,6 +18825,12 @@ export interface operations {
                  *     tracks).
                  */
                 ratio_max?: number;
+                /**
+                 * @description `true`: the tracks with their own daypart separation or same
+                 *     daypart on the following days; `false`: those that follow their
+                 *     categories'.
+                 */
+                own_dayparts?: boolean;
                 sort?: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio";
                 /** @description Reverses the order of `sort`. */
                 desc?: boolean;
