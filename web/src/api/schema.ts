@@ -1271,6 +1271,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gateway/stations/{code}/match/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Each device's last vote, from the gateway, every second. A vote counts
+         *     while its match is open; a device's vote replaces its earlier one.
+         */
+        post: operations["gateway_match_votes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/history": {
         parameters: {
             query?: never;
@@ -1838,6 +1858,104 @@ export interface paths {
         /** Opens the live WebSocket. Messages are [`LiveMessage`]s. */
         get: operations["live"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/match/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The match waiting for its vote or open, else `null`. */
+        get: operations["current_match"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/match/current/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancels the match: the first track stays in the queue as an ordinary
+         *     track, the second leaves it. Operators.
+         */
+        post: operations["cancel_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/match/current/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Closes the vote now and decides with the votes so far. `409` while the
+         *     vote is not open. Operators.
+         */
+        post: operations["close_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/match/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The matches decided or cancelled, the latest first, and the week's
+         *     matches and votes.
+         */
+        get: operations["match_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/match/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's match settings. */
+        get: operations["get_match_settings"];
+        /**
+         * Replaces the station's match settings. The categories must be the
+         *     station's (`422`). Operators.
+         */
+        put: operations["put_match_settings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3508,6 +3626,104 @@ export interface paths {
         /** Opens the live WebSocket. Messages are [`LiveMessage`]s. */
         get: operations["live_on_station"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/match/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The match waiting for its vote or open, else `null`. */
+        get: operations["current_match_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/match/current/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancels the match: the first track stays in the queue as an ordinary
+         *     track, the second leaves it. Operators.
+         */
+        post: operations["cancel_match_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/match/current/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Closes the vote now and decides with the votes so far. `409` while the
+         *     vote is not open. Operators.
+         */
+        post: operations["close_match_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/match/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The matches decided or cancelled, the latest first, and the week's
+         *     matches and votes.
+         */
+        get: operations["match_history_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/match/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's match settings. */
+        get: operations["get_match_settings_on_station"];
+        /**
+         * Replaces the station's match settings. The categories must be the
+         *     station's (`422`). Operators.
+         */
+        put: operations["put_match_settings_on_station"];
         post?: never;
         delete?: never;
         options?: never;
@@ -7938,6 +8154,160 @@ export interface components {
              */
             target_lufs: number;
         };
+        /** @description One of the two tracks, with its votes. */
+        MatchChoice: {
+            artist?: string | null;
+            choice: components["schemas"]["MatchSide"];
+            /**
+             * Format: int32
+             * @description Its share of the votes, 0 to 100.
+             */
+            percent: number;
+            title?: string | null;
+            /** Format: int64 */
+            track_id?: number | null;
+            /** Format: int32 */
+            votes: number;
+        };
+        /**
+         * @description How the winner was decided.
+         * @enum {string}
+         */
+        MatchDecision: "votes" | "tie" | "no_votes" | "early";
+        /** @description A device's last vote. */
+        MatchDeviceVote: {
+            /** @description The gateway's hash of the device. */
+            device: string;
+            fields: components["schemas"]["MatchVoteFields"];
+        };
+        MatchHistory: {
+            /** @description Decided or cancelled, the latest first. */
+            matches: components["schemas"]["MatchView"][];
+            week: components["schemas"]["MatchWeek"];
+        };
+        /**
+         * @description A station's match settings (`station_settings`, `match`). Its hours,
+         *     website and notifications are its show settings.
+         */
+        MatchSettings: {
+            /**
+             * Format: int64
+             * @description The category the two tracks come from, the station's; none: no
+             *     match.
+             * @default null
+             */
+            category_id: number | null;
+            /**
+             * Format: int32
+             * @description Seconds before the next transition the vote closes, 5 to 60.
+             * @default 10
+             */
+            close_before_s: number;
+            /**
+             * Format: int32
+             * @description A winner every N tracks, 2 to 20: the vote runs during the track
+             *     before it.
+             * @default 4
+             */
+            every_tracks: number;
+            /**
+             * Format: int64
+             * @description The announcement over the intro of the vote's track; none: no
+             *     jingle.
+             * @default null
+             */
+            jingle_category_id: number | null;
+            /**
+             * @description The votes on the website as they come; off: the result only.
+             * @default true
+             */
+            live_results: boolean;
+            /**
+             * @description A loser can be one of the two tracks again the same day.
+             * @default false
+             */
+            loser_same_day: boolean;
+        };
+        /**
+         * @description One of the two tracks.
+         * @enum {string}
+         */
+        MatchSide: "a" | "b";
+        /** @enum {string} */
+        MatchStatus: "queued" | "open" | "closed" | "cancelled";
+        /** @description A track of a match. */
+        MatchTrack: {
+            artist?: string | null;
+            title?: string | null;
+            /** Format: int64 */
+            track_id?: number | null;
+        };
+        /** @description A match waiting for its vote or open, for operators. */
+        MatchView: {
+            /** Format: int64 */
+            category_id?: number | null;
+            category_name?: string | null;
+            /** @description A, then B. */
+            choices: components["schemas"]["MatchChoice"][];
+            /** Format: int64 */
+            closed_at_unix_ms?: number | null;
+            /** Format: int64 */
+            closes_at_unix_ms?: number | null;
+            decided_by?: components["schemas"]["MatchDecision"] | null;
+            /** Format: int64 */
+            id: number;
+            jingle?: components["schemas"]["MatchTrack"] | null;
+            /**
+             * Format: int64
+             * @description When the vote's track started.
+             */
+            opened_at_unix_ms?: number | null;
+            status: components["schemas"]["MatchStatus"];
+            /**
+             * Format: int64
+             * @description The next transition, as planned when the vote opened.
+             */
+            transition_at_unix_ms?: number | null;
+            /** @description The track the vote runs during. */
+            vote_track: components["schemas"]["MatchTrack"];
+            /** Format: int32 */
+            votes: number;
+            winner?: components["schemas"]["MatchSide"] | null;
+        };
+        /** @description Each device's last vote since the last batch. */
+        MatchVoteBatch: {
+            writes: components["schemas"]["MatchDeviceVote"][];
+        };
+        /** @description What a listener sent. */
+        MatchVoteFields: {
+            choice: components["schemas"]["MatchSide"];
+            /** Format: int64 */
+            match_id: number;
+        };
+        MatchVotesTaken: {
+            /**
+             * Format: int64
+             * @description The votes counted.
+             */
+            counted: number;
+            /**
+             * Format: int64
+             * @description Those dropped: for a match that is not open, or another station's.
+             */
+            dropped: number;
+        };
+        /** @description The week's matches and votes. */
+        MatchWeek: {
+            /**
+             * Format: int64
+             * @description Monday 00:00, in the station's time zone.
+             */
+            from_unix_ms: number;
+            /** Format: int64 */
+            matches: number;
+            /** Format: int64 */
+            votes: number;
+        };
         Medley: {
             /** Format: int64 */
             id: number;
@@ -8328,6 +8698,18 @@ export interface components {
             from: string;
             message: string;
             to: string;
+        };
+        /** @description What `now-playing` says of a track the listeners chose. */
+        OnAirMatch: {
+            /** @description The show's name on the website. */
+            name: string;
+            /**
+             * Format: int32
+             * @description Its share of the votes, 0 to 100.
+             */
+            percent: number;
+            /** Format: int32 */
+            votes: number;
         };
         /** @description The dry run of an organization. */
         OrganizePlan: {
@@ -8908,6 +9290,7 @@ export interface components {
              * @description From the cue-in to the cue-out.
              */
             duration_ms: number;
+            match?: components["schemas"]["OnAirMatch"] | null;
             /** Format: int64 */
             position_ms: number;
             /** Format: int64 */
@@ -11260,7 +11643,7 @@ export interface components {
          * @description What a delivery reports.
          * @enum {string}
          */
-        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping" | "show.upcoming" | "show.started" | "show.ended" | "top.published" | "top.rank" | "dedication.played" | "dedication.accepted";
+        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping" | "show.upcoming" | "show.started" | "show.ended" | "top.published" | "top.rank" | "dedication.played" | "dedication.accepted" | "match.started" | "match.closed";
         WebhookInput: {
             /**
              * @description With `{{placeholders}}`: `event`, `delivery_id`, `at_unix_ms`,
@@ -14140,6 +14523,40 @@ export interface operations {
             };
         };
     };
+    gateway_match_votes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's code */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchVoteBatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchVotesTaken"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_history: {
         parameters: {
             query?: {
@@ -15106,6 +15523,177 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveMessage"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    current_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchView"] | null;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    close_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    match_history: {
+        parameters: {
+            query?: {
+                /** @description 1 to 200, 50 by default. */
+                limit?: number;
+                /** @description The matches before this ID: the next page. */
+                before?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchHistory"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_match_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_match_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchSettings"];
                 };
             };
             "4XX": {
@@ -19030,6 +19618,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveMessage"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    current_match_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchView"] | null;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_match_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    close_match_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    match_history_on_station: {
+        parameters: {
+            query?: {
+                /** @description 1 to 200, 50 by default. */
+                limit?: number;
+                /** @description The matches before this ID: the next page. */
+                before?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchHistory"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_match_settings_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_match_settings_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchSettings"];
                 };
             };
             "4XX": {
