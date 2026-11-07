@@ -1928,10 +1928,9 @@ ul.steps .bar {
   position: absolute;
   z-index: 20;
   top: calc(100% + 0.3rem);
-  left: 50%;
+  left: 0;
   width: max-content;
-  max-width: min(16rem, 80vw);
-  transform: translateX(-50%);
+  max-width: min(16rem, calc(100vw - 2rem));
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1941,16 +1940,19 @@ ul.steps .bar {
   font-size: 0.8rem;
   font-weight: 400;
   line-height: 1.35;
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 0.1s;
+  /* No box while closed: it would widen the page at phone width. */
+  display: none;
+}
+
+.info-tip.right .info-tip-text {
+  right: 0;
+  left: auto;
 }
 
 .info-tip:hover .info-tip-text,
 .info-tip:focus-within .info-tip-text,
 .info-tip.open .info-tip-text {
-  visibility: visible;
-  opacity: 1;
+  display: block;
 }
 
 /* Statistics: average listeners by day of the week and hour. */
