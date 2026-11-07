@@ -8,6 +8,7 @@
 //! in the settings) still does. Tracks and artists are rebuilt by a scan
 //! under other IDs: the file names them by path and by name instead.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use heron_library::covers;
@@ -236,7 +237,8 @@ const TABLES: &[Table] = &[
             Plain("enabled"),
             Plain("theme"),
             Plain("language"),
-            Plain("full_width"),
+            // `full_width` in older files (upgrade_row).
+            Plain("width"),
         ],
         Mode::Upsert,
         &["username"],
@@ -905,6 +907,7 @@ pub fn check(file: &ConfigFile, schema: i64) -> ApiResult<()> {
         };
         let keys: HashSet<&str> = table.cols.iter().map(|col| col.key()).collect();
         for row in rows {
+            let row = upgrade_row(name, row);
             if let Some(key) = row.keys().find(|key| !keys.contains(key.as_str())) {
                 return Err(ApiError::Invalid(format!("{name}: unknown column {key}")));
             }
@@ -1024,6 +1027,22 @@ const UPGRADES: &[(i64, &str)] = &[
     (20270301000001, crate::outputs::GROUP_INTO_SERVERS),
 ];
 
+/// A row of an older file with a column since renamed, in the new shape:
+/// `users.full_width` became `width` (the whole window, or the normal
+/// column).
+fn upgrade_row<'a>(table: &str, row: &'a Map<String, Value>) -> Cow<'a, Map<String, Value>> {
+    if table == "users" && row.contains_key("full_width") {
+        let mut row = row.clone();
+        let full = row.remove("full_width").and_then(|full| full.as_bool());
+        if !row.contains_key("width") {
+            let width = if full == Some(true) { "full" } else { "normal" };
+            row.insert("width".to_owned(), Value::from(width));
+        }
+        return Cow::Owned(row);
+    }
+    Cow::Borrowed(row)
+}
+
 /// Writes the file's configuration over the database's, in `tx`.
 pub async fn restore(
     tx: &mut Transaction<'_, MySql>,
@@ -1088,6 +1107,7 @@ pub async fn restore(
         // added), which takes its default.
         let mut resolved: Vec<Vec<Option<Value>>> = Vec::new();
         for row in rows_of(table) {
+            let row = &upgrade_row(table.name, row);
             if table.name == "settings"
                 && row
                     .get("name")
@@ -1237,6 +1257,30 @@ pub async fn restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn older_users_have_their_full_width_as_a_width() {
+        let width = |row: serde_json::Value| {
+            let row = row.as_object().unwrap().clone();
+            upgrade_row("users", &row).get("width").cloned()
+        };
+        assert_eq!(
+            width(serde_json::json!({"full_width": true})),
+            Some("full".into())
+        );
+        assert_eq!(
+            width(serde_json::json!({"full_width": false})),
+            Some("normal".into())
+        );
+        assert_eq!(
+            width(serde_json::json!({"width": "wide", "full_width": true})),
+            Some("wide".into())
+        );
+        assert_eq!(width(serde_json::json!({})), None);
+        let row = serde_json::json!({"full_width": true});
+        let upgraded = upgrade_row("users", row.as_object().unwrap());
+        assert!(!upgraded.contains_key("full_width"));
+    }
 
     #[test]
     fn settings_about_backups_stay_out_of_the_file() {
