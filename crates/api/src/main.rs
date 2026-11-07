@@ -16,6 +16,7 @@ mod categories;
 mod category_types;
 mod clocks;
 mod covers;
+mod dedications;
 #[cfg(test)]
 mod e2e;
 mod engine;
@@ -318,6 +319,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     tasks.push(tokio::spawn(levels::run(pool.clone())));
     tasks.push(tokio::spawn(users::purge_sessions(pool.clone())));
     tasks.push(tokio::spawn(likes::purge(pool.clone())));
+    tasks.push(tokio::spawn(dedications::run(
+        pool.clone(),
+        Arc::clone(&stations),
+    )));
     tasks.push(tokio::spawn(top30::run(
         pool.clone(),
         Arc::clone(&stations),

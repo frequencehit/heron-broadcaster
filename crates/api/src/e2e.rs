@@ -11453,6 +11453,479 @@ async fn the_top30_is_frozen_then_played_with_its_ranks_hidden() {
     station.stop().await;
 }
 
+/// A listener's write as the gateway sends it on: the gateway token and
+/// the device's hash.
+async fn gateway_write(
+    gateway: &Client,
+    path: &str,
+    device: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut request = gateway
+        .http
+        .post(format!("{}{path}", gateway.base))
+        .bearer_auth(GATEWAY_TOKEN)
+        .json(&body);
+    if let Some(device) = device {
+        request = request.header("x-heron-device", device);
+    }
+    let response = request.send().await.unwrap();
+    let status = response.status();
+    let value = response.json().await.unwrap_or(Value::Null);
+    (status, value)
+}
+
+/// Dedications (docs/listener-interaction.md#dedications): asked through
+/// the gateway while open, within their limits; accepted into the queue,
+/// with its notifications and the message; refused; closed and deleted.
+#[tokio::test(flavor = "multi_thread")]
+async fn dedications_are_asked_accepted_into_the_queue_and_followed() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let code = station.state.stations.first().code();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let submit = format!("/gateway/stations/{code}/dedications");
+    let follow = |key: &str| format!("/gateway/stations/{code}/dedications/follow?id={key}");
+
+    // The engine plays only what is accepted.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+
+    // Off by default: nothing answers.
+    let (status, body) = viewer.request(Method::GET, "/dedications", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let body =
+        json!({"track_id": t[1], "from": "Marc", "to": "Julie", "message": "Happy birthday!"});
+    let (status, _) = gateway_write(&gateway, &submit, Some("dev-a"), body.clone()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"dedications": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Closed: no request, no search.
+    let (status, _) = gateway_write(&gateway, &submit, Some("dev-a"), body.clone()).await;
+    assert_eq!(status, StatusCode::CONFLICT, "no hours: closed");
+
+    // The music can be requested; the track outside any category cannot.
+    let (status, music) = admin
+        .send(Method::POST, "/categories", json!({"name": "Music"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{music}");
+    for track in [t[0], t[1], t[2]] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": music["id"]}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/dedications/settings",
+            json!({"category_ids": [999]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = viewer
+        .send(
+            Method::PUT,
+            "/dedications/settings",
+            json!({"max_per_range": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, settings) = admin
+        .send(
+            Method::PUT,
+            "/dedications/settings",
+            json!({"max_per_range": 3, "per_device": 1, "message_max": 20}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{settings}");
+    assert_eq!(settings["retention_days"], 30);
+
+    // Open all week, with notifications to a webhook.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, webhook) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Chat", "url": format!("http://{receiver}/chat"),
+                   "events": ["track.started"],
+                   "body_template": "{\"content\": \"{{message}}\", \"from\": \"{{dedication_from}}\"}"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{webhook}");
+    let webhook_id = webhook["webhook"]["id"].as_u64().unwrap();
+    let (status, saved) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": 0, "end_hour": 24}],
+                   "notifications": {"webhook_ids": [webhook_id],
+                       "events": {"dedication.accepted": {"enabled": true,
+                                                          "message": "Accepted for {to}, around {time}"}}}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let events = &saved["settings"]["notifications"]["events"];
+    assert_eq!(events["dedication.played"]["enabled"], true);
+
+    // Search: the requestable tracks only.
+    let search = |q: &str| format!("/gateway/stations/{code}/dedications/search?q={q}");
+    let found = gateway.get(&search("Track")).await;
+    let ids: Vec<u64> = found
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|track| track["track_id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(ids, vec![t[0], t[1], t[2]]);
+    assert_eq!(
+        gateway.get(&search("Artist%202")).await[0]["title"],
+        "Track 2"
+    );
+    assert_eq!(gateway.get(&search("100%25")).await, json!([]));
+    let (status, _) = gateway.request(Method::GET, &search("a"), None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Asking: the fields, then one waiting per device and the range's maximum.
+    for (device, bad) in [
+        (
+            Some("dev-a"),
+            json!({"track_id": t[3], "from": "Marc", "to": "Julie"}),
+        ),
+        (
+            Some("dev-a"),
+            json!({"track_id": t[1], "from": "Marc", "to": "Julie", "message": "x".repeat(21)}),
+        ),
+        (
+            Some("dev-a"),
+            json!({"track_id": t[1], "from": " ", "to": "Julie"}),
+        ),
+        (None, body.clone()),
+    ] {
+        let (status, refused) = gateway_write(&gateway, &submit, device, bad.clone()).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {refused}");
+    }
+    let (status, marc) = gateway_write(&gateway, &submit, Some("dev-a"), body.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{marc}");
+    assert_eq!(marc["status"], "pending");
+    assert_eq!(marc["title"], "Track 2");
+    let marc_key = marc["follow"].as_str().unwrap().to_owned();
+    assert_eq!(marc_key.len(), 32);
+    let other = json!({"track_id": t[2], "from": "Marc", "to": "Léa"});
+    let (status, _) = gateway_write(&gateway, &submit, Some("dev-a"), other.clone()).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "one per device");
+    let (status, sophie) = gateway_write(
+        &gateway,
+        &submit,
+        Some("dev-b"),
+        json!({"track_id": t[2], "from": "Sophie", "to": "the team", "message": "rude"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{sophie}");
+    let (status, tom) = gateway_write(
+        &gateway,
+        &submit,
+        Some("dev-c"),
+        json!({"track_id": t[0], "from": "Tom", "to": "Inès"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{tom}");
+    let (status, full) = gateway_write(&gateway, &submit, Some("dev-d"), other).await;
+    assert_eq!(status, StatusCode::CONFLICT, "full: {full}");
+    let followed = gateway.get(&follow(&marc_key)).await;
+    assert_eq!(
+        (followed["status"].as_str(), followed["from"].as_str()),
+        (Some("pending"), Some("Marc"))
+    );
+    let (status, _) = gateway
+        .request(Method::GET, &follow(&"0".repeat(32)), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Nothing waiting shows on the website.
+    let shows = gateway.get("/gateway/state").await["stations"][0]["shows"].clone();
+    let public = shows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|show| show["module"] == "dedications")
+        .unwrap()
+        .clone();
+    assert_eq!(public["state"]["remaining"], 0);
+    assert_eq!(public["state"]["today"], json!([]));
+
+    // Operators see them, with what the rules say.
+    let (status, restriction) = admin
+        .send(
+            Method::POST,
+            "/restrictions",
+            json!({"target": {"kind": "track", "id": t[0]},
+                   "rule": {"kind": "daypart", "mode": "ban", "days": [1, 2, 3, 4, 5, 6, 7],
+                            "start_hour": 0, "end_hour": 24}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{restriction}");
+    let list = viewer.get("/dedications").await;
+    assert_eq!(list["counts"]["pending"], 3);
+    assert_eq!(list["counts"]["received"], 3);
+    assert_eq!(list["max_per_range"], 3);
+    let requests = list["dedications"].as_array().unwrap().clone();
+    assert_eq!(requests.len(), 3);
+    let by_from = |from: &str| {
+        requests
+            .iter()
+            .find(|request| request["from"] == from)
+            .unwrap()
+            .clone()
+    };
+    let (marc, sophie, tom) = (by_from("Marc"), by_from("Sophie"), by_from("Tom"));
+    assert_eq!(marc["message"], "Happy birthday!");
+    assert_eq!(marc["checks"][0]["kind"], "rules_kept", "{marc}");
+    assert_eq!(tom["checks"][0]["kind"], "restriction", "{tom}");
+    assert_eq!(tom["checks"][0]["blocking"], true);
+    let decide = |id: &Value, what: &str| format!("/dedications/{id}/{what}");
+
+    // Refused: never shown, the reason kept from an inappropriate message.
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": null}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": "closed"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, refused) = admin
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": "inappropriate"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{refused}");
+    assert_eq!(
+        (refused["status"].as_str(), refused["reason"].as_str()),
+        (Some("refused"), Some("inappropriate"))
+    );
+    assert_eq!(refused["decided_by"], "admin");
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": null}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "decided once");
+    let followed = gateway
+        .get(&follow(follow_key_of(&sophie, pool).await.as_str()))
+        .await;
+    assert_eq!(followed["status"], "refused");
+    assert_eq!(followed["reason"], Value::Null, "not told");
+
+    // A restriction is never broken.
+    let (status, blocked) = admin
+        .send(
+            Method::POST,
+            &decide(&tom["id"], "accept"),
+            json!({"place": "best"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{blocked}");
+
+    // Accepted: queued as a request, told, played with its message.
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            &decide(&marc["id"], "accept"),
+            json!({"place": "next"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, accepted) = admin
+        .send(
+            Method::POST,
+            &decide(&marc["id"], "accept"),
+            json!({"place": "next"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+    assert!(accepted["planned_at_unix_ms"].is_i64(), "{accepted}");
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            &decide(&marc["id"], "accept"),
+            json!({"place": "next"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "accepted once");
+    let mut accepted_message = None;
+    let mut played_message = None;
+    let mut started = None;
+    while accepted_message.is_none() || played_message.is_none() || started.is_none() {
+        let (_, name, headers, body) =
+            tokio::time::timeout(Duration::from_secs(30), received.recv())
+                .await
+                .expect("the dedication's notifications")
+                .unwrap();
+        assert_eq!(name, "chat");
+        let body: Value = serde_json::from_str(&body).unwrap();
+        match headers["x-heron-event"].to_str().unwrap() {
+            "dedication.accepted" => accepted_message = Some(body["content"].clone()),
+            "dedication.played" => played_message = Some(body["content"].clone()),
+            "track.started" => started = Some(body),
+            other => panic!("unexpected {other}"),
+        }
+    }
+    let accepted_message = accepted_message.unwrap();
+    assert!(
+        accepted_message
+            .as_str()
+            .unwrap()
+            .starts_with("Accepted for Julie, around "),
+        "{accepted_message}"
+    );
+    assert_eq!(
+        played_message.unwrap(),
+        "♥ Artist 2 – Track 2, for Julie from Marc: « Happy birthday! »"
+    );
+    assert_eq!(started.unwrap()["from"], "Marc");
+    let played = eventually("the request played", Duration::from_secs(20), || async {
+        let followed = gateway.get(&follow(&marc_key)).await;
+        (followed["status"] == "played").then_some(followed)
+    })
+    .await;
+    assert!(played["played_at_unix_ms"].is_i64());
+    let source: String = sqlx::query_scalar(
+        "SELECT CAST(h.source AS CHAR) FROM dedications d JOIN play_history h ON h.id = d.play_id
+         WHERE d.follow_key = ?",
+    )
+    .bind(&marc_key)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(source, "request");
+    let shows = gateway.get("/gateway/state").await["stations"][0]["shows"].clone();
+    let today = shows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|show| show["module"] == "dedications")
+        .unwrap()["state"]["today"]
+        .clone();
+    assert_eq!(today.as_array().unwrap().len(), 1, "{today}");
+    assert_eq!(today[0]["from"], "Marc");
+    assert_eq!(today[0]["played"], true);
+
+    // An accepted request whose entry left the queue did not play.
+    sqlx::query(
+        "INSERT INTO dedications (station_id, follow_key, track_id, from_name, to_name, message,
+                                  status, submitted_at, opens_at, closes_at, decided_at,
+                                  engine_started_at, entry_id)
+         SELECT 1, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', ?, 'Karim', 'Léa', '', 'accepted',
+                NOW(6), opens_at, closes_at, NOW(6) - INTERVAL 5 MINUTE, engine_started_at, 999999
+         FROM dedications WHERE follow_key = ?",
+    )
+    .bind(t[2])
+    .bind(&marc_key)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // When the range closes, what waits is refused; old requests go.
+    sqlx::query("UPDATE dedications SET closes_at = NOW(6) - INTERVAL 1 SECOND")
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE dedications SET submitted_at = NOW(6) - INTERVAL 31 DAY WHERE id = ?")
+        .bind(sophie["id"].as_u64().unwrap())
+        .execute(pool)
+        .await
+        .unwrap();
+    crate::dedications::tick(pool, &station.state.stations)
+        .await
+        .unwrap();
+    let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT from_name, CAST(reason AS CHAR), device FROM dedications ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            ("Marc".to_owned(), None, None),
+            ("Tom".to_owned(), Some("closed".to_owned()), None),
+            ("Karim".to_owned(), Some("removed".to_owned()), None),
+        ],
+        "Sophie's is deleted, no device is kept"
+    );
+
+    // Turned off: nothing answers, the requests stay.
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"dedications": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = viewer.request(Method::GET, "/dedications", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = gateway.request(Method::GET, &follow(&marc_key), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    station.stop().await;
+}
+
+/// The follow key of a request, as the listener got it.
+async fn follow_key_of(request: &Value, pool: &sqlx::MySqlPool) -> String {
+    sqlx::query_scalar("SELECT follow_key FROM dedications WHERE id = ?")
+        .bind(request["id"].as_u64().unwrap())
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
 /// A clock slot at an exact time: hard, the track on air is cut and the
 /// slot starts then; soft, a track queued by hand that would end after the
 /// window is taken out.

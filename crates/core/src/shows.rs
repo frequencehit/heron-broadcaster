@@ -34,12 +34,25 @@ pub struct Show {
 }
 
 pub const SHOWS: [Show; 4] = [
+    // Each accepted dedication as it plays, with its message; each one
+    // accepted (#131).
     Show {
         module: Module::Dedications,
         name: "Dedications",
         has_hours: true,
-        events: &[],
-        placeholders: &[],
+        events: &[
+            (
+                DEDICATION_PLAYED,
+                "♥ {artist} – {title}, for {to} from {from}: « {message} »",
+                true,
+            ),
+            (
+                DEDICATION_ACCEPTED,
+                "Dedication accepted for {to}, around {time}",
+                false,
+            ),
+        ],
+        placeholders: &["artist", "title", "from", "to", "message", "time"],
     },
     Show {
         module: Module::Match,
@@ -86,6 +99,11 @@ pub const SHOW_ENDED: &str = "show.ended";
 pub const TOP_PUBLISHED: &str = "top.published";
 /// A rank of the Top 30, as it starts playing in the show.
 pub const TOP_RANK: &str = "top.rank";
+
+/// An accepted dedication, as it goes on air.
+pub const DEDICATION_PLAYED: &str = "dedication.played";
+/// A dedication, when it is accepted.
+pub const DEDICATION_ACCEPTED: &str = "dedication.accepted";
 
 /// The placeholders of every show's messages.
 pub const COMMON_PLACEHOLDERS: [&str; 4] = ["name", "link", "end", "next"];
@@ -1005,7 +1023,8 @@ mod tests {
         let show = Show::of(Module::Dedications).unwrap();
         let mut settings = ShowSettings::default();
         settings.complete(show);
-        assert_eq!(settings.notifications.events.len(), 3);
+        assert_eq!(settings.notifications.events.len(), 5);
+        assert!(!settings.notifications.events[DEDICATION_ACCEPTED].enabled);
         assert_eq!(settings.check(show), Ok(()));
         let bad = |change: fn(&mut ShowSettings)| {
             let mut settings = settings.clone();
@@ -1026,8 +1045,8 @@ mod tests {
                 .events
                 .get_mut(SHOW_STARTED)
                 .unwrap()
-                .message = "{artist}".to_owned())
-            .contains("unknown placeholder {artist}")
+                .message = "{rank}".to_owned())
+            .contains("unknown placeholder {rank}")
         );
         bad(|s| {
             s.notifications.events.insert(

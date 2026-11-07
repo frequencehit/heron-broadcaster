@@ -31,6 +31,9 @@ export const PLACEHOLDERS = [
   "next.title",
   "next.album",
   "next.planned_start_unix_ms",
+  "dedication_from",
+  "dedication_to",
+  "dedication_message",
 ];
 
 export const DEFAULT_TEMPLATE = '{"text": "Now playing: {{artist}} – {{title}}"}';

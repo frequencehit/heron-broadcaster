@@ -46,8 +46,6 @@ pub fn token_from(value: Option<&str>) -> GatewayToken {
 #[derive(Clone, Debug)]
 pub struct GatewayClient {
     /// The device's hash, on a listener's write.
-    // Read by the shows' writes sent on one by one (#131).
-    #[allow(dead_code)]
     pub device: Option<String>,
 }
 

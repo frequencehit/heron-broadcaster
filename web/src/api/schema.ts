@@ -1017,6 +1017,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dedications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The requests of the opening range on now, else of the last one, the
+         *     latest first; the waiting ones with what the rules say about them.
+         */
+        get: operations["list_dedications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dedications/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's dedication settings. */
+        get: operations["get_dedication_settings"];
+        /**
+         * Replaces the station's dedication settings. The categories must be the
+         *     station's (`422`). Operators.
+         */
+        put: operations["put_dedication_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dedications/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queues the request's track (source `request`) at the place asked and
+         *     answers the request. `409` for a request not waiting, or a track that
+         *     a restriction forbids then or that cannot play. Operators.
+         */
+        post: operations["accept_dedication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dedications/{id}/refuse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refuses a waiting request, with a reason or none. `409` for a request
+         *     not waiting. Operators.
+         */
+        post: operations["refuse_dedication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encoder-profiles": {
         parameters: {
             query?: never;
@@ -1126,6 +1208,64 @@ export interface paths {
          *     gateway token only.
          */
         get: operations["gateway_state"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gateway/stations/{code}/dedications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A listener's request, from the gateway, with the device's hash: one
+         *     waiting at a time per device, a few per device and a maximum per
+         *     opening range. Answers its follow link.
+         */
+        post: operations["gateway_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gateway/stations/{code}/dedications/follow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A request, by the key of its follow link. `404` once deleted. */
+        get: operations["gateway_follow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gateway/stations/{code}/dedications/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The requestable tracks whose artist or title has `q`, 8 at most. `409`
+         *     while the show is closed.
+         */
+        get: operations["gateway_search"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3329,6 +3469,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/dedications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The requests of the opening range on now, else of the last one, the
+         *     latest first; the waiting ones with what the rules say about them.
+         */
+        get: operations["list_dedications_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/dedications/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's dedication settings. */
+        get: operations["get_dedication_settings_on_station"];
+        /**
+         * Replaces the station's dedication settings. The categories must be the
+         *     station's (`422`). Operators.
+         */
+        put: operations["put_dedication_settings_on_station"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/dedications/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queues the request's track (source `request`) at the place asked and
+         *     answers the request. `409` for a request not waiting, or a track that
+         *     a restriction forbids then or that cannot play. Operators.
+         */
+        post: operations["accept_dedication_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/dedications/{id}/refuse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refuses a waiting request, with a reason or none. `409` for a request
+         *     not waiting. Operators.
+         */
+        post: operations["refuse_dedication_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/engine": {
         parameters: {
             query?: never;
@@ -5261,6 +5483,9 @@ export interface components {
             runtime?: components["schemas"]["Runtime"] | null;
             services: components["schemas"]["ServiceInfo"][];
         };
+        AcceptDedication: {
+            place: components["schemas"]["DedicationPlace"];
+        };
         AcceptRequest: {
             /**
              * Format: int64
@@ -6623,6 +6848,144 @@ export interface components {
              */
             position_ms: number;
         };
+        /** @description A request, for operators. */
+        Dedication: {
+            artist?: string | null;
+            /** @description While it waits: what the rules say about it now. */
+            checks: components["schemas"]["DedicationCheck"][];
+            /** Format: int64 */
+            decided_at_unix_ms?: number | null;
+            /** @description Who accepted or refused it. */
+            decided_by?: string | null;
+            from: string;
+            /** Format: int64 */
+            id: number;
+            message: string;
+            /** Format: int64 */
+            planned_at_unix_ms?: number | null;
+            /** Format: int64 */
+            play_id?: number | null;
+            /** Format: int64 */
+            played_at_unix_ms?: number | null;
+            reason?: components["schemas"]["DedicationReason"] | null;
+            status: components["schemas"]["DedicationStatus"];
+            /** Format: int64 */
+            submitted_at_unix_ms: number;
+            title?: string | null;
+            to: string;
+            /** Format: int64 */
+            track_id?: number | null;
+        };
+        DedicationCheck: {
+            /**
+             * Format: int64
+             * @description When the track queued already plays.
+             */
+            at_unix_ms?: number | null;
+            /** @description It cannot be accepted: a restriction forbids it, or it cannot play. */
+            blocking: boolean;
+            kind: components["schemas"]["DedicationCheckKind"];
+            /**
+             * Format: int64
+             * @description How long ago it played (the separation rules).
+             */
+            minutes_ago?: number | null;
+            /** Format: int64 */
+            restriction_id?: number | null;
+            /**
+             * Format: int32
+             * @description The rule's window.
+             */
+            separation_min?: number | null;
+        };
+        /**
+         * @description What the rules say about a waiting request now.
+         * @enum {string}
+         */
+        DedicationCheckKind: "rules_kept" | "artist_played" | "title_played" | "track_played" | "in_queue" | "restriction" | "unplayable";
+        /** @description The counts of the range's requests. */
+        DedicationCounts: {
+            /** Format: int64 */
+            accepted: number;
+            /** Format: int64 */
+            pending: number;
+            /** Format: int64 */
+            played: number;
+            /** Format: int64 */
+            received: number;
+            /** Format: int64 */
+            refused: number;
+        };
+        /** @description What a listener sends. */
+        DedicationFields: {
+            from: string;
+            message?: string | null;
+            to: string;
+            /** Format: int64 */
+            track_id: number;
+        };
+        DedicationList: {
+            /** Format: int64 */
+            closes_at_unix_ms?: number | null;
+            counts: components["schemas"]["DedicationCounts"];
+            dedications: components["schemas"]["Dedication"][];
+            /** Format: int32 */
+            max_per_range: number;
+            on_air?: components["schemas"]["OnAirDedication"] | null;
+            /** Format: int64 */
+            opens_at_unix_ms?: number | null;
+        };
+        /**
+         * @description Where an accepted request goes in the queue.
+         * @enum {string}
+         */
+        DedicationPlace: "next" | "hour" | "best";
+        /**
+         * @description Why a request was refused, or did not play.
+         * @enum {string}
+         */
+        DedicationReason: "just_played" | "unavailable" | "inappropriate" | "closed" | "removed";
+        /**
+         * @description A station's dedication settings (`station_settings`, `dedications`). Its
+         *     hours, website and notifications are its show settings.
+         */
+        DedicationSettings: {
+            /**
+             * @description The categories whose tracks can be requested; none: the station's
+             *     music.
+             * @default []
+             */
+            category_ids: number[];
+            /**
+             * Format: int32
+             * @description Requests per opening range, every listener together, 1 to 1000.
+             * @default 30
+             */
+            max_per_range: number;
+            /**
+             * Format: int32
+             * @description Characters of a message at most, 20 to 500.
+             * @default 140
+             */
+            message_max: number;
+            /**
+             * Format: int32
+             * @description Requests per device per opening range, 1 to 10.
+             * @default 1
+             */
+            per_device: number;
+            /**
+             * Format: int32
+             * @description Days requests are kept, 1 to 365.
+             * @default 30
+             */
+            retention_days: number;
+        };
+        /**
+         * @description Where a request stands.
+         * @enum {string}
+         */
+        DedicationStatus: "pending" | "accepted" | "played" | "refused";
         /** @enum {string} */
         DeliveryStatus: "pending" | "delivered" | "failed";
         DeliverySummary: {
@@ -7332,6 +7695,26 @@ export interface components {
              *     theirs.
              */
             uid: number;
+        };
+        /** @description A request, as its follow link gives it to the listener. */
+        Followed: {
+            artist?: string | null;
+            /** Format: int64 */
+            decided_at_unix_ms?: number | null;
+            /** @description The key of the follow link. */
+            follow: string;
+            from: string;
+            message: string;
+            /** Format: int64 */
+            planned_at_unix_ms?: number | null;
+            /** Format: int64 */
+            played_at_unix_ms?: number | null;
+            reason?: components["schemas"]["DedicationReason"] | null;
+            status: components["schemas"]["DedicationStatus"];
+            /** Format: int64 */
+            submitted_at_unix_ms: number;
+            title?: string | null;
+            to: string;
         };
         /** @description The gated AGC: a slow gain to the station's loudness target. */
         GatedAgcSettings: {
@@ -8650,6 +9033,12 @@ export interface components {
              */
             server_time_unix_ms: number;
         };
+        /** @description The dedication of a track on air. */
+        OnAirDedication: {
+            from: string;
+            message: string;
+            to: string;
+        };
         /** @description The dry run of an organization. */
         OrganizePlan: {
             moves: components["schemas"]["PlannedMove"][];
@@ -9230,6 +9619,7 @@ export interface components {
             artist?: string | null;
             /** @description Its cover, else the station's logo (docs/api.md#public-endpoints). */
             cover_url?: string | null;
+            dedication?: components["schemas"]["OnAirDedication"] | null;
             /**
              * Format: int64
              * @description From the cue-in to the cue-out.
@@ -9523,6 +9913,9 @@ export interface components {
             /** @description Shown once. */
             recovery_codes: string[];
         };
+        RefuseDedication: {
+            reason?: components["schemas"]["DedicationReason"] | null;
+        };
         RefuseRequest: {
             album_key: string;
         };
@@ -9568,6 +9961,13 @@ export interface components {
         };
         RenderRequest: {
             parts: components["schemas"]["Part"][];
+        };
+        /** @description A track a listener can request. */
+        RequestableTrack: {
+            artist?: string | null;
+            title?: string | null;
+            /** Format: int64 */
+            track_id: number;
         };
         /** @description What a restore did. */
         RestoreReport: {
@@ -11947,7 +12347,7 @@ export interface components {
          * @description What a delivery reports.
          * @enum {string}
          */
-        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping" | "show.upcoming" | "show.started" | "show.ended" | "top.published" | "top.rank";
+        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping" | "show.upcoming" | "show.started" | "show.ended" | "top.published" | "top.rank" | "dedication.played" | "dedication.accepted";
         WebhookInput: {
             /**
              * @description With `{{placeholders}}`: `event`, `delivery_id`, `at_unix_ms`,
@@ -14240,6 +14640,172 @@ export interface operations {
             };
         };
     };
+    list_dedications: {
+        parameters: {
+            query?: {
+                /** @description Only the requests of this status. */
+                status?: components["schemas"]["DedicationStatus"];
+                /** @description 1 to 200, 100 by default. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedicationList"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_dedication_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedicationSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_dedication_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DedicationSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedicationSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_dedication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The request's ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptDedication"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dedication"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refuse_dedication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The request's ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefuseDedication"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dedication"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_profiles: {
         parameters: {
             query?: never;
@@ -14547,6 +15113,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GatewayState"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    gateway_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's code */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DedicationFields"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Followed"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    gateway_follow: {
+        parameters: {
+            query: {
+                /** @description The key of the follow link. */
+                id: string;
+            };
+            header?: never;
+            path: {
+                /** @description The station's code */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Followed"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    gateway_search: {
+        parameters: {
+            query: {
+                /** @description 2 to 60 characters of the artist or the title. */
+                q: string;
+            };
+            header?: never;
+            path: {
+                /** @description The station's code */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestableTrack"][];
                 };
             };
             "4XX": {
@@ -19316,6 +19982,185 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_dedications_on_station: {
+        parameters: {
+            query?: {
+                /** @description Only the requests of this status. */
+                status?: components["schemas"]["DedicationStatus"];
+                /** @description 1 to 200, 100 by default. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedicationList"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_dedication_settings_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedicationSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_dedication_settings_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DedicationSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedicationSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_dedication_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The request's ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptDedication"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dedication"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refuse_dedication_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The request's ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefuseDedication"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dedication"];
+                };
             };
             "4XX": {
                 headers: {

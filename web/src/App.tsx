@@ -45,6 +45,7 @@ import { Rotation } from "./pages/Rotation";
 import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
 import { LikesWeekCard } from "./components/Likes";
+import { DedicationsPage } from "./components/Dedications";
 import { Top30Page } from "./components/Top30";
 import { ShowPage } from "./pages/Show";
 import { Stations } from "./pages/Stations";
@@ -129,11 +130,14 @@ function pageAt(pathname: string): ReactNode {
     return <MedleyEditor id={medley.id === "new" ? null : Number(medley.id)} />;
   }
   const show = match("/shows/:module", pathname);
-  if (show && (show.module === "dedications" || show.module === "match")) {
-    return <ShowPage module={show.module} />;
+  if (show?.module === "match") {
+    return <ShowPage module="match" />;
   }
   if (show?.module === "top30") {
     return <Top30Page />;
+  }
+  if (show?.module === "dedications") {
+    return <DedicationsPage />;
   }
   if (show?.module === "likes") {
     return <ShowPage module="likes" tabs={<LikesWeekCard />} />;
