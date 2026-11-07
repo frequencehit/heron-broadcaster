@@ -32,6 +32,7 @@ fn track(entry_id: u64, samples: &[f32]) -> Box<LoadedTrack> {
         source: Box::new(VecSource::new(samples.to_vec())),
         gain: 1.0,
         fade_in: None,
+        generation: 0,
     })
 }
 
@@ -392,6 +393,7 @@ fn underruns_play_silence_and_are_reported() {
             start: 0,
             gain: 1.0,
             fade_in: None,
+            generation: 0,
         }),
         FrameTransition::back_to_back(),
     );
@@ -436,7 +438,13 @@ fn finished_tracks_are_handed_back_to_be_dropped() {
         .map(|track| track.entry_id)
         .collect();
     assert_eq!(returned, [1, 2]);
-    assert_eq!(events(&mut handle)[0], Event::Uncued { entry_id: 1 });
+    assert_eq!(
+        events(&mut handle)[0],
+        Event::Uncued {
+            entry_id: 1,
+            generation: 0
+        }
+    );
 }
 
 /// A decoder that has not produced anything yet.
@@ -468,6 +476,7 @@ fn cued_tracks_wait_for_their_audio() {
             start: 0,
             gain: 1.0,
             fade_in: None,
+            generation: 0,
         }),
         FrameTransition::back_to_back(),
     );
@@ -483,7 +492,13 @@ fn tracks_without_audio_never_go_on_air() {
     let (mut mixer, mut handle) = Mixer::new(BLOCK_FRAMES);
     cue(&mut handle, track(1, &[]), FrameTransition::back_to_back());
     render(&mut mixer, 480, BLOCK_FRAMES);
-    assert_eq!(events(&mut handle), [Event::Uncued { entry_id: 1 }]);
+    assert_eq!(
+        events(&mut handle),
+        [Event::Uncued {
+            entry_id: 1,
+            generation: 0
+        }]
+    );
     assert!(handle.trash.pop().is_ok());
 }
 
@@ -571,7 +586,10 @@ fn skipping_the_track_drops_or_fades_its_jingle() {
     );
     render(&mut mixer, 48_000, BLOCK_FRAMES);
     let dropped = events(&mut handle);
-    assert!(dropped.contains(&Event::Uncued { entry_id: 2 }));
+    assert!(dropped.contains(&Event::Uncued {
+        entry_id: 2,
+        generation: 0
+    }));
     assert!(
         !dropped
             .iter()
@@ -626,8 +644,14 @@ fn uncueing_drops_the_jingle_too() {
     assert!(handle.commands.push(Command::Uncue).is_ok());
     render(&mut mixer, 480, BLOCK_FRAMES);
     let events = events(&mut handle);
-    assert!(events.contains(&Event::Uncued { entry_id: 2 }));
-    assert!(events.contains(&Event::Uncued { entry_id: 3 }));
+    assert!(events.contains(&Event::Uncued {
+        entry_id: 2,
+        generation: 0
+    }));
+    assert!(events.contains(&Event::Uncued {
+        entry_id: 3,
+        generation: 0
+    }));
 }
 
 /// `samples` through a deck EQ starting at rest.

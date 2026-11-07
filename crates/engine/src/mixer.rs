@@ -169,6 +169,10 @@ pub struct LoadedTrack {
     /// Linear gain (loudness normalization).
     pub gain: f32,
     pub fade_in: Option<FrameRamp>,
+    /// Tells apart the cues of one entry: the player gives each cue of a
+    /// track its own, and the mixer gives it back in [`Event::Uncued`] and
+    /// [`MixerStatus::cued_generation`]. 0 for none.
+    pub generation: u64,
 }
 
 /// A jingle played on the FX player over the intro of a track: it starts
@@ -328,7 +332,7 @@ pub enum Event {
     Underrun { deck: Deck, entry_id: u64 },
     /// A cued track was removed before it started: uncued, replaced, or
     /// its audio ended before it could start.
-    Uncued { entry_id: u64 },
+    Uncued { entry_id: u64, generation: u64 },
     /// Held after [`Command::HaltAt`]: the track on air stopped at `position`,
     /// and the master bus at `at_frame` (silence after it).
     Halted {
@@ -419,6 +423,8 @@ pub struct MixerStatus {
     pub on_air: AtomicU64,
     /// Entry ID of the cued track, 0 for none.
     pub cued: AtomicU64,
+    /// Generation of the cued track ([`LoadedTrack::generation`]), 0 for none.
+    pub cued_generation: AtomicU64,
     /// The cued track has enough audio decoded to start.
     pub cued_ready: AtomicBool,
     /// Entry ID of a jingle waiting to start over the intro of the track on
@@ -772,6 +778,7 @@ impl Mixer {
         if let Some((track, _)) = self.cued.take() {
             self.emit(Event::Uncued {
                 entry_id: track.entry_id,
+                generation: track.generation,
             });
             self.discard(track);
         }
@@ -784,6 +791,7 @@ impl Mixer {
     fn drop_overlay(&mut self, overlay: Overlay) {
         self.emit(Event::Uncued {
             entry_id: overlay.track.entry_id,
+            generation: overlay.track.generation,
         });
         self.discard(overlay.track);
     }
@@ -888,6 +896,7 @@ impl Mixer {
         {
             self.emit(Event::Uncued {
                 entry_id: track.entry_id,
+                generation: track.generation,
             });
             self.discard(track);
         }
@@ -1126,6 +1135,10 @@ impl Mixer {
         status.on_air.store(main_id, Ordering::Relaxed);
         let cued_id = self.cued.as_ref().map_or(0, |(track, _)| track.entry_id);
         status.cued.store(cued_id, Ordering::Relaxed);
+        let cued_generation = self.cued.as_ref().map_or(0, |(track, _)| track.generation);
+        status
+            .cued_generation
+            .store(cued_generation, Ordering::Relaxed);
         let cued_ready = self
             .cued
             .as_ref()

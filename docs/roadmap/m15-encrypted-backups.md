@@ -54,22 +54,22 @@ And a backup that was never read back is only a hope: a dump cut short, a file d
 
 ## Acceptance criteria
 
-- [ ] With encryption on, both files of a daily, manual, before-restore and uploaded backup are age files. `age -d -i` with the key decrypts them into the same configuration file and dump as without encryption, and the documented commands restore the dump.
-- [ ] Nothing Heron stores (database, settings, logs, backup folder) holds the secret key. No route returns it after it is generated.
-- [ ] Encryption is turned on only after the key is typed back. Every backup already in the folder is then encrypted, and a backup is taken.
-- [ ] A listed or uploaded backup restores with its key, from the web UI, the API and the command line. A wrong key, or none, is refused with a clear message and changes nothing. A tampered file is refused. A configuration file in clear is still restored.
-- [ ] Restoring a backup taken before the key changed, or before encryption was turned on, keeps the current key, keeps encryption on or off as it is, and keeps every admin's checks.
-- [ ] After a key change, the list shows the backups that need an earlier key, and new backups use the new one.
-- [ ] Wherever a key is typed (typed back, a check, a restore or a test of a listed backup), the public key it must match is shown; the generated key is shown with its public key.
-- [ ] Each admin is asked to check the key at the documented intervals. A correct key moves their next check further away; *Later* asks again the next day. A key change asks every other admin at once.
-- [ ] While encryption is off, admins see the "not encrypted" banner; other roles do not.
-- [ ] Only admins can set, check, change or turn off the key.
-- [ ] A configuration file a restore would refuse, or a dump cut short (the `mariadb-dump` process killed), fails the backup, as reported on the Backups page.
-- [ ] `sha256sum -c` passes on every backup's checksums file. A backup file deleted, truncated or changed in the folder is marked damaged at the next daily check, with a banner for admins.
-- [ ] Checking the key tests the newest backup encrypted with it: a good backup passes; a backup whose files were changed fails, saying which file. *Test* on an older backup passes with its own key and fails with another. Nothing is written to the database or the folder by a test.
-- [ ] The Backups page shows the last test. Admins see a banner when it failed, or when no test has passed for 30 days. The metrics give the time of the last backup and of the last test that passed.
-- [ ] The restore drill, followed as documented next to a running station, restores a backup into a second Heron without touching the station: it keeps streaming, its library and its stream servers untouched.
-- [ ] The engines play on through encrypting the folder, a backup, a test and a restore.
+- [x] With encryption on, both files of a daily, manual, before-restore and uploaded backup are age files. `age -d -i` with the key decrypts them into the same configuration file and dump as without encryption, and the documented commands restore the dump.
+- [x] Nothing Heron stores (database, settings, logs, backup folder) holds the secret key. No route returns it after it is generated.
+- [x] Encryption is turned on only after the key is typed back. Every backup already in the folder is then encrypted, and a backup is taken.
+- [x] A listed or uploaded backup restores with its key, from the web UI, the API and the command line. A wrong key, or none, is refused with a clear message and changes nothing. A tampered file is refused. A configuration file in clear is still restored.
+- [x] Restoring a backup taken before the key changed, or before encryption was turned on, keeps the current key, keeps encryption on or off as it is, and keeps every admin's checks.
+- [x] After a key change, the list shows the backups that need an earlier key, and new backups use the new one.
+- [x] Wherever a key is typed (typed back, a check, a restore or a test of a listed backup), the public key it must match is shown; the generated key is shown with its public key.
+- [x] Each admin is asked to check the key at the documented intervals. A correct key moves their next check further away; *Later* asks again the next day. A key change asks every other admin at once.
+- [x] While encryption is off, admins see the "not encrypted" banner; other roles do not.
+- [x] Only admins can set, check, change or turn off the key.
+- [x] A configuration file a restore would refuse, or a dump cut short (the `mariadb-dump` process killed), fails the backup, as reported on the Backups page.
+- [x] `sha256sum -c` passes on every backup's checksums file. A backup file deleted, truncated or changed in the folder is marked damaged at the next daily check, with a banner for admins.
+- [x] Checking the key tests the newest backup encrypted with it: a good backup passes; a backup whose files were changed fails, saying which file. *Test* on an older backup passes with its own key and fails with another. Nothing is written to the database or the folder by a test.
+- [x] The Backups page shows the last test. Admins see a banner when it failed, or when no test has passed for 30 days. The metrics give the time of the last backup and of the last test that passed.
+- [x] The restore drill, followed as documented next to a running station, restores a backup into a second Heron without touching the station: it keeps streaming, its library and its stream servers untouched.
+- [x] The engines play on through encrypting the folder, a backup, a test and a restore.
 
 ## References
 

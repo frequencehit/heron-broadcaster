@@ -96,6 +96,7 @@ fn track(entry_id: u64, frames: usize) -> Box<LoadedTrack> {
             curve: FadeCurve::SCurve,
             level: 0.0,
         }),
+        generation: 0,
     })
 }
 
@@ -192,6 +193,7 @@ fn the_mixer_does_not_allocate() {
                     start: 0,
                     gain: 1.0,
                     fade_in: None,
+                    generation: 0,
                 }),
                 transition: FrameTransition::back_to_back(),
             },
@@ -303,6 +305,7 @@ fn reading_decoded_tracks_does_not_allocate() {
         start: 0,
         gain: 1.0,
         fade_in: None,
+        generation: 0,
     });
     assert!(
         handle
