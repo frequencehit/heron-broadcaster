@@ -242,7 +242,7 @@ function RecipeCard({
       <form className="stack" onSubmit={submit}>
         <p className="small muted" style={{ margin: 0 }}>
           {rich("medleys.sharedHelp", {
-            settings: <Link to="/settings">{t("medleys.settingsLink")}</Link>,
+            settings: <Link to="/settings?tab=programming">{t("medleys.settingsLink")}</Link>,
           })}
         </p>
 

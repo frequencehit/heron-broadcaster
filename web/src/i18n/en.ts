@@ -1635,6 +1635,7 @@ const en = {
   "settings.removeKey": "Remove",
   "settings.analysisSaved": "Saved: every track is analyzed again, in the background",
   "settings.analysis": "Analysis",
+  "settings.audio": "Audio",
   "settings.analysisHelp": "Cue points and crossfade points are found when tracks are imported. Changing these analyzes the whole library again (in the background, the station plays on).",
   "settings.startThreshold": "Start threshold",
   "settings.startThresholdHint": "Below the track's loudness, trimmed at the start",

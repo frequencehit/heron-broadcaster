@@ -12,7 +12,7 @@ import { DaypartSettings } from "../components/Dayparts";
 import { Card, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
 import { type PlainKey, number, rich, t } from "../i18n";
 import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
-import { Link } from "../lib/router";
+import { Link, setSearch, useLocation } from "../lib/router";
 import { useStationCategories } from "./Clocks";
 import { useStations } from "../components/Stations";
 import { here, stationUrl, useStation } from "../lib/station";
@@ -20,22 +20,59 @@ import { DuckPlaceSelect, FadeCurveSelect, useMedleySettings } from "./Medleys";
 import { useAction, useCan } from "../lib/session";
 import { moduleKey, useModule, useStationModules } from "../lib/modules";
 
+/** The settings page's tabs, in order: the `tab` of the URL. */
+export const SETTINGS_TABS = ["station", "programming", "audio", "library", "statistics"] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+const TAB_LABELS: Record<SettingsTab, PlainKey> = {
+  station: "nav.station",
+  programming: "settings.programming",
+  audio: "settings.audio",
+  library: "nav.library",
+  statistics: "nav.statistics",
+};
+
 export function Settings() {
   const medleys = useModule("medleys");
   const statistics = useModule("listener_statistics");
+  const { search } = useLocation();
+  const tabs = SETTINGS_TABS.filter((tab) => tab !== "statistics" || statistics);
+  const asked = search.get("tab") as SettingsTab | null;
+  const tab: SettingsTab = asked && tabs.includes(asked) ? asked : "station";
   return (
     <>
       <PageHead title={t("nav.settings")} description={t("settings.description")} />
-      <QueueCard />
-      <RotationCard />
-      <StationCard />
-      <StreamDetailsCard />
-      <StationModulesCard />
-      <ProgrammingCard />
-      {medleys && <MedleysCard />}
-      {statistics && <StatisticsCard />}
-      <LibraryCard />
-      <AnalysisCard />
+      <div className="tabs" role="tablist">
+        {tabs.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            onClick={() => setSearch({ tab: name === "station" ? null : name })}
+          >
+            {t(TAB_LABELS[name])}
+          </button>
+        ))}
+      </div>
+      {tab === "station" && (
+        <>
+          <StationCard />
+          <StreamDetailsCard />
+          <StationModulesCard />
+        </>
+      )}
+      {tab === "programming" && (
+        <>
+          <QueueCard />
+          <RotationCard />
+          <ProgrammingCard />
+          {medleys && <MedleysCard />}
+        </>
+      )}
+      {tab === "audio" && <AnalysisCard />}
+      {tab === "library" && <LibraryCard />}
+      {tab === "statistics" && <StatisticsCard />}
     </>
   );
 }
