@@ -3226,6 +3226,7 @@ ul.held {
   border-collapse: separate;
   border-spacing: 2px;
   width: 100%;
+  table-layout: fixed;
   min-width: 32rem;
 }
 
@@ -3247,9 +3248,15 @@ ul.held {
   background: var(--bad, #c62828);
 }
 
+.show-week col.show-week-day {
+  width: 3.5rem;
+}
+
 .show-week th {
   font-weight: 400;
   text-align: left;
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .show-week-key {
