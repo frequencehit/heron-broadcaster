@@ -2717,6 +2717,236 @@
         }
       }
     },
+    "/api/v1/dedications": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The requests of the opening range on now, else of the last one, the\nlatest first; the waiting ones with what the rules say about them.",
+        "operationId": "list_dedications",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only the requests of this status.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DedicationStatus"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, 100 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationList"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dedications/settings": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The station's dedication settings.",
+        "operationId": "get_dedication_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Replaces the station's dedication settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_dedication_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DedicationSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dedications/{id}/accept": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Queues the request's track (source `request`) at the place asked and\nanswers the request. `409` for a request not waiting, or a track that\na restriction forbids then or that cannot play. Operators.",
+        "operationId": "accept_dedication",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dedications/{id}/refuse": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Refuses a waiting request, with a reason or none. `409` for a request\nnot waiting. Operators.",
+        "operationId": "refuse_dedication",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefuseDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/encoder-profiles": {
       "get": {
         "tags": [
@@ -3097,6 +3327,166 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GatewayState"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/gateway/stations/{code}/dedications": {
+      "post": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "A listener's request, from the gateway, with the device's hash: one\nwaiting at a time per device, a few per device and a maximum per\nopening range. Answers its follow link.",
+        "operationId": "gateway_submit",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DedicationFields"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Followed"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/gateway/stations/{code}/dedications/follow": {
+      "get": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "A request, by the key of its follow link. `404` once deleted.",
+        "operationId": "gateway_follow",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "The key of the follow link.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Followed"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/gateway/stations/{code}/dedications/search": {
+      "get": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "The requestable tracks whose artist or title has `q`, 8 at most. `409`\nwhile the show is closed.",
+        "operationId": "gateway_search",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "2 to 60 characters of the artist or the title.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RequestableTrack"
+                  }
                 }
               }
             }
@@ -9075,6 +9465,285 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/dedications": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The requests of the opening range on now, else of the last one, the\nlatest first; the waiting ones with what the rules say about them.",
+        "operationId": "list_dedications_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only the requests of this status.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DedicationStatus"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, 100 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationList"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/dedications/settings": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The station's dedication settings.",
+        "operationId": "get_dedication_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Replaces the station's dedication settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_dedication_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DedicationSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/dedications/{id}/accept": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Queues the request's track (source `request`) at the place asked and\nanswers the request. `409` for a request not waiting, or a track that\na restriction forbids then or that cannot play. Operators.",
+        "operationId": "accept_dedication_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/dedications/{id}/refuse": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Refuses a waiting request, with a reason or none. `409` for a request\nnot waiting. Operators.",
+        "operationId": "refuse_dedication_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefuseDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -16260,6 +16929,18 @@
           }
         }
       },
+      "AcceptDedication": {
+        "type": "object",
+        "required": [
+          "place"
+        ],
+        "properties": {
+          "place": {
+            "$ref": "#/components/schemas/DedicationPlace"
+          }
+        },
+        "additionalProperties": false
+      },
       "AcceptRequest": {
         "type": "object",
         "properties": {
@@ -18735,6 +19416,368 @@
           }
         }
       },
+      "Dedication": {
+        "type": "object",
+        "description": "A request, for operators.",
+        "required": [
+          "id",
+          "from",
+          "to",
+          "message",
+          "status",
+          "submitted_at_unix_ms",
+          "checks"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DedicationCheck"
+            },
+            "description": "While it waits: what the rules say about it now."
+          },
+          "decided_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "decided_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who accepted or refused it."
+          },
+          "from": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          },
+          "planned_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "play_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "played_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DedicationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/DedicationStatus"
+          },
+          "submitted_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationCheck": {
+        "type": "object",
+        "required": [
+          "kind",
+          "blocking"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the track queued already plays."
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "It cannot be accepted: a restriction forbids it, or it cannot play."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DedicationCheckKind"
+          },
+          "minutes_ago": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long ago it played (the separation rules)."
+          },
+          "restriction_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "separation_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The rule's window.",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationCheckKind": {
+        "type": "string",
+        "description": "What the rules say about a waiting request now.",
+        "enum": [
+          "rules_kept",
+          "artist_played",
+          "title_played",
+          "track_played",
+          "in_queue",
+          "restriction",
+          "unplayable"
+        ]
+      },
+      "DedicationCounts": {
+        "type": "object",
+        "description": "The counts of the range's requests.",
+        "required": [
+          "pending",
+          "accepted",
+          "played",
+          "refused",
+          "received"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "played": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "received": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refused": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationFields": {
+        "type": "object",
+        "description": "What a listener sends.",
+        "required": [
+          "track_id",
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DedicationList": {
+        "type": "object",
+        "required": [
+          "max_per_range",
+          "counts",
+          "dedications"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/DedicationCounts"
+          },
+          "dedications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dedication"
+            }
+          },
+          "max_per_range": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "on_air": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OnAirDedication",
+                "description": "The dedication of the track playing."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "opens_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DedicationPlace": {
+        "type": "string",
+        "description": "Where an accepted request goes in the queue.",
+        "enum": [
+          "next",
+          "hour",
+          "best"
+        ]
+      },
+      "DedicationReason": {
+        "type": "string",
+        "description": "Why a request was refused, or did not play.",
+        "enum": [
+          "just_played",
+          "unavailable",
+          "inappropriate",
+          "closed",
+          "removed"
+        ]
+      },
+      "DedicationSettings": {
+        "type": "object",
+        "description": "A station's dedication settings (`station_settings`, `dedications`). Its\nhours, website and notifications are its show settings.",
+        "properties": {
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "The categories whose tracks can be requested; none: the station's\nmusic.",
+            "default": []
+          },
+          "max_per_range": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Requests per opening range, every listener together, 1 to 1000.",
+            "default": 30,
+            "minimum": 0
+          },
+          "message_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Characters of a message at most, 20 to 500.",
+            "default": 140,
+            "minimum": 0
+          },
+          "per_device": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Requests per device per opening range, 1 to 10.",
+            "default": 1,
+            "minimum": 0
+          },
+          "retention_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days requests are kept, 1 to 365.",
+            "default": 30,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DedicationStatus": {
+        "type": "string",
+        "description": "Where a request stands.",
+        "enum": [
+          "pending",
+          "accepted",
+          "played",
+          "refused"
+        ]
+      },
       "DeliveryStatus": {
         "type": "string",
         "enum": [
@@ -20200,6 +21243,84 @@
             "format": "int32",
             "description": "The user and group the API runs as: the backup folder must be\ntheirs.",
             "minimum": 0
+          }
+        }
+      },
+      "Followed": {
+        "type": "object",
+        "description": "A request, as its follow link gives it to the listener.",
+        "required": [
+          "follow",
+          "status",
+          "from",
+          "to",
+          "message",
+          "submitted_at_unix_ms"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decided_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "follow": {
+            "type": "string",
+            "description": "The key of the follow link."
+          },
+          "from": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "planned_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "played_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DedicationReason",
+                "description": "`null` for no reason, or an inappropriate message."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/DedicationStatus"
+          },
+          "submitted_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "string"
           }
         }
       },
@@ -23176,6 +24297,26 @@
           }
         }
       },
+      "OnAirDedication": {
+        "type": "object",
+        "description": "The dedication of a track on air.",
+        "required": [
+          "from",
+          "to",
+          "message"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
       "OrganizePlan": {
         "type": "object",
         "description": "The dry run of an organization.",
@@ -24643,6 +25784,17 @@
             ],
             "description": "Its cover, else the station's logo (docs/api.md#public-endpoints)."
           },
+          "dedication": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OnAirDedication",
+                "description": "The accepted dedication it plays for\n(`docs/listener-interaction.md#dedications`)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "duration_ms": {
             "type": "integer",
             "format": "int64",
@@ -25166,6 +26318,23 @@
           }
         }
       },
+      "RefuseDedication": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DedicationReason",
+                "description": "`null`: no reason. `closed` and `removed` are Heron's own."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "RefuseRequest": {
         "type": "object",
         "required": [
@@ -25296,6 +26465,32 @@
           }
         },
         "additionalProperties": false
+      },
+      "RequestableTrack": {
+        "type": "object",
+        "description": "A track a listener can request.",
+        "required": [
+          "track_id"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "RestoreReport": {
         "type": "object",
@@ -31287,7 +32482,9 @@
           "show.started",
           "show.ended",
           "top.published",
-          "top.rank"
+          "top.rank",
+          "dedication.played",
+          "dedication.accepted"
         ]
       },
       "WebhookInput": {
@@ -31691,6 +32888,10 @@
     {
       "name": "likes",
       "description": "Listeners' likes and dislikes of the tracks played, per station"
+    },
+    {
+      "name": "dedications",
+      "description": "Listeners' requests for a track with a message, accepted into the queue or refused"
     },
     {
       "name": "top30",

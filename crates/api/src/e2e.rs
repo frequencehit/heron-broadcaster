@@ -11748,7 +11748,6 @@ async fn follow_key_of(request: &Value, pool: &sqlx::MySqlPool) -> String {
         .unwrap()
 }
 
-
 /// A clock slot at an exact time: hard, the track on air is cut and the
 /// slot starts then; soft, a track queued by hand that would end after the
 /// window is taken out.
