@@ -206,7 +206,7 @@ The **About** link at the bottom of the navigation, under the account, opens a p
 - **Active configuration** (admins): per service, the settings that matter as read-only values (folders, intervals, addresses) and switches. A secret (database URL, error-reporting DSN, metrics password) only shows whether it is set.
 - **Copy diagnostics:** puts what the page shows as plain text in the clipboard, for a bug report.
 
-The engine reports itself over its gRPC link. The analyzer and the librarian write a heartbeat to the database every 30 seconds, which the API reads; it is not part of [backups](backups.md). See [API](api.md#routes) for `GET /about`.
+The engine reports itself over its gRPC link. The analyzer and the librarian write a heartbeat to the database every 30 seconds, which the API reads; it is not part of [backups](backups.md). Each new container of a worker is a new instance, so earlier ones stay listed as stopped: an admin takes them off with *Clear the stopped ones* (one that runs again comes back). See [API](api.md#routes) for `GET /about`.
 
 ### Breadcrumb
 
