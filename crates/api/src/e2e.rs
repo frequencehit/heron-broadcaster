@@ -8871,7 +8871,8 @@ async fn an_older_backup_turns_full_width_into_a_width() {
     for user in file["tables"]["users"].as_array_mut().unwrap() {
         let user = user.as_object_mut().unwrap();
         user.remove("width");
-        let full = user["username"] == "admin";
+        // As backups write booleans: 1 or 0.
+        let full = i64::from(user["username"] == "admin");
         user.insert("full_width".to_owned(), json!(full));
     }
     let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
