@@ -2846,6 +2846,93 @@ a.statusbar-deck:hover .statusbar-deck-text,
   background: var(--good);
 }
 
+/* Likes (docs/listener-interaction.md#likes): likes in green, dislikes in red. */
+.like-bar {
+  display: inline-block;
+  width: 3.5rem;
+  height: 0.4rem;
+  border-radius: 3px;
+  background: var(--bad);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.like-bar.empty {
+  background: var(--surface-2);
+}
+
+.like-bar i {
+  display: block;
+  height: 100%;
+  background: var(--good);
+}
+
+.liked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.like-periods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+}
+
+.like-period {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.like-period .like-bar {
+  width: 100%;
+}
+
+.like-share {
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.like-plays,
+.like-ranking {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.like-ranking {
+  padding-left: 1.4rem;
+  list-style: decimal;
+}
+
+.like-plays li,
+.like-ranking li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.like-ranking li {
+  display: list-item;
+}
+
+.like-ranking li .liked {
+  float: right;
+}
+
+.like-plays li .like-bar {
+  flex: 1;
+  width: auto;
+}
+
 ul.held {
   margin: 0.25rem 0;
   padding-left: 1.1rem;
@@ -3081,6 +3168,194 @@ ul.held {
 .module-list li {
   display: grid;
   gap: 0.25rem;
+}
+
+/* Shows (docs/web.md#shows): the week of hours, the lines to copy, the
+   widget's preview. */
+.grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.25rem;
+}
+
+@media (max-width: 800px) {
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.show-week {
+  border-collapse: separate;
+  border-spacing: 2px;
+  width: 100%;
+  min-width: 32rem;
+}
+
+.show-week td {
+  height: 0.9rem;
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.show-week td.own {
+  background: var(--accent);
+}
+
+.show-week td.other {
+  background: repeating-linear-gradient(45deg, var(--border), var(--border) 3px, var(--muted) 3px, var(--muted) 5px);
+}
+
+.show-week td.clash {
+  background: var(--bad, #c62828);
+}
+
+.show-week th {
+  font-weight: 400;
+  text-align: left;
+}
+
+.show-week-key {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 2px;
+}
+
+.show-week-key.own {
+  background: var(--accent);
+}
+
+.show-week-key.other {
+  background: repeating-linear-gradient(45deg, var(--border), var(--border) 3px, var(--muted) 3px, var(--muted) 5px);
+}
+
+.show-line {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2, var(--bg));
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  min-height: 1.2rem;
+}
+
+.show-preview-messages {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-2, var(--bg));
+}
+
+.show-message {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.show-widget {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.show-widget.empty {
+  padding: 1rem;
+  border-style: dashed;
+  text-align: center;
+}
+
+.show-widget-head {
+  color: #fff;
+  padding: 0.8rem 1rem;
+  font-size: 1.1rem;
+}
+
+.show-widget-body {
+  padding: 1rem;
+  text-align: center;
+}
+
+/* The Top 30: movements in the chart, the new release in the programme. */
+.top30-move {
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.top30-move.up {
+  color: var(--good);
+}
+
+.top30-move.down {
+  color: var(--bad);
+}
+
+.top30-move.word {
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.top30-programme tr.top30-release td {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.top30-programme .badge.warn {
+  margin-left: 0.5rem;
+}
+
+/* Dedications: the requests, their message, their actions. */
+.dedication-open {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.dedication-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dedication {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.dedication:first-child {
+  border-top: 0;
+}
+
+.dedication-message {
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border-left: 3px solid var(--border-strong, var(--border));
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dedication-actions {
+  gap: 6px;
+  align-items: flex-end;
+}
+
+@media (max-width: 720px) {
+  .dedication {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dedication-actions {
+    align-items: stretch;
+  }
 }
 
 /* A filter bar: each menu's name above it. */

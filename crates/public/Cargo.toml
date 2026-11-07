@@ -1,0 +1,49 @@
+[package]
+name = "heron-public"
+description = "Heron Broadcaster public gateway: the shows' widgets, cached reads and checked writes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "heron-public"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+bytes.workspace = true
+clap.workspace = true
+# Draws its keys: challenges and device hashes.
+getrandom.workspace = true
+heron-core = { workspace = true, features = ["shows"] }
+heron-service.workspace = true
+# Signs challenges, hashes devices.
+hmac.workspace = true
+jiff.workspace = true
+metrics.workspace = true
+# Calls the API.
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The proof of work.
+sha2.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+# Server-Sent Events from the station's state.
+tokio-stream = { workspace = true, features = ["sync"] }
+# Reads answer any origin.
+tower-http = { workspace = true, features = ["cors"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+
+[lints]
+workspace = true

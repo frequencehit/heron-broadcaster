@@ -29,9 +29,11 @@ pub async fn installation(pool: &MySqlPool) -> ApiResult<Modules> {
     settings::load(pool, Modules::SETTINGS_NAME).await
 }
 
-/// A station's own switches.
+/// A station's own switches: what it leaves out is on.
 async fn own(pool: &MySqlPool, station_id: u64) -> ApiResult<Modules> {
-    settings::load_for(pool, station_id, Modules::STATION_SETTINGS_NAME).await
+    let stored: serde_json::Value =
+        settings::load_for(pool, station_id, Modules::STATION_SETTINGS_NAME).await?;
+    Ok(Modules::over(Modules::ALL_ON, &stored))
 }
 
 /// What is on for a station: on for the installation and for the station.
@@ -70,6 +72,10 @@ pub fn module_of(path: &str) -> Option<Module> {
         // `GET /artists` is the search of the artist pickers: it answers.
         ["artists", _, ..] | ["artist-names" | "artist-suggestions", ..] => Module::Artists,
         ["labels", ..] | ["tracks", "labels"] => Module::Labels,
+        ["shows", key, ..] => Module::from_key(key).filter(|module| module.is_show())?,
+        ["likes", ..] => Module::Likes,
+        ["top30", ..] => Module::Top30,
+        ["dedications", ..] => Module::Dedications,
         _ => return None,
     };
     Some(module)
@@ -153,8 +159,8 @@ async fn get_modules(
     Ok(Json(installation(&state.pool).await?))
 }
 
-/// Turns modules on or off for the installation (a module left out is
-/// on). Admins only.
+/// Turns modules on or off for the installation (a module left out takes
+/// its default: off for a show). Admins only.
 #[utoipa::path(put, path = "/modules", tag = "settings", request_body = Modules,
     responses((status = 200, body = Modules), (status = "4XX", body = ErrorBody)))]
 async fn put_modules(
@@ -191,12 +197,18 @@ async fn put_station_modules(
     user: CurrentUser,
     State(state): State<AppState>,
     Path(id): Path<u64>,
-    Json(modules): Json<Modules>,
+    Json(body): Json<serde_json::Value>,
 ) -> ApiResult<Json<StationModules>> {
     if role_on(&state.pool, &user, id).await? < Role::Admin {
         return Err(ApiError::Forbidden);
     }
-    let modules = modules.for_station();
+    if !body.is_object() {
+        return Err(ApiError::Invalid(
+            "give the modules as an object".to_owned(),
+        ));
+    }
+    // What the station leaves out stays on.
+    let modules = Modules::over(Modules::ALL_ON, &body).for_station();
     settings::save_for(&state.pool, id, Modules::STATION_SETTINGS_NAME, &modules).await?;
     tracing::info!(user = %user.username, station = id, ?modules, "station modules changed");
     changed(&state);
@@ -246,6 +258,15 @@ mod tests {
             ("/api/v1/tracks/labels", Some(Module::Labels)),
             ("/api/v1/library/tasks", None),
             ("/api/v1/library/import", None),
+            ("/api/v1/shows/dedications", Some(Module::Dedications)),
+            ("/api/v1/shows/match", Some(Module::Match)),
+            ("/api/v1/shows/likes", Some(Module::Likes)),
+            ("/api/v1/likes/week", Some(Module::Likes)),
+            ("/api/v1/likes/tracks/12", Some(Module::Likes)),
+            ("/api/v1/top30/chart", Some(Module::Top30)),
+            ("/api/v1/dedications/12/accept", Some(Module::Dedications)),
+            ("/api/v1/shows/medleys", None),
+            ("/api/v1/shows", None),
             ("/api/v1/tracks/12", None),
             ("/api/v1/tracks/categories", None),
             ("/api/v1/settings/station", None),

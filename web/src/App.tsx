@@ -44,6 +44,10 @@ import { ToDo } from "./pages/ToDo";
 import { Rotation } from "./pages/Rotation";
 import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
+import { LikesWeekCard } from "./components/Likes";
+import { DedicationsPage } from "./components/Dedications";
+import { Top30Page } from "./components/Top30";
+import { ShowPage } from "./pages/Show";
 import { Stations } from "./pages/Stations";
 import { Statistics } from "./pages/Statistics";
 import { Track } from "./pages/Track";
@@ -124,6 +128,19 @@ function pageAt(pathname: string): ReactNode {
   const medley = match("/medleys/:id", pathname);
   if (medley) {
     return <MedleyEditor id={medley.id === "new" ? null : Number(medley.id)} />;
+  }
+  const show = match("/shows/:module", pathname);
+  if (show?.module === "match") {
+    return <ShowPage module="match" />;
+  }
+  if (show?.module === "top30") {
+    return <Top30Page />;
+  }
+  if (show?.module === "dedications") {
+    return <DedicationsPage />;
+  }
+  if (show?.module === "likes") {
+    return <ShowPage module="likes" tabs={<LikesWeekCard />} />;
   }
   const clock = match("/clocks/:id", pathname);
   if (clock) {

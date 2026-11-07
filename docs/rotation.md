@@ -300,6 +300,7 @@ A station has **several schedules** ([M14](roadmap/m14-schedules.md)), each a we
 - An hour the playing schedule leaves empty rotates the station's library, as an hour without a clock: it does **not** fall back on the default schedule. A new schedule can start as a copy of another, so that only the hours that change need painting.
 - Each pick in the rotation log names the schedule it came from (`schedule_id`, `schedule_name` in its explanation), and simulations follow the periods.
 - A track picked ahead for the next hour is picked from the schedule playing at its planned start: the change happens at the hour, like a change of clock.
+- **Shows played on air** take their hours from the clocks: during the [Top 30](listener-interaction.md#top-30)'s hours, the queue manager queues the show's programme instead of rotation's picks, without separation rules and with the restrictions, then rotation fills the rest of the hours with their clocks. Simulations do not know the shows: they plan the clocks of those hours.
 
 ## Rotation model
 

@@ -95,10 +95,15 @@ What belongs to a station (its engine and decks, queue, history, clocks, schedul
 | History | `GET /history` (`before`, `after`, `track_id`, `exclude_fx`, `limit`) |
 | Deck EQ | `GET`, `PUT /settings/eq`; `GET`, `POST /eq-presets`; `PUT`, `DELETE /eq-presets/{id}` — see [below](#deck-eq) |
 | AGC | `GET`, `PUT /settings/agc`; `GET`, `POST /agc-presets`; `PUT`, `DELETE /agc-presets/{id}` — see [below](#agc) |
-| Settings | `GET`, `PUT /settings/playout`, `/settings/analysis`, `/settings/queue`, `/settings/rotation` (with `daypart_count`, 4 or 6: the station's dayparts; the [daypart separation](rotation.md#daypart-separation) is each category's; `draw`, the station's [draw depth](rotation.md#draw-depth), `start_pct` and `max_pct`, 1 to 100, 20 and 50 by default, the start not above the maximum, `422`), `/settings/station` (time zone, `public_url`), `/settings/stream-details` (the [station details](outputs.md#station-details) sent to the stream servers), `/settings/programming`, `/settings/statistics`, `/settings/medleys`; `GET`, `PATCH /settings/library`; `GET`, `PUT`, `DELETE /settings/station/logo` (the [station logo](library.md#the-station-logo), admins change it) |
+| Settings | `GET`, `PUT /settings/playout`, `/settings/analysis`, `/settings/queue`, `/settings/rotation` (with `daypart_count`, 4 or 6: the station's dayparts; the [daypart separation](rotation.md#daypart-separation) is each category's; `draw`, the station's [draw depth](rotation.md#draw-depth), `start_pct` and `max_pct`, 1 to 100, 20 and 50 by default, the start not above the maximum, `422`), `/settings/station` (time zone, `public_url`, `gateway_url`), `/settings/stream-details` (the [station details](outputs.md#station-details) sent to the stream servers), `/settings/programming`, `/settings/statistics`, `/settings/medleys`; `GET`, `PATCH /settings/library`; `GET`, `PUT`, `DELETE /settings/station/logo` (the [station logo](library.md#the-station-logo), admins change it) |
 | Outputs | `GET`, `POST /encoder-profiles`; `GET`, `PUT`, `DELETE /encoder-profiles/{id}`; `GET`, `POST /stream-servers`; `GET`, `PUT`, `DELETE /stream-servers/{id}` (a server in use answers `409` listing its outputs and relays, see [Stream servers](outputs.md#stream-servers)); `GET`, `POST /outputs`; `GET`, `PUT`, `DELETE /outputs/{id}` (with each output's live state, its `server_id` and its `details` overriding the station's); `POST /outputs/{id}/duplicate` (a disabled copy, its mount suffixed `-copy`) |
 | Webhooks (admins) | `GET`, `POST /webhooks`; `GET`, `PUT`, `DELETE /webhooks/{id}`; `POST /webhooks/{id}/secret`; `POST /webhooks/{id}/test`; `GET /webhooks/{id}/deliveries` (`before`, `status`, `limit`); `POST /webhook-deliveries/{id}/retry` — see [below](#webhooks) |
 | Listener statistics | `GET /listeners/now`, `/listeners/samples`, `/listeners/audience` (TTSL, ATSL, cume, AQH, peak, session lengths, against the previous period), `/listeners/days`, `/listeners/hours-of-day`, `/listeners/tracks`, `/listeners/breakdown` (shares by country, device or player, small groups as *Other*; never an address or a user agent), each for the station or one output (`output_id`) and all servers or one (`server_id`) (CSV with `format=csv` for the audience, breakdown, days, hours and tracks); `GET`, `PUT /settings/statistics` (admins) — see [Listener statistics](statistics.md#api) |
+| Shows | `GET /shows` (each [show](listener-interaction.md) on for the station: its settings and whether it is open now); `GET`, `PUT /shows/{module}` (`dedications`, `match`, `top30`, `likes`: hours, website, notifications, see [below](#shows); operators change them; `GET` also lists the station's webhooks by name, to choose from) |
+| Likes | `GET /likes/current`, `/likes/week`, `/likes/tracks/{id}` — see [below](#likes) |
+| Dedications | `GET`, `PUT /dedications/settings`; `GET /dedications`; `POST /dedications/{id}/accept`, `/dedications/{id}/refuse` — see [below](#dedications) |
+| Top 30 | `GET`, `PUT /top30/settings`; `GET /top30/chart`, `/top30/charts`; `POST`, `DELETE /top30/charts/{week}/removals/{track_id}`; `PUT /top30/charts/{week}/new-release`; `GET /top30/show` — see [below](#top-30) |
+| Gateway | `GET /gateway/state`, and each show's writes under `/gateway/stations/{code}/{module}/…`: for `heron-public` only, with the gateway token, see [below](#the-public-gateway) |
 | Public | `GET /public/now-playing`, `GET /public/history` (`before`, `limit`), `GET /public/queue`, and the same per station under `/public/stations/{code}/…` — no sign-in, see [below](#public-endpoints) |
 | Live | `GET /live` (WebSocket) |
 
@@ -141,6 +146,7 @@ Webhooks tell other systems (a website, a chat bot, a studio display) about trac
    "upcoming": [{"position": 0, "artist": "Artist", "title": "Title", "album": null,
                  "duration_ms": 212000, "planned_start_unix_ms": 1792918037000}]}
   ```
+- **Show events:** `show.upcoming`, `show.started` and `show.ended`, chosen per show on its page, not in the webhook's `events` (which refuses them, `422`): they go to the webhooks the [show](listener-interaction.md#notifications) names. Their body has `show` (`module`, `name`, `link`, `end_unix_ms`, `next_unix_ms`) and `message`, the show's message written out; `track` is `null`.
 - **Covers:** each track (and each upcoming track) has a `cover_url`, as the [public endpoints](#public-endpoints) give it: its cover, else the station's logo, else `null`. Set the station's public address so that it is a full address, which Discord and Slack need.
 - **Body:** by default the JSON `Payload` of the OpenAPI document:
 
@@ -152,7 +158,7 @@ Webhooks tell other systems (a website, a chat bot, a studio display) about trac
    "played_ms": null, "reason": null}
   ```
 
-  Or a **body template** of your own, with its content type, for receivers that want a format of their own (Discord, Slack, a display). Placeholders: `{{event}}`, `{{station}}` (the code of the webhook's station), `{{delivery_id}}`, `{{at_unix_ms}}`, `{{track_id}}`, `{{artist}}`, `{{title}}`, `{{album}}`, `{{cover_url}}`, `{{duration_ms}}`, `{{deck}}`, `{{source}}`, `{{played_ms}}`, `{{reason}}`; for `queue.changed`, `{{upcoming_json}}` (the array, as JSON, inserted as it is: `{"next": {{upcoming_json}}}`), `{{next.artist}}`, `{{next.title}}`, `{{next.album}}`, `{{next.cover_url}}` and `{{next.planned_start_unix_ms}}` for the first upcoming track (spaces inside the braces are allowed). When the content type is JSON, values are escaped to fit between quotes: `{"content": "Now playing: {{artist}} – {{title}}"}`. Missing values are empty; unknown placeholders are refused (`422`).
+  Or a **body template** of your own, with its content type, for receivers that want a format of their own (Discord, Slack, a display). Placeholders: `{{event}}`, `{{station}}` (the code of the webhook's station), `{{delivery_id}}`, `{{at_unix_ms}}`, `{{track_id}}`, `{{artist}}`, `{{title}}`, `{{album}}`, `{{cover_url}}`, `{{duration_ms}}`, `{{deck}}`, `{{source}}`, `{{played_ms}}`, `{{reason}}`; for `queue.changed`, `{{upcoming_json}}` (the array, as JSON, inserted as it is: `{"next": {{upcoming_json}}}`), `{{next.artist}}`, `{{next.title}}`, `{{next.album}}`, `{{next.cover_url}}` and `{{next.planned_start_unix_ms}}` for the first upcoming track; `{{message}}` (a show event's message, `Artist – Title` for a track event), `{{show.module}}`, `{{show.name}}`, `{{show.link}}` (spaces inside the braces are allowed). When the content type is JSON, values are escaped to fit between quotes: `{"content": "Now playing: {{artist}} – {{title}}"}`. Missing values are empty; unknown placeholders are refused (`422`).
 - **Requests:** `POST` to the webhook's URL (`http` or `https`; it may be an address of your network: only admins can set it), with `X-Heron-Event`, `X-Heron-Delivery` (the delivery's ID), `X-Heron-Timestamp` (Unix seconds) and `X-Heron-Signature`. Redirects are not followed.
 - **Signature:** `X-Heron-Signature: sha256=<hex>`, the HMAC-SHA256 of `"{timestamp}.{body}"` with the webhook's secret (`whsec_…`, shown once when the webhook is created or given a new secret with `POST /webhooks/{id}/secret`). Receivers should compare it in constant time and refuse old timestamps. In Python:
 
@@ -164,11 +170,33 @@ Webhooks tell other systems (a website, a chat bot, a studio display) about trac
 - **Delivery and retries:** deliveries are sent as soon as the engine reports the change, at most 8 at a time. A delivery that does not get a `2xx` within 10 seconds is retried after 10 s, 30 s, 2 min, 10 min, 30 min, 1 h and 3 h, then marked `failed` (8 attempts). Deliveries are rows in the database, so retries survive a restart of the API; one being sent when the API stopped is sent again a minute later, so receivers may see a delivery twice (same `X-Heron-Delivery`). Deliveries of a disabled webhook that were still pending fail.
 - **Delivery log:** `GET /webhooks/{id}/deliveries` lists what was sent, its status (`pending`, `delivered`, `failed`), attempts, the receiver's status code, the error and the start of its answer (1 KiB). `POST /webhooks/{id}/test` sends a `ping` (even to a disabled webhook); `POST /webhook-deliveries/{id}/retry` sends a delivered or failed delivery again, with every attempt again. Deliveries are kept 30 days.
 
+## Shows
+
+Each [show](listener-interaction.md) has its settings per station, `GET`, `PUT /stations/{id}/shows/{module}` (operators change them; the module must be on, else `404`):
+
+```json
+{"enabled": true,
+ "hours": [{"days": [1, 2, 3, 4, 5], "start_hour": 17, "end_hour": 18}],
+ "website": {"title": "Your dedications", "color": "#c62828", "small_widget": true,
+             "closed": "message", "closed_message": "Dedications are back {day} at {hour}",
+             "page_url": "https://radio.example.org/dedications"},
+ "notifications": {"webhook_ids": [3], "lead_minutes": 60, "language": "en",
+                   "events": {"show.upcoming": {"enabled": true, "message": "{name} opens in an hour: {link}"},
+                              "show.started": {"enabled": true, "message": "{name} is open until {end}: {link}"},
+                              "show.ended": {"enabled": false, "message": "{name} is closed. Back {next}"}}}}
+```
+
+- `hours`: none for [Likes](#likes), which are open all the time (`422`). Days 1 (Monday) to 7 (Sunday), `start_hour` 0 to 23, `end_hour` after it, up to 24, at most 50 ranges, in the station's time zone. Hours another show of the station has are refused, `409`, naming the show and the hours (`18:00–19:00 on Saturday belongs to the match`).
+- `website`: `title` (60 characters at most; empty: the show's name in the listener's language), `color` (`#rrggbb`), `small_widget`, `closed` (`message` or `nothing`), `closed_message` (200 characters at most, with `{day}` and `{hour}`; empty: the widget's own sentence), `page_url` (the website's page of the show, for `{link}`).
+- `notifications`: `webhook_ids` (webhooks of the station), `lead_minutes` (1 to 1440), `language` (`en`, `fr`, `es`, `de`), and each event with `enabled` and `message` (500 characters at most, with `{name}`, `{link}`, `{end}`, `{next}`, and the show's own placeholders; an unknown one is refused, `422`).
+
+`GET` answers `module`, `settings` (as above), `status` (`open` now, `closes_at_unix_ms` while open, `next_opening_unix_ms`), `timezone` and `webhooks` (`id`, `name` of the station's webhooks), and `PUT` answers the same. `GET /stations/{id}/shows` lists the shows on for the station, with the same answer, for the week grid of each show's page.
+
 ## Public endpoints
 
 For station websites, apps and displays: no sign-in, readable from any origin (`Access-Control-Allow-Origin: *`, `GET` only, no credentials), the music only (decks A and B, not the FX player, and not tracks that send no metadata: while a jingle is on air, now-playing shows the song before it), without IDs or paths.
 
-- `GET /api/v1/public/now-playing`: `now` (artist, title, album, `cover_url`, `started_at_unix_ms`, `duration_ms`, `position_ms`), `null` while nothing plays or the engine is unreachable, and `server_time_unix_ms`. Cached 5 seconds (`Cache-Control: public, max-age=5`).
+- `GET /api/v1/public/now-playing`: `now` (artist, title, album, `cover_url`, `started_at_unix_ms`, `duration_ms`, `position_ms`, and `dedication`: `from`, `to` and `message` of an accepted [dedication](#dedications), else `null`), `null` while nothing plays or the engine is unreachable, and `server_time_unix_ms`. Cached 5 seconds (`Cache-Control: public, max-age=5`).
 - `GET /api/v1/public/queue`: `upcoming`, the tracks waiting in airing order, as `queue.changed` sends them (at most 10, the music only, with `position` and `planned_start_unix_ms`), and `server_time_unix_ms`; empty while the engine is unreachable. Cached 5 seconds.
 - `GET /api/v1/public/history`: the latest plays, most recent first (artist, title, album, `cover_url`, `started_at_unix_ms`, `ended_at_unix_ms`); `limit` 1 to 50 (20), `before` for the next page. Cached 15 seconds.
 
@@ -176,7 +204,88 @@ For station websites, apps and displays: no sign-in, readable from any origin (`
 
 `cover_url` is the track's cover, else the station's logo, else `null`. It is a full address when the station's settings have its public address (`public_url`, such as `https://radio.example.org`, the address `heron-web` is reached at from outside), a path (`/api/v1/public/covers/…`) otherwise: set it for websites on another address, and for webhooks. Add `?size=96` for a thumbnail.
 
-Each station has its own, by its code: `/api/v1/public/stations/{code}/now-playing`, `/queue` and `/history`; the routes without a code are the first station's. They answer through `heron-web` like the rest of the API (`http://<host>:8000/api/v1/public/now-playing`). Put a cache or rate limit in the reverse proxy in front of it if the station is busy.
+Each station has its own, by its code: `/api/v1/public/stations/{code}/now-playing`, `/queue` and `/history`; the routes without a code are the first station's. They answer through `heron-web` like the rest of the API (`http://<host>:8000/api/v1/public/now-playing`). Put a cache or rate limit in the reverse proxy in front of it if the station is busy, or use the gateway, which serves them from its cache.
+
+## The public gateway
+
+`heron-public` serves listeners, under `/api/v1/public/` like the public endpoints, on its own port (`HERON_PUBLIC_PORT`, 8001 by default). See [Listener interaction](listener-interaction.md) for what it checks and why.
+
+| Route | What it gives |
+|---|---|
+| `GET /api/v1/public/stations/{code}/now-playing`, `/queue`, `/history` | The API's public endpoints, from the gateway's cache |
+| `GET /api/v1/public/stations/{code}/shows` | The station's shows that are on: each with `module`, `title`, `color`, `small_widget`, `closed`, `closed_message`, `page_url`, `hours`, `timezone`, `open`, `closes_at_unix_ms`, `next_opening_unix_ms` and `state` (the show's own live data, `null` until the show adds it) |
+| `GET /api/v1/public/stations/{code}/{module}` | One of them (`404` when it is off) |
+| `GET /api/v1/public/stations/{code}/events` | Server-Sent Events: `state` (`now_playing`, `shows`, `server_time_unix_ms`) when connecting and at each change; a comment every 15 seconds keeps the connection open |
+| `GET /api/v1/public/stations/{code}/{module}.js` | The script of the show's page and small widget |
+| `GET /api/v1/public/stations/{code}/{module}.html` | The show's page alone |
+| `GET /api/v1/public/challenge` | A proof-of-work challenge: `challenge`, `bits`, `expires_at_unix_ms` |
+| `POST /api/v1/public/stations/{code}/{module}[/{action}]` | A show's write (a dedication, a vote), with `X-Heron-Proof: <challenge>:<nonce>`; each show documents its own |
+| `GET /api/v1/public/stations/{code}/{module}/{read}` | A show's own reads, from the API, cached a few seconds per query: the [dedications](#dedications)' `search` and `follow` |
+
+Errors are those of the API: `403` (`forbidden`: no valid proof, or a website not allowed), `404` (unknown station or show, or a show turned off), `409` (`conflict`: the show is closed), `422` (`invalid`: a field too long or unknown), `429` (`too_many_requests`, with `Retry-After`), `503` (the API not reached, or no gateway token).
+
+Behind it, the gateway calls the API with `Authorization: Bearer <HERON_PUBLIC_TOKEN>`:
+
+- `GET /api/v1/gateway/state`: every enabled station (`code`, `name`, `timezone`, `now_playing` as the public endpoint gives it, `shows`: the shows on for it), and `server_time_unix_ms`. Read once a second.
+- `GET /api/v1/gateway/stations/{code}/{module}/…`: a show's own reads (the dedications' search and follow link), with the listener's query.
+- `POST /api/v1/gateway/stations/{code}/{module}/…`: a show's writes, with `X-Heron-Device` (the device's hash). The API checks again that the show is on (`404`) and open (`409`). A write the gateway adds up arrives as `{"counts": [{"fields": {…}, "count": 12}]}`; one it keeps per device as `{"writes": [{"device": "…", "fields": {…}}]}`, each device's last.
+
+These routes accept only the gateway token, and the gateway token reaches nothing else: it is not a user's, and `HERON_PUBLIC_TOKEN` unset refuses it (`401`).
+
+## Likes
+
+Listeners' [likes](listener-interaction.md#likes) on the tracks played, per station (signed in; `404` while the `likes` module is off):
+
+- `GET /stations/{id}/likes/current`: the play listeners can vote on now, `play_id`, `track_id`, `likes`, `dislikes`; `null` while nothing can be voted on (a jingle, nothing on air).
+- `GET /stations/{id}/likes/week`: the most liked and least liked tracks of the week so far, from Monday 00:00 in the station's time zone: `from_unix_ms`, `min_votes` (10), and `most_liked`, `least_liked`, 10 each (`track_id`, `artist`, `title`, `likes`, `dislikes`, `share` from 0 to 1, `plays`: its plays with votes), among the tracks with at least `min_votes` votes. Ties go to the track with the most votes.
+- `GET /stations/{id}/likes/tracks/{track_id}`: a track's votes on the station: `week`, `days_30` and `total` (each `likes`, `dislikes`), `min_votes`, and `plays`, its latest 20 plays with votes (`play_id`, `started_at_unix_ms`, `likes`, `dislikes`).
+
+On the track list, `GET /tracks` gives each track's `likes` and `dislikes` over `likes_days` days (1 to 3650, 30 by default), on the station of `station_id`, else of `on_station_id` (every station's when neither is given), and takes:
+
+- `sort=liked`: by share of likes, lowest first (`desc=true`: highest first); tracks below 10 votes come after those ranked, those without votes last;
+- `liked_min`, `liked_max`: the share of likes in percent, 0 to 100 (tracks without votes are left out);
+- `votes_min`: at least this many votes.
+
+Each play of `GET /tracks/{id}/plays/grid` has its `likes` and `dislikes`.
+
+Votes are counted per play (`play_votes`: the play, its station, its track, when it started, likes and dislikes), kept as long as the history: a period's ranking adds up the plays that started in it, per track and per station.
+
+## Dedications
+
+[Dedications](listener-interaction.md#dedications) on a station (signed in; operators decide and change the settings; `404` while the `dedications` module is off):
+
+- `GET`, `PUT /stations/{id}/dedications/settings`: `max_per_range` (requests per opening range, everyone together, 1 to 1000, 30 by default), `per_device` (per device per range, 1 to 10, 1), `message_max` (characters, 20 to 500, 140), `retention_days` (1 to 365, 30), `category_ids` (the requestable categories, the station's; none: its music). The hours, website and notifications are the show's settings, [above](#shows).
+- `GET /stations/{id}/dedications` (`status`: `pending`, `accepted`, `played` or `refused`; `limit` 1 to 200, 100 by default): the requests of the opening range on now, else of the last one, the latest first: `id`, `track_id`, `artist`, `title`, `from`, `to`, `message`, `status`, `reason`, `submitted_at_unix_ms`, `decided_at_unix_ms`, `decided_by`, `planned_at_unix_ms`, `played_at_unix_ms`, `play_id`, and for a waiting one `checks` (what the rules say now: each `kind`, `rules_kept`, `artist_played`, `title_played`, `track_played`, `in_queue`, `restriction` or `unplayable`, with `minutes_ago`, `separation_min`, `at_unix_ms` or `restriction_id` as it applies, and `blocking`: a restriction or a track that cannot play). With them: `counts` (`pending`, `accepted`, `played`, `refused`, `received` in the range), `max_per_range`, the range's `opens_at_unix_ms` and `closes_at_unix_ms` (`null` without one), and `on_air`, the dedication of the track playing (`null` without one).
+- `POST /stations/{id}/dedications/{id}/accept` with `{"place": "next"}` (`next`, `hour` or `best`): queues the track (source `request`) and answers the request, `planned_at_unix_ms` filled. `409` for a request not waiting, a track a restriction forbids then or that cannot play; `503` while the engine is unreachable.
+- `POST /stations/{id}/dedications/{id}/refuse` with `{"reason": "just_played"}` (`null`, `just_played`, `unavailable` or `inappropriate`): `409` for a request not waiting.
+
+Through the gateway (`docs/listener-interaction.md#dedications`), with the proof of work for the write:
+
+- `GET /api/v1/public/stations/{code}/dedications/search?q=neon`: the requestable tracks whose artist or title has `q` (2 to 60 characters), 8 at most: `track_id`, `artist`, `title`. `409` while closed. Cached 30 seconds per query.
+- `POST /api/v1/public/stations/{code}/dedications`: `{"track_id": 42, "from": "Marc", "to": "Julie", "message": "Happy birthday!"}` (`from` 40 characters, `to` 60, `message` the station's maximum, 500 at most in the gateway). Answers `201` with the request as its follow link gives it, and `follow`, its key. `422` for a track that cannot be requested or a message too long, `409` while closed or once the range is full, `429` past the device's requests in the range or while one of its requests waits.
+- `GET /api/v1/public/stations/{code}/dedications/follow?id=<follow>`: `status` (`pending`, `accepted`, `played`, `refused`), `reason` (`closed`, `just_played`, `unavailable`, `removed`; `null` for no reason or an inappropriate message), `artist`, `title`, `from`, `to`, `message`, `submitted_at_unix_ms`, `decided_at_unix_ms`, `planned_at_unix_ms`, `played_at_unix_ms`. `404` once deleted. Cached 5 seconds.
+
+The show's own notification events are `dedication.played` and `dedication.accepted`. Its public state (`state` in the gateway's state): `remaining` (requests left in the range, `null` while closed), `message_max`, `per_device`, `retention_days` and `today` (the dedications accepted or played since midnight, in planned order: `artist`, `title`, `from`, `to`, `message`, `at_unix_ms`, `played`). `now-playing` and the `track.started` webhook carry the track's `dedication` (`from`, `to`, `message`), `null` without one; webhook templates have `{{dedication_from}}`, `{{dedication_to}}` and `{{dedication_message}}`.
+
+## Top 30
+
+The [Top 30](listener-interaction.md#top-30) of a station (signed in; operators change it; `404` while the `top30` module is off). A week is named by its Monday, `2026-11-02`.
+
+- `GET`, `PUT /stations/{id}/top30/settings`:
+
+  ```json
+  {"close_day": 7, "close_hour": 17, "min_votes": 10, "size": 30,
+   "category_ids": [], "jingle_category_id": 12, "new_release_category_id": 15}
+  ```
+
+  `close_day` 1 (Monday) to 7, `close_hour` 0 to 24 (Monday needs 1 or more: the week starts on Monday 00:00), `min_votes` 1 to 1000, `size` 1 to 50, `category_ids` the eligible categories (empty: the station's music), the jingle and new release categories or `null`. A category that is not the station's is refused, `422`. The show's hours, website and notifications are its [show settings](#shows).
+- `GET /stations/{id}/top30/chart` (`week`: a past week; this week by default): `week`, `from_unix_ms`, `closes_at_unix_ms`, `frozen` (closed and kept; else the chart as it stands now), `votes` (over the week, eligible tracks), `entries` (each `rank`, `track_id`, `artist`, `title`, `likes`, `dislikes`, `share` from 0 to 1, `plays`, `movement`: `up`, `down`, `same`, `new` or `reentry`, `previous_rank`, `weeks`), `removed` (`track_id`, `artist`, `title`, `removed_by`, `removed_at_unix_ms`), `new_release` (`track_id`, `artist`, `title`, `proposed`: not chosen by hand; `null` without a new release category) and `locked` (a show was built from it: no change any more). Ranks follow the shares as they are when it is read, until it is frozen.
+- `GET /stations/{id}/top30/charts` (`before`, a week, for the next page; `limit` 1 to 100, 20 by default): the frozen charts, the latest first: `week`, `from_unix_ms`, `closes_at_unix_ms`, `size` and `number_one` (`track_id`, `artist`, `title`).
+- `POST /stations/{id}/top30/charts/{week}/removals/{track_id}`: takes the track out of the week's chart, the tracks after it moving up; `DELETE` puts it back. Refused, `409`, once a show was built from the chart, or for a week to come. Answers the chart.
+- `PUT /stations/{id}/top30/charts/{week}/new-release`: `{"track_id": 42}` chooses the new release (a track of the new release category, else `422`), `{"track_id": null}` goes back to the proposed one. `409` once a show was built from the chart. Answers the chart.
+- `GET /stations/{id}/top30/show`: the show on now, else the next one within a week (`null` without hours): `opens_at_unix_ms`, `closes_at_unix_ms`, `week` (the chart it plays; `null` without one), `built` (its programme is built: it is the one on air), `items` in order (`kind`: `jingle`, `track` or `new_release`; `rank`, `track_id`, `artist`, `title`, `length_ms`, `planned_at_unix_ms`, `skipped`: why it is passed over, or `null`; `queued`), `left_out` (the ranks left out to fit the slot), `music_ms`, `jingles_ms`, `new_release_ms` and `total_ms`. Before it is built, it is what would be built now.
+
+The show's own notification events are `top.published` and `top.rank` ([Top 30 – Notifications](listener-interaction.md#top-30)). Its public state (`state` in the gateway's state): `chart` (`week`, `entries`: each `rank` and, once revealed, `artist`, `title`, `movement`, `previous_rank`, `weeks`, `on_air`; hidden ones have only their `rank` and `hidden: true`), `new_release` (`artist`, `title`, `hidden` until it plays), `live` (the show is playing it), `on_air_rank`, and `votes_count_for_unix_ms` (the opening the votes of now count for; `null` between the close and Monday). `chart` is `null` before the first show.
 
 ## Cover art
 

@@ -28,3 +28,9 @@ scrape_configs:
     static_configs:
       - targets: ["heron-librarian:8083"]
         labels: { station: heron }
+
+  # The public gateway, on its ops port (not the public one).
+  - job_name: heron-public
+    static_configs:
+      - targets: ["heron-public:8085"]
+        labels: { station: heron }
