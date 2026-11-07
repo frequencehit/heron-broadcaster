@@ -1153,7 +1153,7 @@ const en = {
   "rotationPage.slotNoLongerFits": "slot {slot} (no longer fits before the exact time)",
   "rotationPage.slotExactPassed": "slot {slot} (exact time passed)",
   "queue.startsAt": "At {time}",
-  "queue.startsAtHint": "An exact time: the engine fades out what plays then and starts this track",
+  "queue.startsAtHint": "Exact time: this track starts at this time at the latest, and what is still playing then is faded out",
   "queue.continues": "Continued",
   "queue.continuesHint": "The end of a shortened medley: the rest of the track before",
   "settings.filler": "Filler category",

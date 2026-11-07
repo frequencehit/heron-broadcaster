@@ -1155,7 +1155,7 @@ const de = {
   "rotationPage.slotNoLongerFits": "Slot {slot} (passt nicht mehr vor die genaue Zeit)",
   "rotationPage.slotExactPassed": "Slot {slot} (genaue Zeit vorbei)",
   "queue.startsAt": "Um {time}",
-  "queue.startsAtHint": "Eine genaue Zeit: die Engine blendet dann aus, was läuft, und startet diesen Titel",
+  "queue.startsAtHint": "Genaue Zeit: dieser Titel startet spätestens zu dieser Zeit, und was dann noch läuft, wird ausgeblendet",
   "queue.continues": "Fortsetzung",
   "queue.continuesHint": "Das Ende eines gekürzten Medleys: der Rest des Titels davor",
   "settings.filler": "Füllerkategorie",

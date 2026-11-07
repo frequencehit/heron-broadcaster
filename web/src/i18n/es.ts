@@ -1155,7 +1155,7 @@ const es = {
   "rotationPage.slotNoLongerFits": "hueco {slot} (ya no cabe antes de la hora exacta)",
   "rotationPage.slotExactPassed": "hueco {slot} (hora exacta pasada)",
   "queue.startsAt": "A las {time}",
-  "queue.startsAtHint": "Una hora exacta: el motor desvanece lo que suena entonces y lanza esta pista",
+  "queue.startsAtHint": "Hora exacta: esta pista empieza a esta hora como muy tarde, y lo que aún suena se desvanece",
   "queue.continues": "Continuación",
   "queue.continuesHint": "El final de un medley acortado: el resto de la pista anterior",
   "settings.filler": "Categoría de relleno",
