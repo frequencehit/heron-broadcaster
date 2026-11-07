@@ -12518,6 +12518,430 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/top30/chart": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
+        "operationId": "get_top30_chart_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "query",
+            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/charts": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The frozen charts, the latest first.",
+        "operationId": "list_top30_charts_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Weeks before this one (its Monday), for the next page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 100, 20 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PastChart"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/charts/{week}/new-release": {
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "choose_new_release_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewReleaseChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/charts/{week}/removals/{track_id}": {
+      "post": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
+        "operationId": "remove_track_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
+        "operationId": "restore_track_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/settings": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The station's Top 30 settings.",
+        "operationId": "get_top30_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_top30_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Top30Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/show": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
+        "operationId": "get_top30_show_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ShowPlan"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/webhook-deliveries/{id}/retry": {
       "post": {
         "tags": [
@@ -13291,6 +13715,352 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/chart": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
+        "operationId": "get_top30_chart",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "query",
+            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/charts": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The frozen charts, the latest first.",
+        "operationId": "list_top30_charts",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Weeks before this one (its Monday), for the next page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 100, 20 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PastChart"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/charts/{week}/new-release": {
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "choose_new_release",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewReleaseChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/charts/{week}/removals/{track_id}": {
+      "post": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
+        "operationId": "remove_track",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
+        "operationId": "restore_track",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/settings": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The station's Top 30 settings.",
+        "operationId": "get_top30_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_top30_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Top30Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/show": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
+        "operationId": "get_top30_show",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ShowPlan"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -16942,6 +17712,151 @@
           }
         }
       },
+      "Chart": {
+        "type": "object",
+        "description": "A week's chart.",
+        "required": [
+          "week",
+          "from_unix_ms",
+          "closes_at_unix_ms",
+          "frozen",
+          "locked",
+          "votes",
+          "entries",
+          "removed"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChartEntry"
+            }
+          },
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "frozen": {
+            "type": "boolean",
+            "description": "Closed and kept; else the chart as it stands now."
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "A show was built from it: it does not change any more."
+          },
+          "new_release": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NewRelease",
+                "description": "`null` without a new release category."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Removed"
+            }
+          },
+          "votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The votes on the eligible tracks over the week.",
+            "minimum": 0
+          },
+          "week": {
+            "type": "string",
+            "description": "Its Monday: `2026-11-02`."
+          }
+        }
+      },
+      "ChartEntry": {
+        "type": "object",
+        "description": "A rank of a chart.",
+        "required": [
+          "rank",
+          "likes",
+          "dislikes",
+          "share",
+          "plays",
+          "movement",
+          "weeks"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "movement": {
+            "$ref": "#/components/schemas/Movement"
+          },
+          "plays": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its plays with votes over the week.",
+            "minimum": 0
+          },
+          "previous_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its rank in last week's chart.",
+            "minimum": 0
+          },
+          "rank": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "share": {
+            "type": "number",
+            "format": "double",
+            "description": "The share of likes, 0 to 1."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Missing once the track is deleted.",
+            "minimum": 0
+          },
+          "weeks": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The charts it was in, this one included.",
+            "minimum": 0
+          }
+        }
+      },
       "Checked": {
         "type": "object",
         "required": [
@@ -20345,6 +21260,77 @@
           }
         }
       },
+      "Item": {
+        "type": "object",
+        "description": "An item of a show's programme.",
+        "required": [
+          "kind",
+          "track_id",
+          "length_ms",
+          "planned_at_unix_ms"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          },
+          "length_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "What is played of it.",
+            "minimum": 0
+          },
+          "planned_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "queued": {
+            "type": "boolean",
+            "description": "Sent to the queue."
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The rank of a track, and of the jingle before it.",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is passed over (a restriction, a track that cannot play)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ItemKind": {
+        "type": "string",
+        "description": "What an item of the show is.",
+        "enum": [
+          "jingle",
+          "track",
+          "new_release"
+        ]
+      },
       "KeyRecord": {
         "type": "object",
         "required": [
@@ -21832,6 +22818,17 @@
         },
         "additionalProperties": false
       },
+      "Movement": {
+        "type": "string",
+        "description": "How a track moved against the chart of the week before.",
+        "enum": [
+          "up",
+          "down",
+          "same",
+          "new",
+          "reentry"
+        ]
+      },
       "NameFrom": {
         "type": "string",
         "enum": [
@@ -21904,6 +22901,52 @@
           "password": {
             "type": "string",
             "description": "Your password, asked again."
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewRelease": {
+        "type": "object",
+        "description": "The new release at the end of the show.",
+        "required": [
+          "track_id",
+          "proposed"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed": {
+            "type": "boolean",
+            "description": "Proposed by Heron, not chosen by hand."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "NewReleaseChoice": {
+        "type": "object",
+        "description": "The new release chosen by hand; `null` goes back to the proposed one.",
+        "properties": {
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -22559,6 +23602,70 @@
           }
         },
         "additionalProperties": false
+      },
+      "PastChart": {
+        "type": "object",
+        "description": "A frozen chart in the list of past weeks.",
+        "required": [
+          "week",
+          "from_unix_ms",
+          "closes_at_unix_ms",
+          "size"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "number_one": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PastNumberOne"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its tracks.",
+            "minimum": 0
+          },
+          "week": {
+            "type": "string"
+          }
+        }
+      },
+      "PastNumberOne": {
+        "type": "object",
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "Period": {
         "type": "object",
@@ -24097,6 +25204,44 @@
         },
         "additionalProperties": false
       },
+      "Removed": {
+        "type": "object",
+        "description": "A track taken out of a chart.",
+        "required": [
+          "track_id",
+          "removed_at_unix_ms"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "removed_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "removed_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who took it out; missing once the user is deleted."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "RenderRequest": {
         "type": "object",
         "required": [
@@ -25285,6 +26430,73 @@
               "null"
             ],
             "description": "Missing when the service was never seen or does not say."
+          }
+        }
+      },
+      "ShowPlan": {
+        "type": "object",
+        "description": "The show on now, or the next one.",
+        "required": [
+          "opens_at_unix_ms",
+          "closes_at_unix_ms",
+          "built",
+          "items",
+          "left_out",
+          "music_ms",
+          "jingles_ms",
+          "new_release_ms",
+          "total_ms"
+        ],
+        "properties": {
+          "built": {
+            "type": "boolean",
+            "description": "Its programme is built: the one on air. Else what would be built now."
+          },
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            }
+          },
+          "jingles_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "left_out": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "The ranks left out to fit the slot."
+          },
+          "music_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "new_release_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "opens_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "week": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The chart it plays; `null` without one."
           }
         }
       },
@@ -27535,6 +28747,71 @@
           "light",
           "dark"
         ]
+      },
+      "Top30Settings": {
+        "type": "object",
+        "description": "A station's Top 30 settings (`station_settings`, `top30`). Its hours,\nwebsite and notifications are its show settings.",
+        "properties": {
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "The categories whose tracks can enter the chart; none: the\nstation's music.",
+            "default": []
+          },
+          "close_day": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The day the week closes, 1 (Monday) to 7.",
+            "default": 7,
+            "minimum": 0
+          },
+          "close_hour": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The hour it closes, 0 to 24.",
+            "default": 17,
+            "minimum": 0
+          },
+          "jingle_category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The jingles between the tracks of the show.",
+            "default": null,
+            "minimum": 0
+          },
+          "min_votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Votes a track needs over the week to be ranked, 1 to 1000.",
+            "default": 10,
+            "minimum": 0
+          },
+          "new_release_category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where the new release at the end of the show comes from.",
+            "default": null,
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tracks in the chart, 1 to 50.",
+            "default": 30,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "TotpSetup": {
         "type": "object",
@@ -29921,7 +31198,9 @@
           "ping",
           "show.upcoming",
           "show.started",
-          "show.ended"
+          "show.ended",
+          "top.published",
+          "top.rank"
         ]
       },
       "WebhookInput": {
@@ -30325,6 +31604,10 @@
     {
       "name": "likes",
       "description": "Listeners' likes and dislikes of the tracks played, per station"
+    },
+    {
+      "name": "top30",
+      "description": "The weekly chart of the most liked tracks, and its show on air"
     },
     {
       "name": "gateway",

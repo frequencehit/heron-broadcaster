@@ -2206,7 +2206,10 @@ mod tests {
             artists: vec![id],
             categories: Vec::new(),
             length_ms,
+            mix_ms: None,
             ratio: 10,
+            dayparts: None,
+            daypart_days: None,
         };
         let mut tracks: Vec<Track> = (1..=40).map(|id| track(id, 180_000)).collect();
         tracks.extend((101..=103).map(|id| track(id, 10_000)));
@@ -2238,6 +2241,8 @@ mod tests {
                 schedule: Default::default(),
                 schedules: Vec::new(),
                 settings: RotationSettings::default(),
+                medley_category: None,
+                medleys: Vec::new(),
                 no_two_in_a_row: Vec::new(),
                 counters: HashMap::new(),
                 station_ratios: HashMap::new(),
