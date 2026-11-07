@@ -1402,6 +1402,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/tag-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many tracks have tags kept in Heron's database instead of their
+         *     files. Admins.
+         */
+        get: operations["count_tag_overrides"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/tag-overrides/write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Writes every track's tags kept in Heron's database into its file, as
+         *     one `edit` batch that can be undone, whatever the library setting
+         *     `write_tags` says: queues a `write_tag_overrides` task. The tags stay
+         *     kept in Heron. Admins.
+         */
+        post: operations["write_tag_overrides"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/tasks": {
         parameters: {
             query?: never;
@@ -4302,31 +4344,11 @@ export interface paths {
         /**
          * Edits the tags of the selected tracks in Heron's database only, when
          *     the library setting `write_tags` is off: the files are not changed.
-         *     The values are shown instead of the files' tags, and survive a rescan,
-         *     until they are cleared. Operators and admins.
+         *     The values are shown instead of the files' tags, and survive a rescan;
+         *     `POST /library/tag-overrides/write` writes them into the files.
+         *     Operators and admins.
          */
         post: operations["override_tags"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tracks/tag-overrides/clear": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Drops the tags kept in Heron's database for the selected tracks (at most
-         *     10,000): they show their files' tags again. Works whatever `write_tags`
-         *     says. Operators and admins.
-         */
-        post: operations["clear_tag_overrides"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9967,10 +9989,12 @@ export interface components {
                 [key: string]: string | null;
             };
         };
-        TagOverridesClear: {
-            /** @description The fields to give back to the files; every field when empty. */
-            fields?: components["schemas"]["TagField"][];
-            selection: components["schemas"]["TrackSelection"];
+        TagOverridesCount: {
+            /**
+             * Format: int64
+             * @description Tracks with tags kept in Heron's database (the trash left out).
+             */
+            tracks: number;
         };
         Target: {
             id: components["schemas"]["u64"];
@@ -10021,6 +10045,9 @@ export interface components {
                 [key: string]: string | null;
             };
             track_ids: number[];
+        } | {
+            /** @enum {string} */
+            kind: "write_tag_overrides";
         } | {
             all?: boolean;
             /** @enum {string} */
@@ -10207,8 +10234,8 @@ export interface components {
             station_ratios: components["schemas"]["StationRatio"][];
             /**
              * @description Tags kept in Heron's database (library setting `write_tags` off),
-             *     shown instead of the file's: `POST /tracks/tag-overrides/clear`
-             *     gives them back to the file.
+             *     shown instead of the file's: `POST /library/tag-overrides/write`
+             *     writes them into the files.
              */
             tag_overrides: components["schemas"]["TagField"][];
         };
@@ -13945,6 +13972,60 @@ export interface operations {
                 };
             };
             "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    count_tag_overrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagOverridesCount"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    write_tag_overrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryTask"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -20981,37 +21062,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TagOverrides"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SelectionResult"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    clear_tag_overrides: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TagOverridesClear"];
             };
         };
         responses: {

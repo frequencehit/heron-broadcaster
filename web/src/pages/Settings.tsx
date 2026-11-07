@@ -3,14 +3,15 @@
 // Station settings: autofill, rotation, time zone, programming details,
 // medleys, listener statistics, analysis and library management.
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type Schemas, api, done, unwrap } from "../api";
 import { CoverImage, sendImage } from "../components/Cover";
 import { ModuleSwitches } from "../components/Modules";
 import { DaypartSettings } from "../components/Dayparts";
+import { TaskState, useTask } from "../components/Task";
 import { DrawDepthDiagram } from "../components/DrawDepth";
-import { Card, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
+import { Card, ConfirmButton, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
 import { type PlainKey, number, rich, t } from "../i18n";
 import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
 import { Link, setSearch, useLocation } from "../lib/router";
@@ -1369,6 +1370,7 @@ function LibraryCard() {
           </>
         )}
       </SettingsCard>
+      {isAdmin && <KeptTagsCard />}
       <Card title={t("track.identification")}>
         <div className="stack">
           <p className="muted small" style={{ margin: 0 }}>
@@ -1412,6 +1414,69 @@ function LibraryCard() {
         </div>
       </Card>
     </>
+  );
+}
+
+/** Writes the tags kept in Heron's database into the files, whatever `write_tags` says. Admins. */
+export function KeptTagsCard() {
+  const client = useQueryClient();
+  const kept = useQuery({
+    queryKey: ["tag-overrides"],
+    queryFn: () => unwrap(api.GET("/api/v1/library/tag-overrides")),
+  });
+  const [taskId, setTaskId] = useState<number | null>(null);
+  const task = useTask(taskId);
+  const write = useAction(() => unwrap(api.POST("/api/v1/library/tag-overrides/write")), {
+    onSuccess: (queued) => setTaskId(queued.id),
+    invalidate: [["library-tasks"]],
+  });
+  const status = task.data?.status;
+  const finished = status === "done" || status === "failed";
+  useEffect(() => {
+    if (finished) {
+      for (const key of [["tag-overrides"], ["tracks"], ["track"], ["library-batches"]]) {
+        void client.invalidateQueries({ queryKey: key });
+      }
+    }
+  }, [finished, client]);
+  const tracks = kept.data?.tracks ?? 0;
+  if (tracks === 0 && taskId === null) {
+    return null;
+  }
+  const report = task.data?.report;
+  return (
+    <Card title={t("settings.keptTags")}>
+      <div className="stack">
+        <p className="muted small" style={{ margin: 0 }}>
+          {rich("settings.keptTagsHelp", { link: <Link to="/to-organize?tab=batches">{t("nav.review")}</Link> })}
+        </p>
+        {tracks > 0 && (
+          <div className="row">
+            <ConfirmButton
+              className="btn"
+              confirm={t("settings.writeKeptTagsConfirm")}
+              disabled={write.isPending || (taskId !== null && !finished)}
+              question={<p>{t("settings.writeKeptTagsQuestion", { count: tracks })}</p>}
+              onConfirm={() => write.mutate(undefined)}
+            >
+              <Icon name="edit" /> {t("settings.writeKeptTags", { count: tracks })}
+            </ConfirmButton>
+          </div>
+        )}
+        {task.data && (
+          <div className="small">
+            <TaskState task={task.data} />
+            {report && (
+              <p style={{ margin: 0 }}>
+                {t("selection.written", { count: report.done })}
+                {(report.unchanged ?? 0) > 0 && t("selection.alreadyRight", { count: report.unchanged ?? 0 })}
+                {report.skipped.length > 0 && t("selection.skipped", { count: report.skipped.length })}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

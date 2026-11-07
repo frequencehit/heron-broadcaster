@@ -3346,20 +3346,63 @@ async fn track_details_labels_programming_and_tags() {
         "Corrected"
     );
 
-    // Cleared, a field shows the file's tag again (this file has none).
-    let (status, result) = admin
+    // Going back to the file's tags is no more.
+    let (status, _) = admin
         .send(
             Method::POST,
             "/tracks/tag-overrides/clear",
-            json!({"selection": {"track_ids": [track]}, "fields": ["title"]}),
+            json!({"selection": {"track_ids": [track]}}),
         )
         .await;
-    assert_eq!(status, StatusCode::OK, "{result}");
-    assert_eq!(result["changed"], 1);
+    assert!(
+        matches!(
+            status,
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+        ),
+        "{status}"
+    );
+
+    // The tags kept in Heron written into the file on request, whatever
+    // write_tags says (off here); they stay kept in Heron. Admins only.
+    let (status, _) = viewer
+        .request(Method::GET, "/library/tag-overrides", None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        admin.get("/library/tag-overrides").await,
+        json!({"tracks": 1})
+    );
+    let (status, _) = viewer
+        .request(Method::POST, "/library/tag-overrides/write", None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, task) = admin
+        .request(Method::POST, "/library/tag-overrides/write", None)
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{task}");
+    assert_eq!(task["request"]["kind"], "write_tag_overrides");
+    assert!(librarian.run_next().await.unwrap());
+    let task = admin.get(&format!("/library/tasks/{}", task["id"])).await;
+    assert_eq!(task["status"], "done", "{task}");
+    assert_eq!(task["report"]["done"], 1, "{task}");
+    let written = heron_library::tags::read(&file).unwrap();
+    assert_eq!(written.tags.title.as_deref(), Some("Corrected"));
+    assert_eq!(written.tags.album.as_deref(), Some("Live"));
+    assert_eq!(written.tags.date.as_deref(), Some("1977"));
+    assert_eq!(written.tags.disc, None);
+    let batches = admin.get("/library/batches").await;
+    assert_eq!(batches[0]["kind"], "edit");
+    assert_eq!(batches[0]["files"], 1);
     let detail = admin.get(&format!("/tracks/{track}")).await;
-    assert_eq!(detail["title"], Value::Null);
-    assert_eq!(detail["year"], 1977);
-    assert_eq!(detail["tag_overrides"], json!(["album", "year", "disc"]));
+    assert_eq!(detail["title"], "Corrected");
+    assert_eq!(
+        detail["tag_overrides"],
+        json!(["title", "album", "year", "disc"])
+    );
+    assert_eq!(
+        admin.get("/library/tag-overrides").await,
+        json!({"tracks": 1})
+    );
 
     // Back to writing the files: a field written is dropped from the
     // overrides, the others stay.
@@ -3390,20 +3433,7 @@ async fn track_details_labels_programming_and_tags() {
     let detail = admin.get(&format!("/tracks/{track}")).await;
     assert_eq!(detail["year"], 2001);
     assert_eq!(detail["album"], "Live");
-    assert_eq!(detail["tag_overrides"], json!(["album", "disc"]));
-    let (status, result) = admin
-        .send(
-            Method::POST,
-            "/tracks/tag-overrides/clear",
-            json!({"selection": {"track_ids": [track]}}),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK, "{result}");
-    assert_eq!(result["changed"], 2);
-    let detail = admin.get(&format!("/tracks/{track}")).await;
-    assert_eq!(detail["album"], Value::Null);
-    assert_eq!(detail["year"], 2001);
-    assert_eq!(detail["tag_overrides"], json!([]));
+    assert_eq!(detail["tag_overrides"], json!(["title", "album", "disc"]));
     station.stop().await;
 }
 
