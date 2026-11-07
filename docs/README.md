@@ -25,7 +25,8 @@ The name comes from "air on" sounding like *héron* (French for heron): keeping 
 | [Encoders and outputs](outputs.md) | Encoder selection, multiple outputs, Icecast, Shoutcast, HLS |
 | [Several stations](stations.md) | One Heron for several stations: shared library, categories and medleys tagged with stations, plays per station, rules across stations, roles per station, one engine per station |
 | [Listener statistics](statistics.md) | Listeners per day, hour, output and track from the stream servers, sessions, privacy, CSV export |
-| [Modules](modules.md) | Medleys, cover art, listener statistics and webhooks turned off for the installation or a station: hidden, stopped, their data kept |
+| [Modules](modules.md) | Medleys, cover art, listener statistics, webhooks and the shows turned off for the installation or a station: hidden, stopped, their data kept |
+| [Listener interaction](listener-interaction.md) | The shows listeners take part in from the website: the public gateway `heron-public`, opening hours, the page and widget for the website, notifications, personal data |
 
 ## Technical design
 

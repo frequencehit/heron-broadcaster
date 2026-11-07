@@ -2150,6 +2150,7 @@ name = "heron-core"
 version = "0.3.0"
 dependencies = [
  "blake3",
+ "jiff",
  "serde",
  "serde_json",
  "utoipa",
@@ -2273,6 +2274,31 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+]
+
+[[package]]
+name = "heron-public"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bytes",
+ "clap",
+ "getrandom 0.4.3",
+ "heron-core",
+ "heron-service",
+ "hmac 0.13.0",
+ "jiff",
+ "metrics",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
 ]
 
 [[package]]

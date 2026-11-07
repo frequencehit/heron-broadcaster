@@ -194,6 +194,7 @@ async fn simulated_listeners_are_counted() {
         &StationSettings {
             timezone: "UTC".to_owned(),
             public_url: None,
+            gateway_url: None,
         },
     )
     .await

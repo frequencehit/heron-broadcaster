@@ -33,6 +33,12 @@ pub struct PublicTrack {
     /// From the cue-in to the cue-out.
     pub duration_ms: u64,
     pub position_ms: u64,
+    /// The accepted dedication it plays for
+    /// (`docs/listener-interaction.md#dedications`).
+    pub dedication: Option<crate::dedications::OnAirDedication>,
+    /// The match it won (`docs/listener-interaction.md#match`).
+    #[serde(rename = "match")]
+    pub chosen: Option<crate::matches::OnAirMatch>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -169,6 +175,14 @@ async fn now_playing(
     State(state): State<AppState>,
     station: Station,
 ) -> ([(header::HeaderName, &'static str); 1], Json<NowPlaying>) {
+    (
+        [(header::CACHE_CONTROL, "public, max-age=5")],
+        Json(now_playing_of(&state, &station).await),
+    )
+}
+
+/// What `GET /public/now-playing` answers, for the gateway's state too.
+pub async fn now_playing_of(state: &AppState, station: &Station) -> NowPlaying {
     let now = unix_ms(SystemTime::now());
     let mut jingle = false;
     let mut track_id = None;
@@ -192,12 +206,29 @@ async fn now_playing(
                     started_at_unix_ms: now.saturating_sub(deck.position_ms),
                     duration_ms: deck.length_ms,
                     position_ms: deck.position_ms,
+                    dedication: None,
+                    chosen: None,
                 })
             })
     });
+    let player = station.engine.state().borrow().clone();
+    let track = match (track, player) {
+        (Some(mut track), Some(player)) => {
+            match crate::dedications::on_air(&state.pool, station.id(), &player).await {
+                Ok(dedication) => track.dedication = dedication,
+                Err(error) => tracing::warn!(%error, "cannot read the dedication"),
+            }
+            match crate::matches::on_air_winner(&state.pool, station.id(), &player).await {
+                Ok(chosen) => track.chosen = chosen,
+                Err(error) => tracing::warn!(%error, "cannot read the match"),
+            }
+            Some(track)
+        }
+        (track, _) => track,
+    };
     let mut track = match track {
         Some(track) => Some(track),
-        None if jingle => match last_song(&state, &station, now).await {
+        None if jingle => match last_song(state, station, now).await {
             Ok(Some((id, track))) => {
                 track_id = id;
                 Some(track)
@@ -217,13 +248,10 @@ async fn now_playing(
             Err(error) => tracing::warn!(%error, "cannot read the cover"),
         }
     }
-    (
-        [(header::CACHE_CONTROL, "public, max-age=5")],
-        Json(NowPlaying {
-            now: track,
-            server_time_unix_ms: now,
-        }),
-    )
+    NowPlaying {
+        now: track,
+        server_time_unix_ms: now,
+    }
 }
 
 /// What comes next, in airing order: the music only (no FX player, no
@@ -339,6 +367,8 @@ async fn last_song(
                 started_at_unix_ms: started,
                 duration_ms: u64::from(duration_ms.unwrap_or(0)),
                 position_ms: now.saturating_sub(started),
+                dedication: None,
+                chosen: None,
             };
             (track_id, track)
         }),

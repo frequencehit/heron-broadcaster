@@ -673,6 +673,16 @@ function StationCard() {
               onChange={(e) => set({ public_url: e.target.value.trim() === "" ? null : e.target.value })}
             />
           </Field>
+          <Field label={t("settings.gatewayUrl")} hint={t("settings.gatewayUrlHint")}>
+            <input
+              className="input"
+              type="url"
+              placeholder="https://…"
+              value={draft.gateway_url ?? ""}
+              disabled={!isAdmin}
+              onChange={(e) => set({ gateway_url: e.target.value.trim() === "" ? null : e.target.value })}
+            />
+          </Field>
           {coverArt && <StationLogo canEdit={isAdmin} />}
         </>
       )}

@@ -210,7 +210,7 @@ pub async fn station_role(
     Ok(role.as_deref().and_then(Role::parse))
 }
 
-fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+pub(crate) fn bearer_token(headers: &HeaderMap) -> Option<&str> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let (scheme, token) = value.split_once(' ')?;
     scheme

@@ -210,6 +210,17 @@ impl HistoryRecorder {
                 self.reweigh(track_id, track.source).await?;
             }
         }
+        // An accepted dedication: it played, with this play.
+        if track.source == PlaySource::Request {
+            crate::dedications::link_play(
+                &self.pool,
+                self.station_id,
+                self.engine_started_at,
+                entry.entry_id,
+                id,
+            )
+            .await?;
+        }
         Ok(id)
     }
 

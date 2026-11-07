@@ -8,6 +8,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type DeckState, type OutputStatus, type QueueEntry, api, done, unwrap } from "../api";
 import { StereoMeter, LineMeter } from "../components/Meter";
+import { DedicationOnAir } from "../components/Dedications";
+import { MatchOnAir } from "../components/Match";
+import { NowLikes } from "../components/Likes";
 import { QueueList } from "../components/QueueList";
 import { TrackSearch } from "../components/TrackSearch";
 import { Card, ConfirmButton, Empty, Icon, Modal, PageHead } from "../components/ui";
@@ -147,6 +150,9 @@ export function Dashboard() {
         </div>
 
         <div className="stack">
+          <DedicationOnAir />
+          <MatchOnAir />
+          <NowLikes />
           <Card title={t("dashboard.levels")}>
             <div className="row" style={{ alignItems: "flex-start", gap: "1.5rem" }}>
               <StereoMeter levels={levels?.master ?? null} label={t("dashboard.master")} />

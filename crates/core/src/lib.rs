@@ -11,6 +11,8 @@ pub mod modules;
 pub mod output;
 pub mod playout;
 pub mod settings;
+#[cfg(feature = "shows")]
+pub mod shows;
 
 pub use agc::AgcSettings;
 pub use eq::{DeckEq, EQ_BANDS, EQ_MAX_GAIN_DB, EqSettings};

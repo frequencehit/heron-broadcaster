@@ -72,6 +72,11 @@ pub struct StationSettings {
     /// endpoints and webhooks start with it. Paths only when missing.
     #[serde(default)]
     pub public_url: Option<String>,
+    /// The address `heron-public`, the shows' gateway, is reached at from
+    /// the station's website (`https://public.radio.example.org`): the
+    /// lines of the shows' widgets start with it.
+    #[serde(default)]
+    pub gateway_url: Option<String>,
 }
 
 impl StationSettings {
@@ -100,6 +105,7 @@ impl Default for StationSettings {
         Self {
             timezone: from_env.or_else(system).unwrap_or_else(|| "UTC".to_owned()),
             public_url: None,
+            gateway_url: None,
         }
     }
 }
@@ -302,7 +308,7 @@ impl EngineManagement {
 
 /// The settings groups each station has its own of, in `station_settings`
 /// (docs/stations.md#settings). The others are shared, in `settings`.
-pub const PER_STATION: [&str; 9] = [
+pub const PER_STATION: [&str; 16] = [
     "station",
     "playout",
     "eq",
@@ -312,6 +318,13 @@ pub const PER_STATION: [&str; 9] = [
     "rotation",
     "medley_categories",
     "station_modules",
+    "show_dedications",
+    "show_match",
+    "show_top30",
+    "show_likes",
+    "top30",
+    "dedications",
+    "match",
 ];
 
 fn shared(name: &str) {
@@ -720,7 +733,8 @@ async fn put_station(
     Json(mut settings): Json<StationSettings>,
 ) -> ApiResult<Json<StationSettings>> {
     user.require(Role::Admin)?;
-    settings.public_url = check_public_url(settings.public_url.take())?;
+    settings.public_url = check_public_url("public_url", settings.public_url.take())?;
+    settings.gateway_url = check_public_url("gateway_url", settings.gateway_url.take())?;
     TimeZone::get(&settings.timezone).map_err(|_| {
         ApiError::Invalid(format!(
             "unknown time zone {:?}: use an IANA name such as Europe/Paris",
@@ -740,7 +754,7 @@ async fn put_station(
 
 /// A station's public address: `http` or `https`, without a path, query
 /// or trailing slash. Empty means none.
-fn check_public_url(url: Option<String>) -> ApiResult<Option<String>> {
+fn check_public_url(name: &str, url: Option<String>) -> ApiResult<Option<String>> {
     let Some(url) = url.map(|url| url.trim().trim_end_matches('/').to_owned()) else {
         return Ok(None);
     };
@@ -749,8 +763,8 @@ fn check_public_url(url: Option<String>) -> ApiResult<Option<String>> {
     }
     let invalid = || {
         ApiError::Invalid(format!(
-            "public_url {url:?}: give the address the station's Heron is reached at, \
-             such as https://radio.example.org"
+            "{name} {url:?}: give an address such as https://radio.example.org, \
+             without a path"
         ))
     };
     let parsed = reqwest::Url::parse(&url).map_err(|_| invalid())?;

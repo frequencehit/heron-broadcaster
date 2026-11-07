@@ -7,7 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, query, unwrap } from "../api";
-import { t } from "../i18n";
+import { number, t } from "../i18n";
 import { sourceLabel } from "../lib/labels";
 import {
   type GridDay,
@@ -152,7 +152,11 @@ function DaysSummary({ grid }: Readonly<{ grid: PlayGrid }>) {
 function playSource(play: GridPlay, codes: Map<number, string> | null): string {
   const how = sourceLabel(play.source);
   const code = codes?.get(play.station_id);
-  return code ? `${code}, ${how}` : how;
+  const said = code ? `${code}, ${how}` : how;
+  // Listeners' votes (docs/listener-interaction.md#likes).
+  return play.likes + play.dislikes > 0
+    ? `${said} · ${t("likes.counts", { likes: number(play.likes), dislikes: number(play.dislikes) })}`
+    : said;
 }
 
 function dayTitle(day: GridDay): string {

@@ -31,8 +31,8 @@ pub use rng::Rng;
 pub use rules::{AcrossWindows, SeparationOverrides, StationWindows, Windows};
 pub use schedule::{Period, Schedule, ScheduleId};
 pub use select::{
-    Blocked, Explanation, Outcome, Pick, SeparationRule, SkipReason, SkippedSlot, next,
-    next_outcome,
+    Blocked, Explanation, Outcome, Pick, SeparationRule, SkipReason, SkippedSlot, from_category,
+    next, next_outcome,
 };
 pub use sim::{SimulatedPick, Simulation, Violation, audit, simulate};
 

@@ -27,6 +27,8 @@ use crate::{engine, stations, users, webhooks};
 
 /// Tracks short enough to see several play during a test.
 const TRACK_SECONDS: f64 = 3.0;
+/// The gateway token the test API accepts.
+const GATEWAY_TOKEN: &str = "test-gateway-token";
 
 struct Station {
     db: ScratchDatabase,
@@ -191,6 +193,7 @@ impl Station {
                 heron_service::about::ConfigItem::flag("HERON_LIBRARY_WATCH", true),
             ])),
             two_factor: Default::default(),
+            gateway_token: crate::gateway::token_from(Some(GATEWAY_TOKEN)),
         };
         let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api = http.local_addr().unwrap();
@@ -9187,13 +9190,17 @@ async fn modules_are_turned_off_and_on_again() {
     let pool = &station.db.pool;
     let t = station.tracks.clone();
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
-                        "webhooks": true});
+                        "webhooks": true, "dedications": false, "match": false, "top30": false,
+                        "likes": true});
+    let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
+                        "webhooks": true, "dedications": true, "match": true, "top30": true,
+                        "likes": true});
 
-    // Everything is on after an upgrade.
+    // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);
     let modules = viewer.get("/stations/1/modules").await;
     assert_eq!(modules["on"], all_on);
-    assert_eq!(modules["station"], all_on);
+    assert_eq!(modules["station"], station_all_on);
     let (status, _) = viewer
         .send(Method::PUT, "/modules", json!({"webhooks": false}))
         .await;
@@ -9366,4 +9373,2007 @@ async fn modules_are_turned_off_and_on_again() {
 
 fn rotation_now() -> i64 {
     crate::rotation::now_ms()
+}
+
+/// The shows (docs/listener-interaction.md): off until turned on, their
+/// hours in whole hours without overlaps, what the gateway reads with its
+/// token only, and their notifications.
+#[tokio::test(flavor = "multi_thread")]
+async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
+    use crate::error::ApiError;
+    use heron_core::Module;
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let code = station.state.stations.first().code();
+
+    // Off after an upgrade, but likes.
+    let shows = viewer.get("/shows").await;
+    assert_eq!(shows.as_array().unwrap().len(), 1, "{shows}");
+    assert_eq!(shows[0]["module"], "likes");
+    let (status, body) = admin.request(Method::GET, "/shows/dedications", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"], "module_off");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"dedications": true, "match": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::GET, "/shows/medleys", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let shows = viewer.get("/shows").await;
+    assert_eq!(shows.as_array().unwrap().len(), 3, "{shows}");
+    let dedications = viewer.get("/stations/1/shows/dedications").await;
+    assert_eq!(dedications["settings"]["enabled"], true);
+    assert_eq!(dedications["status"]["open"], false);
+    assert_eq!(
+        dedications["settings"]["notifications"]["events"]["show.started"]["enabled"],
+        true
+    );
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Hours, one show at a time.
+    let weekdays = json!({"hours": [{"days": [1, 2, 3, 4, 5], "start_hour": 17, "end_hour": 18}]});
+    let (status, _) = viewer
+        .send(Method::PUT, "/shows/dedications", weekdays.clone())
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, saved) = admin
+        .send(Method::PUT, "/shows/dedications", weekdays)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["settings"]["hours"][0]["end_hour"], 18);
+    assert_eq!(saved["timezone"], "UTC");
+    assert!(saved["status"]["next_opening_unix_ms"].is_i64());
+    let (status, refused) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [6], "start_hour": 18, "end_hour": 19},
+                             {"days": [5], "start_hour": 16, "end_hour": 19}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains("17:00–18:00 on Friday belongs to dedications"),
+        "{message}"
+    );
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [6], "start_hour": 18, "end_hour": 19}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for bad in [
+        json!({"hours": [{"days": [1], "start_hour": 18, "end_hour": 18}]}),
+        json!({"website": {"color": "red"}}),
+        json!({"notifications": {"webhook_ids": [999]}}),
+        json!({"notifications": {"events": {"show.started": {"enabled": true, "message": "{nope}"}}}}),
+    ] {
+        let (status, body) = admin.send(Method::PUT, "/shows/match", bad.clone()).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {body}");
+    }
+
+    // The gateway's state, with its token only.
+    let mut gateway = station.client();
+    for token in [None, Some("wrong")] {
+        gateway.bearer = token.map(str::to_owned);
+        let (status, _) = gateway.request(Method::GET, "/gateway/state", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+    let (status, _) = admin.request(Method::GET, "/gateway/state", None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a session is not the gateway"
+    );
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let (status, _) = gateway.request(Method::GET, "/queue", None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "the gateway token reaches nothing else"
+    );
+    let state = gateway.get("/gateway/state").await;
+    let first = &state["stations"][0];
+    assert_eq!(first["code"], code.as_str());
+    assert_eq!(first["timezone"], "UTC");
+    assert!(first["now_playing"]["server_time_unix_ms"].is_u64());
+    let modules: Vec<&str> = first["shows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|show| show["module"].as_str().unwrap())
+        .collect();
+    assert_eq!(modules, ["dedications", "match", "likes"]);
+    assert_eq!(first["shows"][0]["hours"][0]["start_hour"], 17);
+
+    // Writes find a show on and open, or say why not.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 7], "start_hour": 0, "end_hour": 24}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let open = |module| crate::gateway::open_show(&station.state, &code, module);
+    let saturday_free = admin.get("/shows/dedications").await;
+    let open_now = saturday_free["status"]["open"].as_bool().unwrap();
+    match open(Module::Dedications).await {
+        Ok((runtime, settings)) => {
+            assert!(open_now);
+            assert_eq!(runtime.code(), code);
+            assert!(settings.enabled);
+        }
+        Err(error) => assert!(
+            !open_now && matches!(error, ApiError::Conflict(_)),
+            "{error}"
+        ),
+    }
+    assert!(matches!(
+        crate::gateway::open_show(&station.state, "nope", Module::Dedications).await,
+        Err(ApiError::NotFound(_))
+    ));
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"match": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(matches!(
+        open(Module::Match).await,
+        Err(ApiError::ModuleOff(Module::Match))
+    ));
+    let (status, body) = admin.request(Method::GET, "/shows/match", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let state = gateway.get("/gateway/state").await;
+    assert_eq!(state["stations"][0]["shows"].as_array().unwrap().len(), 2);
+    let (status, _) = admin
+        .send(Method::PUT, "/shows/dedications", json!({"enabled": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(matches!(
+        open(Module::Dedications).await,
+        Err(ApiError::Conflict(_))
+    ));
+
+    // Notifications go to the webhooks the show chooses, with its message.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, webhook) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Chat", "url": format!("http://{receiver}/chat"),
+                   "events": ["queue.changed"], "body_template": "{\"content\": \"{{message}}\"}"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{webhook}");
+    let webhook_id = webhook["webhook"]["id"].as_u64().unwrap();
+    let (status, refused) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Shows", "url": format!("http://{receiver}/x"), "events": ["show.started"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{refused}");
+    let (status, saved) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1], "start_hour": 17, "end_hour": 18}],
+                   "website": {"title": "Your dedications"},
+                   "notifications": {"webhook_ids": [webhook_id],
+                       "events": {"show.started": {"enabled": true, "message": "{name} until {end}"},
+                                  "show.ended": {"enabled": false, "message": ""}}}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["webhooks"][0]["name"], "Chat");
+    // Monday 9 November 2026, 17:00 UTC.
+    let opens: jiff::Timestamp = "2026-11-09T17:00:00Z".parse().unwrap();
+    let from = opens
+        .checked_sub(jiff::SignedDuration::from_secs(10))
+        .unwrap();
+    let to = opens
+        .checked_add(jiff::SignedDuration::from_secs(5))
+        .unwrap();
+    crate::shows::notify_station(
+        &station.state.pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        from,
+        to,
+    )
+    .await
+    .unwrap();
+    let body = loop {
+        let (_, name, headers, body) =
+            tokio::time::timeout(Duration::from_secs(15), received.recv())
+                .await
+                .expect("a show notification")
+                .unwrap();
+        if name == "chat" && headers["x-heron-event"] == "show.started" {
+            break body;
+        }
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"content": "Your dedications until 18:00"})
+    );
+    // Ended is off: nothing for it.
+    let closes = opens
+        .checked_add(jiff::SignedDuration::from_hours(1))
+        .unwrap();
+    crate::shows::notify_station(
+        &station.state.pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        closes
+            .checked_sub(jiff::SignedDuration::from_secs(10))
+            .unwrap(),
+        closes,
+    )
+    .await
+    .unwrap();
+    let ended: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM webhook_deliveries WHERE event LIKE 'show.%'")
+            .fetch_one(&station.state.pool)
+            .await
+            .unwrap();
+    assert_eq!(ended, 1);
+    station.stop().await;
+}
+
+#[tokio::test]
+async fn listeners_like_the_track_playing_only() {
+    use heron_core::Module;
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let code = station.state.stations.first().code();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let vote_path = format!("/gateway/stations/{code}/likes/vote");
+
+    // The engine plays nothing: the plays are ours.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+
+    // On by default, with no hours: open, nothing to vote on yet.
+    let likes = viewer.get("/shows/likes").await;
+    assert_eq!(likes["status"]["open"], true);
+    assert_eq!(likes["settings"]["notifications"]["events"], json!({}));
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/likes",
+            json!({"hours": [{"days": [1], "start_hour": 17, "end_hour": 18}]}),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "likes have no hours"
+    );
+    assert_eq!(viewer.get("/likes/current").await["play_id"], Value::Null);
+
+    let play = |track: u64, source: &'static str, ended_seconds_ago: Option<u32>| async move {
+        let ended = match ended_seconds_ago {
+            Some(seconds) => format!("NOW(6) - INTERVAL {seconds} SECOND"),
+            None => "NULL".to_owned(),
+        };
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', NOW(6) - INTERVAL 1 MINUTE, {ended}, 'a', ?)"
+        )))
+        .bind(track)
+        .bind(source)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+    };
+    let ended = play(t[1], "rotation", Some(30)).await;
+    let fallback = play(t[2], "fallback", None).await;
+    let on_air = play(t[0], "rotation", None).await;
+
+    // Only the track playing: the gateway is told which play it is.
+    let now = viewer.get("/likes/current").await;
+    assert_eq!(now["play_id"], on_air);
+    assert_eq!(now["track_id"], t[0]);
+    let state = gateway.get("/gateway/state").await;
+    let shows = state["stations"][0]["shows"].as_array().unwrap().clone();
+    let show = shows.iter().find(|show| show["module"] == "likes").unwrap();
+    assert_eq!(show["state"], json!({"play_id": on_air}));
+
+    let write = |device: &str, play_id: u64, vote: &str| json!({"device": device, "fields": {"play_id": play_id, "vote": vote}});
+    let (status, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [
+                write("a1", on_air, "like"), write("b2", on_air, "like"),
+                write("c3", on_air, "dislike"),
+                // A past track, a fallback one: dropped.
+                write("a1", ended, "like"), write("d4", fallback, "like"),
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{taken}");
+    assert_eq!(taken, json!({"counted": 3, "dropped": 2}));
+    // A device changes its mind: its vote moves, it is not added.
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("a1", on_air, "dislike")]}),
+        )
+        .await;
+    assert_eq!(taken["counted"], 1);
+    let now = viewer.get("/likes/current").await;
+    assert_eq!(
+        (now["likes"].as_u64(), now["dislikes"].as_u64()),
+        (Some(1), Some(2))
+    );
+    // Only the gateway sends votes.
+    let (status, _) = admin
+        .send(Method::POST, &vote_path, json!({"writes": []}))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Just ended: still counted for a few seconds, then refused.
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 2 SECOND WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(viewer.get("/likes/current").await["play_id"], Value::Null);
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("e5", on_air, "like")]}),
+        )
+        .await;
+    assert_eq!(taken["counted"], 1, "the batch on its way");
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 1 MINUTE WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("f6", on_air, "like")]}),
+        )
+        .await;
+    assert_eq!(taken, json!({"counted": 0, "dropped": 1}));
+
+    // The track's page: 2 likes, 2 dislikes, on that play.
+    let track = viewer.get(&format!("/likes/tracks/{}", t[0])).await;
+    for period in ["week", "days_30", "total"] {
+        assert_eq!(
+            track[period],
+            json!({"likes": 2, "dislikes": 2}),
+            "{period}"
+        );
+    }
+    assert_eq!(track["plays"][0]["play_id"], on_air);
+    assert_eq!(track["min_votes"], 10);
+    let grid = viewer
+        .get(&format!("/tracks/{}/plays/grid?station_id=1", t[0]))
+        .await;
+    let plays: Vec<&Value> = grid["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|day| day["plays"].as_array().unwrap())
+        .collect();
+    assert!(
+        plays
+            .iter()
+            .any(|play| play["likes"] == 2 && play["dislikes"] == 2),
+        "{grid}"
+    );
+
+    // Counts per play, ranked per week. This week: t[3] 12 likes, t[4] 3
+    // of 12; ten days ago, t[2] 50 likes, out of the week.
+    let counted = |track: u64, days_ago: u32, likes: u32, dislikes: u32| async move {
+        let id = sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', NOW(6) - INTERVAL ? DAY - INTERVAL 1 MINUTE,
+                     NOW(6) - INTERVAL ? DAY, 'a', 'rotation')",
+        )
+        .bind(track)
+        .bind(days_ago)
+        .bind(days_ago)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        sqlx::query(
+            "INSERT INTO play_votes (play_id, station_id, track_id, started_at, likes, dislikes)
+             SELECT id, station_id, track_id, started_at, ?, ? FROM play_history WHERE id = ?",
+        )
+        .bind(likes)
+        .bind(dislikes)
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap();
+    };
+    counted(t[3], 0, 12, 0).await;
+    counted(t[4], 0, 3, 9).await;
+    counted(t[2], 10, 50, 0).await;
+    let week = viewer.get("/likes/week").await;
+    let ids = |list: &Value| -> Vec<u64> {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .map(|track| track["track_id"].as_u64().unwrap())
+            .collect()
+    };
+    assert_eq!(ids(&week["most_liked"]), [t[3], t[4]], "{week}");
+    assert_eq!(ids(&week["least_liked"]), [t[4], t[3]]);
+    assert_eq!(week["most_liked"][1]["share"], 0.25);
+    assert_eq!(week["min_votes"], 10);
+
+    // The track list: a column, its sort and its filters.
+    let listed = |page: Value| -> Vec<(u64, u64, u64)> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|track| {
+                (
+                    track["id"].as_u64().unwrap(),
+                    track["likes"].as_u64().unwrap(),
+                    track["dislikes"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let sorted = listed(admin.get("/tracks?station_id=1&sort=liked&desc=true").await);
+    assert_eq!(
+        sorted[..4],
+        [(t[2], 50, 0), (t[3], 12, 0), (t[4], 3, 9), (t[0], 2, 2)],
+        "ranked first, then below 10 votes"
+    );
+    assert_eq!(
+        listed(admin.get("/tracks?liked_max=40&votes_min=10").await),
+        [(t[4], 3, 9)],
+        "the tracks to rest"
+    );
+    assert_eq!(
+        listed(admin.get("/tracks?liked_min=70&likes_days=5").await)
+            .iter()
+            .map(|track| track.0)
+            .collect::<Vec<_>>(),
+        [t[3]]
+    );
+    let (status, _) = admin
+        .request(Method::GET, "/tracks?liked_min=101", None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Turned off for the station: nothing to vote on, its routes answer 404.
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"likes": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = viewer.request(Method::GET, "/likes/week", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let state = gateway.get("/gateway/state").await;
+    assert!(
+        state["stations"][0]["shows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|show| show["module"] != "likes")
+    );
+    let (status, _) = gateway
+        .send(Method::POST, &vote_path, json!({"writes": []}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(matches!(
+        crate::gateway::open_show(&station.state, &code, Module::Likes).await,
+        Err(crate::error::ApiError::ModuleOff(Module::Likes))
+    ));
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The devices' votes go an hour after their play; the counts stay.
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 2 HOUR WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(crate::likes::purge_devices(pool).await.unwrap(), 4);
+    let devices: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM play_vote_devices")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(devices, 0);
+    let total = viewer.get(&format!("/likes/tracks/{}", t[0])).await;
+    assert_eq!(total["total"], json!({"likes": 2, "dislikes": 2}));
+    station.stop().await;
+}
+
+#[tokio::test]
+async fn the_top30_is_frozen_then_played_with_its_ranks_hidden() {
+    use crate::top30::{ChartWeek, Top30Settings};
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+
+    // The engine plays nothing: the plays are ours.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+
+    // Off by default: nothing answers, nothing is queued.
+    let (status, body) = viewer.request(Method::GET, "/top30/chart", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "module_off");
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"top30": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Music, and a new release category.
+    let mut categories = Vec::new();
+    for (name, members) in [("Music", vec![t[0], t[1], t[2], t[4]]), ("New", vec![t[3]])] {
+        let (status, category) = admin
+            .send(Method::POST, "/categories", json!({"name": name}))
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (music, new) = (categories[0], categories[1]);
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/top30/settings",
+            json!({"min_votes": 2, "size": 3, "category_ids": [music],
+                   "new_release_category_id": new}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/top30/settings",
+            json!({"category_ids": [9999]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = viewer.send(Method::PUT, "/top30/settings", json!({})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Votes on plays of the last closed week and of the week before.
+    let settings = Top30Settings {
+        min_votes: 2,
+        size: 3,
+        ..Top30Settings::default()
+    };
+    let station_settings: crate::settings::StationSettings =
+        crate::settings::load_for(pool, 1, "station").await.unwrap();
+    let tz = station_settings.time_zone();
+    let now = jiff::Timestamp::now();
+    let closed = ChartWeek::latest_closed(now, &settings, &tz).unwrap();
+    let before = closed.previous(&settings, &tz).unwrap();
+    let voted = |track: u64, week: ChartWeek, likes: u32, dislikes: u32| async move {
+        let started = week.from.as_millisecond() as f64 / 1_000.0 + 3_600.0;
+        let play = sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', FROM_UNIXTIME(?), FROM_UNIXTIME(?), 'a', 'rotation')",
+        )
+        .bind(track)
+        .bind(started)
+        .bind(started + 3.0)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        sqlx::query(
+            "INSERT INTO play_votes (play_id, station_id, track_id, started_at, likes, dislikes)
+             VALUES (?, 1, ?, FROM_UNIXTIME(?), ?, ?)",
+        )
+        .bind(play)
+        .bind(track)
+        .bind(started)
+        .bind(likes)
+        .bind(dislikes)
+        .execute(pool)
+        .await
+        .unwrap();
+    };
+    voted(t[1], before, 9, 1).await;
+    voted(t[0], before, 8, 2).await;
+    voted(t[0], closed, 9, 1).await;
+    voted(t[1], closed, 8, 2).await;
+    voted(t[4], closed, 3, 1).await;
+    voted(t[2], closed, 5, 5).await;
+    // One vote: not ranked; and the new release category's only track.
+    voted(t[3], closed, 1, 0).await;
+
+    // The week before, frozen as it is read.
+    let chart = viewer
+        .get(&format!("/top30/chart?week={}", before.key()))
+        .await;
+    assert_eq!(chart["frozen"], true);
+    let ranks = |chart: &Value| -> Vec<(u64, String)> {
+        chart["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| {
+                (
+                    entry["track_id"].as_u64().unwrap(),
+                    entry["movement"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        ranks(&chart),
+        [(t[1], "new".to_owned()), (t[0], "new".to_owned())]
+    );
+    // The closed week: 3 tracks, with their movements.
+    let path = format!("/top30/chart?week={}", closed.key());
+    let chart = viewer.get(&path).await;
+    assert_eq!(chart["frozen"], true);
+    assert_eq!(chart["locked"], false);
+    assert_eq!(chart["votes"], 34);
+    assert_eq!(
+        ranks(&chart),
+        [
+            (t[0], "up".to_owned()),
+            (t[1], "down".to_owned()),
+            (t[4], "new".to_owned())
+        ]
+    );
+    assert_eq!(chart["entries"][0]["weeks"], 2);
+    assert_eq!(chart["entries"][0]["previous_rank"], 2);
+    assert_eq!(chart["new_release"]["track_id"], t[3]);
+    assert_eq!(chart["new_release"]["proposed"], true);
+    // This week's chart, live.
+    let live = viewer.get("/top30/chart").await;
+    assert_eq!(live["frozen"], false);
+    assert_eq!(live["entries"], json!([]));
+    // A week to come is not there yet; a week is a Monday.
+    let (status, _) = viewer
+        .request(Method::GET, "/top30/chart?week=2100-01-04", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = viewer
+        .request(Method::GET, "/top30/chart?week=2026-11-03", None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        viewer.get("/top30/charts").await.as_array().unwrap().len(),
+        2
+    );
+
+    // Taken out before the show: the next ones move up.
+    let removal = format!("/top30/charts/{}/removals/{}", closed.key(), t[1]);
+    let (status, chart) = admin.request(Method::POST, &removal, None).await;
+    assert_eq!(status, StatusCode::OK, "{chart}");
+    assert_eq!(
+        ranks(&chart).iter().map(|r| r.0).collect::<Vec<_>>(),
+        [t[0], t[4], t[2]]
+    );
+    assert_eq!(chart["removed"][0]["track_id"], t[1]);
+    assert_eq!(chart["removed"][0]["removed_by"], "admin");
+    let (status, chart) = admin.request(Method::DELETE, &removal, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        ranks(&chart).iter().map(|r| r.0).collect::<Vec<_>>(),
+        [t[0], t[1], t[4]]
+    );
+    // The new release, chosen by hand among its category's tracks.
+    let choose = format!("/top30/charts/{}/new-release", closed.key());
+    let (status, _) = admin
+        .send(Method::PUT, &choose, json!({"track_id": t[0]}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, chart) = admin
+        .send(Method::PUT, &choose, json!({"track_id": t[3]}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(chart["new_release"]["proposed"], false);
+
+    // The show's hours: this hour, every day.
+    let hour = now.to_zoned(tz.clone()).hour();
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/shows/top30",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": hour,
+                              "end_hour": hour + 1}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let plan = viewer.get("/top30/show").await;
+    assert_eq!(plan["built"], false);
+    assert_eq!(plan["week"], closed.key());
+
+    // The queue takes it in order: from number 3 to number 1, then the new
+    // release; then rotation.
+    let at = crate::rotation::now_ms();
+    let due = crate::top30::due(pool, 1, at, 2).await.unwrap().unwrap();
+    let ids = |due: &crate::top30::Due| -> Vec<(Option<u32>, u64)> {
+        due.items
+            .iter()
+            .map(|item| (item.rank, item.track_id))
+            .collect()
+    };
+    assert_eq!(ids(&due), [(Some(3), t[4]), (Some(2), t[1])]);
+    crate::top30::queued(pool, 1, due.opens_ms, due.from, due.next)
+        .await
+        .unwrap();
+    let due = crate::top30::due(pool, 1, at, 3).await.unwrap().unwrap();
+    assert_eq!(ids(&due), [(Some(1), t[0]), (None, t[3])]);
+    assert_eq!(due.items[1].kind, crate::top30::ItemKind::NewRelease);
+    crate::top30::queued(pool, 1, due.opens_ms, due.from, due.next)
+        .await
+        .unwrap();
+    assert!(crate::top30::due(pool, 1, at, 3).await.unwrap().is_none());
+    let plan = viewer.get("/top30/show").await;
+    assert_eq!(plan["built"], true);
+    assert_eq!(plan["items"][3]["queued"], true);
+    // Built from the chart: it does not change any more.
+    let (status, _) = admin.request(Method::POST, &removal, None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // On the website: number 3 on air, the ranks to come hidden. What the
+    // engine played when it started does not count.
+    sqlx::query("DELETE FROM play_history WHERE station_id = 1 AND started_at >= FROM_UNIXTIME(?)")
+        .bind(due.opens_ms as f64 / 1_000.0)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO play_history (station_id, track_id, title, started_at, deck, source)
+         VALUES (1, ?, 'x', NOW(6), 'a', 'rotation')",
+    )
+    .bind(t[4])
+    .execute(pool)
+    .await
+    .unwrap();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let state = gateway.get("/gateway/state").await;
+    let shows = state["stations"][0]["shows"].as_array().unwrap();
+    let top = shows.iter().find(|show| show["module"] == "top30").unwrap();
+    let public = &top["state"];
+    assert_eq!(public["live"], true, "{public}");
+    assert_eq!(public["on_air_rank"], 3);
+    let entries = public["chart"]["entries"].as_array().unwrap();
+    assert_eq!(entries[2]["title"], "Track 5");
+    assert_eq!(entries[2]["on_air"], true);
+    for hidden in &entries[..2] {
+        assert_eq!(hidden["hidden"], true);
+        assert!(hidden.get("title").is_none(), "{hidden}");
+    }
+    assert_eq!(public["new_release"], json!({"hidden": true}));
+
+    // When the week closes, its number 1 goes to the show's webhooks.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, webhook) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Chat", "url": format!("http://{receiver}/chat"),
+                   "events": ["queue.changed"], "body_template": "{\"content\": \"{{message}}\"}"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{webhook}");
+    let webhook_id = webhook["webhook"]["id"].as_u64().unwrap();
+    let (status, saved) = admin
+        .send(
+            Method::PUT,
+            "/shows/top30",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": hour,
+                              "end_hour": hour + 1}],
+                   "notifications": {"webhook_ids": [webhook_id]}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let code = station.state.stations.first().code();
+    crate::top30::tick(
+        pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        closed
+            .closes_at
+            .checked_sub(jiff::SignedDuration::from_secs(5))
+            .unwrap(),
+        closed
+            .closes_at
+            .checked_add(jiff::SignedDuration::from_secs(5))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let body = loop {
+        let (_, name, headers, body) =
+            tokio::time::timeout(Duration::from_secs(15), received.recv())
+                .await
+                .expect("the top 30's notification")
+                .unwrap();
+        if name == "chat" && headers["x-heron-event"] == "top.published" {
+            break body;
+        }
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"content": "This week's number 1: Artist 1 – Track 1"})
+    );
+
+    // Turned off for the station: nothing more is queued or answered.
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"top30": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = viewer.request(Method::GET, "/top30/show", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(crate::top30::due(pool, 1, at, 3).await.unwrap().is_none());
+    station.stop().await;
+}
+
+/// A listener's write as the gateway sends it on: the gateway token and
+/// the device's hash.
+async fn gateway_write(
+    gateway: &Client,
+    path: &str,
+    device: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut request = gateway
+        .http
+        .post(format!("{}{path}", gateway.base))
+        .bearer_auth(GATEWAY_TOKEN)
+        .json(&body);
+    if let Some(device) = device {
+        request = request.header("x-heron-device", device);
+    }
+    let response = request.send().await.unwrap();
+    let status = response.status();
+    let value = response.json().await.unwrap_or(Value::Null);
+    (status, value)
+}
+
+/// Dedications (docs/listener-interaction.md#dedications): asked through
+/// the gateway while open, within their limits; accepted into the queue,
+/// with its notifications and the message; refused; closed and deleted.
+#[tokio::test(flavor = "multi_thread")]
+async fn dedications_are_asked_accepted_into_the_queue_and_followed() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let code = station.state.stations.first().code();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let submit = format!("/gateway/stations/{code}/dedications");
+    let follow = |key: &str| format!("/gateway/stations/{code}/dedications/follow?id={key}");
+
+    // The engine plays only what is accepted.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+
+    // Off by default: nothing answers.
+    let (status, body) = viewer.request(Method::GET, "/dedications", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let body =
+        json!({"track_id": t[1], "from": "Marc", "to": "Julie", "message": "Happy birthday!"});
+    let (status, _) = gateway_write(&gateway, &submit, Some("dev-a"), body.clone()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"dedications": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Closed: no request, no search.
+    let (status, _) = gateway_write(&gateway, &submit, Some("dev-a"), body.clone()).await;
+    assert_eq!(status, StatusCode::CONFLICT, "no hours: closed");
+
+    // The music can be requested; the track outside any category cannot.
+    let (status, music) = admin
+        .send(Method::POST, "/categories", json!({"name": "Music"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{music}");
+    for track in [t[0], t[1], t[2]] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": music["id"]}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/dedications/settings",
+            json!({"category_ids": [999]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = viewer
+        .send(
+            Method::PUT,
+            "/dedications/settings",
+            json!({"max_per_range": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, settings) = admin
+        .send(
+            Method::PUT,
+            "/dedications/settings",
+            json!({"max_per_range": 3, "per_device": 1, "message_max": 20}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{settings}");
+    assert_eq!(settings["retention_days"], 30);
+
+    // Open all week, with notifications to a webhook.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, webhook) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Chat", "url": format!("http://{receiver}/chat"),
+                   "events": ["track.started"],
+                   "body_template": "{\"content\": \"{{message}}\", \"from\": \"{{dedication_from}}\"}"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{webhook}");
+    let webhook_id = webhook["webhook"]["id"].as_u64().unwrap();
+    let (status, saved) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": 0, "end_hour": 24}],
+                   "notifications": {"webhook_ids": [webhook_id],
+                       "events": {"dedication.accepted": {"enabled": true,
+                                                          "message": "Accepted for {to}, around {time}"}}}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let events = &saved["settings"]["notifications"]["events"];
+    assert_eq!(events["dedication.played"]["enabled"], true);
+
+    // Search: the requestable tracks only.
+    let search = |q: &str| format!("/gateway/stations/{code}/dedications/search?q={q}");
+    let found = gateway.get(&search("Track")).await;
+    let ids: Vec<u64> = found
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|track| track["track_id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(ids, vec![t[0], t[1], t[2]]);
+    assert_eq!(
+        gateway.get(&search("Artist%202")).await[0]["title"],
+        "Track 2"
+    );
+    assert_eq!(gateway.get(&search("100%25")).await, json!([]));
+    let (status, _) = gateway.request(Method::GET, &search("a"), None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Asking: the fields, then one waiting per device and the range's maximum.
+    for (device, bad) in [
+        (
+            Some("dev-a"),
+            json!({"track_id": t[3], "from": "Marc", "to": "Julie"}),
+        ),
+        (
+            Some("dev-a"),
+            json!({"track_id": t[1], "from": "Marc", "to": "Julie", "message": "x".repeat(21)}),
+        ),
+        (
+            Some("dev-a"),
+            json!({"track_id": t[1], "from": " ", "to": "Julie"}),
+        ),
+        (None, body.clone()),
+    ] {
+        let (status, refused) = gateway_write(&gateway, &submit, device, bad.clone()).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {refused}");
+    }
+    let (status, marc) = gateway_write(&gateway, &submit, Some("dev-a"), body.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{marc}");
+    assert_eq!(marc["status"], "pending");
+    assert_eq!(marc["title"], "Track 2");
+    let marc_key = marc["follow"].as_str().unwrap().to_owned();
+    assert_eq!(marc_key.len(), 32);
+    let other = json!({"track_id": t[2], "from": "Marc", "to": "Léa"});
+    let (status, _) = gateway_write(&gateway, &submit, Some("dev-a"), other.clone()).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "one per device");
+    let (status, sophie) = gateway_write(
+        &gateway,
+        &submit,
+        Some("dev-b"),
+        json!({"track_id": t[2], "from": "Sophie", "to": "the team", "message": "rude"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{sophie}");
+    let (status, tom) = gateway_write(
+        &gateway,
+        &submit,
+        Some("dev-c"),
+        json!({"track_id": t[0], "from": "Tom", "to": "Inès"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{tom}");
+    let (status, full) = gateway_write(&gateway, &submit, Some("dev-d"), other).await;
+    assert_eq!(status, StatusCode::CONFLICT, "full: {full}");
+    let followed = gateway.get(&follow(&marc_key)).await;
+    assert_eq!(
+        (followed["status"].as_str(), followed["from"].as_str()),
+        (Some("pending"), Some("Marc"))
+    );
+    let (status, _) = gateway
+        .request(Method::GET, &follow(&"0".repeat(32)), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Nothing waiting shows on the website.
+    let shows = gateway.get("/gateway/state").await["stations"][0]["shows"].clone();
+    let public = shows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|show| show["module"] == "dedications")
+        .unwrap()
+        .clone();
+    assert_eq!(public["state"]["remaining"], 0);
+    assert_eq!(public["state"]["today"], json!([]));
+
+    // Operators see them, with what the rules say.
+    let (status, restriction) = admin
+        .send(
+            Method::POST,
+            "/restrictions",
+            json!({"target": {"kind": "track", "id": t[0]},
+                   "rule": {"kind": "daypart", "mode": "ban", "days": [1, 2, 3, 4, 5, 6, 7],
+                            "start_hour": 0, "end_hour": 24}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{restriction}");
+    let list = viewer.get("/dedications").await;
+    assert_eq!(list["counts"]["pending"], 3);
+    assert_eq!(list["counts"]["received"], 3);
+    assert_eq!(list["max_per_range"], 3);
+    let requests = list["dedications"].as_array().unwrap().clone();
+    assert_eq!(requests.len(), 3);
+    let by_from = |from: &str| {
+        requests
+            .iter()
+            .find(|request| request["from"] == from)
+            .unwrap()
+            .clone()
+    };
+    let (marc, sophie, tom) = (by_from("Marc"), by_from("Sophie"), by_from("Tom"));
+    assert_eq!(marc["message"], "Happy birthday!");
+    assert_eq!(marc["checks"][0]["kind"], "rules_kept", "{marc}");
+    assert_eq!(tom["checks"][0]["kind"], "restriction", "{tom}");
+    assert_eq!(tom["checks"][0]["blocking"], true);
+    let decide = |id: &Value, what: &str| format!("/dedications/{id}/{what}");
+
+    // Refused: never shown, the reason kept from an inappropriate message.
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": null}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": "closed"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, refused) = admin
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": "inappropriate"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{refused}");
+    assert_eq!(
+        (refused["status"].as_str(), refused["reason"].as_str()),
+        (Some("refused"), Some("inappropriate"))
+    );
+    assert_eq!(refused["decided_by"], "admin");
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            &decide(&sophie["id"], "refuse"),
+            json!({"reason": null}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "decided once");
+    let followed = gateway
+        .get(&follow(follow_key_of(&sophie, pool).await.as_str()))
+        .await;
+    assert_eq!(followed["status"], "refused");
+    assert_eq!(followed["reason"], Value::Null, "not told");
+
+    // A restriction is never broken.
+    let (status, blocked) = admin
+        .send(
+            Method::POST,
+            &decide(&tom["id"], "accept"),
+            json!({"place": "best"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{blocked}");
+
+    // Accepted: queued as a request, told, played with its message.
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            &decide(&marc["id"], "accept"),
+            json!({"place": "next"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, accepted) = admin
+        .send(
+            Method::POST,
+            &decide(&marc["id"], "accept"),
+            json!({"place": "next"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{accepted}");
+    assert!(accepted["planned_at_unix_ms"].is_i64(), "{accepted}");
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            &decide(&marc["id"], "accept"),
+            json!({"place": "next"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "accepted once");
+    let mut accepted_message = None;
+    let mut played_message = None;
+    let mut started = None;
+    while accepted_message.is_none() || played_message.is_none() || started.is_none() {
+        let (_, name, headers, body) =
+            tokio::time::timeout(Duration::from_secs(30), received.recv())
+                .await
+                .expect("the dedication's notifications")
+                .unwrap();
+        assert_eq!(name, "chat");
+        let body: Value = serde_json::from_str(&body).unwrap();
+        match headers["x-heron-event"].to_str().unwrap() {
+            "dedication.accepted" => accepted_message = Some(body["content"].clone()),
+            "dedication.played" => played_message = Some(body["content"].clone()),
+            "track.started" => started = Some(body),
+            other => panic!("unexpected {other}"),
+        }
+    }
+    let accepted_message = accepted_message.unwrap();
+    assert!(
+        accepted_message
+            .as_str()
+            .unwrap()
+            .starts_with("Accepted for Julie, around "),
+        "{accepted_message}"
+    );
+    assert_eq!(
+        played_message.unwrap(),
+        "♥ Artist 2 – Track 2, for Julie from Marc: « Happy birthday! »"
+    );
+    assert_eq!(started.unwrap()["from"], "Marc");
+    let played = eventually("the request played", Duration::from_secs(20), || async {
+        let followed = gateway.get(&follow(&marc_key)).await;
+        (followed["status"] == "played").then_some(followed)
+    })
+    .await;
+    assert!(played["played_at_unix_ms"].is_i64());
+    let source: String = sqlx::query_scalar(
+        "SELECT CAST(h.source AS CHAR) FROM dedications d JOIN play_history h ON h.id = d.play_id
+         WHERE d.follow_key = ?",
+    )
+    .bind(&marc_key)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(source, "request");
+    let shows = gateway.get("/gateway/state").await["stations"][0]["shows"].clone();
+    let today = shows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|show| show["module"] == "dedications")
+        .unwrap()["state"]["today"]
+        .clone();
+    assert_eq!(today.as_array().unwrap().len(), 1, "{today}");
+    assert_eq!(today[0]["from"], "Marc");
+    assert_eq!(today[0]["played"], true);
+
+    // An accepted request whose entry left the queue did not play.
+    sqlx::query(
+        "INSERT INTO dedications (station_id, follow_key, track_id, from_name, to_name, message,
+                                  status, submitted_at, opens_at, closes_at, decided_at,
+                                  engine_started_at, entry_id)
+         SELECT 1, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', ?, 'Karim', 'Léa', '', 'accepted',
+                NOW(6), opens_at, closes_at, NOW(6) - INTERVAL 5 MINUTE, engine_started_at, 999999
+         FROM dedications WHERE follow_key = ?",
+    )
+    .bind(t[2])
+    .bind(&marc_key)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // When the range closes, what waits is refused; old requests go.
+    sqlx::query("UPDATE dedications SET closes_at = NOW(6) - INTERVAL 1 SECOND")
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE dedications SET submitted_at = NOW(6) - INTERVAL 31 DAY WHERE id = ?")
+        .bind(sophie["id"].as_u64().unwrap())
+        .execute(pool)
+        .await
+        .unwrap();
+    crate::dedications::tick(pool, &station.state.stations)
+        .await
+        .unwrap();
+    let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT from_name, CAST(reason AS CHAR), device FROM dedications ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            ("Marc".to_owned(), None, None),
+            ("Tom".to_owned(), Some("closed".to_owned()), None),
+            ("Karim".to_owned(), Some("removed".to_owned()), None),
+        ],
+        "Sophie's is deleted, no device is kept"
+    );
+
+    // Turned off: nothing answers, the requests stay.
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"dedications": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = viewer.request(Method::GET, "/dedications", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = gateway.request(Method::GET, &follow(&marc_key), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    station.stop().await;
+}
+
+/// The follow key of a request, as the listener got it.
+async fn follow_key_of(request: &Value, pool: &sqlx::MySqlPool) -> String {
+    sqlx::query_scalar("SELECT follow_key FROM dedications WHERE id = ?")
+        .bind(request["id"].as_u64().unwrap())
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// The match (docs/listener-interaction.md#match): every N tracks in the
+/// show's hours, two tracks of its category queued after the vote's track
+/// and its announcement; votes only while open, a device changing its mind;
+/// the loser out of the queue at the close; a tie, no vote, an early close,
+/// a cancel, and the module turned off.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let runtime = station.state.stations.first();
+    let code = runtime.code();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let vote_path = format!("/gateway/stations/{code}/match/vote");
+    let tick = || async {
+        crate::matches::tick(pool, &station.state.stations, &station.state.webhooks)
+            .await
+            .unwrap();
+    };
+
+    // Nothing plays until the match is set.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 1}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+    // The music lasts long enough to vote during; the fifth track is the
+    // announcement.
+    for n in 1..=4 {
+        write_wav(
+            &station
+                .library
+                .path()
+                .join(format!("Artist {n}/Track {n}.wav")),
+            100.0,
+            220.0 * f64::from(n),
+        );
+    }
+    for track in &t[..4] {
+        sqlx::query("UPDATE tracks SET duration_ms = 100000 WHERE id = ?")
+            .bind(track)
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE track_analysis SET cue_out_ms = 100000 WHERE track_id = ?")
+            .bind(track)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
+    // Off by default: nothing answers.
+    let (status, body) = viewer.request(Method::GET, "/match/current", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let ballot = |id: Value, device: &str, choice: &str| json!({"writes": [{"device": device, "fields": {"match_id": id, "choice": choice}}]});
+    let (status, _) = gateway_write(&gateway, &vote_path, None, ballot(json!(1), "d1", "a")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"match": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(viewer.get("/match/current").await, Value::Null);
+
+    // Hits, the music; the announcements, jingles.
+    let types = admin.get("/category-types").await;
+    let jingle_type = types[1]["id"].as_u64().unwrap();
+    let (status, hits) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Hits", "separation": {"track_min": 1}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{hits}");
+    let hits = hits["id"].as_u64().unwrap();
+    let (status, announce) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Vote now", "type_id": jingle_type}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{announce}");
+    let announce = announce["id"].as_u64().unwrap();
+    for (track, category) in [
+        (t[0], hits),
+        (t[1], hits),
+        (t[2], hits),
+        (t[3], hits),
+        (t[4], announce),
+    ] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": category}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = admin
+        .send(Method::PUT, "/match/settings", json!({"category_id": 999}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = admin
+        .send(Method::PUT, "/match/settings", json!({"every_tracks": 1}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = viewer
+        .send(Method::PUT, "/match/settings", json!({"every_tracks": 3}))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, settings) = admin
+        .send(
+            Method::PUT,
+            "/match/settings",
+            json!({"every_tracks": 2, "category_id": hits, "jingle_category_id": announce}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{settings}");
+    assert_eq!(
+        (&settings["close_before_s"], &settings["live_results"]),
+        (&json!(10), &json!(true))
+    );
+
+    // Outside its hours: closed, and rotation plays on without a match.
+    let today = jiff::Timestamp::now()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .weekday()
+        .to_monday_one_offset();
+    let other_day = today % 7 + 1;
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [other_day], "start_hour": 0, "end_hour": 24}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = gateway_write(&gateway, &vote_path, None, ballot(json!(1), "d1", "a")).await;
+    assert_eq!(status, StatusCode::CONFLICT, "closed");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 1}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let entries = || async {
+        let queue = admin.get("/queue").await;
+        queue.as_array().unwrap().clone()
+    };
+    let on_air = || async {
+        let player = admin.get("/player").await;
+        player["decks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|deck| deck["on_air"] == true)
+            .and_then(|deck| deck["entry"]["entry_id"].as_u64())
+    };
+    let skip = || async {
+        let (status, _) = admin.request(Method::POST, "/player/skip", None).await;
+        assert!(status.is_success(), "{status}");
+    };
+    eventually(
+        "a track on air, one waiting",
+        Duration::from_secs(20),
+        || async { (on_air().await.is_some() && !entries().await.is_empty()).then_some(()) },
+    )
+    .await;
+    for _ in 0..2 {
+        let before = on_air().await;
+        skip().await;
+        eventually("the next track", Duration::from_secs(20), || async {
+            (on_air().await != before && !entries().await.is_empty()).then_some(())
+        })
+        .await;
+    }
+    let matches = || async {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM matches")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(matches().await, 0, "no match outside the hours");
+
+    // In its hours: the next track rotation queues carries the vote.
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": 0, "end_hour": 24}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // The next match: tracks go by until one is queued.
+    let next_match = || async {
+        for _ in 0..10 {
+            let found = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let current = admin.get("/match/current").await;
+                    if !current.is_null() {
+                        return current;
+                    }
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+            })
+            .await;
+            if let Ok(current) = found {
+                return current;
+            }
+            let before = on_air().await;
+            skip().await;
+            eventually("the next track", Duration::from_secs(20), || async {
+                (on_air().await != before).then_some(())
+            })
+            .await;
+        }
+        panic!("no match queued");
+    };
+    let current = next_match().await;
+    assert_eq!(current["status"], "queued");
+    assert_eq!(current["category_id"], hits);
+    let (a, b) = (
+        current["choices"][0]["track_id"].as_u64().unwrap(),
+        current["choices"][1]["track_id"].as_u64().unwrap(),
+    );
+    let vote_track = current["vote_track"]["track_id"].as_u64().unwrap();
+    assert!(
+        a != b && t[..4].contains(&a) && t[..4].contains(&b),
+        "{current}"
+    );
+    assert_eq!(current["jingle"]["track_id"], t[4]);
+    // In the queue: the announcement linked to the vote's track, then both.
+    let queue = entries().await;
+    let at = queue
+        .iter()
+        .position(|entry| entry["track"]["track_id"] == t[4])
+        .expect("the announcement");
+    let ids: Vec<u64> = queue[at..at + 4]
+        .iter()
+        .map(|entry| entry["entry_id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(queue[at]["linked_to"], ids[1], "{queue:?}");
+    assert_eq!(
+        waiting_tracks(&json!(queue[at + 1..at + 4])),
+        [vote_track, a, b]
+    );
+    let (vote_entry, entry_a, entry_b) = (ids[1], ids[2], ids[3]);
+    // Both are in the rotation log, as picks of Hits.
+    let logged: Vec<u64> = sqlx::query_scalar(
+        "SELECT entry_id FROM rotation_picks WHERE entry_id IN (?, ?) AND category_id = ?",
+    )
+    .bind(entry_a)
+    .bind(entry_b)
+    .bind(hits)
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    assert_eq!(logged.len(), 2);
+
+    // Not open before its track starts: votes are dropped.
+    tick().await;
+    assert_eq!(admin.get("/match/current").await["status"], "queued");
+    let id = current["id"].clone();
+    let (status, taken) =
+        gateway_write(&gateway, &vote_path, None, ballot(id.clone(), "d1", "a")).await;
+    assert_eq!(status, StatusCode::OK, "{taken}");
+    assert_eq!(
+        (taken["counted"].as_u64(), taken["dropped"].as_u64()),
+        (Some(0), Some(1))
+    );
+    let (status, _) = admin
+        .request(Method::POST, "/match/current/close", None)
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "not open yet");
+
+    // The vote's track on air: open until 10 s before its end.
+    while on_air().await != Some(vote_entry) {
+        let before = on_air().await;
+        skip().await;
+        eventually("the next track", Duration::from_secs(20), || async {
+            (on_air().await != before).then_some(())
+        })
+        .await;
+    }
+    let open = eventually("the vote open", Duration::from_secs(10), || async {
+        tick().await;
+        let open = admin.get("/match/current").await;
+        (open["status"] == "open").then_some(open)
+    })
+    .await;
+    let closes = open["closes_at_unix_ms"].as_i64().unwrap();
+    let transition = open["transition_at_unix_ms"].as_i64().unwrap();
+    assert_eq!(transition - closes, 10_000);
+    let now = crate::rotation::now_ms();
+    assert!(
+        transition > now + 80_000 && transition < now + 101_000,
+        "{transition} {now}"
+    );
+    let state = gateway.get("/gateway/state").await;
+    let show = state["stations"][0]["shows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|show| show["module"] == "match")
+        .unwrap()
+        .clone();
+    assert_eq!(show["state"]["match_id"], id);
+    assert_eq!(show["state"]["closes_at_unix_ms"], closes);
+    assert_eq!(show["state"]["choices"][1]["choice"], "b");
+
+    // One vote per device, its last one counting.
+    let batch = json!({"writes": [
+        {"device": "d1", "fields": {"match_id": id, "choice": "a"}},
+        {"device": "d2", "fields": {"match_id": id, "choice": "b"}},
+        {"device": "d3", "fields": {"match_id": id, "choice": "a"}},
+        {"device": "d4", "fields": {"match_id": 999_999, "choice": "a"}},
+    ]});
+    let (status, taken) = gateway_write(&gateway, &vote_path, None, batch).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (taken["counted"].as_u64(), taken["dropped"].as_u64()),
+        (Some(3), Some(1))
+    );
+    let (_, taken) = gateway_write(&gateway, &vote_path, None, ballot(id.clone(), "d2", "a")).await;
+    assert_eq!(taken["counted"], 1);
+    let open = admin.get("/match/current").await;
+    assert_eq!(
+        (
+            &open["choices"][0]["votes"],
+            &open["choices"][0]["percent"],
+            &open["votes"]
+        ),
+        (&json!(3), &json!(100), &json!(3))
+    );
+
+    // The close: the loser leaves the queue, the winner is next.
+    sqlx::query("UPDATE matches SET closes_at = NOW(6) - INTERVAL 2 SECOND WHERE id = ?")
+        .bind(id.as_u64())
+        .execute(pool)
+        .await
+        .unwrap();
+    tick().await;
+    assert_eq!(admin.get("/match/current").await, Value::Null);
+    let (_, taken) = gateway_write(&gateway, &vote_path, None, ballot(id.clone(), "d5", "b")).await;
+    assert_eq!(taken["dropped"], 1, "closed");
+    let queue = eventually("the loser out", Duration::from_secs(10), || async {
+        let queue = entries().await;
+        (!queue.iter().any(|entry| entry["entry_id"] == entry_b)).then_some(queue)
+    })
+    .await;
+    assert_eq!(queue[0]["entry_id"], entry_a, "{queue:?}");
+    let logged: Vec<u64> =
+        sqlx::query_scalar("SELECT entry_id FROM rotation_picks WHERE entry_id IN (?, ?)")
+            .bind(entry_a)
+            .bind(entry_b)
+            .fetch_all(pool)
+            .await
+            .unwrap();
+    assert_eq!(logged, [entry_a], "the loser's pick is forgotten");
+    let history = viewer.get("/match/history").await;
+    let first = &history["matches"][0];
+    assert_eq!(
+        (
+            &first["status"],
+            &first["winner"],
+            &first["decided_by"],
+            &first["votes"]
+        ),
+        (&json!("closed"), &json!("a"), &json!("votes"), &json!(3))
+    );
+    assert_eq!(history["week"]["matches"], 1);
+    assert_eq!(history["week"]["votes"], 3);
+
+    // The winner on air: chosen by the listeners.
+    skip().await;
+    eventually("the winner on air", Duration::from_secs(20), || async {
+        (on_air().await == Some(entry_a)).then_some(())
+    })
+    .await;
+    let now_playing = eventually(
+        "chosen by the listeners",
+        Duration::from_secs(20),
+        || async {
+            let now_playing = station.client().get("/public/now-playing").await;
+            (!now_playing["now"]["match"].is_null()).then_some(now_playing)
+        },
+    )
+    .await;
+    assert_eq!(
+        now_playing["now"]["match"],
+        json!({"name": "The match", "percent": 100, "votes": 3})
+    );
+
+    // Every 2 tracks: the next track carries the next vote. A tie goes to
+    // the least recently played of the two.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/match/settings",
+            json!({"every_tracks": 2, "category_id": hits, "jingle_category_id": announce,
+                   "loser_same_day": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let open_next = || async {
+        let current = next_match().await;
+        let mut vote_entry = None;
+        for entry in entries().await {
+            if entry["track"]["track_id"] == current["vote_track"]["track_id"]
+                && entry["linked_to"].is_null()
+                && vote_entry.is_none()
+            {
+                vote_entry = entry["entry_id"].as_u64();
+            }
+        }
+        let vote_entry = vote_entry.unwrap();
+        while on_air().await != Some(vote_entry) {
+            let before = on_air().await;
+            skip().await;
+            eventually("the next track", Duration::from_secs(20), || async {
+                (on_air().await != before).then_some(())
+            })
+            .await;
+        }
+        // The API follows the engine's state: a moment later.
+        eventually("the vote open", Duration::from_secs(10), || async {
+            tick().await;
+            let open = admin.get("/match/current").await;
+            (open["status"] == "open").then_some(open)
+        })
+        .await
+    };
+    let close_now = |id: Value| async move {
+        sqlx::query("UPDATE matches SET closes_at = NOW(6) - INTERVAL 2 SECOND WHERE id = ?")
+            .bind(id.as_u64())
+            .execute(pool)
+            .await
+            .unwrap();
+        tick().await;
+        sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+            "SELECT CAST(status AS CHAR), CAST(winner AS CHAR), CAST(decided_by AS CHAR)
+             FROM matches WHERE id = ?",
+        )
+        .bind(id.as_u64())
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    };
+    let tie = open_next().await;
+    let id = tie["id"].clone();
+    let batch = json!({"writes": [
+        {"device": "d1", "fields": {"match_id": id, "choice": "a"}},
+        {"device": "d2", "fields": {"match_id": id, "choice": "b"}},
+    ]});
+    let (_, taken) = gateway_write(&gateway, &vote_path, None, batch).await;
+    assert_eq!(taken["counted"], 2);
+    let (status, winner, decided_by) = close_now(id.clone()).await;
+    assert_eq!(
+        (status.as_str(), decided_by.as_deref()),
+        ("closed", Some("tie"))
+    );
+    // The least recently played: never played first.
+    let last_played = |track: &Value| {
+        let track = track.as_u64();
+        async move {
+            sqlx::query_scalar::<_, Option<i64>>(
+                "SELECT CAST(UNIX_TIMESTAMP(MAX(started_at)) * 1000 AS SIGNED) FROM play_history
+                 WHERE track_id = ?",
+            )
+            .bind(track)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+        }
+    };
+    let (played_a, played_b) = (
+        last_played(&tie["choices"][0]["track_id"]).await,
+        last_played(&tie["choices"][1]["track_id"]).await,
+    );
+    if played_a.unwrap_or(i64::MIN) != played_b.unwrap_or(i64::MIN) {
+        let expected = if played_a.unwrap_or(i64::MIN) < played_b.unwrap_or(i64::MIN) {
+            "a"
+        } else {
+            "b"
+        };
+        assert_eq!(winner.as_deref(), Some(expected));
+    }
+
+    // No vote: decided the same way.
+    let quiet = open_next().await;
+    let (_, _, decided_by) = close_now(quiet["id"].clone()).await;
+    assert_eq!(decided_by.as_deref(), Some("no_votes"));
+
+    // Closed early by an operator, with the votes so far.
+    let early = open_next().await;
+    let (_, taken) = gateway_write(
+        &gateway,
+        &vote_path,
+        None,
+        ballot(early["id"].clone(), "d1", "b"),
+    )
+    .await;
+    assert_eq!(taken["counted"], 1);
+    let (status, _) = viewer
+        .request(Method::POST, "/match/current/close", None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, closed) = admin
+        .request(Method::POST, "/match/current/close", None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{closed}");
+    assert_eq!(
+        (&closed["status"], &closed["winner"], &closed["decided_by"]),
+        (&json!("closed"), &json!("b"), &json!("early"))
+    );
+    let early_a = early["choices"][0]["track_id"].clone();
+    let queue = entries().await;
+    assert_eq!(
+        queue[0]["track"]["track_id"], early["choices"][1]["track_id"],
+        "{queue:?}"
+    );
+    assert!(
+        queue
+            .iter()
+            .skip(1)
+            .all(|entry| entry["track"]["track_id"] != early_a)
+    );
+
+    // Cancelled: the first track stays, as an ordinary track.
+    let cancelled = open_next().await;
+    let (status, body) = admin
+        .request(Method::POST, "/match/current/cancel", None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "cancelled");
+    let queue = entries().await;
+    assert_eq!(
+        queue[0]["track"]["track_id"],
+        cancelled["choices"][0]["track_id"]
+    );
+    assert_eq!(admin.get("/match/current").await, Value::Null);
+    let (status, _) = admin
+        .request(Method::POST, "/match/current/cancel", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Turned off: the match waiting is cancelled, and nothing answers.
+    next_match().await;
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"match": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    tick().await;
+    let left: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM matches WHERE status IN ('queued', 'open')")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(left, 0);
+    let (status, _) = viewer.request(Method::GET, "/match/history", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // The devices' votes go an hour after their match.
+    sqlx::query("UPDATE matches SET closed_at = NOW(6) - INTERVAL 2 HOUR")
+        .execute(pool)
+        .await
+        .unwrap();
+    crate::matches::purge_devices(pool).await.unwrap();
+    let devices: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM match_votes")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(devices, 0);
+    station.stop().await;
 }

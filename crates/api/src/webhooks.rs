@@ -74,6 +74,32 @@ pub enum WebhookEvent {
     /// Sent by `POST /webhooks/{id}/test`.
     #[serde(rename = "ping")]
     Ping,
+    /// A show opens soon (`docs/listener-interaction.md#notifications`):
+    /// sent to the webhooks the show chooses, not chosen in `events`.
+    #[serde(rename = "show.upcoming")]
+    ShowUpcoming,
+    #[serde(rename = "show.started")]
+    ShowStarted,
+    #[serde(rename = "show.ended")]
+    ShowEnded,
+    /// The Top 30's chart, when its week closes.
+    #[serde(rename = "top.published")]
+    TopPublished,
+    /// A rank of the Top 30, as it starts playing.
+    #[serde(rename = "top.rank")]
+    TopRank,
+    /// An accepted dedication goes on air, with its message.
+    #[serde(rename = "dedication.played")]
+    DedicationPlayed,
+    /// A dedication is accepted.
+    #[serde(rename = "dedication.accepted")]
+    DedicationAccepted,
+    /// A match's vote opens.
+    #[serde(rename = "match.started")]
+    MatchStarted,
+    /// A match's vote closes, with its result.
+    #[serde(rename = "match.closed")]
+    MatchClosed,
 }
 
 impl WebhookEvent {
@@ -84,7 +110,32 @@ impl WebhookEvent {
             Self::TrackSkipped => "track.skipped",
             Self::QueueChanged => "queue.changed",
             Self::Ping => "ping",
+            Self::ShowUpcoming => "show.upcoming",
+            Self::ShowStarted => "show.started",
+            Self::ShowEnded => "show.ended",
+            Self::TopPublished => "top.published",
+            Self::TopRank => "top.rank",
+            Self::DedicationPlayed => "dedication.played",
+            Self::DedicationAccepted => "dedication.accepted",
+            Self::MatchStarted => "match.started",
+            Self::MatchClosed => "match.closed",
         }
+    }
+
+    /// The events a show chooses on its page, not the webhook.
+    pub fn is_show(self) -> bool {
+        matches!(
+            self,
+            Self::ShowUpcoming
+                | Self::ShowStarted
+                | Self::ShowEnded
+                | Self::TopPublished
+                | Self::TopRank
+                | Self::DedicationPlayed
+                | Self::DedicationAccepted
+                | Self::MatchStarted
+                | Self::MatchClosed
+        )
     }
 
     /// The event a track change sends.
@@ -150,6 +201,21 @@ pub struct PayloadTrack {
     pub source: PlaySource,
 }
 
+/// The show of a show event.
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct PayloadShow {
+    /// Its module: `dedications`, `match`, `top30`.
+    pub module: heron_core::Module,
+    /// Its title on the website, else its name.
+    pub name: String,
+    /// The website's page of the show, else its page on the gateway.
+    pub link: Option<String>,
+    /// While it is open: when it closes.
+    pub end_unix_ms: Option<i64>,
+    /// When it opens next.
+    pub next_unix_ms: Option<i64>,
+}
+
 /// The default body of a delivery.
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
 pub struct Payload {
@@ -167,6 +233,15 @@ pub struct Payload {
     /// `queue.changed` only: the upcoming tracks, in airing order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upcoming: Option<Vec<UpcomingTrack>>,
+    /// Show events only: the show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show: Option<PayloadShow>,
+    /// Show events only: the show's message, written out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// `track.started` only: the accepted dedication the track plays for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dedication: Option<crate::dedications::OnAirDedication>,
 }
 
 impl Payload {
@@ -205,6 +280,9 @@ impl Payload {
             played_ms,
             reason,
             upcoming: None,
+            show: None,
+            message: None,
+            dedication: None,
         }
     }
 
@@ -218,6 +296,9 @@ impl Payload {
             played_ms: None,
             reason: None,
             upcoming: Some(upcoming),
+            show: None,
+            message: None,
+            dedication: None,
         }
     }
 
@@ -231,6 +312,26 @@ impl Payload {
             played_ms: None,
             reason: None,
             upcoming: None,
+            show: None,
+            message: None,
+            dedication: None,
+        }
+    }
+
+    /// A show event, with its message written out.
+    pub fn show(event: WebhookEvent, show: PayloadShow, message: String) -> Self {
+        Self {
+            event,
+            station: String::new(),
+            delivery_id: 0,
+            at_unix_ms: unix_ms(SystemTime::now()),
+            track: None,
+            played_ms: None,
+            reason: None,
+            upcoming: None,
+            show: Some(show),
+            message: Some(message),
+            dedication: None,
         }
     }
 
@@ -281,6 +382,26 @@ impl Payload {
             "next.title" => text(next.and_then(|next| next.title.as_ref())),
             "next.album" => text(next.and_then(|next| next.album.as_ref())),
             "next.cover_url" => text(next.and_then(|next| next.cover_url.as_ref())),
+            "message" => match (&self.message, track) {
+                (Some(message), _) => message.clone(),
+                (None, Some(track)) => [&track.artist, &track.title]
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" – "),
+                (None, None) => String::new(),
+            },
+            "show.module" => self
+                .show
+                .as_ref()
+                .map(|show| show.module.key().to_owned())
+                .unwrap_or_default(),
+            "show.name" => text(self.show.as_ref().map(|show| &show.name)),
+            "show.link" => text(self.show.as_ref().and_then(|show| show.link.as_ref())),
+            "dedication_from" => text(self.dedication.as_ref().map(|d| &d.from)),
+            "dedication_to" => text(self.dedication.as_ref().map(|d| &d.to)),
+            "dedication_message" => text(self.dedication.as_ref().map(|d| &d.message)),
             "next.planned_start_unix_ms" => next
                 .map(|next| next.planned_start_unix_ms.to_string())
                 .unwrap_or_default(),
@@ -290,7 +411,7 @@ impl Payload {
 }
 
 /// The placeholders a body template can use.
-pub const PLACEHOLDERS: [&str; 20] = [
+pub const PLACEHOLDERS: [&str; 27] = [
     "event",
     "station",
     "delivery_id",
@@ -311,6 +432,13 @@ pub const PLACEHOLDERS: [&str; 20] = [
     "next.album",
     "next.cover_url",
     "next.planned_start_unix_ms",
+    "message",
+    "show.module",
+    "show.name",
+    "show.link",
+    "dedication_from",
+    "dedication_to",
+    "dedication_message",
 ];
 
 /// Splits a template into text and `{{placeholder}}` names (spaces inside
@@ -523,6 +651,33 @@ impl Webhooks {
             return Ok(());
         }
         let mut payload = Payload::of(event);
+        // An accepted dedication goes on air with its track.
+        if let TrackEvent::Started {
+            entry, at_unix_ms, ..
+        } = event
+            && entry.track.source == PlaySource::Request
+            && crate::modules::is_on(
+                &self.pool,
+                Some(station_id),
+                heron_core::Module::Dedications,
+            )
+            .await?
+            && let Some((id, dedication)) = crate::dedications::of_entry(
+                &self.pool,
+                station_id,
+                entry.entry_id,
+                entry.track.track_id,
+            )
+            .await?
+        {
+            payload.dedication = Some(dedication);
+            let at = i64::try_from(*at_unix_ms).unwrap_or(i64::MAX);
+            if let Err(error) =
+                crate::dedications::notify_played(&self.pool, self, station_id, id, at).await
+            {
+                tracing::warn!(%error, "cannot send dedication.played");
+            }
+        }
         // FX player tracks, and tracks that send no metadata (jingles), go
         // only to webhooks that ask for them.
         let entry = match event {
@@ -655,6 +810,34 @@ impl Webhooks {
             self.wake.notify_one();
         }
         Ok(())
+    }
+
+    /// Queues a show event for the webhooks the show chose: those still
+    /// enabled, of the station.
+    pub async fn queue_show(
+        &self,
+        station_id: u64,
+        webhook_ids: &[u64],
+        payload: Payload,
+    ) -> ApiResult<usize> {
+        if webhook_ids.is_empty() || !self.on(station_id).await? {
+            return Ok(0);
+        }
+        let enabled: Vec<u64> = sqlx::query_scalar(
+            "SELECT id FROM webhooks WHERE enabled AND station_id = ? ORDER BY id",
+        )
+        .bind(station_id)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut queued = 0;
+        for id in enabled.into_iter().filter(|id| webhook_ids.contains(id)) {
+            self.queue(id, payload.clone()).await?;
+            queued += 1;
+        }
+        if queued > 0 {
+            self.wake.notify_one();
+        }
+        Ok(queued)
     }
 
     /// Whether webhooks are on for the station (docs/modules.md).
@@ -1042,6 +1225,11 @@ fn check(input: WebhookInput) -> ApiResult<Checked> {
     }
     let mut events = input.events;
     events.dedup();
+    if events.iter().any(|event| event.is_show()) {
+        return Err(ApiError::Invalid(
+            "the show events are chosen on each show's page".to_owned(),
+        ));
+    }
     if events.is_empty() || events.contains(&WebhookEvent::Ping) {
         return Err(ApiError::Invalid(
             "events: at least one of track.started, track.ended, track.skipped and queue.changed"
@@ -1558,6 +1746,38 @@ mod tests {
         let mut ping = Payload::ping();
         ping.at_unix_ms = 7;
         assert_eq!(render(template, "text/plain", &ping), "ping||||||||||7|0");
+    }
+
+    #[test]
+    fn show_events_carry_their_message() {
+        let show = PayloadShow {
+            module: heron_core::Module::Dedications,
+            name: "Your dedications".to_owned(),
+            link: Some("https://radio.example.org/dedications".to_owned()),
+            end_unix_ms: Some(10),
+            next_unix_ms: None,
+        };
+        let payload = Payload::show(WebhookEvent::ShowStarted, show, "Open \"now\"".to_owned());
+        let rendered = render(
+            r#"{"content": "{{message}} ({{show.module}}, {{show.name}}, {{show.link}})"}"#,
+            "application/json",
+            &payload,
+        );
+        let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(
+            value["content"],
+            "Open \"now\" (dedications, Your dedications, https://radio.example.org/dedications)"
+        );
+        let body: serde_json::Value =
+            serde_json::from_str(&body(None, "application/json", &payload)).unwrap();
+        assert_eq!(body["event"], "show.started");
+        assert_eq!(body["show"]["end_unix_ms"], 10);
+        assert!(body["track"].is_null());
+        let track = Payload::of(&ended(EndReason::Finished));
+        assert_eq!(
+            render("{{message}}", "text/plain", &track),
+            "Simon & Garfunkel – Song"
+        );
     }
 
     #[test]
