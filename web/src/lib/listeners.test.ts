@@ -4,11 +4,16 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   barLabel,
+  change,
+  changeText,
   csvUrl,
   dayOf,
   dayStart,
   decimal,
+  filterOf,
+  filterParams,
   hourLabel,
+  lengthShares,
   listeningHours,
   measureText,
   percent,
@@ -93,5 +98,31 @@ describe("output statistics settings", () => {
     expect(statisticsInput(" ", "", false)).toEqual({ admin_username: null });
     expect(statisticsInput("ops", "secret", false)).toEqual({ admin_username: "ops", admin_password: "secret" });
     expect(statisticsInput("", "ignored", true)).toEqual({ admin_username: null, admin_password: null });
+  });
+});
+
+describe("the page's filter and the audience figures", () => {
+  it("reads the output and server from the address", () => {
+    expect(filterOf(new URLSearchParams("output=3&server=7"))).toEqual({ output: 3, server: 7 });
+    expect(filterOf(new URLSearchParams("server=x&output=0"))).toEqual({ output: undefined, server: undefined });
+    expect(filterParams({ output: 3, server: undefined })).toEqual({ output_id: 3, server_id: undefined });
+  });
+
+  it("writes the change from the previous period", () => {
+    expect(change(120, 100)).toBeCloseTo(0.2);
+    expect(change(80, 100)).toBeCloseTo(-0.2);
+    expect(change(5, 0)).toBeNull();
+    expect(change(null, 3)).toBeNull();
+    expect(changeText(0.2, "en")).toBe("+20%");
+    expect(changeText(-0.125, "en")).toBe("-12.5%");
+    expect(changeText(0, "en")).toBe("0%");
+    expect(changeText(null, "en")).toBe("–");
+  });
+
+  it("gives each session length its share", () => {
+    const shares = lengthShares({ under_1_min: 1, from_1_to_5_min: 1, from_5_to_30_min: 2, from_30_min_to_2_h: 0, over_2_h: 0 });
+    expect(shares.map((s) => s.share)).toEqual([0.25, 0.25, 0.5, 0, 0]);
+    expect(lengthShares(null)).toEqual([]);
+    expect(lengthShares({ under_1_min: 0, from_1_to_5_min: 0, from_5_to_30_min: 0, from_30_min_to_2_h: 0, over_2_h: 0 })[0]?.share).toBe(0);
   });
 });

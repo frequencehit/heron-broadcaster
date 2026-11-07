@@ -161,3 +161,52 @@ export function statisticsInput(
   }
   return input;
 }
+
+/** The output and server the Statistics page is limited to (`?output=`, `?server=`). */
+export interface Filter {
+  output: number | undefined;
+  server: number | undefined;
+}
+
+function id(value: string | null): number | undefined {
+  const parsed = Number(value);
+  return value && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/** The filter of the page's address. */
+export function filterOf(search: URLSearchParams): Filter {
+  return { output: id(search.get("output")), server: id(search.get("server")) };
+}
+
+/** The filter as query parameters of the statistics routes. */
+export function filterParams(filter: Filter): { output_id: number | undefined; server_id: number | undefined } {
+  return { output_id: filter.output, server_id: filter.server };
+}
+
+/** The change from the previous period, as a ratio; `null` when it cannot be told. */
+export function change(current: number | null | undefined, previous: number | null | undefined): number | null {
+  if (current === null || current === undefined || previous === null || previous === undefined || previous <= 0) {
+    return null;
+  }
+  return (current - previous) / previous;
+}
+
+/** A change written with its sign, `+12.5 %`, `−3 %`. */
+export function changeText(ratio: number | null, language?: string): string {
+  if (ratio === null || !Number.isFinite(ratio)) {
+    return "–";
+  }
+  return new Intl.NumberFormat(language, { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(ratio);
+}
+
+type SessionLengths = Schemas["SessionLengths"];
+
+/** The session lengths, shortest first, with their share of the sessions. */
+export function lengthShares(lengths: SessionLengths | null | undefined): { key: keyof SessionLengths; count: number; share: number }[] {
+  if (!lengths) {
+    return [];
+  }
+  const keys: (keyof SessionLengths)[] = ["under_1_min", "from_1_to_5_min", "from_5_to_30_min", "from_30_min_to_2_h", "over_2_h"];
+  const total = keys.reduce((sum, key) => sum + lengths[key], 0);
+  return keys.map((key) => ({ key, count: lengths[key], share: total > 0 ? lengths[key] / total : 0 }));
+}

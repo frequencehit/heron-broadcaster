@@ -4038,6 +4038,90 @@
         }
       }
     },
+    "/api/v1/listeners/audience": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session\nlengths), and of the period of the same length before it.",
+        "operationId": "audience_route",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "output_id",
+            "in": "query",
+            "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceComparison"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/listeners/days": {
       "get": {
         "tags": [
@@ -4068,6 +4152,17 @@
             "name": "output_id",
             "in": "query",
             "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part (the master or a relay); every server's\notherwise.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -4159,6 +4254,17 @@
             "name": "output_id",
             "in": "query",
             "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -4264,6 +4370,17 @@
             "name": "output_id",
             "in": "query",
             "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -4408,6 +4525,28 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "output_id",
+            "in": "query",
+            "description": "Only the listeners of this output; the whole station's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
             }
           },
           {
@@ -8915,6 +9054,99 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/listeners/audience": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session\nlengths), and of the period of the same length before it.",
+        "operationId": "audience_route_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "output_id",
+            "in": "query",
+            "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceComparison"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/listeners/days": {
       "get": {
         "tags": [
@@ -8954,6 +9186,17 @@
             "name": "output_id",
             "in": "query",
             "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part (the master or a relay); every server's\notherwise.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -9054,6 +9297,17 @@
             "name": "output_id",
             "in": "query",
             "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -9179,6 +9433,17 @@
             "name": "output_id",
             "in": "query",
             "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -9341,6 +9606,28 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "output_id",
+            "in": "query",
+            "description": "Only the listeners of this output; the whole station's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
             }
           },
           {
@@ -15581,6 +15868,131 @@
           }
         }
       },
+      "Audience": {
+        "type": "object",
+        "description": "The audience figures of a period. Those from sessions are missing\nwithout listener lists.",
+        "required": [
+          "from",
+          "to",
+          "days"
+        ],
+        "properties": {
+          "aqh": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Average quarter-hour audience: listeners heard 5 minutes or more in\na clock quarter-hour, on average over the quarter-hours measured."
+          },
+          "atsl_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Average time spent listening: TTSL over the sessions, in seconds."
+          },
+          "cume": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Distinct listeners per day, on average over the days measured."
+          },
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days with a minute measured.",
+            "minimum": 0
+          },
+          "from": {
+            "type": "string",
+            "description": "First day (`YYYY-MM-DD`, station time)."
+          },
+          "listener_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Distinct listeners of each day, added up.",
+            "minimum": 0
+          },
+          "median_session_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The most listeners at once.",
+            "minimum": 0
+          },
+          "peak_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The (first) minute of the peak."
+          },
+          "session_lengths": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SessionLengths"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Sessions of at least 5 s.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "string",
+            "description": "Last day, included."
+          },
+          "ttsl_hours": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Total time spent listening: the sessions added up, in hours."
+          }
+        }
+      },
+      "AudienceComparison": {
+        "type": "object",
+        "description": "The figures of a period and of the period of the same length before.",
+        "required": [
+          "current",
+          "previous"
+        ],
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/Audience"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/Audience"
+          }
+        }
+      },
       "BackupKey": {
         "type": "string",
         "description": "Which key opens an encrypted backup.",
@@ -18874,6 +19286,22 @@
             "format": "int32",
             "description": "The highest peak.",
             "minimum": 0
+          },
+          "tune_in": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Sessions of at least 5 s started in that hour, on average per day;\nmissing without listener lists."
+          },
+          "tune_out": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Sessions that ended in that hour (not at midnight), on average per\nday."
           }
         }
       },
@@ -24337,6 +24765,44 @@
               "null"
             ],
             "description": "Missing when the service was never seen or does not say."
+          }
+        }
+      },
+      "SessionLengths": {
+        "type": "object",
+        "description": "Sessions by length.",
+        "required": [
+          "under_1_min",
+          "from_1_to_5_min",
+          "from_5_to_30_min",
+          "from_30_min_to_2_h",
+          "over_2_h"
+        ],
+        "properties": {
+          "from_1_to_5_min": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "from_30_min_to_2_h": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "from_5_to_30_min": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "over_2_h": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "under_1_min": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
