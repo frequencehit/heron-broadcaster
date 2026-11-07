@@ -66,6 +66,7 @@ pub fn module_of(path: &str) -> Option<Module> {
         ["shows", key, ..] => Module::from_key(key).filter(|module| module.is_show())?,
         ["likes", ..] => Module::Likes,
         ["top30", ..] => Module::Top30,
+        ["dedications", ..] => Module::Dedications,
         _ => return None,
     };
     Some(module)
@@ -223,6 +224,7 @@ mod tests {
             ("/api/v1/likes/week", Some(Module::Likes)),
             ("/api/v1/likes/tracks/12", Some(Module::Likes)),
             ("/api/v1/top30/chart", Some(Module::Top30)),
+            ("/api/v1/dedications/12/accept", Some(Module::Dedications)),
             ("/api/v1/shows/medleys", None),
             ("/api/v1/shows", None),
             ("/api/v1/tracks/12", None),

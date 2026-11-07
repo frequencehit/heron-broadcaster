@@ -88,6 +88,12 @@ pub enum WebhookEvent {
     /// A rank of the Top 30, as it starts playing.
     #[serde(rename = "top.rank")]
     TopRank,
+    /// An accepted dedication goes on air, with its message.
+    #[serde(rename = "dedication.played")]
+    DedicationPlayed,
+    /// A dedication is accepted.
+    #[serde(rename = "dedication.accepted")]
+    DedicationAccepted,
 }
 
 impl WebhookEvent {
@@ -103,6 +109,8 @@ impl WebhookEvent {
             Self::ShowEnded => "show.ended",
             Self::TopPublished => "top.published",
             Self::TopRank => "top.rank",
+            Self::DedicationPlayed => "dedication.played",
+            Self::DedicationAccepted => "dedication.accepted",
         }
     }
 
@@ -115,6 +123,8 @@ impl WebhookEvent {
                 | Self::ShowEnded
                 | Self::TopPublished
                 | Self::TopRank
+                | Self::DedicationPlayed
+                | Self::DedicationAccepted
         )
     }
 
@@ -219,6 +229,9 @@ pub struct Payload {
     /// Show events only: the show's message, written out.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// `track.started` only: the accepted dedication the track plays for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dedication: Option<crate::dedications::OnAirDedication>,
 }
 
 impl Payload {
@@ -259,6 +272,7 @@ impl Payload {
             upcoming: None,
             show: None,
             message: None,
+            dedication: None,
         }
     }
 
@@ -274,6 +288,7 @@ impl Payload {
             upcoming: Some(upcoming),
             show: None,
             message: None,
+            dedication: None,
         }
     }
 
@@ -289,6 +304,7 @@ impl Payload {
             upcoming: None,
             show: None,
             message: None,
+            dedication: None,
         }
     }
 
@@ -305,6 +321,7 @@ impl Payload {
             upcoming: None,
             show: Some(show),
             message: Some(message),
+            dedication: None,
         }
     }
 
@@ -372,6 +389,9 @@ impl Payload {
                 .unwrap_or_default(),
             "show.name" => text(self.show.as_ref().map(|show| &show.name)),
             "show.link" => text(self.show.as_ref().and_then(|show| show.link.as_ref())),
+            "dedication_from" => text(self.dedication.as_ref().map(|d| &d.from)),
+            "dedication_to" => text(self.dedication.as_ref().map(|d| &d.to)),
+            "dedication_message" => text(self.dedication.as_ref().map(|d| &d.message)),
             "next.planned_start_unix_ms" => next
                 .map(|next| next.planned_start_unix_ms.to_string())
                 .unwrap_or_default(),
@@ -381,7 +401,7 @@ impl Payload {
 }
 
 /// The placeholders a body template can use.
-pub const PLACEHOLDERS: [&str; 24] = [
+pub const PLACEHOLDERS: [&str; 27] = [
     "event",
     "station",
     "delivery_id",
@@ -406,6 +426,9 @@ pub const PLACEHOLDERS: [&str; 24] = [
     "show.module",
     "show.name",
     "show.link",
+    "dedication_from",
+    "dedication_to",
+    "dedication_message",
 ];
 
 /// Splits a template into text and `{{placeholder}}` names (spaces inside
@@ -618,6 +641,33 @@ impl Webhooks {
             return Ok(());
         }
         let mut payload = Payload::of(event);
+        // An accepted dedication goes on air with its track.
+        if let TrackEvent::Started {
+            entry, at_unix_ms, ..
+        } = event
+            && entry.track.source == PlaySource::Request
+            && crate::modules::is_on(
+                &self.pool,
+                Some(station_id),
+                heron_core::Module::Dedications,
+            )
+            .await?
+            && let Some((id, dedication)) = crate::dedications::of_entry(
+                &self.pool,
+                station_id,
+                entry.entry_id,
+                entry.track.track_id,
+            )
+            .await?
+        {
+            payload.dedication = Some(dedication);
+            let at = i64::try_from(*at_unix_ms).unwrap_or(i64::MAX);
+            if let Err(error) =
+                crate::dedications::notify_played(&self.pool, self, station_id, id, at).await
+            {
+                tracing::warn!(%error, "cannot send dedication.played");
+            }
+        }
         // FX player tracks, and tracks that send no metadata (jingles), go
         // only to webhooks that ask for them.
         let entry = match event {

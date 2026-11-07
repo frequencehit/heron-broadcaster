@@ -33,6 +33,9 @@ pub struct PublicTrack {
     /// From the cue-in to the cue-out.
     pub duration_ms: u64,
     pub position_ms: u64,
+    /// The accepted dedication it plays for
+    /// (`docs/listener-interaction.md#dedications`).
+    pub dedication: Option<crate::dedications::OnAirDedication>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -200,9 +203,21 @@ pub async fn now_playing_of(state: &AppState, station: &Station) -> NowPlaying {
                     started_at_unix_ms: now.saturating_sub(deck.position_ms),
                     duration_ms: deck.length_ms,
                     position_ms: deck.position_ms,
+                    dedication: None,
                 })
             })
     });
+    let player = station.engine.state().borrow().clone();
+    let track = match (track, player) {
+        (Some(mut track), Some(player)) => {
+            match crate::dedications::on_air(&state.pool, station.id(), &player).await {
+                Ok(dedication) => track.dedication = dedication,
+                Err(error) => tracing::warn!(%error, "cannot read the dedication"),
+            }
+            Some(track)
+        }
+        (track, _) => track,
+    };
     let mut track = match track {
         Some(track) => Some(track),
         None if jingle => match last_song(state, station, now).await {
@@ -344,6 +359,7 @@ async fn last_song(
                 started_at_unix_ms: started,
                 duration_ms: u64::from(duration_ms.unwrap_or(0)),
                 position_ms: now.saturating_sub(started),
+                dedication: None,
             };
             (track_id, track)
         }),
