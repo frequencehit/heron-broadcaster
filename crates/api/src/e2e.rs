@@ -9664,6 +9664,9 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
     assert_eq!(status, StatusCode::OK);
     let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+    // Autofill played the whole library before the clock: those plays,
+    // the news among them, do not count.
+    let cleared_at = rotation_now();
 
     // Hard: queued with its start time, started then, the track before cut.
     let hard_at = hour_start + hard_s * 1_000;
@@ -9692,16 +9695,39 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
             .as_array()
             .unwrap()
             .iter()
-            .find(|play| play["track_id"] == t[4])
+            .find(|play| {
+                play["track_id"] == t[4] && play["started_at_unix_ms"].as_i64() > Some(cleared_at)
+            })
             .cloned()
     })
     .await;
     let started = play["started_at_unix_ms"].as_i64().unwrap();
-    assert!(
-        (started - hard_at).abs() < 1_500,
-        "started {} ms from its exact time",
-        started - hard_at
-    );
+    if (started - hard_at).abs() >= 1_500 {
+        let picks = admin.get("/rotation/picks?limit=30").await;
+        let picks: Vec<Value> = picks
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pick| {
+                let e = &pick["explanation"];
+                json!({"track": pick["track_id"], "planned": pick["planned_at_unix_ms"].as_i64().map(|at| at - hard_at),
+                       "slot": e["slot"], "step": e["step"], "exact": e["exact"], "fill": e["fill"]})
+            })
+            .collect();
+        let history = admin.get("/history").await;
+        let history: Vec<Value> = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|play| json!({"track": play["track_id"], "start": play["started_at_unix_ms"].as_i64().map(|at| at - hard_at), "end": play["end_reason"]}))
+            .collect();
+        panic!(
+            "started {} ms from its exact time\npicks: {}\nhistory: {}",
+            started - hard_at,
+            serde_json::to_string_pretty(&picks).unwrap(),
+            serde_json::to_string(&history).unwrap()
+        );
+    }
     // The track before fades out over 1.5 s, skipped.
     eventually("the track before cut", Duration::from_secs(10), || async {
         let history = admin.get("/history").await;
