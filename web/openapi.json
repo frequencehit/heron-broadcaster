@@ -2717,6 +2717,236 @@
         }
       }
     },
+    "/api/v1/dedications": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The requests of the opening range on now, else of the last one, the\nlatest first; the waiting ones with what the rules say about them.",
+        "operationId": "list_dedications",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only the requests of this status.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DedicationStatus"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, 100 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationList"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dedications/settings": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The station's dedication settings.",
+        "operationId": "get_dedication_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Replaces the station's dedication settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_dedication_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DedicationSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dedications/{id}/accept": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Queues the request's track (source `request`) at the place asked and\nanswers the request. `409` for a request not waiting, or a track that\na restriction forbids then or that cannot play. Operators.",
+        "operationId": "accept_dedication",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dedications/{id}/refuse": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Refuses a waiting request, with a reason or none. `409` for a request\nnot waiting. Operators.",
+        "operationId": "refuse_dedication",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefuseDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/encoder-profiles": {
       "get": {
         "tags": [
@@ -3082,6 +3312,251 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/gateway/state": {
+      "get": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "What the gateway serves listeners: every enabled station, its now\nplaying and its shows. Read once a second by `heron-public`, with the\ngateway token only.",
+        "operationId": "gateway_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayState"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/gateway/stations/{code}/dedications": {
+      "post": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "A listener's request, from the gateway, with the device's hash: one\nwaiting at a time per device, a few per device and a maximum per\nopening range. Answers its follow link.",
+        "operationId": "gateway_submit",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DedicationFields"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Followed"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/gateway/stations/{code}/dedications/follow": {
+      "get": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "A request, by the key of its follow link. `404` once deleted.",
+        "operationId": "gateway_follow",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "The key of the follow link.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Followed"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/gateway/stations/{code}/dedications/search": {
+      "get": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "The requestable tracks whose artist or title has `q`, 8 at most. `409`\nwhile the show is closed.",
+        "operationId": "gateway_search",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "2 to 60 characters of the artist or the title.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RequestableTrack"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/v1/gateway/stations/{code}/likes/vote": {
+      "post": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "Each device's last like or dislike, from the gateway, every second. A\nvote counts while its play is on air and up to 10 seconds after; a\ndevice's vote on a play replaces its earlier one.",
+        "operationId": "gateway_votes",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VotesTaken"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/api/v1/history": {
@@ -4022,6 +4497,106 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryTask"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/likes/current": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The votes on the track playing, as they come.",
+        "operationId": "current",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikesNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/likes/tracks/{id}": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "A track's likes and dislikes on the station: this week, 30 days and\nalways, and its latest plays with votes.",
+        "operationId": "track_likes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The track's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackLikes"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/likes/week": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The most liked and least liked tracks of the week so far, from\nMonday 00:00 in the station's time zone, among those with at least\n`min_votes` votes.",
+        "operationId": "week",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekLikes"
                 }
               }
             }
@@ -5235,7 +5810,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "Turns modules on or off for the installation (a module left out is\non). Admins only.",
+        "summary": "Turns modules on or off for the installation (a module left out takes\nits default: off for a show). Admins only.",
         "operationId": "put_modules",
         "requestBody": {
           "content": {
@@ -7907,6 +8482,126 @@
         }
       }
     },
+    "/api/v1/shows": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "The shows on for the station, with their settings and whether they are\nopen now.",
+        "operationId": "list_shows",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShowView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shows/{module}": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "A show's settings on the station, and whether it is open now.",
+        "operationId": "get_show",
+        "parameters": [
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match, top30 or likes",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has are refused (`409`). Operators.",
+        "operationId": "put_show",
+        "parameters": [
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match, top30 or likes",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShowSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/staging": {
       "get": {
         "tags": [
@@ -8934,6 +9629,285 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/dedications": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The requests of the opening range on now, else of the last one, the\nlatest first; the waiting ones with what the rules say about them.",
+        "operationId": "list_dedications_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only the requests of this status.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DedicationStatus"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, 100 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationList"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/dedications/settings": {
+      "get": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "The station's dedication settings.",
+        "operationId": "get_dedication_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Replaces the station's dedication settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_dedication_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DedicationSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/dedications/{id}/accept": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Queues the request's track (source `request`) at the place asked and\nanswers the request. `409` for a request not waiting, or a track that\na restriction forbids then or that cannot play. Operators.",
+        "operationId": "accept_dedication_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/dedications/{id}/refuse": {
+      "post": {
+        "tags": [
+          "dedications"
+        ],
+        "summary": "Refuses a waiting request, with a reason or none. `409` for a request\nnot waiting. Operators.",
+        "operationId": "refuse_dedication_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefuseDedication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dedication"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/engine": {
       "get": {
         "tags": [
@@ -9051,6 +10025,137 @@
                   "items": {
                     "$ref": "#/components/schemas/Play"
                   }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/likes/current": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The votes on the track playing, as they come.",
+        "operationId": "current_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikesNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/likes/tracks/{id}": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "A track's likes and dislikes on the station: this week, 30 days and\nalways, and its latest plays with votes.",
+        "operationId": "track_likes_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The track's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackLikes"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/likes/week": {
+      "get": {
+        "tags": [
+          "likes"
+        ],
+        "summary": "The most liked and least liked tracks of the week so far, from\nMonday 00:00 in the station's time zone, among those with at least\n`min_votes` votes.",
+        "operationId": "week_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeekLikes"
                 }
               }
             }
@@ -12037,6 +13142,155 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/shows": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "The shows on for the station, with their settings and whether they are\nopen now.",
+        "operationId": "list_shows_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShowView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/shows/{module}": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "A show's settings on the station, and whether it is open now.",
+        "operationId": "get_show_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match, top30 or likes",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has are refused (`409`). Operators.",
+        "operationId": "put_show_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match, top30 or likes",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShowSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/stream-servers": {
       "get": {
         "tags": [
@@ -12263,6 +13517,430 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/chart": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
+        "operationId": "get_top30_chart_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "query",
+            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/charts": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The frozen charts, the latest first.",
+        "operationId": "list_top30_charts_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Weeks before this one (its Monday), for the next page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 100, 20 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PastChart"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/charts/{week}/new-release": {
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "choose_new_release_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewReleaseChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/charts/{week}/removals/{track_id}": {
+      "post": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
+        "operationId": "remove_track_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
+        "operationId": "restore_track_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/settings": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The station's Top 30 settings.",
+        "operationId": "get_top30_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_top30_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Top30Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/top30/show": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
+        "operationId": "get_top30_show_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ShowPlan"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -13060,6 +14738,352 @@
         }
       }
     },
+    "/api/v1/top30/chart": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
+        "operationId": "get_top30_chart",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "query",
+            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/charts": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The frozen charts, the latest first.",
+        "operationId": "list_top30_charts",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Weeks before this one (its Monday), for the next page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 100, 20 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PastChart"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/charts/{week}/new-release": {
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "choose_new_release",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewReleaseChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/charts/{week}/removals/{track_id}": {
+      "post": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
+        "operationId": "remove_track",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
+        "operationId": "restore_track",
+        "parameters": [
+          {
+            "name": "week",
+            "in": "path",
+            "description": "The week's Monday",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "The track",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chart"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/settings": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The station's Top 30 settings.",
+        "operationId": "get_top30_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_top30_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Top30Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Top30Settings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/top30/show": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
+        "operationId": "get_top30_show",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ShowPlan"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tracks": {
       "get": {
         "tags": [
@@ -13319,6 +15343,50 @@
             }
           },
           {
+            "name": "likes_days",
+            "in": "query",
+            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, else of `on_station_id`,\nevery station's when neither is given.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "liked_min",
+            "in": "query",
+            "description": "Tracks with at least this share of likes, in percent (0 to 100);\ntracks without votes are left out.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "liked_max",
+            "in": "query",
+            "description": "Tracks with at most this share of likes, in percent.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "votes_min",
+            "in": "query",
+            "description": "Tracks with at least this many votes (likes and dislikes).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
             "name": "own_dayparts",
             "in": "query",
             "description": "`true`: the tracks with their own daypart separation or same\ndaypart on the following days; `false`: those that follow their\ncategories'.",
@@ -13349,7 +15417,8 @@
                 "genre",
                 "level_min",
                 "level_max",
-                "play_ratio"
+                "play_ratio",
+                "liked"
               ]
             }
           },
@@ -15173,6 +17242,18 @@
           }
         }
       },
+      "AcceptDedication": {
+        "type": "object",
+        "required": [
+          "place"
+        ],
+        "properties": {
+          "place": {
+            "$ref": "#/components/schemas/DedicationPlace"
+          }
+        },
+        "additionalProperties": false
+      },
       "AcceptRequest": {
         "type": "object",
         "properties": {
@@ -16813,6 +18894,151 @@
           }
         }
       },
+      "Chart": {
+        "type": "object",
+        "description": "A week's chart.",
+        "required": [
+          "week",
+          "from_unix_ms",
+          "closes_at_unix_ms",
+          "frozen",
+          "locked",
+          "votes",
+          "entries",
+          "removed"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChartEntry"
+            }
+          },
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "frozen": {
+            "type": "boolean",
+            "description": "Closed and kept; else the chart as it stands now."
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "A show was built from it: it does not change any more."
+          },
+          "new_release": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NewRelease",
+                "description": "`null` without a new release category."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Removed"
+            }
+          },
+          "votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The votes on the eligible tracks over the week.",
+            "minimum": 0
+          },
+          "week": {
+            "type": "string",
+            "description": "Its Monday: `2026-11-02`."
+          }
+        }
+      },
+      "ChartEntry": {
+        "type": "object",
+        "description": "A rank of a chart.",
+        "required": [
+          "rank",
+          "likes",
+          "dislikes",
+          "share",
+          "plays",
+          "movement",
+          "weeks"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "movement": {
+            "$ref": "#/components/schemas/Movement"
+          },
+          "plays": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its plays with votes over the week.",
+            "minimum": 0
+          },
+          "previous_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its rank in last week's chart.",
+            "minimum": 0
+          },
+          "rank": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "share": {
+            "type": "number",
+            "format": "double",
+            "description": "The share of likes, 0 to 1."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Missing once the track is deleted.",
+            "minimum": 0
+          },
+          "weeks": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The charts it was in, this one included.",
+            "minimum": 0
+          }
+        }
+      },
       "Checked": {
         "type": "object",
         "required": [
@@ -17035,6 +19261,14 @@
             }
           }
         }
+      },
+      "Closed": {
+        "type": "string",
+        "description": "What the website shows outside the hours.",
+        "enum": [
+          "message",
+          "nothing"
+        ]
       },
       "CodeRequest": {
         "type": "object",
@@ -17643,6 +19877,368 @@
           }
         }
       },
+      "Dedication": {
+        "type": "object",
+        "description": "A request, for operators.",
+        "required": [
+          "id",
+          "from",
+          "to",
+          "message",
+          "status",
+          "submitted_at_unix_ms",
+          "checks"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DedicationCheck"
+            },
+            "description": "While it waits: what the rules say about it now."
+          },
+          "decided_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "decided_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who accepted or refused it."
+          },
+          "from": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          },
+          "planned_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "play_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "played_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DedicationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/DedicationStatus"
+          },
+          "submitted_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationCheck": {
+        "type": "object",
+        "required": [
+          "kind",
+          "blocking"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the track queued already plays."
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "It cannot be accepted: a restriction forbids it, or it cannot play."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DedicationCheckKind"
+          },
+          "minutes_ago": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long ago it played (the separation rules)."
+          },
+          "restriction_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "separation_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The rule's window.",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationCheckKind": {
+        "type": "string",
+        "description": "What the rules say about a waiting request now.",
+        "enum": [
+          "rules_kept",
+          "artist_played",
+          "title_played",
+          "track_played",
+          "in_queue",
+          "restriction",
+          "unplayable"
+        ]
+      },
+      "DedicationCounts": {
+        "type": "object",
+        "description": "The counts of the range's requests.",
+        "required": [
+          "pending",
+          "accepted",
+          "played",
+          "refused",
+          "received"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "played": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "received": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refused": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "DedicationFields": {
+        "type": "object",
+        "description": "What a listener sends.",
+        "required": [
+          "track_id",
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DedicationList": {
+        "type": "object",
+        "required": [
+          "max_per_range",
+          "counts",
+          "dedications"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/DedicationCounts"
+          },
+          "dedications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dedication"
+            }
+          },
+          "max_per_range": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "on_air": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OnAirDedication",
+                "description": "The dedication of the track playing."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "opens_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DedicationPlace": {
+        "type": "string",
+        "description": "Where an accepted request goes in the queue.",
+        "enum": [
+          "next",
+          "hour",
+          "best"
+        ]
+      },
+      "DedicationReason": {
+        "type": "string",
+        "description": "Why a request was refused, or did not play.",
+        "enum": [
+          "just_played",
+          "unavailable",
+          "inappropriate",
+          "closed",
+          "removed"
+        ]
+      },
+      "DedicationSettings": {
+        "type": "object",
+        "description": "A station's dedication settings (`station_settings`, `dedications`). Its\nhours, website and notifications are its show settings.",
+        "properties": {
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "The categories whose tracks can be requested; none: the station's\nmusic.",
+            "default": []
+          },
+          "max_per_range": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Requests per opening range, every listener together, 1 to 1000.",
+            "default": 30,
+            "minimum": 0
+          },
+          "message_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Characters of a message at most, 20 to 500.",
+            "default": 140,
+            "minimum": 0
+          },
+          "per_device": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Requests per device per opening range, 1 to 10.",
+            "default": 1,
+            "minimum": 0
+          },
+          "retention_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days requests are kept, 1 to 365.",
+            "default": 30,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DedicationStatus": {
+        "type": "string",
+        "description": "Where a request stands.",
+        "enum": [
+          "pending",
+          "accepted",
+          "played",
+          "refused"
+        ]
+      },
       "DeliveryStatus": {
         "type": "string",
         "enum": [
@@ -17857,6 +20453,23 @@
           }
         },
         "additionalProperties": false
+      },
+      "DeviceVote": {
+        "type": "object",
+        "description": "A device's last vote.",
+        "required": [
+          "device",
+          "fields"
+        ],
+        "properties": {
+          "device": {
+            "type": "string",
+            "description": "The gateway's hash of the device."
+          },
+          "fields": {
+            "$ref": "#/components/schemas/LikeFields"
+          }
+        }
       },
       "Discarded": {
         "type": "object",
@@ -18398,6 +21011,24 @@
             "description": "For people."
           }
         }
+      },
+      "EventSettings": {
+        "type": "object",
+        "description": "One notification event.",
+        "required": [
+          "enabled",
+          "message"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "description": "With `{name}`, `{link}`, `{end}`, `{next}` and the show's own\nplaceholders."
+          }
+        },
+        "additionalProperties": false
       },
       "ExactLog": {
         "type": "object",
@@ -19076,6 +21707,84 @@
           }
         }
       },
+      "Followed": {
+        "type": "object",
+        "description": "A request, as its follow link gives it to the listener.",
+        "required": [
+          "follow",
+          "status",
+          "from",
+          "to",
+          "message",
+          "submitted_at_unix_ms"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decided_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "follow": {
+            "type": "string",
+            "description": "The key of the follow link."
+          },
+          "from": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "planned_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "played_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DedicationReason",
+                "description": "`null` for no reason, or an inappropriate message."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/DedicationStatus"
+          },
+          "submitted_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
       "GatedAgcSettings": {
         "type": "object",
         "description": "The gated AGC: a slow gain to the station's loudness target.",
@@ -19098,6 +21807,61 @@
           }
         },
         "additionalProperties": false
+      },
+      "GatewayState": {
+        "type": "object",
+        "required": [
+          "stations",
+          "server_time_unix_ms"
+        ],
+        "properties": {
+          "server_time_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GatewayStation"
+            },
+            "description": "The enabled stations."
+          }
+        }
+      },
+      "GatewayStation": {
+        "type": "object",
+        "description": "A station as the gateway serves it.",
+        "required": [
+          "code",
+          "name",
+          "timezone",
+          "now_playing",
+          "shows"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "now_playing": {
+            "$ref": "#/components/schemas/NowPlaying",
+            "description": "As `GET /public/now-playing` gives it."
+          },
+          "shows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShowPublic"
+            },
+            "description": "The shows on for the station."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone, which the shows' hours follow."
+          }
+        }
       },
       "GridDay": {
         "type": "object",
@@ -19176,12 +21940,25 @@
           "date",
           "time",
           "station_id",
-          "source"
+          "source",
+          "likes",
+          "dislikes"
         ],
         "properties": {
           "date": {
             "type": "string",
             "description": "`2026-10-12`, in the grid's time zone."
+          },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Listeners' likes and dislikes of the play.",
+            "minimum": 0
           },
           "source": {
             "$ref": "#/components/schemas/PlaySource"
@@ -19353,6 +22130,39 @@
             "description": "Sessions that ended in that hour (not at midnight), on average per\nday."
           }
         }
+      },
+      "HourRange": {
+        "type": "object",
+        "description": "Days and whole hours: Monday to Friday, 17:00 to 18:00.",
+        "required": [
+          "days",
+          "start_hour",
+          "end_hour"
+        ],
+        "properties": {
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "1 (Monday) to 7 (Sunday)."
+          },
+          "end_hour": {
+            "type": "integer",
+            "format": "int32",
+            "description": "After `start_hour`, up to 24.",
+            "minimum": 0
+          },
+          "start_hour": {
+            "type": "integer",
+            "format": "int32",
+            "description": "0 to 23.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "ImportApplyRequest": {
         "type": "object",
@@ -20088,6 +22898,77 @@
           }
         }
       },
+      "Item": {
+        "type": "object",
+        "description": "An item of a show's programme.",
+        "required": [
+          "kind",
+          "track_id",
+          "length_ms",
+          "planned_at_unix_ms"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          },
+          "length_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "What is played of it.",
+            "minimum": 0
+          },
+          "planned_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "queued": {
+            "type": "boolean",
+            "description": "Sent to the queue."
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The rank of a track, and of the jingle before it.",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is passed over (a restriction, a track that cannot play)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ItemKind": {
+        "type": "string",
+        "description": "What an item of the show is.",
+        "enum": [
+          "jingle",
+          "track",
+          "new_release"
+        ]
+      },
       "KeyRecord": {
         "type": "object",
         "required": [
@@ -20712,6 +23593,61 @@
           },
           "status": {
             "$ref": "#/components/schemas/TaskStatus"
+          }
+        }
+      },
+      "LikeFields": {
+        "type": "object",
+        "description": "What a listener sent.",
+        "required": [
+          "play_id",
+          "vote"
+        ],
+        "properties": {
+          "play_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "vote": {
+            "$ref": "#/components/schemas/Vote"
+          }
+        }
+      },
+      "LikesNow": {
+        "type": "object",
+        "description": "The play on air that listeners can vote on.",
+        "required": [
+          "likes",
+          "dislikes"
+        ],
+        "properties": {
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "play_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "None while nothing can be voted on (a jingle, nothing on air).",
+            "minimum": 0
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -21403,9 +24339,30 @@
           "ban"
         ]
       },
+      "Module": {
+        "type": "string",
+        "description": "A module.",
+        "enum": [
+          "medleys",
+          "cover_art",
+          "listener_statistics",
+          "webhooks",
+          "restrictions",
+          "eq",
+          "processing",
+          "trash",
+          "review",
+          "artists",
+          "labels",
+          "dedications",
+          "match",
+          "top30",
+          "likes"
+        ]
+      },
       "Modules": {
         "type": "object",
-        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: the modules that existed before\nthey could be turned off are on.",
+        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: for the installation, the\nmodules that existed before they could be turned off are on, and the\nshows off but Likes; for a station, everything is on ([`Modules::ALL_ON`]), so a\nstation only turns off what the installation has on.",
         "properties": {
           "artists": {
             "type": "boolean",
@@ -21415,6 +24372,10 @@
             "type": "boolean",
             "default": true
           },
+          "dedications": {
+            "type": "boolean",
+            "default": false
+          },
           "eq": {
             "type": "boolean",
             "default": true
@@ -21423,9 +24384,17 @@
             "type": "boolean",
             "default": true
           },
+          "likes": {
+            "type": "boolean",
+            "default": true
+          },
           "listener_statistics": {
             "type": "boolean",
             "default": true
+          },
+          "match": {
+            "type": "boolean",
+            "default": false
           },
           "medleys": {
             "type": "boolean",
@@ -21442,6 +24411,10 @@
           "review": {
             "type": "boolean",
             "default": true
+          },
+          "top30": {
+            "type": "boolean",
+            "default": false
           },
           "trash": {
             "type": "boolean",
@@ -21482,6 +24455,17 @@
           }
         },
         "additionalProperties": false
+      },
+      "Movement": {
+        "type": "string",
+        "description": "How a track moved against the chart of the week before.",
+        "enum": [
+          "up",
+          "down",
+          "same",
+          "new",
+          "reentry"
+        ]
       },
       "NameFrom": {
         "type": "string",
@@ -21555,6 +24539,52 @@
           "password": {
             "type": "string",
             "description": "Your password, asked again."
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewRelease": {
+        "type": "object",
+        "description": "The new release at the end of the show.",
+        "required": [
+          "track_id",
+          "proposed"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed": {
+            "type": "boolean",
+            "description": "Proposed by Heron, not chosen by hand."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "NewReleaseChoice": {
+        "type": "object",
+        "description": "The new release chosen by hand; `null` goes back to the proposed one.",
+        "properties": {
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -21679,6 +24709,46 @@
           }
         }
       },
+      "NotificationSettings": {
+        "type": "object",
+        "description": "Notifications through the station's webhooks.",
+        "properties": {
+          "events": {
+            "type": "object",
+            "description": "Each event by name (`show.started`).",
+            "default": {},
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EventSettings"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "language": {
+            "type": "string",
+            "description": "The language of the dates: `en`, `fr`, `es` or `de`.",
+            "default": "en"
+          },
+          "lead_minutes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "When `show.upcoming` is sent before the show opens, 1 to 1440.",
+            "default": 60,
+            "minimum": 0
+          },
+          "webhook_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Webhooks of the station that receive the show's events.",
+            "default": []
+          }
+        },
+        "additionalProperties": false
+      },
       "NowPlaying": {
         "type": "object",
         "required": [
@@ -21701,6 +24771,26 @@
             "format": "int64",
             "description": "To tell how far the track has gone since.",
             "minimum": 0
+          }
+        }
+      },
+      "OnAirDedication": {
+        "type": "object",
+        "description": "The dedication of a track on air.",
+        "required": [
+          "from",
+          "to",
+          "message"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
           }
         }
       },
@@ -22171,6 +25261,70 @@
         },
         "additionalProperties": false
       },
+      "PastChart": {
+        "type": "object",
+        "description": "A frozen chart in the list of past weeks.",
+        "required": [
+          "week",
+          "from_unix_ms",
+          "closes_at_unix_ms",
+          "size"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "number_one": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PastNumberOne"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its tracks.",
+            "minimum": 0
+          },
+          "week": {
+            "type": "string"
+          }
+        }
+      },
+      "PastNumberOne": {
+        "type": "object",
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "Period": {
         "type": "object",
         "description": "When a schedule other than the default one plays.",
@@ -22542,6 +25696,37 @@
           "fallback",
           "manual"
         ]
+      },
+      "PlayVotes": {
+        "type": "object",
+        "description": "A play's votes.",
+        "required": [
+          "play_id",
+          "started_at_unix_ms",
+          "likes",
+          "dislikes"
+        ],
+        "properties": {
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "play_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "started_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "PlayerState": {
         "type": "object",
@@ -23053,6 +26238,17 @@
             ],
             "description": "Its cover, else the station's logo (docs/api.md#public-endpoints)."
           },
+          "dedication": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OnAirDedication",
+                "description": "The accepted dedication it plays for\n(`docs/listener-interaction.md#dedications`)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "duration_ms": {
             "type": "integer",
             "format": "int64",
@@ -23284,6 +26480,57 @@
           "start_ms": {
             "type": "integer",
             "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RankedTrack": {
+        "type": "object",
+        "description": "A track in the week's ranking.",
+        "required": [
+          "track_id",
+          "likes",
+          "dislikes",
+          "share",
+          "plays"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "plays": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its plays with votes.",
+            "minimum": 0
+          },
+          "share": {
+            "type": "number",
+            "format": "double",
+            "description": "The share of likes, 0 to 1."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
             "minimum": 0
           }
         }
@@ -23525,6 +26772,23 @@
           }
         }
       },
+      "RefuseDedication": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DedicationReason",
+                "description": "`null`: no reason. `closed` and `removed` are Heron's own."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "RefuseRequest": {
         "type": "object",
         "required": [
@@ -23603,6 +26867,44 @@
         },
         "additionalProperties": false
       },
+      "Removed": {
+        "type": "object",
+        "description": "A track taken out of a chart.",
+        "required": [
+          "track_id",
+          "removed_at_unix_ms"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "removed_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "removed_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who took it out; missing once the user is deleted."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "RenderRequest": {
         "type": "object",
         "required": [
@@ -23617,6 +26919,32 @@
           }
         },
         "additionalProperties": false
+      },
+      "RequestableTrack": {
+        "type": "object",
+        "description": "A track a listener can request.",
+        "required": [
+          "track_id"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "RestoreReport": {
         "type": "object",
@@ -24890,6 +28218,241 @@
           "other"
         ]
       },
+      "ShowPlan": {
+        "type": "object",
+        "description": "The show on now, or the next one.",
+        "required": [
+          "opens_at_unix_ms",
+          "closes_at_unix_ms",
+          "built",
+          "items",
+          "left_out",
+          "music_ms",
+          "jingles_ms",
+          "new_release_ms",
+          "total_ms"
+        ],
+        "properties": {
+          "built": {
+            "type": "boolean",
+            "description": "Its programme is built: the one on air. Else what would be built now."
+          },
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            }
+          },
+          "jingles_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "left_out": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "The ranks left out to fit the slot."
+          },
+          "music_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "new_release_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "opens_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "week": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The chart it plays; `null` without one."
+          }
+        }
+      },
+      "ShowPublic": {
+        "type": "object",
+        "description": "What the gateway and the widgets know of a show on a station.",
+        "required": [
+          "module",
+          "color",
+          "small_widget",
+          "closed",
+          "enabled",
+          "hours",
+          "timezone",
+          "state"
+        ],
+        "properties": {
+          "closed": {
+            "$ref": "#/components/schemas/Closed"
+          },
+          "closed_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null`: the widget's own sentence."
+          },
+          "color": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Off: closed whatever its hours."
+          },
+          "hours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HourRange"
+            }
+          },
+          "module": {
+            "$ref": "#/components/schemas/Module"
+          },
+          "page_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "small_widget": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "object",
+            "description": "The show's own live data (the current match, the day's dedications);\n`null` until the show adds it."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The station's time zone (IANA)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The title on the website; `null`: the show's name in the listener's\nlanguage."
+          }
+        }
+      },
+      "ShowSettings": {
+        "type": "object",
+        "description": "A show's settings on a station.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Open during its hours; off, it stays closed.",
+            "default": true
+          },
+          "hours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HourRange"
+            },
+            "description": "In the station's time zone.",
+            "default": []
+          },
+          "notifications": {
+            "$ref": "#/components/schemas/NotificationSettings",
+            "default": {
+              "events": {},
+              "language": "en",
+              "lead_minutes": 60,
+              "webhook_ids": []
+            }
+          },
+          "website": {
+            "$ref": "#/components/schemas/WebsiteSettings",
+            "default": {
+              "closed": "message",
+              "closed_message": "",
+              "color": "#c62828",
+              "page_url": null,
+              "small_widget": true,
+              "title": ""
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShowStatus": {
+        "type": "object",
+        "description": "Whether a show is open now, and its next change.",
+        "required": [
+          "open"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "While open: when it closes."
+          },
+          "next_opening_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it opens next (after it closes, while open); none within a week."
+          },
+          "open": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ShowView": {
+        "type": "object",
+        "description": "A show on a station.",
+        "required": [
+          "module",
+          "settings",
+          "status",
+          "timezone",
+          "webhooks"
+        ],
+        "properties": {
+          "module": {
+            "$ref": "#/components/schemas/Module"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ShowSettings"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShowStatus",
+            "description": "Now."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The station's time zone (IANA), which the hours follow."
+          },
+          "webhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookChoice"
+            },
+            "description": "The station's webhooks, by name, to choose from."
+          }
+        }
+      },
       "SilenceWatchdogSettings": {
         "type": "object",
         "description": "The engine's silence watchdog: after this long of silence on the master\nbus (below −50 dBFS), it skips to the next track, then to the fallback\ndirectory if the silence goes on.",
@@ -25880,6 +29443,13 @@
           "timezone"
         ],
         "properties": {
+          "gateway_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The address `heron-public`, the shows' gateway, is reached at from\nthe station's website (`https://public.radio.example.org`): the\nlines of the shows' widgets start with it."
+          },
           "public_url": {
             "type": [
               "string",
@@ -27001,6 +30571,71 @@
           }
         }
       },
+      "Top30Settings": {
+        "type": "object",
+        "description": "A station's Top 30 settings (`station_settings`, `top30`). Its hours,\nwebsite and notifications are its show settings.",
+        "properties": {
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "The categories whose tracks can enter the chart; none: the\nstation's music.",
+            "default": []
+          },
+          "close_day": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The day the week closes, 1 (Monday) to 7.",
+            "default": 7,
+            "minimum": 0
+          },
+          "close_hour": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The hour it closes, 0 to 24.",
+            "default": 17,
+            "minimum": 0
+          },
+          "jingle_category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The jingles between the tracks of the show.",
+            "default": null,
+            "minimum": 0
+          },
+          "min_votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Votes a track needs over the week to be ranked, 1 to 1000.",
+            "default": 10,
+            "minimum": 0
+          },
+          "new_release_category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where the new release at the end of the show comes from.",
+            "default": null,
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tracks in the chart, 1 to 50.",
+            "default": 30,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "TotpSetup": {
         "type": "object",
         "description": "An authenticator app to set up.",
@@ -27584,6 +31219,43 @@
           }
         }
       },
+      "TrackLikes": {
+        "type": "object",
+        "description": "A track's votes on a station.",
+        "required": [
+          "week",
+          "days_30",
+          "total",
+          "min_votes",
+          "plays"
+        ],
+        "properties": {
+          "days_30": {
+            "$ref": "#/components/schemas/Votes",
+            "description": "The last 30 days."
+          },
+          "min_votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Votes a track needs to be ranked.",
+            "minimum": 0
+          },
+          "plays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlayVotes"
+            },
+            "description": "Its latest plays with votes, the latest first."
+          },
+          "total": {
+            "$ref": "#/components/schemas/Votes"
+          },
+          "week": {
+            "$ref": "#/components/schemas/Votes",
+            "description": "Since Monday 00:00, in the station's time zone."
+          }
+        }
+      },
       "TrackListeners": {
         "type": "object",
         "description": "A track's listeners over its plays of a period.",
@@ -27965,6 +31637,33 @@
             ],
             "description": "Tracks with none of these labels."
           },
+          "liked_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks with at most this share of likes, in percent.",
+            "minimum": 0
+          },
+          "liked_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks with at least this share of likes, in percent (0 to 100);\ntracks without votes are left out.",
+            "minimum": 0
+          },
+          "likes_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, else of `on_station_id`,\nevery station's when neither is given.",
+            "minimum": 0
+          },
           "limit": {
             "type": [
               "integer",
@@ -28077,6 +31776,15 @@
             "description": "Count plays on this station only: play counts, last played, their\nsort, `never_played` and `not_played_days`. Every station's when\nleft out.",
             "minimum": 0
           },
+          "votes_min": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Tracks with at least this many votes (likes and dislikes).",
+            "minimum": 0
+          },
           "year_max": {
             "type": [
               "integer",
@@ -28143,7 +31851,8 @@
           "genre",
           "level_min",
           "level_max",
-          "play_ratio"
+          "play_ratio",
+          "liked"
         ]
       },
       "TrackSummary": {
@@ -28158,6 +31867,8 @@
           "added_at_unix_ms",
           "play_count",
           "play_ratio",
+          "likes",
+          "dislikes",
           "labels"
         ],
         "properties": {
@@ -28273,6 +31984,11 @@
             ],
             "description": "Who disabled it everywhere (a username; none for a user since\ndeleted), while it is disabled."
           },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "duration_ms": {
             "type": [
               "integer",
@@ -28331,6 +32047,12 @@
             ],
             "format": "double",
             "description": "The lowest and highest peak between the cue points, in dBFS (−72:\nthat or below); none until computed from the waveform."
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Listeners' likes and dislikes over `likes_days`\n(`docs/listener-interaction.md#likes`).",
+            "minimum": 0
           },
           "missing": {
             "type": "boolean"
@@ -29168,6 +32890,70 @@
           }
         ]
       },
+      "Vote": {
+        "type": "string",
+        "description": "Like or dislike.",
+        "enum": [
+          "like",
+          "dislike"
+        ]
+      },
+      "VoteBatch": {
+        "type": "object",
+        "description": "Each device's last vote since the last batch.",
+        "required": [
+          "writes"
+        ],
+        "properties": {
+          "writes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceVote"
+            }
+          }
+        }
+      },
+      "Votes": {
+        "type": "object",
+        "description": "Likes and dislikes.",
+        "required": [
+          "likes",
+          "dislikes"
+        ],
+        "properties": {
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "VotesTaken": {
+        "type": "object",
+        "required": [
+          "counted",
+          "dropped"
+        ],
+        "properties": {
+          "counted": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The votes counted.",
+            "minimum": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Those dropped: their play ended, is not music, or is another\nstation's.",
+            "minimum": 0
+          }
+        }
+      },
       "Waveform": {
         "type": "object",
         "required": [
@@ -29215,6 +33001,24 @@
           "publicKey": {}
         }
       },
+      "WebhookChoice": {
+        "type": "object",
+        "description": "A webhook a show can send to.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "WebhookEvent": {
         "type": "string",
         "description": "What a delivery reports.",
@@ -29223,7 +33027,14 @@
           "track.ended",
           "track.skipped",
           "queue.changed",
-          "ping"
+          "ping",
+          "show.upcoming",
+          "show.started",
+          "show.ended",
+          "top.published",
+          "top.rank",
+          "dedication.played",
+          "dedication.accepted"
         ]
       },
       "WebhookInput": {
@@ -29345,6 +33156,80 @@
           },
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "WebsiteSettings": {
+        "type": "object",
+        "description": "The page and the small widget on the station's website.",
+        "properties": {
+          "closed": {
+            "$ref": "#/components/schemas/Closed",
+            "default": "message"
+          },
+          "closed_message": {
+            "type": "string",
+            "description": "With `{day}` and `{hour}` for the next opening; empty: the widget's\nown sentence.",
+            "default": ""
+          },
+          "color": {
+            "type": "string",
+            "description": "`#rrggbb`.",
+            "default": "#c62828"
+          },
+          "page_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The website's page of the show, for `{link}`.",
+            "default": null
+          },
+          "small_widget": {
+            "type": "boolean",
+            "description": "Whether the small widget shows (the dedicated page always does).",
+            "default": true
+          },
+          "title": {
+            "type": "string",
+            "description": "The show's name on the website; empty: its name in the listener's\nlanguage.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false
+      },
+      "WeekLikes": {
+        "type": "object",
+        "description": "The week's most and least liked tracks.",
+        "required": [
+          "from_unix_ms",
+          "min_votes",
+          "most_liked",
+          "least_liked"
+        ],
+        "properties": {
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monday 00:00, in the station's time zone."
+          },
+          "least_liked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankedTrack"
+            }
+          },
+          "min_votes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Votes a track needs to be ranked.",
+            "minimum": 0
+          },
+          "most_liked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankedTrack"
+            }
           }
         }
       },
@@ -29545,6 +33430,26 @@
     {
       "name": "public",
       "description": "Now playing and history for station websites: no sign-in, any origin"
+    },
+    {
+      "name": "shows",
+      "description": "The shows listeners take part in from the website: hours, website, notifications"
+    },
+    {
+      "name": "likes",
+      "description": "Listeners' likes and dislikes of the tracks played, per station"
+    },
+    {
+      "name": "dedications",
+      "description": "Listeners' requests for a track with a message, accepted into the queue or refused"
+    },
+    {
+      "name": "top30",
+      "description": "The weekly chart of the most liked tracks, and its show on air"
+    },
+    {
+      "name": "gateway",
+      "description": "For heron-public, the shows' public gateway, with the gateway token only"
     }
   ]
 }
