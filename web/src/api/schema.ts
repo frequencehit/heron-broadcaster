@@ -1536,6 +1536,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/listeners/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shares of the listeners and of the time spent listening by
+         *     country, device or player, small groups as *Other*. No address and no
+         *     user agent: countries, devices and player families only.
+         */
+        get: operations["breakdown_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/listeners/days": {
         parameters: {
             query?: never;
@@ -1585,26 +1606,6 @@ export interface paths {
         };
         /** Each output's listeners at the last minute, and the station's. */
         get: operations["now"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/listeners/players": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sessions and listening hours by player (user agent), most listened
-         *     first.
-         */
-        get: operations["players"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3087,6 +3088,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/listeners/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shares of the listeners and of the time spent listening by
+         *     country, device or player, small groups as *Other*. No address and no
+         *     user agent: countries, devices and player families only.
+         */
+        get: operations["breakdown_route_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/listeners/days": {
         parameters: {
             query?: never;
@@ -3136,26 +3158,6 @@ export interface paths {
         };
         /** Each output's listeners at the last minute, and the station's. */
         get: operations["now_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/listeners/players": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sessions and listening hours by player (user agent), most listened
-         *     first.
-         */
-        get: operations["players_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5390,6 +5392,16 @@ export interface components {
             title: number;
             /** Format: int32 */
             track: number;
+        };
+        /** @description The shares of a period by country, device or player. */
+        Breakdown: {
+            /**
+             * @description The GeoIP country database's type when countries are on (a
+             *     database by DB-IP asks to be credited), `null` otherwise.
+             */
+            geoip?: string | null;
+            /** @description The most listened first, then *Unknown* and *Other*. */
+            groups: components["schemas"]["Share"][];
         };
         Buffer: {
             /**
@@ -8128,17 +8140,6 @@ export interface components {
          * @enum {string}
          */
         PlaySource: "rotation" | "request" | "fallback" | "manual";
-        PlayerListening: {
-            /** Format: double */
-            listening_hours: number;
-            /**
-             * Format: int64
-             * @description Sessions of the minimum length.
-             */
-            sessions: number;
-            /** @description As the player sends it. */
-            user_agent: string;
-        };
         /** @description Decks, queue and outputs of the engine. */
         PlayerState: {
             cued?: components["schemas"]["QueueEntry"] | null;
@@ -9133,6 +9134,40 @@ export interface components {
             /** Format: int32 */
             under_1_min: number;
         };
+        /** @description A country, device or player over a period. */
+        Share: {
+            kind: components["schemas"]["ShareKind"];
+            /**
+             * Format: double
+             * @description Its share of the listeners, 0 to 1.
+             */
+            listener_share: number;
+            /**
+             * Format: int32
+             * @description Distinct listeners of each day, added up.
+             */
+            listeners: number;
+            /**
+             * @description The country code (`FR`), the device (`mobile`, `desktop`,
+             *     `smart_speaker`, `car`, `tv`) or the player family; missing for
+             *     *Unknown* and *Other*.
+             */
+            name?: string | null;
+            /** Format: int32 */
+            sessions: number;
+            /**
+             * Format: double
+             * @description Time spent listening, in hours.
+             */
+            ttsl_hours: number;
+            /**
+             * Format: double
+             * @description Its share of the time spent listening, 0 to 1.
+             */
+            ttsl_share: number;
+        };
+        /** @enum {string} */
+        ShareKind: "named" | "unknown" | "other";
         /**
          * @description The engine's silence watchdog: after this long of silence on the master
          *     bus (below −50 dBFS), it skips to the next track, then to the fallback
@@ -13946,6 +13981,45 @@ export interface operations {
             };
         };
     };
+    breakdown_route: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Breakdown"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     days: {
         parameters: {
             query: {
@@ -14040,44 +14114,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListenersNow"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    players: {
-        parameters: {
-            query: {
-                /** @description First day (`YYYY-MM-DD`, station time). */
-                from: string;
-                /** @description Last day, included. */
-                to: string;
-                /** @description Only this output; the whole station otherwise. */
-                output_id?: number;
-                /** @description Only this server's part; every server's otherwise. */
-                server_id?: number;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlayerListening"][];
                 };
             };
             "4XX": {
@@ -17632,6 +17668,48 @@ export interface operations {
             };
         };
     };
+    breakdown_route_on_station: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Breakdown"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     days_on_station: {
         parameters: {
             query: {
@@ -17735,47 +17813,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListenersNow"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    players_on_station: {
-        parameters: {
-            query: {
-                /** @description First day (`YYYY-MM-DD`, station time). */
-                from: string;
-                /** @description Last day, included. */
-                to: string;
-                /** @description Only this output; the whole station otherwise. */
-                output_id?: number;
-                /** @description Only this server's part; every server's otherwise. */
-                server_id?: number;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlayerListening"][];
                 };
             };
             "4XX": {

@@ -21,6 +21,7 @@ use tokio::sync::Notify;
 use tokio::task::JoinSet;
 use utoipa::ToSchema;
 
+use super::geoip::GeoIp;
 use super::icecast::{self, Client, ReadError};
 use super::sessions::{self, Changes, Known, Seen};
 use super::totals::{self, Sample, Span, Total};
@@ -81,6 +82,7 @@ pub struct Collector {
     http: reqwest::Client,
     last: RwLock<Vec<OutputListeners>>,
     recompute: Notify,
+    geoip: GeoIp,
 }
 
 fn now_ms() -> i64 {
@@ -164,7 +166,14 @@ pub(super) fn without_relays(
     (count.saturating_sub(subtract), kept)
 }
 impl Collector {
+    /// Without countries, for the tests.
+    #[cfg(test)]
     pub fn new(pool: MySqlPool) -> anyhow::Result<Arc<Self>> {
+        Self::with_geoip(pool, GeoIp::off())
+    }
+
+    /// With the listeners' countries from a GeoIP database.
+    pub fn with_geoip(pool: MySqlPool, geoip: GeoIp) -> anyhow::Result<Arc<Self>> {
         let http = reqwest::Client::builder()
             .user_agent(concat!("HeronBroadcaster/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(5))
@@ -175,6 +184,7 @@ impl Collector {
             http,
             last: RwLock::new(Vec::new()),
             recompute: Notify::new(),
+            geoip,
         }))
     }
 
@@ -184,6 +194,11 @@ impl Collector {
             .read()
             .map(|last| last.clone())
             .unwrap_or_default()
+    }
+
+    /// The GeoIP database's type, when countries are on.
+    pub fn geoip_database(&self) -> Option<String> {
+        self.geoip.database()
     }
 
     /// The statistics settings changed: recompute the totals the sessions
@@ -435,8 +450,19 @@ impl Collector {
                                     .saturating_mul(1_000),
                         })
                         .collect::<Vec<_>>();
+                    // For the country of the sessions opened, only.
+                    let addresses: HashMap<u64, &str> = list
+                        .iter()
+                        .map(|client| (client.id, client.address.as_str()))
+                        .collect();
                     let touched = self
-                        .track_sessions(target.id, server.id, &seen, now_ms, today, today_start)
+                        .track_sessions(
+                            (target.id, server.id),
+                            (&seen, &addresses),
+                            now_ms,
+                            today,
+                            today_start,
+                        )
                         .await?;
                     days.extend(touched);
                 }
@@ -498,6 +524,8 @@ impl Collector {
     pub async fn poll(&self, now_ms: i64) -> ApiResult<()> {
         let statistics: StatisticsSettings =
             settings::load(&self.pool, StatisticsSettings::SETTINGS_NAME).await?;
+        // A database replaced since the last minute is read again.
+        self.geoip.refresh();
         let mut last = Vec::new();
         let mut earliest_today: Option<Date> = None;
         for station_id in station_ids(&self.pool).await? {
@@ -552,9 +580,8 @@ impl Collector {
     /// Returns the days whose sessions were split at midnight.
     async fn track_sessions(
         &self,
-        output_id: u64,
-        server_id: u64,
-        seen: &[Seen],
+        (output_id, server_id): (u64, u64),
+        (seen, addresses): (&[Seen], &HashMap<u64, &str>),
         now_ms: i64,
         today: Date,
         today_start: i64,
@@ -597,19 +624,24 @@ impl Collector {
             .iter()
             .filter_map(|id| known.iter().find(|s| s.id == *id).map(|s| s.day))
             .collect();
-        self.apply(output_id, server_id, changes, now_ms, today, today_start)
-            .await?;
+        self.apply(
+            (output_id, server_id),
+            changes,
+            addresses,
+            now_ms,
+            (today, today_start),
+        )
+        .await?;
         Ok(split_days)
     }
 
     async fn apply(
         &self,
-        output_id: u64,
-        server_id: u64,
+        (output_id, server_id): (u64, u64),
         changes: Changes,
+        addresses: &HashMap<u64, &str>,
         now_ms: i64,
-        today: Date,
-        today_start: i64,
+        (today, today_start): (Date, i64),
     ) -> ApiResult<()> {
         let mut tx = self.pool.begin().await?;
         for (id, client_id) in changes.continued {
@@ -647,16 +679,21 @@ impl Collector {
             .await?;
         }
         for session in changes.opened {
+            // Looked up when the session starts; the address is not kept.
+            let country = addresses
+                .get(&session.client_id)
+                .and_then(|address| self.geoip.country(address));
             sqlx::query(
                 "INSERT INTO listener_sessions
-                     (output_id, server_id, listener_key, user_agent, client_id, day,
+                     (output_id, server_id, listener_key, user_agent, country, client_id, day,
                       started_at, last_seen_at, duration_s)
-                 VALUES (?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?)",
             )
             .bind(output_id)
             .bind(server_id)
             .bind(session.key.as_slice())
             .bind(&session.user_agent)
+            .bind(country)
             .bind(session.client_id)
             .bind(today.to_string())
             .bind(seconds(session.started_ms))

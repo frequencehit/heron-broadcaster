@@ -77,6 +77,9 @@ services:
       HERON_STAGING_DIR: /staging
       HERON_BACKUP_DIR: /var/lib/heron/backups
       HERON_COVERS_DIR: /var/lib/heron/covers
+      # Listener countries (docs/statistics.md#countries): off while the
+      # file is missing.
+      HERON_GEOIP_DB: /var/lib/heron/geoip/country.mmdb
       HERON_SCAN_INTERVAL: ${HERON_SCAN_INTERVAL:-3600}
       HERON_LIBRARY_WATCH: ${HERON_LIBRARY_WATCH:-true}
     volumes:
@@ -89,6 +92,8 @@ services:
       # Cover images (docs/library.md#where-the-images-are), shared with
       # heron-librarian.
       - covers:/var/lib/heron/covers
+      # The GeoIP country database the admin provides, read-only.
+      - ${HERON_GEOIP_FOLDER:-./data/geoip}:/var/lib/heron/geoip:ro
     depends_on:
       mariadb:
         condition: service_healthy

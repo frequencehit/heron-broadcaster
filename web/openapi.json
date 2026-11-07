@@ -4122,6 +4122,104 @@
         }
       }
     },
+    "/api/v1/listeners/breakdown": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "The shares of the listeners and of the time spent listening by\ncountry, device or player, small groups as *Other*. No address and no\nuser agent: countries, devices and player families only.",
+        "operationId": "breakdown_route",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "output_id",
+            "in": "query",
+            "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "By country (by default), device or player.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "country",
+                "device",
+                "player"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Breakdown"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/listeners/days": {
       "get": {
         "tags": [
@@ -4324,91 +4422,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ListenersNow"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/listeners/players": {
-      "get": {
-        "tags": [
-          "listeners"
-        ],
-        "summary": "Sessions and listening hours by player (user agent), most listened\nfirst.",
-        "operationId": "players",
-        "parameters": [
-          {
-            "name": "from",
-            "in": "query",
-            "description": "First day (`YYYY-MM-DD`, station time).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "description": "Last day, included.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "output_id",
-            "in": "query",
-            "description": "Only this output; the whole station otherwise.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "server_id",
-            "in": "query",
-            "description": "Only this server's part; every server's otherwise.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "1 to 100, 20 by default.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PlayerListening"
-                  }
                 }
               }
             }
@@ -9147,6 +9160,113 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/listeners/breakdown": {
+      "get": {
+        "tags": [
+          "listeners"
+        ],
+        "summary": "The shares of the listeners and of the time spent listening by\ncountry, device or player, small groups as *Other*. No address and no\nuser agent: countries, devices and player families only.",
+        "operationId": "breakdown_route_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day (`YYYY-MM-DD`, station time).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day, included.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "output_id",
+            "in": "query",
+            "description": "Only this output; the whole station otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part; every server's otherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "By country (by default), device or player.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "country",
+                "device",
+                "player"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "JSON, or CSV for spreadsheets.",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Breakdown"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/listeners/days": {
       "get": {
         "tags": [
@@ -9378,100 +9498,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ListenersNow"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/listeners/players": {
-      "get": {
-        "tags": [
-          "listeners"
-        ],
-        "summary": "Sessions and listening hours by player (user agent), most listened\nfirst.",
-        "operationId": "players_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "description": "First day (`YYYY-MM-DD`, station time).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "description": "Last day, included.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "output_id",
-            "in": "query",
-            "description": "Only this output; the whole station otherwise.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "server_id",
-            "in": "query",
-            "description": "Only this server's part; every server's otherwise.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "1 to 100, 20 by default.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PlayerListening"
-                  }
                 }
               }
             }
@@ -16373,6 +16399,29 @@
           }
         }
       },
+      "Breakdown": {
+        "type": "object",
+        "description": "The shares of a period by country, device or player.",
+        "required": [
+          "groups"
+        ],
+        "properties": {
+          "geoip": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The GeoIP country database's type when countries are on (a\ndatabase by DB-IP asks to be credited), `null` otherwise."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Share"
+            },
+            "description": "The most listened first, then *Unknown* and *Other*."
+          }
+        }
+      },
       "Buffer": {
         "type": "object",
         "required": [
@@ -22494,29 +22543,6 @@
           "manual"
         ]
       },
-      "PlayerListening": {
-        "type": "object",
-        "required": [
-          "user_agent",
-          "sessions",
-          "listening_hours"
-        ],
-        "properties": {
-          "listening_hours": {
-            "type": "number",
-            "format": "double"
-          },
-          "sessions": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Sessions of the minimum length."
-          },
-          "user_agent": {
-            "type": "string",
-            "description": "As the player sends it."
-          }
-        }
-      },
       "PlayerState": {
         "type": "object",
         "description": "Decks, queue and outputs of the engine.",
@@ -24805,6 +24831,64 @@
             "minimum": 0
           }
         }
+      },
+      "Share": {
+        "type": "object",
+        "description": "A country, device or player over a period.",
+        "required": [
+          "kind",
+          "listeners",
+          "listener_share",
+          "sessions",
+          "ttsl_hours",
+          "ttsl_share"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ShareKind"
+          },
+          "listener_share": {
+            "type": "number",
+            "format": "double",
+            "description": "Its share of the listeners, 0 to 1."
+          },
+          "listeners": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct listeners of each day, added up.",
+            "minimum": 0
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The country code (`FR`), the device (`mobile`, `desktop`,\n`smart_speaker`, `car`, `tv`) or the player family; missing for\n*Unknown* and *Other*."
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "ttsl_hours": {
+            "type": "number",
+            "format": "double",
+            "description": "Time spent listening, in hours."
+          },
+          "ttsl_share": {
+            "type": "number",
+            "format": "double",
+            "description": "Its share of the time spent listening, 0 to 1."
+          }
+        }
+      },
+      "ShareKind": {
+        "type": "string",
+        "enum": [
+          "named",
+          "unknown",
+          "other"
+        ]
       },
       "SilenceWatchdogSettings": {
         "type": "object",
