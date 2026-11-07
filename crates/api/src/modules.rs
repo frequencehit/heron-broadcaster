@@ -64,6 +64,7 @@ pub fn module_of(path: &str) -> Option<Module> {
         ["listeners", ..] | ["settings", "statistics"] => Module::ListenerStatistics,
         ["webhooks" | "webhook-deliveries", ..] => Module::Webhooks,
         ["shows", key, ..] => Module::from_key(key).filter(|module| module.is_show())?,
+        ["likes", ..] => Module::Likes,
         _ => return None,
     };
     Some(module)
@@ -217,6 +218,9 @@ mod tests {
             ("/api/v1/webhook-deliveries/9/retry", Some(Module::Webhooks)),
             ("/api/v1/shows/dedications", Some(Module::Dedications)),
             ("/api/v1/shows/match", Some(Module::Match)),
+            ("/api/v1/shows/likes", Some(Module::Likes)),
+            ("/api/v1/likes/week", Some(Module::Likes)),
+            ("/api/v1/likes/tracks/12", Some(Module::Likes)),
             ("/api/v1/shows/medleys", None),
             ("/api/v1/shows", None),
             ("/api/v1/tracks/12", None),

@@ -233,8 +233,8 @@ These routes accept only the gateway token, and the gateway token reaches nothin
 Listeners' [likes](listener-interaction.md#likes) on the tracks played, per station (signed in; `404` while the `likes` module is off):
 
 - `GET /stations/{id}/likes/current`: the play listeners can vote on now, `play_id`, `track_id`, `likes`, `dislikes`; `null` while nothing can be voted on (a jingle, nothing on air).
-- `GET /stations/{id}/likes/week`: the most liked and least liked tracks of the week so far, from Monday 00:00 in the station's time zone: `from_unix_ms`, `min_votes` (10), and `most_liked`, `least_liked`, 10 each (`track_id`, `artist`, `title`, `likes`, `dislikes`, `share` from 0 to 1, `plays`), among the tracks with at least `min_votes` votes. Ties go to the track with the most votes.
-- `GET /stations/{id}/likes/tracks/{track_id}`: a track's votes on the station: `week`, `days_30` and `total` (each `likes`, `dislikes`), and `plays`, its latest 20 plays with votes (`play_id`, `started_at_unix_ms`, `likes`, `dislikes`).
+- `GET /stations/{id}/likes/week`: the most liked and least liked tracks of the week so far, from Monday 00:00 in the station's time zone: `from_unix_ms`, `min_votes` (10), and `most_liked`, `least_liked`, 10 each (`track_id`, `artist`, `title`, `likes`, `dislikes`, `share` from 0 to 1, `plays`: its plays with votes), among the tracks with at least `min_votes` votes. Ties go to the track with the most votes.
+- `GET /stations/{id}/likes/tracks/{track_id}`: a track's votes on the station: `week`, `days_30` and `total` (each `likes`, `dislikes`), `min_votes`, and `plays`, its latest 20 plays with votes (`play_id`, `started_at_unix_ms`, `likes`, `dislikes`).
 
 On the track list, `GET /tracks` gives each track's `likes` and `dislikes` over `likes_days` days (1 to 3650, 30 by default), on the station of `station_id` (every station's when left out), and takes:
 

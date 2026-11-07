@@ -95,6 +95,7 @@ pub struct AppState {
         (name = "webhooks", description = "Webhooks on track changes, and their deliveries (admins)"),
         (name = "public", description = "Now playing and history for station websites: no sign-in, any origin"),
         (name = "shows", description = "The shows listeners take part in from the website: hours, website, notifications"),
+        (name = "likes", description = "Listeners' likes and dislikes of the tracks played, per station"),
         (name = "gateway", description = "For heron-public, the shows' public gateway, with the gateway token only"),
     )
 )]
@@ -154,6 +155,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(webhooks::router())
         .merge(public::router())
         .merge(crate::shows::router())
+        .merge(crate::likes::router())
         .merge(crate::gateway::router())
 }
 

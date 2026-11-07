@@ -9190,11 +9190,13 @@ async fn modules_are_turned_off_and_on_again() {
     let pool = &station.db.pool;
     let t = station.tracks.clone();
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
-                        "webhooks": true, "dedications": false, "match": false, "top30": false});
+                        "webhooks": true, "dedications": false, "match": false, "top30": false,
+                        "likes": true});
     let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
-                        "webhooks": true, "dedications": true, "match": true, "top30": true});
+                        "webhooks": true, "dedications": true, "match": true, "top30": true,
+                        "likes": true});
 
-    // Everything is on after an upgrade, but the shows.
+    // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);
     let modules = viewer.get("/stations/1/modules").await;
     assert_eq!(modules["on"], all_on);
@@ -9387,8 +9389,10 @@ async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
     let viewer = station.signed_in("viewer").await;
     let code = station.state.stations.first().code();
 
-    // Off after an upgrade.
-    assert_eq!(viewer.get("/shows").await, json!([]));
+    // Off after an upgrade, but likes.
+    let shows = viewer.get("/shows").await;
+    assert_eq!(shows.as_array().unwrap().len(), 1, "{shows}");
+    assert_eq!(shows[0]["module"], "likes");
     let (status, body) = admin.request(Method::GET, "/shows/dedications", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["error"], "module_off");
@@ -9403,7 +9407,7 @@ async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
     let (status, _) = admin.request(Method::GET, "/shows/medleys", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let shows = viewer.get("/shows").await;
-    assert_eq!(shows.as_array().unwrap().len(), 2, "{shows}");
+    assert_eq!(shows.as_array().unwrap().len(), 3, "{shows}");
     let dedications = viewer.get("/stations/1/shows/dedications").await;
     assert_eq!(dedications["settings"]["enabled"], true);
     assert_eq!(dedications["status"]["open"], false);
@@ -9492,7 +9496,7 @@ async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
         .iter()
         .map(|show| show["module"].as_str().unwrap())
         .collect();
-    assert_eq!(modules, ["dedications", "match"]);
+    assert_eq!(modules, ["dedications", "match", "likes"]);
     assert_eq!(first["shows"][0]["hours"][0]["start_hour"], 17);
 
     // Writes find a show on and open, or say why not.
@@ -9536,7 +9540,7 @@ async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
         (StatusCode::NOT_FOUND, Some("module_off"))
     );
     let state = gateway.get("/gateway/state").await;
-    assert_eq!(state["stations"][0]["shows"].as_array().unwrap().len(), 1);
+    assert_eq!(state["stations"][0]["shows"].as_array().unwrap().len(), 2);
     let (status, _) = admin
         .send(Method::PUT, "/shows/dedications", json!({"enabled": false}))
         .await;
@@ -9633,5 +9637,308 @@ async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
             .await
             .unwrap();
     assert_eq!(ended, 1);
+    station.stop().await;
+}
+
+#[tokio::test]
+async fn listeners_like_the_track_playing_only() {
+    use heron_core::Module;
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let code = station.state.stations.first().code();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let vote_path = format!("/gateway/stations/{code}/likes/vote");
+
+    // The engine plays nothing: the plays are ours.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+
+    // On by default, with no hours: open, nothing to vote on yet.
+    let likes = viewer.get("/shows/likes").await;
+    assert_eq!(likes["status"]["open"], true);
+    assert_eq!(likes["settings"]["notifications"]["events"], json!({}));
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/likes",
+            json!({"hours": [{"days": [1], "start_hour": 17, "end_hour": 18}]}),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "likes have no hours"
+    );
+    assert_eq!(viewer.get("/likes/current").await["play_id"], Value::Null);
+
+    let play = |track: u64, source: &'static str, ended_seconds_ago: Option<u32>| async move {
+        let ended = match ended_seconds_ago {
+            Some(seconds) => format!("NOW(6) - INTERVAL {seconds} SECOND"),
+            None => "NULL".to_owned(),
+        };
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', NOW(6) - INTERVAL 1 MINUTE, {ended}, 'a', ?)"
+        )))
+        .bind(track)
+        .bind(source)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+    };
+    let ended = play(t[1], "rotation", Some(30)).await;
+    let fallback = play(t[2], "fallback", None).await;
+    let on_air = play(t[0], "rotation", None).await;
+
+    // Only the track playing: the gateway is told which play it is.
+    let now = viewer.get("/likes/current").await;
+    assert_eq!(now["play_id"], on_air);
+    assert_eq!(now["track_id"], t[0]);
+    let state = gateway.get("/gateway/state").await;
+    let shows = state["stations"][0]["shows"].as_array().unwrap().clone();
+    let show = shows.iter().find(|show| show["module"] == "likes").unwrap();
+    assert_eq!(show["state"], json!({"play_id": on_air}));
+
+    let write = |device: &str, play_id: u64, vote: &str| json!({"device": device, "fields": {"play_id": play_id, "vote": vote}});
+    let (status, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [
+                write("a1", on_air, "like"), write("b2", on_air, "like"),
+                write("c3", on_air, "dislike"),
+                // A past track, a fallback one: dropped.
+                write("a1", ended, "like"), write("d4", fallback, "like"),
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{taken}");
+    assert_eq!(taken, json!({"counted": 3, "dropped": 2}));
+    // A device changes its mind: its vote moves, it is not added.
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("a1", on_air, "dislike")]}),
+        )
+        .await;
+    assert_eq!(taken["counted"], 1);
+    let now = viewer.get("/likes/current").await;
+    assert_eq!(
+        (now["likes"].as_u64(), now["dislikes"].as_u64()),
+        (Some(1), Some(2))
+    );
+    // Only the gateway sends votes.
+    let (status, _) = admin
+        .send(Method::POST, &vote_path, json!({"writes": []}))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Just ended: still counted for a few seconds, then refused.
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 2 SECOND WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(viewer.get("/likes/current").await["play_id"], Value::Null);
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("e5", on_air, "like")]}),
+        )
+        .await;
+    assert_eq!(taken["counted"], 1, "the batch on its way");
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 1 MINUTE WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("f6", on_air, "like")]}),
+        )
+        .await;
+    assert_eq!(taken, json!({"counted": 0, "dropped": 1}));
+
+    // The track's page: 2 likes, 2 dislikes, on that play.
+    let track = viewer.get(&format!("/likes/tracks/{}", t[0])).await;
+    for period in ["week", "days_30", "total"] {
+        assert_eq!(
+            track[period],
+            json!({"likes": 2, "dislikes": 2}),
+            "{period}"
+        );
+    }
+    assert_eq!(track["plays"][0]["play_id"], on_air);
+    assert_eq!(track["min_votes"], 10);
+    let grid = viewer
+        .get(&format!("/tracks/{}/plays/grid?station_id=1", t[0]))
+        .await;
+    let plays: Vec<&Value> = grid["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|day| day["plays"].as_array().unwrap())
+        .collect();
+    assert!(
+        plays
+            .iter()
+            .any(|play| play["likes"] == 2 && play["dislikes"] == 2),
+        "{grid}"
+    );
+
+    // Counts per play, ranked per week. This week: t[3] 12 likes, t[4] 3
+    // of 12; ten days ago, t[2] 50 likes, out of the week.
+    let counted = |track: u64, days_ago: u32, likes: u32, dislikes: u32| async move {
+        let id = sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', NOW(6) - INTERVAL ? DAY - INTERVAL 1 MINUTE,
+                     NOW(6) - INTERVAL ? DAY, 'a', 'rotation')",
+        )
+        .bind(track)
+        .bind(days_ago)
+        .bind(days_ago)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        sqlx::query(
+            "INSERT INTO play_votes (play_id, station_id, track_id, started_at, likes, dislikes)
+             SELECT id, station_id, track_id, started_at, ?, ? FROM play_history WHERE id = ?",
+        )
+        .bind(likes)
+        .bind(dislikes)
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap();
+    };
+    counted(t[3], 0, 12, 0).await;
+    counted(t[4], 0, 3, 9).await;
+    counted(t[2], 10, 50, 0).await;
+    let week = viewer.get("/likes/week").await;
+    let ids = |list: &Value| -> Vec<u64> {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .map(|track| track["track_id"].as_u64().unwrap())
+            .collect()
+    };
+    assert_eq!(ids(&week["most_liked"]), [t[3], t[4]], "{week}");
+    assert_eq!(ids(&week["least_liked"]), [t[4], t[3]]);
+    assert_eq!(week["most_liked"][1]["share"], 0.25);
+    assert_eq!(week["min_votes"], 10);
+
+    // The track list: a column, its sort and its filters.
+    let listed = |page: Value| -> Vec<(u64, u64, u64)> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|track| {
+                (
+                    track["id"].as_u64().unwrap(),
+                    track["likes"].as_u64().unwrap(),
+                    track["dislikes"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let sorted = listed(admin.get("/tracks?station_id=1&sort=liked&desc=true").await);
+    assert_eq!(
+        sorted[..4],
+        [(t[2], 50, 0), (t[3], 12, 0), (t[4], 3, 9), (t[0], 2, 2)],
+        "ranked first, then below 10 votes"
+    );
+    assert_eq!(
+        listed(admin.get("/tracks?liked_max=40&votes_min=10").await),
+        [(t[4], 3, 9)],
+        "the tracks to rest"
+    );
+    assert_eq!(
+        listed(admin.get("/tracks?liked_min=70&likes_days=5").await)
+            .iter()
+            .map(|track| track.0)
+            .collect::<Vec<_>>(),
+        [t[3]]
+    );
+    let (status, _) = admin
+        .request(Method::GET, "/tracks?liked_min=101", None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Turned off for the station: nothing to vote on, its routes answer 404.
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"likes": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = viewer.request(Method::GET, "/likes/week", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let state = gateway.get("/gateway/state").await;
+    assert!(
+        state["stations"][0]["shows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|show| show["module"] != "likes")
+    );
+    let (status, _) = gateway
+        .send(Method::POST, &vote_path, json!({"writes": []}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(matches!(
+        crate::gateway::open_show(&station.state, &code, Module::Likes).await,
+        Err(crate::error::ApiError::ModuleOff(Module::Likes))
+    ));
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The devices' votes go an hour after their play; the counts stay.
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 2 HOUR WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(crate::likes::purge_devices(pool).await.unwrap(), 4);
+    let devices: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM play_vote_devices")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(devices, 0);
+    let total = viewer.get(&format!("/likes/tracks/{}", t[0])).await;
+    assert_eq!(total["total"], json!({"likes": 2, "dislikes": 2}));
     station.stop().await;
 }
