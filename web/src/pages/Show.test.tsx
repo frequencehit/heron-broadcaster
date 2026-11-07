@@ -114,8 +114,8 @@ describe("a show's page", () => {
     answers();
     renderApp(<ShowPage module="dedications" />);
     expect(await screen.findByText("Dedications is open until 18:00")).toBeTruthy();
-    fireEvent.change(screen.getByRole("textbox", { name: "At opening" }), { target: { value: "{name} {artist}" } });
-    expect(await screen.findByText("Unknown placeholders: artist")).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "At opening" }), { target: { value: "{name} {rank}" } });
+    expect(await screen.findByText("Unknown placeholders: rank")).toBeTruthy();
   });
 
   it("previews the widget closed, with its message, or nothing", async () => {

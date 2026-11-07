@@ -443,6 +443,18 @@ function Notifications({
               {t("top30.placeholders", { artist: "{artist}", title: "{title}", top3: "{top3}", rank: "{rank}" })}
             </p>
           )}
+          {show.module === "dedications" && (
+            <p className="muted small">
+              {t("dedications.placeholders", {
+                artist: "{artist}",
+                title: "{title}",
+                from: "{from}",
+                to: "{to}",
+                message: "{message}",
+                time: "{time}",
+              })}
+            </p>
+          )}
         </div>
         <div className="show-preview-messages" aria-label={t("shows.preview")}>
           <p className="muted small">{t("shows.preview")}</p>
@@ -644,6 +656,7 @@ export function WidgetPreview({
     return <div className="show-widget empty muted small">{t("shows.previewNothing")}</div>;
   }
   const likes = module === "likes";
+  const dedications = module === "dedications";
   const when = next ? dateTime(next) : "…";
   const values = next ? { day: fullDate(next), hour: shortTime(next) } : { day: "…", hour: "" };
   return (
@@ -666,6 +679,21 @@ export function WidgetPreview({
                 <Icon name="dislike" /> {t("likes.dislike")}
               </span>
             </div>
+          </div>
+        ) : open && dedications ? (
+          <div className="stack" style={{ gap: 8, textAlign: "left" }}>
+            {[t("dedications.preview.track"), t("dedications.preview.from"), t("dedications.preview.to"), t("dedications.preview.message")].map(
+              (label) => (
+                <label key={label} className="field">
+                  <span>{label}</span>
+                  <input className="input" disabled aria-label={label} />
+                </label>
+              ),
+            )}
+            <span className="btn primary" style={{ background: color, borderColor: color, justifyContent: "center" }}>
+              {t("dedications.preview.send")}
+            </span>
+            <span className="muted small">{t("dedications.preview.note")}</span>
           </div>
         ) : open ? (
           <p className="muted">{t("shows.previewOpenBody")}</p>

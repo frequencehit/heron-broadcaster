@@ -43,29 +43,56 @@ export const PLACEHOLDERS = ["name", "link", "end", "next"];
 
 /** A show's own events, after the common ones. */
 export function ownEvents(key: string): { name: string; label: PlainKey }[] {
-  return key === "top30"
-    ? [
+  switch (key) {
+    case "top30":
+      return [
         { name: "top.published", label: "top30.event.published" },
         { name: "top.rank", label: "top30.event.rank" },
-      ]
-    : [];
+      ];
+    case "dedications":
+      return [
+        { name: "dedication.played", label: "dedications.event.played" },
+        { name: "dedication.accepted", label: "dedications.event.accepted" },
+      ];
+    default:
+      return [];
+  }
 }
 
 /** A show's own placeholders. */
 export function ownPlaceholders(key: string): string[] {
-  return key === "top30" ? ["artist", "title", "top3", "rank"] : [];
+  switch (key) {
+    case "top30":
+      return ["artist", "title", "top3", "rank"];
+    case "dedications":
+      return ["artist", "title", "from", "to", "message", "time"];
+    default:
+      return [];
+  }
 }
 
 /** Example values of a show's own placeholders, for the preview. */
 export function ownExample(key: string): Record<string, string> {
-  return key === "top30"
-    ? {
+  switch (key) {
+    case "top30":
+      return {
         artist: "Mira Solano",
         title: "Sunday Market",
         top3: "1. Mira Solano – Sunday Market, 2. Cassia Bloom – Neon Orchard, 3. Saltwater Choir – Lighthouse Keeper",
         rank: "12",
-      }
-    : {};
+      };
+    case "dedications":
+      return {
+        artist: "Mira Solano",
+        title: "Sunday Market",
+        from: "Nadia",
+        to: "Papi Jean",
+        message: "Happy 80th!",
+        time: "17:36",
+      };
+    default:
+      return {};
+  }
 }
 
 /** 7 days (0 is Monday) of 24 hours: whether each hour is in the ranges. */

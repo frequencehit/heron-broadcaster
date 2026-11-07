@@ -3171,3 +3171,52 @@ ul.held {
 .top30-programme .badge.warn {
   margin-left: 0.5rem;
 }
+
+/* Dedications: the requests, their message, their actions. */
+.dedication-open {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.dedication-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dedication {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.dedication:first-child {
+  border-top: 0;
+}
+
+.dedication-message {
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border-left: 3px solid var(--border-strong, var(--border));
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dedication-actions {
+  gap: 6px;
+  align-items: flex-end;
+}
+
+@media (max-width: 720px) {
+  .dedication {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dedication-actions {
+    align-items: stretch;
+  }
+}
