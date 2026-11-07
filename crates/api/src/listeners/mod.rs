@@ -1077,7 +1077,7 @@ async fn breakdown_route(
     let sessions = counted(&state.pool, station.id(), (from, to), filter, by).await?;
     let figures = Breakdown {
         geoip: state.listeners.geoip_database(),
-        groups: breakdown::shares(&sessions),
+        groups: breakdown::shares(&sessions, by.min_listeners()),
     };
     Ok(match query.format.unwrap_or_default() {
         Format::Json => Json(figures).into_response(),

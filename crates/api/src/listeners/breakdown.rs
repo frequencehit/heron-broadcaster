@@ -13,9 +13,22 @@ use utoipa::ToSchema;
 
 use super::sessions::ListenerKey;
 
-/// A group with fewer distinct listeners than this on every day of the
-/// period is added to *Other*.
+/// A country with fewer distinct listeners than this on every day of the
+/// period is added to *Other*: where a listener is can single them out.
+/// Devices and players are shown whatever their size: they say nothing of
+/// who listens, and a small station would otherwise see only *Other*.
 pub const MIN_GROUP_LISTENERS: usize = 5;
+
+impl By {
+    /// The fewest distinct listeners a group needs on a day of the period
+    /// to stand alone.
+    pub fn min_listeners(self) -> usize {
+        match self {
+            By::Country => MIN_GROUP_LISTENERS,
+            By::Device | By::Player => 1,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -86,8 +99,9 @@ impl Sum<'_> {
 }
 
 /// The groups of a period, the most listened first, then *Unknown* and
+/// *Other*: a group with fewer than `min_listeners` on every day goes to
 /// *Other*.
-pub fn shares(sessions: &[Counted]) -> Vec<Share> {
+pub fn shares(sessions: &[Counted], min_listeners: usize) -> Vec<Share> {
     let mut groups: BTreeMap<&Group, Sum> = BTreeMap::new();
     for session in sessions {
         let sum = groups.entry(&session.group).or_default();
@@ -102,10 +116,7 @@ pub fn shares(sessions: &[Counted]) -> Vec<Share> {
     let mut rows: Vec<(ShareKind, Option<String>, usize, u32, u64)> = Vec::new();
     let mut other = (0usize, 0u32, 0u64);
     for (group, sum) in &groups {
-        let small = sum
-            .days
-            .values()
-            .all(|keys| keys.len() < MIN_GROUP_LISTENERS);
+        let small = sum.days.values().all(|keys| keys.len() < min_listeners);
         match group {
             Group::Named(name) if !small => rows.push((
                 ShareKind::Named,
@@ -200,7 +211,7 @@ mod tests {
         sessions.push(counted(20, 20, named("IS"), 60));
         // Not found: shown as such.
         sessions.push(counted(20, 30, Group::Unknown, 15));
-        let shares = shares(&sessions);
+        let shares = shares(&sessions, MIN_GROUP_LISTENERS);
         let rows: Vec<(ShareKind, Option<&str>, u32, u32)> = shares
             .iter()
             .map(|s| (s.kind, s.name.as_deref(), s.listeners, s.sessions))
@@ -222,9 +233,29 @@ mod tests {
     }
 
     #[test]
+    fn devices_and_players_stand_alone_however_small() {
+        // One listener on a phone, one on a smart speaker.
+        let sessions = [
+            counted(20, 1, named("mobile"), 30),
+            counted(20, 2, named("smart_speaker"), 30),
+        ];
+        let shares = shares(&sessions, By::Device.min_listeners());
+        let kinds: Vec<_> = shares.iter().map(|s| (s.kind, s.name.as_deref())).collect();
+        assert_eq!(
+            kinds,
+            [
+                (ShareKind::Named, Some("mobile")),
+                (ShareKind::Named, Some("smart_speaker")),
+            ]
+        );
+        assert_eq!(By::Player.min_listeners(), 1);
+        assert_eq!(By::Country.min_listeners(), MIN_GROUP_LISTENERS);
+    }
+
+    #[test]
     fn nothing_gives_no_groups() {
-        assert!(shares(&[]).is_empty());
-        let other = shares(&[counted(20, 1, Group::Other, 10)]);
+        assert!(shares(&[], MIN_GROUP_LISTENERS).is_empty());
+        let other = shares(&[counted(20, 1, Group::Other, 10)], 1);
         assert_eq!(
             (other[0].kind, other[0].listener_share),
             (ShareKind::Other, 1.0)
