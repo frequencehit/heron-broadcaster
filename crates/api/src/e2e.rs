@@ -1407,7 +1407,7 @@ async fn listener_statistics_through_the_api() {
         [
             named("named", Some("mobile"), 7),
             named("named", Some("desktop"), 6),
-            named("other", None, 1),
+            named("named", Some("smart_speaker"), 1),
         ]
     );
     let player_groups = viewer.get(&by("player")).await;
@@ -1416,7 +1416,7 @@ async fn listener_statistics_through_the_api() {
         [
             named("named", Some("Safari"), 7),
             named("named", Some("VLC"), 6),
-            named("other", None, 1),
+            named("named", Some("Alexa"), 1),
         ]
     );
     // One server, one output: the same; another server: nothing.
@@ -11289,5 +11289,271 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
         },
     )
     .await;
+    station.stop().await;
+}
+
+/// Two stations added up and compared: the peak and AQH on their minutes
+/// together, a listener of both counted once, each user only the stations
+/// they see.
+#[tokio::test]
+async fn listener_statistics_of_several_stations() {
+    let Some(mut station) = Station::start().await else {
+        return;
+    };
+    let (_engine, _state_dir, second_url, grpc) = start_engine(station.library.path(), None).await;
+    station.tasks.push(grpc);
+    station.state.stations.set_engine("hits80", &second_url);
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let first = admin.get("/stations").await[0]["id"].as_u64().unwrap();
+    let (status, created) = admin
+        .send(
+            Method::POST,
+            "/stations",
+            json!({"name": "Hits 80", "code": "hits80"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let second = created["id"].as_u64().unwrap();
+    for path in [
+        "/settings/station".to_owned(),
+        format!("/stations/{second}/settings/station"),
+    ] {
+        let (status, body) = admin
+            .send(Method::PUT, &path, json!({"timezone": "UTC"}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{path}: {body}");
+    }
+
+    // An output each (disabled: only its statistics matter here).
+    let pool = &station.state.pool;
+    let mut outputs = Vec::new();
+    for id in [first, second] {
+        let output = sqlx::query(
+            "INSERT INTO outputs (station_id, name, kind, encoder_profile_id, config, enabled)
+             SELECT ?, 'Stats', 'hls', MIN(id), '{}', FALSE FROM encoder_profiles",
+        )
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        outputs.push(output);
+    }
+    // 2026-10-20, 10:00 to 10:29, listener lists read: the first station
+    // has 3 listeners at 10:00 then 2, the second 4 then 1.
+    for minute in 0..30u32 {
+        for (n, output) in outputs.iter().enumerate() {
+            let listeners = match (n, minute) {
+                (0, 0) => 3,
+                (0, _) => 2,
+                (_, 0) => 4,
+                _ => 1,
+            };
+            sqlx::query(
+                "INSERT INTO listener_samples (output_id, server_id, sampled_at, listeners, sessions)
+                 VALUES (?, 0, TIMESTAMP('2026-10-20 10:00:00') + INTERVAL ? MINUTE, ?, TRUE)",
+            )
+            .bind(output)
+            .bind(minute)
+            .bind(listeners)
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+    }
+    // A listens to both stations, 10:00 to 10:20; B to the first, 10:00 to
+    // 10:10; C to the second, 10:05 to 10:15.
+    for (n, (output, key, from, to)) in [
+        (outputs[0], 1u8, "10:00", "10:20"),
+        (outputs[1], 1, "10:00", "10:20"),
+        (outputs[0], 2, "10:00", "10:10"),
+        (outputs[1], 3, "10:05", "10:15"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        sqlx::query(
+            "INSERT INTO listener_sessions (output_id, server_id, listener_key, user_agent,
+                 client_id, day, started_at, last_seen_at, ended_at, duration_s)
+             VALUES (?, 0, ?, 'VLC/3.0.20 LibVLC/3.0.20', ?, '2026-10-20',
+                     TIMESTAMP(CONCAT('2026-10-20 ', ?)), TIMESTAMP(CONCAT('2026-10-20 ', ?)),
+                     TIMESTAMP(CONCAT('2026-10-20 ', ?)),
+                     TIMESTAMPDIFF(SECOND, TIMESTAMP(CONCAT('2026-10-20 ', ?)),
+                                   TIMESTAMP(CONCAT('2026-10-20 ', ?))))",
+        )
+        .bind(output)
+        .bind([key; 32].as_slice())
+        .bind(n as u64 + 1)
+        .bind(from)
+        .bind(to)
+        .bind(to)
+        .bind(from)
+        .bind(to)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+    // An older day, its samples purged: only each station's totals.
+    for (id, peak, hours) in [(first, 12, 10.0), (second, 20, 5.0)] {
+        sqlx::query(
+            "INSERT INTO listener_totals (station_id, output_id, day, hour, minutes, peak, average,
+                 listening_hours, sessions, session_s, distinct_listeners)
+             VALUES (?, NULL, '2026-10-19', NULL, 600, ?, ?, ?, 10, 6000, 5)",
+        )
+        .bind(id)
+        .bind(peak)
+        .bind(hours * 60.0 / 600.0)
+        .bind(hours)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    let both = "stations=all&from=2026-10-20&to=2026-10-20";
+    let figures = admin
+        .get(&format!("/stations/listeners/audience?{both}"))
+        .await;
+    let stations = figures["stations"].as_array().unwrap();
+    assert_eq!(stations.len(), 2, "{figures}");
+    assert_eq!(stations[0]["station_id"], first);
+    assert_eq!(stations[1]["code"], "hits80");
+    let (one, two, total) = (
+        &stations[0]["current"],
+        &stations[1]["current"],
+        &figures["total"]["current"],
+    );
+    assert_eq!((&one["peak"], &two["peak"]), (&json!(3), &json!(4)));
+    assert_eq!((&one["cume"], &two["cume"]), (&json!(2.0), &json!(2.0)));
+    assert_eq!((&one["aqh"], &two["aqh"]), (&json!(1.5), &json!(1.5)));
+    // Together: the highest minute (3 + 4 at 10:00), not 3 + 4 summed
+    // peaks by chance: 2 + 1 the other minutes; A once in the cume and in
+    // each quarter-hour.
+    assert_eq!(total["peak"], 7, "{total}");
+    assert_eq!(total["cume"], 3.0);
+    assert_eq!(total["aqh"], 2.0);
+    assert_eq!(total["sessions"], 4);
+    assert_eq!(figures["total"]["previous"]["from"], "2026-10-19");
+
+    // Per day: the minutes together; the purged day from the totals, its
+    // peak the highest of the stations'.
+    let days = admin
+        .get("/stations/listeners/days?stations=all&from=2026-10-19&to=2026-10-20")
+        .await;
+    let total = days["total"].as_array().unwrap();
+    assert_eq!(total.len(), 2, "{days}");
+    assert_eq!(total[0]["peak"], 20);
+    assert_eq!(total[0]["listening_hours"], 15.0);
+    assert_eq!(total[0]["sessions"], 20);
+    assert_eq!(total[1]["day"], "2026-10-20");
+    assert_eq!(total[1]["peak"], 7);
+    assert_eq!(total[1]["minutes"], 30);
+    assert_eq!(total[1]["distinct_listeners"], 3.0);
+    assert_eq!(days["stations"][1]["periods"][0]["peak"], 20);
+    let hours = admin
+        .get(&format!("/stations/listeners/hours-of-day?{both}"))
+        .await;
+    assert_eq!(hours["total"][0]["hour"], 10, "{hours}");
+    assert_eq!(hours["total"][0]["peak"], 7);
+    assert_eq!(hours["total"][0]["tune_in"], 4.0);
+    let players = admin
+        .get(&format!("/stations/listeners/breakdown?{both}&by=player"))
+        .await;
+    assert_eq!(players["total"][0]["name"], "VLC", "{players}");
+    assert_eq!(players["total"][0]["listeners"], 3);
+    assert_eq!(players["total"][0]["sessions"], 4);
+    assert_eq!(players["stations"][0]["groups"][0]["listeners"], 2);
+    let samples = admin
+        .get("/stations/listeners/samples?stations=all&from_unix_ms=1792490400000&to_unix_ms=1792490460000")
+        .await;
+    assert_eq!(
+        samples["total"],
+        json!([{"at_unix_ms": 1_792_490_400_000i64, "listeners": 7},
+               {"at_unix_ms": 1_792_490_460_000i64, "listeners": 3}])
+    );
+    assert_eq!(samples["stations"][1]["samples"][0]["listeners"], 4);
+    let now = admin.get("/stations/listeners/now?stations=all").await;
+    assert_eq!(now["total"], json!(null));
+    assert_eq!(now["stations"].as_array().unwrap().len(), 2);
+
+    // CSV, with a station column.
+    let csv = admin
+        .http
+        .get(format!(
+            "{}/stations/listeners/days?stations=all&from=2026-10-19&to=2026-10-20&format=csv",
+            admin.base
+        ))
+        .header("cookie", admin.cookie.as_deref().unwrap())
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let lines: Vec<&str> = csv.lines().collect();
+    assert!(lines[0].starts_with("station,day,hour,"), "{csv}");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("hits80,2026-10-19,"))
+    );
+    assert!(
+        lines.last().unwrap().starts_with(",2026-10-20,,1,30,7,"),
+        "{csv}"
+    );
+
+    // The viewer sees the first station only: all is that one, the second
+    // is not found.
+    let seen = viewer
+        .get(&format!("/stations/listeners/audience?{both}"))
+        .await;
+    assert_eq!(seen["stations"].as_array().unwrap().len(), 1, "{seen}");
+    assert_eq!(seen["total"]["current"]["peak"], 3);
+    assert_eq!(seen["total"]["current"]["cume"], 2.0);
+    viewer
+        .get(&format!(
+            "/stations/listeners/days?stations={first}&from=2026-10-20&to=2026-10-20"
+        ))
+        .await;
+    for path in [
+        format!(
+            "/stations/listeners/audience?stations={first},{second}&from=2026-10-20&to=2026-10-20"
+        ),
+        format!("/stations/listeners/days?stations={second}&from=2026-10-20&to=2026-10-20"),
+        format!("/stations/listeners/now?stations={second}"),
+        "/stations/listeners/now?stations=999".to_owned(),
+    ] {
+        let (status, _) = viewer.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+    for bad in [
+        "/stations/listeners/now?stations=one",
+        "/stations/listeners/days?stations=all&from=2026-10-20&to=2026-10-19",
+    ] {
+        let (status, _) = viewer.request(Method::GET, bad, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+
+    // Listener statistics off on the second station: left out of all,
+    // not found when named.
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/stations/{second}/modules"),
+            json!({"listener_statistics": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let now = admin.get("/stations/listeners/now?stations=all").await;
+    assert_eq!(now["stations"].as_array().unwrap().len(), 1, "{now}");
+    let (status, body) = admin
+        .request(
+            Method::GET,
+            &format!("/stations/listeners/now?stations={second}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "module_off", "{body}");
     station.stop().await;
 }

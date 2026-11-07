@@ -3071,6 +3071,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/listeners/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Each station's audience figures and the previous period's, and the
+         *     stations' together.
+         */
+        get: operations["stations_audience"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Each station's shares by country, device or player, and the stations'
+         *     together.
+         */
+        get: operations["stations_breakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Each station's totals per hour, day, week or month, and the stations'
+         *     together.
+         */
+        get: operations["stations_days"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/hours-of-day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Each station's hours of the day, and the stations' together. */
+        get: operations["stations_hours_of_day"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Each station's listeners at the last minute, and their total. */
+        get: operations["stations_now"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Each station's listeners minute by minute, and the stations' added up. */
+        get: operations["stations_samples"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{id}": {
         parameters: {
             query?: never;
@@ -9903,6 +10014,16 @@ export interface components {
             /** Format: int32 */
             track_total?: number | null;
         };
+        StationAudience: components["schemas"]["StationRef"] & {
+            current: components["schemas"]["Audience"];
+            previous: components["schemas"]["Audience"];
+        };
+        StationDays: components["schemas"]["StationRef"] & {
+            periods: components["schemas"]["PeriodTotals"][];
+        };
+        StationHours: components["schemas"]["StationRef"] & {
+            hours: components["schemas"]["HourOfDay"][];
+        };
         /** @description A station as stored. */
         StationInfo: {
             /**
@@ -9944,6 +10065,14 @@ export interface components {
             /** @description The station's own switches. */
             station: components["schemas"]["Modules"];
         };
+        /** @description A station's listeners at the last minute. */
+        StationNow: components["schemas"]["StationRef"] & {
+            /**
+             * Format: int32
+             * @description Its outputs' listeners added up; missing when none could be read.
+             */
+            total?: number | null;
+        };
         StationPlays: {
             /** Format: int64 */
             last_played_at_unix_ms?: number | null;
@@ -9980,6 +10109,13 @@ export interface components {
             /** Format: int64 */
             station_id: number;
         };
+        /** @description A station of the answer. */
+        StationRef: {
+            code: string;
+            name: string;
+            /** Format: int64 */
+            station_id: number;
+        };
         StationRequest: {
             code: string;
             /**
@@ -10001,6 +10137,9 @@ export interface components {
          * @enum {string}
          */
         StationRoleName: "none" | "viewer" | "operator" | "admin";
+        StationSamples: components["schemas"]["StationRef"] & {
+            samples: components["schemas"]["MinuteSample"][];
+        };
         /** @description The station itself. */
         StationSettings: {
             /**
@@ -10020,6 +10159,9 @@ export interface components {
              *     `Europe/Paris`. By default the server's (`TZ`), or UTC.
              */
             timezone: string;
+        };
+        StationShares: components["schemas"]["StationRef"] & {
+            groups: components["schemas"]["Share"][];
         };
         /**
          * @description The station's separation windows, in minutes (`rotation` settings); 0
@@ -10051,6 +10193,47 @@ export interface components {
              * @default 240
              */
             track_min: number;
+        };
+        StationsAudience: {
+            stations: components["schemas"]["StationAudience"][];
+            /**
+             * @description The stations together: the peak and AQH on their minutes added up,
+             *     a listener of two stations once.
+             */
+            total: components["schemas"]["AudienceComparison"];
+        };
+        StationsBreakdown: {
+            /**
+             * @description The GeoIP country database's type when countries are on, `null`
+             *     otherwise.
+             */
+            geoip?: string | null;
+            stations: components["schemas"]["StationShares"][];
+            /** @description The stations together: a listener of two stations once. */
+            total: components["schemas"]["Share"][];
+        };
+        StationsDays: {
+            stations: components["schemas"]["StationDays"][];
+            /** @description The stations together, in the first one's time zone. */
+            total: components["schemas"]["PeriodTotals"][];
+        };
+        StationsHours: {
+            stations: components["schemas"]["StationHours"][];
+            /** @description The stations together, in the first one's time zone. */
+            total: components["schemas"]["HourOfDay"][];
+        };
+        StationsNow: {
+            stations: components["schemas"]["StationNow"][];
+            /**
+             * Format: int32
+             * @description The stations' listeners added up; missing when none could be read.
+             */
+            total?: number | null;
+        };
+        StationsSamples: {
+            stations: components["schemas"]["StationSamples"][];
+            /** @description The stations' listeners added up, minute by minute. */
+            total: components["schemas"]["MinuteSample"][];
         };
         /** @description Listener statistics. See `docs/statistics.md#settings`. */
         StatisticsSettings: {
@@ -18046,6 +18229,214 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StationInfo"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_audience: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsAudience"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_breakdown: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsBreakdown"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_days: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Rows per hour, day (by default), week or month. */
+                group?: "hour" | "day" | "week" | "month";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsDays"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_hours_of_day: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsHours"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_now: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsNow"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_samples: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description From this time (Unix ms). */
+                from_unix_ms: number;
+                /** @description Until this time (Unix ms), at most 8 days after `from_unix_ms`. */
+                to_unix_ms: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsSamples"];
                 };
             };
             "4XX": {

@@ -27,6 +27,8 @@ describe("lines", () => {
   it("breaks where minutes are missing", () => {
     expect(splitAtGaps(points).map((s) => s.map((p) => p.value))).toEqual([[0, 1, 2], [5], [9, 10]]);
     expect(splitAtGaps([])).toEqual([]);
+    // Days or hours: one apart.
+    expect(splitAtGaps([{ at: 0, value: 1 }, { at: 1, value: 2 }, { at: 3, value: 3 }], 1).map((s) => s.length)).toEqual([2, 1]);
   });
 
   it("draws lines and areas", () => {

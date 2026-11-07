@@ -61,7 +61,9 @@ pub fn module_of(path: &str) -> Option<Module> {
         | ["tracks", _, "cover"]
         | ["public", "covers", ..]
         | ["settings", "station", "logo"] => Module::CoverArt,
-        ["listeners", ..] | ["settings", "statistics"] => Module::ListenerStatistics,
+        ["listeners", ..] | ["stations", "listeners", ..] | ["settings", "statistics"] => {
+            Module::ListenerStatistics
+        }
         ["webhooks" | "webhook-deliveries", ..] => Module::Webhooks,
         ["restrictions", ..] => Module::Restrictions,
         ["settings", "eq"] | ["eq-presets", ..] => Module::Eq,
@@ -228,6 +230,10 @@ mod tests {
             ("/api/v1/public/covers/abcd", Some(Module::CoverArt)),
             ("/api/v1/settings/station/logo", Some(Module::CoverArt)),
             ("/api/v1/listeners/days", Some(Module::ListenerStatistics)),
+            (
+                "/api/v1/stations/listeners/days",
+                Some(Module::ListenerStatistics),
+            ),
             (
                 "/api/v1/settings/statistics",
                 Some(Module::ListenerStatistics),

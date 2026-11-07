@@ -279,3 +279,90 @@ export function countryName(code: string, language?: string): string {
 export function isDbIp(database: string): boolean {
   return /db-?ip/i.test(database);
 }
+
+/**
+ * The stations the Statistics page shows (`?stations=`): the station of the
+ * switcher, all of them added up, a comparison of the switcher's with others
+ * (`1,2`), or of all of them.
+ */
+export type StationsView =
+  | { kind: "one" }
+  | { kind: "all" }
+  | { kind: "compare"; ids: number[] }
+  | { kind: "compare-all" };
+
+/** The view of the page's address, among the stations the user sees (`seen`). */
+export function viewOf(search: URLSearchParams, seen: readonly number[]): StationsView {
+  if (seen.length < 2) {
+    return { kind: "one" };
+  }
+  const value = search.get("stations");
+  if (value === "all") {
+    return { kind: "all" };
+  }
+  if (value === "compare-all") {
+    return { kind: "compare-all" };
+  }
+  const ids = [...new Set((value ?? "").split(",").map(Number))].filter((id) => seen.includes(id));
+  return ids.length >= 2 ? { kind: "compare", ids } : { kind: "one" };
+}
+
+/** The view as it is written in the address; `null` for the switcher's station. */
+export function viewValue(view: StationsView): string | null {
+  switch (view.kind) {
+    case "all":
+    case "compare-all":
+      return view.kind;
+    case "compare":
+      return view.ids.join(",");
+    default:
+      return null;
+  }
+}
+
+/** The `stations` parameter of the routes of several stations. */
+export function stationsParam(view: StationsView): string {
+  return view.kind === "compare" ? view.ids.join(",") : "all";
+}
+
+/** One color per station, in the order of the answer: the theme's, so both themes read. */
+export const SERIES = ["var(--accent)", "var(--deck-b)", "var(--deck-a)", "var(--fx)", "var(--good)", "var(--bad)", "var(--muted)"];
+
+export function seriesColor(index: number): string {
+  return SERIES[index % SERIES.length] ?? "var(--accent)";
+}
+
+/** Where to download a table of several stations in CSV. */
+export function stationsCsvUrl(path: string, view: StationsView, params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams({ format: "csv", stations: stationsParam(view) });
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      search.set(key, String(value));
+    }
+  }
+  return `/api/v1/stations/listeners/${path}?${search.toString()}`;
+}
+
+/**
+ * The groups of several stations' shares, side by side: the stations
+ * together's order, then the groups only some stations have; each with every
+ * station's listener share (0 where it has none).
+ */
+export function shareColumns(
+  total: readonly Schemas["Share"][],
+  stations: readonly (readonly Schemas["Share"][])[],
+): { share: Schemas["Share"]; shares: number[] }[] {
+  const key = (share: Schemas["Share"]) => `${share.kind}-${share.name ?? ""}`;
+  const groups: Schemas["Share"][] = [...total];
+  for (const groupsOf of stations) {
+    for (const share of groupsOf) {
+      if (!groups.some((g) => key(g) === key(share))) {
+        groups.push(share);
+      }
+    }
+  }
+  return groups.map((share) => ({
+    share,
+    shares: stations.map((groupsOf) => groupsOf.find((g) => key(g) === key(share))?.listener_share ?? 0),
+  }));
+}
