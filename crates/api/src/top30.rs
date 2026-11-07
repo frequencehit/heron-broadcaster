@@ -2025,11 +2025,12 @@ pub(crate) async fn tick(
     let show = top30_show();
     let week = ChartWeek::latest_closed(to, &settings, &tz)?;
     if frozen_votes(pool, station_id, week.monday).await?.is_none() {
-        let (entries, _) = freeze(pool, station_id, &settings, &week).await?;
-        if from < week.closes_at
-            && week.closes_at <= to
-            && let Some(first) = entries.first()
-        {
+        freeze(pool, station_id, &settings, &week).await?;
+    }
+    // Whoever froze it (a page read at the close), the week closed now.
+    if from < week.closes_at && week.closes_at <= to {
+        let entries = stored_entries(pool, station_id, week.monday).await?;
+        if let Some(first) = entries.first() {
             let values = [
                 ("artist", first.artist.clone().unwrap_or_default()),
                 ("title", first.title.clone().unwrap_or_default()),

@@ -10233,6 +10233,60 @@ async fn the_top30_is_frozen_then_played_with_its_ranks_hidden() {
     }
     assert_eq!(public["new_release"], json!({"hidden": true}));
 
+    // When the week closes, its number 1 goes to the show's webhooks.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, webhook) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Chat", "url": format!("http://{receiver}/chat"),
+                   "events": ["queue.changed"], "body_template": "{\"content\": \"{{message}}\"}"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{webhook}");
+    let webhook_id = webhook["webhook"]["id"].as_u64().unwrap();
+    let (status, saved) = admin
+        .send(
+            Method::PUT,
+            "/shows/top30",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": hour,
+                              "end_hour": hour + 1}],
+                   "notifications": {"webhook_ids": [webhook_id]}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let code = station.state.stations.first().code();
+    crate::top30::tick(
+        pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        closed
+            .closes_at
+            .checked_sub(jiff::SignedDuration::from_secs(5))
+            .unwrap(),
+        closed
+            .closes_at
+            .checked_add(jiff::SignedDuration::from_secs(5))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let body = loop {
+        let (_, name, headers, body) =
+            tokio::time::timeout(Duration::from_secs(15), received.recv())
+                .await
+                .expect("the top 30's notification")
+                .unwrap();
+        if name == "chat" && headers["x-heron-event"] == "top.published" {
+            break body;
+        }
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"content": "This week's number 1: Artist 1 – Track 1"})
+    );
+
     // Turned off for the station: nothing more is queued or answered.
     let (status, _) = admin
         .send(Method::PUT, "/stations/1/modules", json!({"top30": false}))
