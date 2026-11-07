@@ -23,10 +23,24 @@ export const MODULES: { key: ModuleKey; label: PlainKey; help: PlainKey; off: Pl
     off: "modules.listenerStatisticsOff",
   },
   { key: "webhooks", label: "nav.webhooks", help: "modules.webhooksHelp", off: "modules.webhooksOff" },
+  { key: "dedications", label: "nav.dedications", help: "modules.dedicationsHelp", off: "modules.showOff" },
+  { key: "match", label: "nav.match", help: "modules.matchHelp", off: "modules.showOff" },
+  { key: "top30", label: "nav.top30", help: "modules.top30Help", off: "modules.showOff" },
 ];
 
-/** Everything on: what is shown until the station's modules are known. */
-export const ALL_ON: Modules = { medleys: true, cover_art: true, listener_statistics: true, webhooks: true };
+/**
+ * What is shown until the station's modules are known: their defaults,
+ * everything on but the shows (docs/modules.md).
+ */
+export const ALL_ON: Modules = {
+  medleys: true,
+  cover_art: true,
+  listener_statistics: true,
+  webhooks: true,
+  dedications: false,
+  match: false,
+  top30: false,
+};
 
 export function moduleKey(station: number | null): readonly unknown[] {
   return ["modules", station];
