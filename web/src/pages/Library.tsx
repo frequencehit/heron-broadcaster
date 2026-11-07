@@ -8,6 +8,7 @@ import { CoverThumb } from "../components/Cover";
 import { useModule } from "../lib/modules";
 import { StationFilter, useStationFilter, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioDialog, RatioImportDialog } from "../components/Ratio";
+import { DaypartsCell, TrackDaypartsDialog } from "../components/TrackDayparts";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
@@ -78,6 +79,12 @@ const SORTS: { value: TrackSort; label: PlainKey }[] = [
   { value: "play_ratio", label: "library.sort.playRatio" },
 ];
 
+const DAYPART_CHOICES: { value: "" | "own" | "category"; label: PlainKey }[] = [
+  { value: "", label: "library.filter.all" },
+  { value: "own", label: "trackDayparts.filterOwn" },
+  { value: "category", label: "trackDayparts.filterCategory" },
+];
+
 const RATIO_CHOICES: { value: RatioFilter | ""; label: PlainKey }[] = [
   { value: "", label: "library.filter.all" },
   { value: "below", label: "ratio.filter.below" },
@@ -102,6 +109,7 @@ type Column =
   | "level_min"
   | "level_max"
   | "ratio"
+  | "dayparts"
   | "labels";
 
 const COLUMNS: { value: Column; label: PlainKey }[] = [
@@ -121,6 +129,7 @@ const COLUMNS: { value: Column; label: PlainKey }[] = [
   { value: "level_min", label: "library.column.levelMin" },
   { value: "level_max", label: "library.column.levelMax" },
   { value: "ratio", label: "ratio.short" },
+  { value: "dayparts", label: "trackDayparts.column" },
   { value: "labels", label: "library.column.labels" },
 ];
 
@@ -184,7 +193,16 @@ export function filtersOf(search: URLSearchParams, q: string, station: number | 
     sound_code: text("sound_code"),
     genre: text("genre"),
     ...ratioFilter(search.get("ratio")),
+    own_dayparts: ownDayparts(search.get("dayparts")),
   });
+}
+
+/** The daypart filter: the tracks' own values, or their categories'. */
+function ownDayparts(value: string | null): boolean | undefined {
+  if (value === "own") {
+    return true;
+  }
+  return value === "category" ? false : undefined;
 }
 
 /** Filters of the URL beyond search, show and category. */
@@ -203,7 +221,17 @@ const MORE_FILTERS = [
   "genre",
 ];
 
-type Dialog = "labels" | "category" | "programming" | "ratio" | "tags" | "disable" | "enable" | "import-ratios" | null;
+type Dialog =
+  | "labels"
+  | "category"
+  | "programming"
+  | "ratio"
+  | "dayparts"
+  | "tags"
+  | "disable"
+  | "enable"
+  | "import-ratios"
+  | null;
 
 export function Library() {
   const { search } = useLocation();
@@ -215,6 +243,7 @@ export function Library() {
   const desc = search.get("desc") === "true";
   const category = search.get("category") ?? "";
   const ratio = search.get("ratio") ?? "";
+  const dayparts = search.get("dayparts") ?? "";
   const page = Math.max(0, Number(search.get("page") ?? 0) || 0);
   const batch = search.get("batch");
   const [text, setText] = useState(search.get("q") ?? "");
@@ -456,6 +485,20 @@ export function Library() {
                 ))}
               </select>
             </label>
+            <label className="row small">
+              <span className="muted">{t("trackDayparts.column")}</span>
+              <select
+                className="input"
+                value={dayparts}
+                onChange={(event) => setSearch({ dayparts: event.target.value || undefined, page: undefined })}
+              >
+                {DAYPART_CHOICES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.label)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <span className="row" style={{ flexWrap: "nowrap" }}>
               <label>
                 <span className="visually-hidden">{t("library.sortBy")}</span>
@@ -557,6 +600,7 @@ export function Library() {
                     { label: t("library.categoryAction"), onSelect: () => setDialog("category") },
                     { label: t("library.programmingAction"), onSelect: () => setDialog("programming") },
                     { label: t("ratio.action"), onSelect: () => setDialog("ratio") },
+                    { label: t("trackDayparts.action"), onSelect: () => setDialog("dayparts") },
                     { label: t("library.enable"), onSelect: () => setDialog("enable"), disabled: setEnabled.isPending },
                     {
                       label: t("library.disable"),
@@ -719,6 +763,12 @@ export function Library() {
         station={ratioStation}
       />
       <RatioImportDialog open={dialog === "import-ratios"} onClose={() => setDialog(null)} />
+      <TrackDaypartsDialog
+        open={dialog === "dayparts"}
+        onClose={() => setDialog(null)}
+        selection={selection}
+        tracks={selectedCount}
+      />
       <DisableDialog
         open={dialog === "disable"}
         onClose={() => setDialog(null)}
@@ -1002,6 +1052,7 @@ function Row({
     level_min: <span className="num small">{levelText(track.level_min_db)}</span>,
     level_max: <span className="num small">{levelText(track.level_max_db)}</span>,
     ratio: <RatioPill track={track} />,
+    dayparts: <DaypartsCell track={track} />,
     labels: (
       <span className="chips">
         {track.labels.map((label) => (

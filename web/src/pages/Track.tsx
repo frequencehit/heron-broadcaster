@@ -7,6 +7,7 @@
 import { CoverCard } from "../components/Cover";
 import { PlaysByStation, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioCounter, RatioScale, WeightOrRatio } from "../components/Ratio";
+import { TrackDaypartsCard } from "../components/TrackDayparts";
 import { RATIOS, disabledText, effectiveRatio, nextText, ratioLabel, ratioSummary } from "../lib/ratio";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -688,6 +689,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
         <div className="stack">
           <CoverCard track={track} />
           <RatioCard track={track} canEdit={canEdit} />
+          <TrackDaypartsCard track={track} canEdit={canEdit} />
           <ProgrammingCard track={track} canEdit={canEdit} />
           <CategoriesCard track={track} canEdit={canEdit} />
           <DetailsCard track={track} />
