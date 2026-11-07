@@ -102,6 +102,9 @@ export function ToDo() {
 
 const PAGE = 50;
 
+/** The built-in Song category type (`SONG_TYPE_ID` in the API). */
+const SONG_TYPE_ID = 1;
+
 type MissingSort = "artist" | "title";
 
 function MissingSongs({
@@ -118,12 +121,28 @@ function MissingSongs({
   const page = Math.max(0, Number(search.get("page") ?? 0) || 0);
   const sort: MissingSort = search.get("sort") === "title" ? "title" : "artist";
   const desc = search.get("desc") === "true";
+  const category = Number(search.get("category")) || undefined;
+  const categories = useQuery({
+    queryKey: ["categories", "all"],
+    queryFn: () => unwrap(api.GET("/api/v1/categories")),
+  });
+  const songCategories = (categories.data ?? []).filter((c) => c.type_id === SONG_TYPE_ID);
   const songs = useQuery({
-    queryKey: ["tracks", "todo", filter, sort, desc, page],
+    queryKey: ["tracks", "todo", filter, sort, desc, page, category],
     queryFn: () =>
       unwrap(
         api.GET("/api/v1/tracks", {
-          params: { query: { active_songs: true, filter, sort, desc, limit: PAGE, offset: page * PAGE } },
+          params: {
+            query: {
+              active_songs: true,
+              filter,
+              sort,
+              desc,
+              limit: PAGE,
+              offset: page * PAGE,
+              ...(category !== undefined && { category_id: category }),
+            },
+          },
         }),
       ),
     placeholderData: keepPreviousData,
@@ -137,6 +156,21 @@ function MissingSongs({
       <div className="card-body row between">
         <span className="muted small">{t("todo.songsHelp")}</span>
         <span className="row" style={{ flexWrap: "nowrap", alignItems: "flex-end" }}>
+          <label className="stacked">
+            <span>{t("library.categories")}</span>
+            <select
+              className="input"
+              value={category ?? ""}
+              onChange={(event) => setSearch({ category: event.target.value || undefined, page: undefined })}
+            >
+              <option value="">{t("library.anyCategory")}</option>
+              {songCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="stacked">
             <span>{t("library.sortLabel")}</span>
             <select
