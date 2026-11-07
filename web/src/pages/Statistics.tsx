@@ -188,13 +188,13 @@ export function Statistics() {
         <Loading />
       ) : (
         <div className="stack">
+          <Today zone={zone} filter={filter} />
           <AudienceCard zone={zone} filter={filter} period={period} />
           <OverTime filter={filter} period={period} />
           <HoursOfDay filter={filter} period={period} />
           <Countries filter={filter} period={period} />
           <DevicesAndPlayers filter={filter} period={period} />
           <Departures filter={filter} period={period} />
-          <Today zone={zone} filter={filter} />
           <HowCounted zone={zone} />
         </div>
       )}

@@ -459,6 +459,7 @@ async fn simulated_listeners_are_counted() {
         )
         .await
         .unwrap(),
+        super::breakdown::By::Country.min_listeners(),
     );
     // 4 listeners in France: fewer than 5, Other; the probe not found.
     let kinds: Vec<(super::breakdown::ShareKind, u32)> =
