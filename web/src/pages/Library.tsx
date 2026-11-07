@@ -239,6 +239,7 @@ export function Library() {
   const { search } = useLocation();
   const canEdit = useCan("operator");
   const coverArt = useModule("cover_art");
+  const labelsOn = useModule("labels");
   const preview = usePreview();
   const sort = (search.get("sort") ?? "artist") as TrackSort;
   const desc = search.get("desc") === "true";
@@ -396,7 +397,9 @@ export function Library() {
   };
   // The cover goes before the title; the others after the artist.
   const showCover = coverArt && columns.includes("cover");
-  const shown = COLUMNS.filter((c) => c.value !== "cover" && columns.includes(c.value));
+  const shown = COLUMNS.filter(
+    (c) => c.value !== "cover" && (labelsOn || c.value !== "labels") && columns.includes(c.value),
+  );
 
   return (
     <>
@@ -511,7 +514,7 @@ export function Library() {
         {moreOpen && (
           <MoreFilters
             search={search}
-            labels={labels.data ?? []}
+            labels={labelsOn ? (labels.data ?? []) : []}
             programming={programming.data}
             coverArt={coverArt}
           />
@@ -576,7 +579,7 @@ export function Library() {
                 <Menu
                   label={t("library.moreActions")}
                   items={[
-                    { label: t("library.labelsAction"), onSelect: () => setDialog("labels") },
+                    ...(labelsOn ? [{ label: t("library.labelsAction"), onSelect: () => setDialog("labels") }] : []),
                     { label: t("library.categoryAction"), onSelect: () => setDialog("category") },
                     { label: t("library.programmingAction"), onSelect: () => setDialog("programming") },
                     { label: t("ratio.action"), onSelect: () => setDialog("ratio") },
@@ -777,11 +780,14 @@ function sameRatio(tracks: TrackSummary[]): number | null {
 
 function ColumnsMenu({ columns, onToggle }: { columns: Column[]; onToggle: (column: Column, shown: boolean) => void }) {
   const coverArt = useModule("cover_art");
+  const labelsOn = useModule("labels");
   return (
     <details className="menu">
       <summary className="btn ghost small">{t("library.columns")}</summary>
       <div className="menu-panel stack">
-        {COLUMNS.filter((column) => coverArt || column.value !== "cover").map((column) => (
+        {COLUMNS.filter(
+          (column) => (coverArt || column.value !== "cover") && (labelsOn || column.value !== "labels"),
+        ).map((column) => (
           <label key={column.value} className="check">
             <input
               type="checkbox"
@@ -1176,13 +1182,14 @@ function RatioPill({ track }: { track: TrackSummary }) {
 
 /** What a deletion takes, before it is confirmed. */
 export function DeleteQuestion({ tracks }: { tracks: TrackSummary[] }) {
+  const trashOn = useModule("trash");
   const shown = tracks.slice(0, 15);
   return (
     <>
       <p>
         {rich("library.deleteQuestion", {
           count: tracks.length,
-          trash: <Link to="/trash">{t("nav.trash")}</Link>,
+          trash: trashOn ? <Link to="/trash">{t("nav.trash")}</Link> : t("nav.trash"),
         })}
       </p>
       <ul className="small" style={{ margin: 0 }}>

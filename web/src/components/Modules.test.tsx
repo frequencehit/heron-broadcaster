@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ALL_ON } from "../lib/modules";
+import { useEqSettings } from "../lib/eq";
+import { ALL_ON, MODULES } from "../lib/modules";
 import { chooseStation } from "../lib/station";
 import { ModulesPage } from "../pages/Modules";
 import { answer, renderApp, sent, user } from "../test/render";
@@ -16,8 +17,8 @@ function stationModules(installation: Partial<typeof ALL_ON>, station: Partial<t
   const i = { ...ALL_ON, ...installation };
   const s = { ...ALL_ON, ...station };
   const on = { ...ALL_ON };
-  for (const key of Object.keys(on) as (keyof typeof on)[]) {
-    on[key] = i[key] && s[key];
+  for (const entry of MODULES) {
+    on[entry.key] = i[entry.key] && (entry.installationOnly || s[entry.key]);
   }
   return { installation: i, station: s, on };
 }
@@ -83,6 +84,55 @@ describe("modules", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: /Webhooks/ }));
     await waitFor(() => expect(sent("PUT /api/v1/modules")).toHaveLength(1));
     expect(sent("PUT /api/v1/modules")[0]?.options?.body).toEqual({ ...ALL_ON, webhooks: false });
+  });
+
+  it("a station's switches leave out the library's modules, the installation's have them", async () => {
+    renderApp(
+      <ModuleSwitches value={ALL_ON} installation={ALL_ON} canEdit saving={false} onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("checkbox", { name: /Restrictions/ })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /Equalizer/ })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /Processing/ })).toBeTruthy();
+    for (const name of [/Trash/, /To organize/, /Artists/, /Labels/]) {
+      expect(screen.queryByRole("checkbox", { name })).toBeNull();
+    }
+    cleanup();
+    answer({ "GET /api/v1/modules": ALL_ON });
+    renderApp(<ModulesPage />);
+    for (const name of [/Trash/, /To organize/, /Artists/, /Labels/, /Restrictions/]) {
+      expect(await screen.findByRole("checkbox", { name })).toBeTruthy();
+    }
+  });
+
+  it("a library module off says where the installation turns it on", async () => {
+    answer({ [STATION_MODULES]: stationModules({ trash: false }, { trash: true }) });
+    renderApp(
+      <ModuleGate module="trash">
+        <p>the trash</p>
+      </ModuleGate>,
+    );
+    expect(await screen.findByText("The Trash module is turned off.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Administration › Modules" })).toBeTruthy();
+  });
+
+  it("the EQ is not shown while its module is off", async () => {
+    const flat = { enabled: true, gains_db: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+    answer({
+      [STATION_MODULES]: stationModules({}, { eq: false }),
+      "GET /api/v1/stations/{station_id}/settings/eq": { music: flat, fx: flat },
+    });
+    function Probe() {
+      const eq = useEqSettings();
+      return <p>{eq.data ? "eq" : "no eq"}</p>;
+    }
+    renderApp(<Probe />);
+    await waitFor(() => expect(sent(STATION_MODULES)).toHaveLength(1));
+    await waitFor(() => expect(screen.getByText("no eq")).toBeTruthy());
+    // Not asked for again once the module is known to be off.
+    const asked = sent("GET /api/v1/stations/{station_id}/settings/eq").length;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sent("GET /api/v1/stations/{station_id}/settings/eq")).toHaveLength(asked);
+    expect(screen.getByText("no eq")).toBeTruthy();
   });
 
   it("only admins change the installation's modules", () => {
