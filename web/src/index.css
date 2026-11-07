@@ -1902,6 +1902,132 @@ ul.steps .bar {
   gap: 1rem;
 }
 
+/* An info button and its explanation (InfoTip). */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.info-tip-button {
+  display: inline-flex;
+  padding: 0.1rem;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: help;
+}
+
+.info-tip-button:hover,
+.info-tip-button:focus-visible {
+  color: var(--accent);
+}
+
+.info-tip-text {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  width: max-content;
+  max-width: min(16rem, calc(100vw - 2rem));
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.35;
+  /* No box while closed: it would widen the page at phone width. */
+  display: none;
+}
+
+.info-tip.right .info-tip-text {
+  right: 0;
+  left: auto;
+}
+
+.info-tip:hover .info-tip-text,
+.info-tip:focus-within .info-tip-text,
+.info-tip.open .info-tip-text {
+  display: block;
+}
+
+/* Statistics: average listeners by day of the week and hour. */
+.heatmap {
+  display: grid;
+  grid-template-columns: 2.4rem repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  font-size: 0.7rem;
+}
+
+.heatmap-day,
+.heatmap-hour {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.heatmap-day {
+  align-self: center;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  min-height: 0.6rem;
+  border-radius: 2px;
+}
+
+.heatmap-cell.empty {
+  background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 2px, transparent 2px, transparent 4px);
+}
+
+/* Statistics: countries, devices and players with a bar of their share. */
+.shares-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+.table.shares caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.share-bar {
+  display: block;
+  height: 0.3rem;
+  margin-top: 0.25rem;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+
+.share-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.stats-how {
+  font-size: 0.875rem;
+}
+
+.stats-how summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stats-how ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+
 /* A medley part's points, moved by 0.1 s. */
 .btn.nudge {
   padding: 0 0.35rem;
