@@ -34,6 +34,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Cover images are files** on a new `covers` volume (`HERON_COVERS_DIR`) shared by `heron-api` and `heron-librarian`, not in the database: the database keeps what is known of each image (hash, size), and its dump no longer holds images. The API moves the images of an earlier edge build to the volume when it starts, once ([Upgrading – Edge](docs/upgrading.md#edge)). The configuration file still holds the covers set by hand and the station logos with their images, and older files restore as before.
 - **Listener statistics read each stream server once a minute**, for all its mounts, instead of once per output.
 - **Outputs in the API** give a `server_id` and only their mount in `config`; their `statistics` (the admin credentials) moved to the stream server. A migration groups the existing outputs into servers ([Upgrading – Edge](docs/upgrading.md#edge)).
+- **Settings** are in tabs: *Station*, *Programming*, *Audio*, *Library* and *Statistics*.
 
 ### Fixed
 
