@@ -7,7 +7,8 @@
 //!
 //! Tags kept in Heron's database (`track_tag_overrides`, while the library
 //! setting `write_tags` was off) for the fields written are dropped: the
-//! file has the values now.
+//! file has the values now. Writing those tags themselves into the files
+//! ([`write_overrides`]) keeps them.
 
 use heron_core::library::{BatchReport, FieldValues, SkippedFile, TagField};
 use heron_core::{FileStamp, LibraryPath};
@@ -29,24 +30,63 @@ pub async fn apply(
     set: &FieldValues,
     from_details: &[TagField],
 ) -> Result<BatchReport, Error> {
+    let edits: Vec<(u64, &FieldValues)> = track_ids.iter().map(|&id| (id, set)).collect();
+    run(pool, roots, &edits, from_details, Overrides::Drop).await
+}
+
+/// Writes every track's tags kept in Heron's database into its file, as
+/// one `edit` batch. The overrides are kept: Heron and the file agree.
+/// Tracks in the trash are left out.
+pub async fn write_overrides(pool: &MySqlPool, roots: &Roots) -> Result<BatchReport, Error> {
+    let in_library: std::collections::HashSet<u64> = sqlx::query_scalar(
+        "SELECT DISTINCT o.track_id FROM track_tag_overrides o
+         JOIN tracks t ON t.id = o.track_id WHERE t.deleted_at IS NULL",
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect();
+    let mut all: Vec<(u64, FieldValues)> = heron_library::details::all_overrides(pool)
+        .await?
+        .into_iter()
+        .filter(|(id, _)| in_library.contains(id))
+        .collect();
+    all.sort_unstable_by_key(|(id, _)| *id);
+    let edits: Vec<(u64, &FieldValues)> = all.iter().map(|(id, set)| (*id, set)).collect();
+    run(pool, roots, &edits, &[], Overrides::Keep).await
+}
+
+/// What becomes of the overrides of the fields written.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Overrides {
+    /// Dropped: the file has the values now (an edit from the tag editor).
+    Drop,
+    /// Kept (the overrides themselves written into the files).
+    Keep,
+}
+
+async fn run(
+    pool: &MySqlPool,
+    roots: &Roots,
+    edits: &[(u64, &FieldValues)],
+    from_details: &[TagField],
+    overrides: Overrides,
+) -> Result<BatchReport, Error> {
     let batch_id = journal::create_batch(pool, BatchKind::Edit, None).await?;
     let mut report = BatchReport {
         batch_id,
         ..BatchReport::default()
     };
-    for chunk in track_ids.chunks(LOCK_CHUNK) {
+    for chunk in edits.chunks(LOCK_CHUNK) {
         let lock = LibraryLock::acquire(pool, "librarian").await?;
-        for &track_id in chunk {
-            edit_one(
-                pool,
-                roots,
-                batch_id,
+        for &(track_id, set) in chunk {
+            let edit = Edit {
                 track_id,
                 set,
                 from_details,
-                &mut report,
-            )
-            .await?;
+                overrides,
+            };
+            edit_one(pool, roots, batch_id, edit, &mut report).await?;
         }
         lock.release().await?;
     }
@@ -61,15 +101,27 @@ pub async fn apply(
     Ok(report)
 }
 
+/// One track's edit.
+struct Edit<'a> {
+    track_id: u64,
+    set: &'a FieldValues,
+    from_details: &'a [TagField],
+    overrides: Overrides,
+}
+
 async fn edit_one(
     pool: &MySqlPool,
     roots: &Roots,
     batch_id: u64,
-    track_id: u64,
-    set: &FieldValues,
-    from_details: &[TagField],
+    edit: Edit<'_>,
     report: &mut BatchReport,
 ) -> Result<(), Error> {
+    let Edit {
+        track_id,
+        set,
+        from_details,
+        overrides,
+    } = edit;
     let row = sqlx::query(
         "SELECT t.path, t.missing_since IS NOT NULL AS missing, t.file_size, t.file_mtime_us,
                 mb.isrc, mb.record_label, CAST(COALESCE(p.bpm, a.bpm) AS DOUBLE) AS bpm, p.mood
@@ -134,7 +186,9 @@ async fn edit_one(
         }
     };
     if previous == applied {
-        drop_overrides(pool, roots, track_id, &path, &fields_written(&applied)).await?;
+        if overrides == Overrides::Drop {
+            drop_overrides(pool, roots, track_id, &path, &fields_written(&applied)).await?;
+        }
         report.unchanged += 1;
         return Ok(());
     }
@@ -157,7 +211,7 @@ async fn edit_one(
             .map(|(size, mtime_us)| FileStamp { size, mtime_us }),
     };
     let outcome = journal::execute(pool, roots, operation).await;
-    if outcome.is_ok() {
+    if outcome.is_ok() && overrides == Overrides::Drop {
         drop_overrides(pool, roots, track_id, &path, &written).await?;
     }
     organize::record_outcome(report, path.as_str(), outcome)

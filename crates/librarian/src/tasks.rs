@@ -206,6 +206,10 @@ impl TaskRunner {
                 set,
                 from_details,
             } => json(edit::apply(&self.pool, &self.roots, track_ids, set, from_details).await),
+            // Asked for on purpose: whatever `write_tags` says.
+            TaskRequest::WriteTagOverrides => {
+                json(edit::write_overrides(&self.pool, &self.roots).await)
+            }
             TaskRequest::MusicbrainzDetails { all } => {
                 json(musicbrainz::look_up(&self.pool, &self.musicbrainz()?, *all, None).await)
             }

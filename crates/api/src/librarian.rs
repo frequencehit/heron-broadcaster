@@ -2,7 +2,8 @@
 
 //! Library management through `heron-librarian`: the review of
 //! identifications, organizing the library after a dry run, undoing
-//! batches, and deleting tracks through the trash.
+//! batches, writing the tags kept in Heron into the files, and deleting
+//! tracks through the trash.
 //!
 //! The API cannot write files, so work on files is queued as library tasks
 //! (`library_tasks`) that the librarian runs in order; clients poll the
@@ -40,6 +41,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(apply_release))
         .routes(routes!(keep_tags))
         .routes(routes!(fetch_details))
+        .routes(routes!(count_tag_overrides))
+        .routes(routes!(write_tag_overrides))
         .routes(routes!(delete_tracks))
         .routes(routes!(list_trash))
         .routes(routes!(restore_batch))
@@ -615,6 +618,48 @@ async fn fetch_details(
     .await?;
     Ok((StatusCode::ACCEPTED, Json(task)))
 }
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TagOverridesCount {
+    /// Tracks with tags kept in Heron's database (the trash left out).
+    pub tracks: u64,
+}
+
+/// How many tracks have tags kept in Heron's database instead of their
+/// files. Admins.
+#[utoipa::path(get, path = "/library/tag-overrides", tag = "library",
+    responses((status = 200, body = TagOverridesCount), (status = "4XX", body = ErrorBody)))]
+async fn count_tag_overrides(
+    user: CurrentUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<TagOverridesCount>> {
+    user.require(Role::Admin)?;
+    let tracks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT o.track_id) FROM track_tag_overrides o
+         JOIN tracks t ON t.id = o.track_id WHERE t.deleted_at IS NULL",
+    )
+    .fetch_one(&state.pool)
+    .await?;
+    Ok(Json(TagOverridesCount {
+        tracks: u64::try_from(tracks).unwrap_or(0),
+    }))
+}
+
+/// Writes every track's tags kept in Heron's database into its file, as
+/// one `edit` batch that can be undone, whatever the library setting
+/// `write_tags` says: queues a `write_tag_overrides` task. The tags stay
+/// kept in Heron. Admins.
+#[utoipa::path(post, path = "/library/tag-overrides/write", tag = "library",
+    responses((status = 202, body = LibraryTask), (status = "4XX", body = ErrorBody)))]
+async fn write_tag_overrides(
+    user: CurrentUser,
+    State(state): State<AppState>,
+) -> ApiResult<(StatusCode, Json<LibraryTask>)> {
+    user.require(Role::Admin)?;
+    let task = ask(&state, &user, TaskRequest::WriteTagOverrides).await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TrackSelection {
