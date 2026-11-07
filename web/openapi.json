@@ -3084,6 +3084,38 @@
         }
       }
     },
+    "/api/v1/gateway/state": {
+      "get": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "What the gateway serves listeners: every enabled station, its now\nplaying and its shows. Read once a second by `heron-public`, with the\ngateway token only.",
+        "operationId": "gateway_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayState"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/api/v1/history": {
       "get": {
         "tags": [
@@ -5235,7 +5267,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "Turns modules on or off for the installation (a module left out is\non). Admins only.",
+        "summary": "Turns modules on or off for the installation (a module left out takes\nits default: off for a show). Admins only.",
         "operationId": "put_modules",
         "requestBody": {
           "content": {
@@ -7891,6 +7923,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TwoFactorSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shows": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "The shows on for the station, with their settings and whether they are\nopen now.",
+        "operationId": "list_shows",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShowView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shows/{module}": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "A show's settings on the station, and whether it is open now.",
+        "operationId": "get_show",
+        "parameters": [
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match or top30",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has are refused (`409`). Operators.",
+        "operationId": "put_show",
+        "parameters": [
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match or top30",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShowSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
                 }
               }
             }
@@ -12021,6 +12173,155 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/shows": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "The shows on for the station, with their settings and whether they are\nopen now.",
+        "operationId": "list_shows_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShowView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/shows/{module}": {
+      "get": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "A show's settings on the station, and whether it is open now.",
+        "operationId": "get_show_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match or top30",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "shows"
+        ],
+        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has are refused (`409`). Operators.",
+        "operationId": "put_show_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "module",
+            "in": "path",
+            "description": "dedications, match or top30",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShowSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowView"
                 }
               }
             }
@@ -17036,6 +17337,14 @@
           }
         }
       },
+      "Closed": {
+        "type": "string",
+        "description": "What the website shows outside the hours.",
+        "enum": [
+          "message",
+          "nothing"
+        ]
+      },
       "CodeRequest": {
         "type": "object",
         "required": [
@@ -18399,6 +18708,24 @@
           }
         }
       },
+      "EventSettings": {
+        "type": "object",
+        "description": "One notification event.",
+        "required": [
+          "enabled",
+          "message"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "description": "With `{name}`, `{link}`, `{end}`, `{next}` and the show's own\nplaceholders."
+          }
+        },
+        "additionalProperties": false
+      },
       "ExactLog": {
         "type": "object",
         "description": "An exact slot's pick: its exact time, and how rotation met it.",
@@ -19099,6 +19426,61 @@
         },
         "additionalProperties": false
       },
+      "GatewayState": {
+        "type": "object",
+        "required": [
+          "stations",
+          "server_time_unix_ms"
+        ],
+        "properties": {
+          "server_time_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GatewayStation"
+            },
+            "description": "The enabled stations."
+          }
+        }
+      },
+      "GatewayStation": {
+        "type": "object",
+        "description": "A station as the gateway serves it.",
+        "required": [
+          "code",
+          "name",
+          "timezone",
+          "now_playing",
+          "shows"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "now_playing": {
+            "$ref": "#/components/schemas/NowPlaying",
+            "description": "As `GET /public/now-playing` gives it."
+          },
+          "shows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShowPublic"
+            },
+            "description": "The shows on for the station."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone, which the shows' hours follow."
+          }
+        }
+      },
       "GridDay": {
         "type": "object",
         "description": "A day of the last 30.",
@@ -19353,6 +19735,39 @@
             "description": "Sessions that ended in that hour (not at midnight), on average per\nday."
           }
         }
+      },
+      "HourRange": {
+        "type": "object",
+        "description": "Days and whole hours: Monday to Friday, 17:00 to 18:00.",
+        "required": [
+          "days",
+          "start_hour",
+          "end_hour"
+        ],
+        "properties": {
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "1 (Monday) to 7 (Sunday)."
+          },
+          "end_hour": {
+            "type": "integer",
+            "format": "int32",
+            "description": "After `start_hour`, up to 24.",
+            "minimum": 0
+          },
+          "start_hour": {
+            "type": "integer",
+            "format": "int32",
+            "description": "0 to 23.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "ImportApplyRequest": {
         "type": "object",
@@ -21403,9 +21818,29 @@
           "ban"
         ]
       },
+      "Module": {
+        "type": "string",
+        "description": "A module.",
+        "enum": [
+          "medleys",
+          "cover_art",
+          "listener_statistics",
+          "webhooks",
+          "restrictions",
+          "eq",
+          "processing",
+          "trash",
+          "review",
+          "artists",
+          "labels",
+          "dedications",
+          "match",
+          "top30"
+        ]
+      },
       "Modules": {
         "type": "object",
-        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: the modules that existed before\nthey could be turned off are on.",
+        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: for the installation, the\nmodules that existed before they could be turned off are on and the\nshows off; for a station, everything is on ([`Modules::ALL_ON`]), so a\nstation only turns off what the installation has on.",
         "properties": {
           "artists": {
             "type": "boolean",
@@ -21414,6 +21849,10 @@
           "cover_art": {
             "type": "boolean",
             "default": true
+          },
+          "dedications": {
+            "type": "boolean",
+            "default": false
           },
           "eq": {
             "type": "boolean",
@@ -21426,6 +21865,10 @@
           "listener_statistics": {
             "type": "boolean",
             "default": true
+          },
+          "match": {
+            "type": "boolean",
+            "default": false
           },
           "medleys": {
             "type": "boolean",
@@ -21442,6 +21885,10 @@
           "review": {
             "type": "boolean",
             "default": true
+          },
+          "top30": {
+            "type": "boolean",
+            "default": false
           },
           "trash": {
             "type": "boolean",
@@ -21678,6 +22125,46 @@
             "minimum": 0
           }
         }
+      },
+      "NotificationSettings": {
+        "type": "object",
+        "description": "Notifications through the station's webhooks.",
+        "properties": {
+          "events": {
+            "type": "object",
+            "description": "Each event by name (`show.started`).",
+            "default": {},
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EventSettings"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "language": {
+            "type": "string",
+            "description": "The language of the dates: `en`, `fr`, `es` or `de`.",
+            "default": "en"
+          },
+          "lead_minutes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "When `show.upcoming` is sent before the show opens, 1 to 1440.",
+            "default": 60,
+            "minimum": 0
+          },
+          "webhook_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Webhooks of the station that receive the show's events.",
+            "default": []
+          }
+        },
+        "additionalProperties": false
       },
       "NowPlaying": {
         "type": "object",
@@ -24890,6 +25377,174 @@
           "other"
         ]
       },
+      "ShowPublic": {
+        "type": "object",
+        "description": "What the gateway and the widgets know of a show on a station.",
+        "required": [
+          "module",
+          "color",
+          "small_widget",
+          "closed",
+          "enabled",
+          "hours",
+          "timezone",
+          "state"
+        ],
+        "properties": {
+          "closed": {
+            "$ref": "#/components/schemas/Closed"
+          },
+          "closed_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null`: the widget's own sentence."
+          },
+          "color": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Off: closed whatever its hours."
+          },
+          "hours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HourRange"
+            }
+          },
+          "module": {
+            "$ref": "#/components/schemas/Module"
+          },
+          "page_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "small_widget": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "object",
+            "description": "The show's own live data (the current match, the day's dedications);\n`null` until the show adds it."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The station's time zone (IANA)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The title on the website; `null`: the show's name in the listener's\nlanguage."
+          }
+        }
+      },
+      "ShowSettings": {
+        "type": "object",
+        "description": "A show's settings on a station.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Open during its hours; off, it stays closed.",
+            "default": true
+          },
+          "hours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HourRange"
+            },
+            "description": "In the station's time zone.",
+            "default": []
+          },
+          "notifications": {
+            "$ref": "#/components/schemas/NotificationSettings",
+            "default": {
+              "events": {},
+              "language": "en",
+              "lead_minutes": 60,
+              "webhook_ids": []
+            }
+          },
+          "website": {
+            "$ref": "#/components/schemas/WebsiteSettings",
+            "default": {
+              "closed": "message",
+              "closed_message": "",
+              "color": "#c62828",
+              "page_url": null,
+              "small_widget": true,
+              "title": ""
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShowStatus": {
+        "type": "object",
+        "description": "Whether a show is open now, and its next change.",
+        "required": [
+          "open"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "While open: when it closes."
+          },
+          "next_opening_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it opens next (after it closes, while open); none within a week."
+          },
+          "open": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ShowView": {
+        "type": "object",
+        "description": "A show on a station.",
+        "required": [
+          "module",
+          "settings",
+          "status",
+          "timezone",
+          "webhooks"
+        ],
+        "properties": {
+          "module": {
+            "$ref": "#/components/schemas/Module"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ShowSettings"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShowStatus",
+            "description": "Now."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The station's time zone (IANA), which the hours follow."
+          },
+          "webhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookChoice"
+            },
+            "description": "The station's webhooks, by name, to choose from."
+          }
+        }
+      },
       "SilenceWatchdogSettings": {
         "type": "object",
         "description": "The engine's silence watchdog: after this long of silence on the master\nbus (below −50 dBFS), it skips to the next track, then to the fallback\ndirectory if the silence goes on.",
@@ -25880,6 +26535,13 @@
           "timezone"
         ],
         "properties": {
+          "gateway_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The address `heron-public`, the shows' gateway, is reached at from\nthe station's website (`https://public.radio.example.org`): the\nlines of the shows' widgets start with it."
+          },
           "public_url": {
             "type": [
               "string",
@@ -29215,6 +29877,24 @@
           "publicKey": {}
         }
       },
+      "WebhookChoice": {
+        "type": "object",
+        "description": "A webhook a show can send to.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "WebhookEvent": {
         "type": "string",
         "description": "What a delivery reports.",
@@ -29223,7 +29903,10 @@
           "track.ended",
           "track.skipped",
           "queue.changed",
-          "ping"
+          "ping",
+          "show.upcoming",
+          "show.started",
+          "show.ended"
         ]
       },
       "WebhookInput": {
@@ -29347,6 +30030,45 @@
             "type": "string"
           }
         }
+      },
+      "WebsiteSettings": {
+        "type": "object",
+        "description": "The page and the small widget on the station's website.",
+        "properties": {
+          "closed": {
+            "$ref": "#/components/schemas/Closed",
+            "default": "message"
+          },
+          "closed_message": {
+            "type": "string",
+            "description": "With `{day}` and `{hour}` for the next opening; empty: the widget's\nown sentence.",
+            "default": ""
+          },
+          "color": {
+            "type": "string",
+            "description": "`#rrggbb`.",
+            "default": "#c62828"
+          },
+          "page_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The website's page of the show, for `{link}`.",
+            "default": null
+          },
+          "small_widget": {
+            "type": "boolean",
+            "description": "Whether the small widget shows (the dedicated page always does).",
+            "default": true
+          },
+          "title": {
+            "type": "string",
+            "description": "The show's name on the website; empty: its name in the listener's\nlanguage.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false
       },
       "WeightSettings": {
         "type": "object",
@@ -29545,6 +30267,14 @@
     {
       "name": "public",
       "description": "Now playing and history for station websites: no sign-in, any origin"
+    },
+    {
+      "name": "shows",
+      "description": "The shows listeners take part in from the website: hours, website, notifications"
+    },
+    {
+      "name": "gateway",
+      "description": "For heron-public, the shows' public gateway, with the gateway token only"
     }
   ]
 }
