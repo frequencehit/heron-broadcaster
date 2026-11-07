@@ -21,12 +21,14 @@ mod e2e;
 mod engine;
 mod eq;
 mod error;
+mod gateway;
 mod history;
 mod import;
 mod labels;
 mod levels;
 mod librarian;
 mod library;
+mod likes;
 mod listeners;
 mod live;
 mod medleys;
@@ -44,6 +46,7 @@ mod schedules;
 mod selection;
 mod servers;
 mod settings;
+mod shows;
 mod staging;
 mod stations;
 mod sync;
@@ -304,8 +307,16 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Arc::clone(&stations),
     )));
     tasks.push(tokio::spawn(medleys::run_linker(pool.clone())));
+    tasks.push(tokio::spawn(shows::notify(
+        pool.clone(),
+        Arc::clone(&stations),
+        Arc::clone(&webhooks),
+    )));
+    let public_token = std::env::var("HERON_PUBLIC_TOKEN").ok();
+    let gateway_token = gateway::token_from(public_token.as_deref());
     tasks.push(tokio::spawn(levels::run(pool.clone())));
     tasks.push(tokio::spawn(users::purge_sessions(pool.clone())));
+    tasks.push(tokio::spawn(likes::purge(pool.clone())));
     tasks.push(tokio::spawn(
         Arc::clone(&backups).run_daily(pool.clone(), Arc::clone(&stations)),
     ));
@@ -323,6 +334,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             ConfigItem::text("HERON_COVERS_DIR", cli.covers_dir.display()),
             ConfigItem::text("HERON_GEOIP_DB", geoip_db.display()),
             ConfigItem::secret("HERON_DATABASE_URL", Some(&database_url)),
+            ConfigItem::secret(
+                "HERON_PUBLIC_TOKEN",
+                gateway_token.is_some().then_some("set"),
+            ),
             ConfigItem::text("HERON_SCAN_INTERVAL", cli.scan_interval),
             ConfigItem::flag("HERON_LIBRARY_WATCH", cli.library_watch),
             ConfigItem::text("HERON_IMPORT_SETTLE", cli.import_settle),
@@ -343,6 +358,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         system,
         about: Arc::new(about),
         two_factor: Default::default(),
+        gateway_token,
     };
     let router = app::router(state).merge(heron_service::ops_router(SERVICE, metrics, health));
 
@@ -584,6 +600,8 @@ mod tests {
             "listener_totals",
             "outputs",
             "play_history",
+            "play_vote_devices",
+            "play_votes",
             "restrictions",
             "rotation_picks",
             "sessions",

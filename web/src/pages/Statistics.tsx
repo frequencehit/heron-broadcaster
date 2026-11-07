@@ -9,6 +9,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, type ReactNode, useState } from "react";
 import { type Schemas, api, query, unwrap } from "../api";
+import { LikesWeekCard } from "../components/Likes";
 import { type Bar, BarChart, MinuteChart, type Point } from "../components/ListenerChart";
 import { InfoTip } from "../components/InfoTip";
 import { Card, Empty, ErrorView, Loading, PageHead, Segmented } from "../components/ui";
@@ -194,6 +195,7 @@ export function Statistics() {
           <Countries filter={filter} period={period} />
           <DevicesAndPlayers filter={filter} period={period} />
           <Departures filter={filter} period={period} />
+          <LikesWeekCard />
           <Today zone={zone} filter={filter} />
           <HowCounted zone={zone} />
         </div>

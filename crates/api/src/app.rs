@@ -56,6 +56,9 @@ pub struct AppState {
     pub about: Arc<crate::about::Own>,
     /// Sign-ins waiting for a second factor, factors being set up.
     pub two_factor: Arc<crate::two_factor::TwoFactor>,
+    /// The hash of the gateway token (`HERON_PUBLIC_TOKEN`), which only
+    /// `heron-public` sends; none refuses the gateway.
+    pub gateway_token: crate::gateway::GatewayToken,
 }
 
 #[derive(OpenApi)]
@@ -91,6 +94,9 @@ pub struct AppState {
         (name = "live", description = "Live state over a WebSocket"),
         (name = "webhooks", description = "Webhooks on track changes, and their deliveries (admins)"),
         (name = "public", description = "Now playing and history for station websites: no sign-in, any origin"),
+        (name = "shows", description = "The shows listeners take part in from the website: hours, website, notifications"),
+        (name = "likes", description = "Listeners' likes and dislikes of the tracks played, per station"),
+        (name = "gateway", description = "For heron-public, the shows' public gateway, with the gateway token only"),
     )
 )]
 struct ApiDoc;
@@ -149,6 +155,9 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(live::router())
         .merge(webhooks::router())
         .merge(public::router())
+        .merge(crate::shows::router())
+        .merge(crate::likes::router())
+        .merge(crate::gateway::router())
 }
 
 /// The OpenAPI document, as served.

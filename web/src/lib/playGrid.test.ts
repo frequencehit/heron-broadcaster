@@ -20,6 +20,8 @@ function days(plays: Record<string, number> = {}): GridDay[] {
         time: `08:0${n}`,
         station_id: 1,
         source: "rotation" as const,
+        likes: 0,
+        dislikes: 0,
       })),
     });
   }
@@ -58,7 +60,15 @@ describe("shade", () => {
 
 describe("hours", () => {
   it("finds a cell by weekday and hour, and the most plays", () => {
-    const play = { started_at_unix_ms: 0, date: "2026-11-02", time: "08:12", station_id: 1, source: "rotation" as const };
+    const play = {
+      started_at_unix_ms: 0,
+      date: "2026-11-02",
+      time: "08:12",
+      station_id: 1,
+      source: "rotation" as const,
+      likes: 0,
+      dislikes: 0,
+    };
     const cells = hourCells([
       { weekday: 1, hour: 8, plays: [play, play] },
       { weekday: 7, hour: 2, plays: [play] },

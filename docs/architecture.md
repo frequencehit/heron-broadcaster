@@ -41,10 +41,12 @@ flowchart TB
 ```mermaid
 flowchart TB
     staff(["<b>Station staff</b><br/>[Person]<br/>Browser"]):::person
+    listeners(["<b>Listeners</b><br/>[Person]<br/>The station's website"]):::person
     scripts["<b>Scripts and integrations</b><br/>[External system]<br/>API tokens"]:::external
 
     subgraph heron ["Heron Broadcaster (Docker Compose)"]
         web["<b>heron-web</b><br/>[Container: nginx, React, TypeScript]<br/>Static web app; proxies /api,<br/>WebSocket included"]:::container
+        public["<b>heron-public</b><br/>[Container: Rust, axum]<br/>Public gateway: cached reads,<br/>Server-Sent Events, checked writes,<br/>rate limits, show widgets"]:::container
         api["<b>heron-api</b><br/>[Container: Rust, axum]<br/>REST and WebSocket API, auth, library scanner,<br/>queue manager, play history, webhooks,<br/>engine configuration, OpenAPI"]:::container
         analyzer["<b>heron-analyzer</b><br/>[Container: Rust, worker pool]<br/>Loudness, cue and crossfade points,<br/>Chromaprint fingerprints"]:::container
         librarian["<b>heron-librarian</b><br/>[Container: Rust]<br/>Buffer zone: identifies new files;<br/>tags and files them on import;<br/>organizes, deletes to a trash, undoes;<br/>journaled moves"]:::container
@@ -62,6 +64,8 @@ flowchart TB
     staff -- "Uses<br/>[HTTPS]" --> web
     scripts -- "Calls /api<br/>[HTTPS]" --> web
     web -- "Proxies /api<br/>[HTTP, WebSocket]" --> api
+    listeners -- "Widgets, writes<br/>[HTTPS, SSE]" --> public
+    public -- "State, writes<br/>[HTTP, gateway token]" --> api
     api -- "Queue, transport, configuration;<br/>track changes back<br/>[gRPC :50051]" --> engine
     api -- "[SQL]" --> db
     analyzer -- "Jobs, results<br/>[SQL, SKIP LOCKED]" --> db
@@ -121,6 +125,7 @@ The engine never connects to the database ([Locked decisions](decisions.md)): it
 | **heron-analyzer** | Analysis worker pool, as its own modular service. Reads files from the music library volume, runs `heron-analysis` and stores results in MariaDB. Can be scaled independently (several replicas) and restarted without affecting the API or the air. Uses CPUs − 1 workers by default. |
 | **heron-librarian** | Library management, as its own service: moves files dropped into the incoming folder into the buffer zone, identifies the files waiting there (Chromaprint, AcoustID, MusicBrainz, Cover Art Archive) and flags duplicates, then tags them and files them into the library when they are imported; deletes tracks through a trash and purges it; reorganizes the library on request and undoes changes; looks up MusicBrainz relationships between artists on request. **The only service with write access to the library**, so `heron-api` (which faces the network) keeps a read-only mount. Every move is journaled in MariaDB and finished or rolled back after a crash. See [Library management](library.md). |
 | **heron-web** | Static React build. |
+| **heron-public** | The public gateway: the only service listeners reach, for the [shows](listener-interaction.md). Serves the shows' scripts and state from its cache, fans one read a second of the API out to every widget (Server-Sent Events), checks writes (limits per address and device, proof of work, field sizes) before sending them on or in batches. No database access: it calls the API's gateway routes with a token that reaches nothing else. Its `/healthz` and `/metrics` are on a port of their own, off the public one. |
 | **heron-relay** | `heron-engine relay`: holds the TCP connections from the engine to the stream servers. The engine reaches it through a Unix socket in the `engine-relay` volume; the relay only carries bytes. On an upgrade the old engine hands its connections to the relay over to the new engine, so the stream servers never see the source leave ([Engine handover](handover.md)). Left running by upgrades. |
 | **mariadb** | Database. Used by `heron-api`, `heron-analyzer` and `heron-librarian`, never by `heron-engine`. |
 
@@ -128,7 +133,7 @@ The engine never connects to the database ([Locked decisions](decisions.md)): it
 
 The air comes first when the machine is short of CPU, disk or memory (a large import on a Raspberry Pi):
 
-| | heron-engine, heron-relay | heron-api, mariadb, heron-web | heron-analyzer | heron-librarian |
+| | heron-engine, heron-relay | heron-api, mariadb, heron-web, heron-public | heron-analyzer | heron-librarian |
 |---|---|---|---|---|
 | CPU weight between containers (`cpu_shares`) | 8192 | 1024 | 256 | 256 |
 | Killed when memory runs out (`oom_score_adj`) | last (−500) | 0 | first (500) | 300 |
@@ -169,7 +174,8 @@ heron-broadcaster/
 │   ├── engine/     heron-engine     binary: decks, mixer, pacing clock, decoding, preloading, player, fallback, gRPC server, ctl
 │   ├── api/        heron-api        binary: axum, auth, queue manager, history, OpenAPI, webhooks, scanner
 │   ├── analyzer/   heron-analyzer   binary: analysis worker pool, job queue consumer
-│   └── librarian/  heron-librarian  binary: incoming folder, buffer zone, identification, layout, journaled moves, organize, trash, undo
+│   ├── librarian/  heron-librarian  binary: incoming folder, buffer zone, identification, layout, journaled moves, organize, trash, undo
+│   └── public/     heron-public     binary: the public gateway of the shows (cache, events, checked writes, widgets)
 ├── web/                             React + Vite + TypeScript
 ├── migrations/                      sqlx migrations
 ├── docker/                          Dockerfiles

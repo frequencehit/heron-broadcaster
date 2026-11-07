@@ -17,8 +17,12 @@ Not every station wants every feature. Parts of Heron are **modules** that can b
 | **To do** | `review` | yes | The *To do* page: identifications to check after an import, the songs missing an intro, a hook or a cover, covers to check, organizing the library and undoing batches of file changes. Installation only |
 | **Artists** | `artists` | yes | The Artists page: names, merges, similar artists and their suggestions. Installation only |
 | **Labels** | `labels` | yes | [Labels](data-model.md#track-details-and-labels) on tracks: their page, filters, column and actions. Installation only |
+| **Dedications** | `dedications` | no | A [show](listener-interaction.md): listeners ask for a song with a dedication (#131) |
+| **Match** | `match` | no | A [show](listener-interaction.md): listeners choose the next song between two (#132) |
+| **Top 30** | `top30` | no | A [show](listener-interaction.md): the weekly chart of the most liked tracks (#134) |
+| **Likes** | `likes` | yes | A [show](listener-interaction.md#likes) without hours: listeners like or dislike the track playing |
 
-The shows to come (Dedications, Match, Top 30) and Likes will be modules too: the shows off until they are turned on, Likes on.
+The shows are off until an admin turns them on for the installation; then they are on for every station that does not turn them off. Likes are the exception: on by default.
 
 ## Two levels
 
@@ -27,7 +31,7 @@ The shows to come (Dedications, Match, Top 30) and Likes will be modules too: th
 
 Trash, To do, Artists and Labels are about the library, which the stations share: they are turned on and off for the installation only. A station's switch for them is ignored, and a station's modules page does not show them.
 
-A module is on for a station when it is on at both levels. Nothing is stored until a module is changed: what is not stored is on (the shows will be off). The installation's switches are the `modules` settings, a station's are its `station_modules` settings; [backups](backups.md) keep both, and a restore brings them back with the rest.
+A module is on for a station when it is on at both levels. Nothing is stored until a module is changed: what is not stored takes its default, on for the installation except the shows (but Likes), and on for a station (a station only turns off what the installation has on). The installation's switches are the `modules` settings, a station's are its `station_modules` settings; [backups](backups.md) keep both, and a restore brings them back with the rest.
 
 ## Turned off
 
@@ -45,6 +49,8 @@ What each module stops:
 | **Medleys** | Rotation never picks a medley track (autofill, clocks, hours without a clock, simulations). A clock slot calling the station's medley category is passed over, and the rotation log says why (*module turned off*). A medley cannot be queued or played on the FX player by hand (`422`), and one already queued leaves the queue. `/settings/medleys` answers `404` | `/medleys/…` answers `404`: no edits, previews or renders. Medleys are shared by the stations, so their page is hidden for a station that turned them off, but their routes answer while the installation has them on |
 | **Cover art** | `cover_url` is `null` in its history, its public endpoints and its webhooks; its logo (`/settings/station/logo`) answers `404`. Its pages show no covers | `/tracks/{id}/cover`, `/covers/…` and `/public/covers/{hash}` answer `404`, `cover_url` is `null` in the track list. `heron-librarian` looks nothing up on the Cover Art Archive, in the background or asked for; a lookup already queued fails, saying why. The scanner still reads the covers embedded in the files or beside them, which fetches nothing, so the covers are up to date when the module is on again |
 | **Listener statistics** | Its stream servers are not read, and `/listeners/…` answers `404`. The status bar, On air and the Outputs page show no listeners | `/settings/statistics` answers `404`. Sessions and samples older than the retention are still deleted: it is a privacy rule |
+| **Shows** (Dedications, Match, Top 30) | The show does not open, whatever its hours: the gateway answers `404` on its routes and its widget shows nothing; no `show.*` notification is sent. `/shows/{module}` answers `404`, and `GET /shows` leaves it out | The same for every station |
+| **Likes** | Nothing can be voted on: the gateway answers `404` on its routes and its widget shows nothing. `/likes/…` answers `404`; the track list still gives the votes already counted, but the web interface hides them | The same for every station. Votes kept per device are still deleted on time: it is a privacy rule |
 | **Webhooks** | No delivery is queued, and the deliveries still pending fail when they are due (*webhooks are turned off*), so that no old track change is sent once they are on again. `/webhooks/…` and `/webhook-deliveries/…` answer `404` | The same for every station |
 | **Restrictions** | Rotation applies none of the restrictions on that station (autofill, clocks, simulations): they are not applied, not only hidden. Restrictions are shared by the stations, so their page is hidden for that station, but their routes answer while the installation has them on | `/restrictions/…` answers `404`, and no station applies them |
 | **Equalizer** | The engine gets the station's deck EQ with both EQs bypassed: they glide to flat, as when an EQ is switched off, without a click. The gains are kept, and pushed again as they were once it is on. `/settings/eq` answers `404` | `/eq-presets/…` answers `404` |
@@ -61,7 +67,7 @@ Off for the installation, the library modules:
 
 ## API
 
-- `GET /modules` (signed in): the installation's switches, `{"medleys": true, "cover_art": true, "listener_statistics": true, "webhooks": true, "restrictions": true, "eq": true, "processing": true, "trash": true, "review": true, "artists": true, "labels": true}`.
-- `PUT /modules` (admins): replaces them; a module left out is on.
+- `GET /modules` (signed in): the installation's switches, `{"medleys": true, "cover_art": true, "listener_statistics": true, "webhooks": true, "restrictions": true, "eq": true, "processing": true, "trash": true, "review": true, "artists": true, "labels": true, "dedications": false, "match": false, "top30": false, "likes": true}`.
+- `PUT /modules` (admins): replaces them; a module left out takes its default (off for a show, on for Likes).
 - `GET /stations/{id}/modules` (a role on the station): `installation` (as above), `station` (the station's own switches) and `on`, what is on for the station: the web interface reads it to show only what answers.
 - `PUT /stations/{id}/modules` (admins of the station): replaces the station's switches; a module left out is on. A module off for the installation can be on here: it stays off until the installation turns it on. The library modules (trash, review, artists, labels) are stored on for a station, whatever is sent: only the installation turns them off.

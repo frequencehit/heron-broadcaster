@@ -27,6 +27,8 @@ use crate::{engine, stations, users, webhooks};
 
 /// Tracks short enough to see several play during a test.
 const TRACK_SECONDS: f64 = 3.0;
+/// The gateway token the test API accepts.
+const GATEWAY_TOKEN: &str = "test-gateway-token";
 
 struct Station {
     db: ScratchDatabase,
@@ -191,6 +193,7 @@ impl Station {
                 heron_service::about::ConfigItem::flag("HERON_LIBRARY_WATCH", true),
             ])),
             two_factor: Default::default(),
+            gateway_token: crate::gateway::token_from(Some(GATEWAY_TOKEN)),
         };
         let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api = http.local_addr().unwrap();
@@ -10128,13 +10131,18 @@ async fn modules_are_turned_off_and_on_again() {
     let t = station.tracks.clone();
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
-                        "trash": true, "review": true, "artists": true, "labels": true});
+                        "trash": true, "review": true, "artists": true, "labels": true,
+                        "dedications": false, "match": false, "top30": false, "likes": true});
+    let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
+                        "webhooks": true, "restrictions": true, "eq": true, "processing": true,
+                        "trash": true, "review": true, "artists": true, "labels": true,
+                        "dedications": true, "match": true, "top30": true, "likes": true});
 
-    // Everything is on after an upgrade.
+    // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);
     let modules = viewer.get("/stations/1/modules").await;
     assert_eq!(modules["on"], all_on);
-    assert_eq!(modules["station"], all_on);
+    assert_eq!(modules["station"], station_all_on);
     let (status, _) = viewer
         .send(Method::PUT, "/modules", json!({"webhooks": false}))
         .await;
@@ -10490,6 +10498,574 @@ async fn more_modules_are_turned_off_and_on_again() {
 
 fn rotation_now() -> i64 {
     crate::rotation::now_ms()
+}
+
+/// The shows (docs/listener-interaction.md): off until turned on, their
+/// hours in whole hours without overlaps, what the gateway reads with its
+/// token only, and their notifications.
+#[tokio::test(flavor = "multi_thread")]
+async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
+    use crate::error::ApiError;
+    use heron_core::Module;
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let code = station.state.stations.first().code();
+
+    // Off after an upgrade, but likes.
+    let shows = viewer.get("/shows").await;
+    assert_eq!(shows.as_array().unwrap().len(), 1, "{shows}");
+    assert_eq!(shows[0]["module"], "likes");
+    let (status, body) = admin.request(Method::GET, "/shows/dedications", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"], "module_off");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"dedications": true, "match": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::GET, "/shows/medleys", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let shows = viewer.get("/shows").await;
+    assert_eq!(shows.as_array().unwrap().len(), 3, "{shows}");
+    let dedications = viewer.get("/stations/1/shows/dedications").await;
+    assert_eq!(dedications["settings"]["enabled"], true);
+    assert_eq!(dedications["status"]["open"], false);
+    assert_eq!(
+        dedications["settings"]["notifications"]["events"]["show.started"]["enabled"],
+        true
+    );
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Hours, one show at a time.
+    let weekdays = json!({"hours": [{"days": [1, 2, 3, 4, 5], "start_hour": 17, "end_hour": 18}]});
+    let (status, _) = viewer
+        .send(Method::PUT, "/shows/dedications", weekdays.clone())
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, saved) = admin
+        .send(Method::PUT, "/shows/dedications", weekdays)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["settings"]["hours"][0]["end_hour"], 18);
+    assert_eq!(saved["timezone"], "UTC");
+    assert!(saved["status"]["next_opening_unix_ms"].is_i64());
+    let (status, refused) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [6], "start_hour": 18, "end_hour": 19},
+                             {"days": [5], "start_hour": 16, "end_hour": 19}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains("17:00–18:00 on Friday belongs to dedications"),
+        "{message}"
+    );
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [6], "start_hour": 18, "end_hour": 19}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for bad in [
+        json!({"hours": [{"days": [1], "start_hour": 18, "end_hour": 18}]}),
+        json!({"website": {"color": "red"}}),
+        json!({"notifications": {"webhook_ids": [999]}}),
+        json!({"notifications": {"events": {"show.started": {"enabled": true, "message": "{nope}"}}}}),
+    ] {
+        let (status, body) = admin.send(Method::PUT, "/shows/match", bad.clone()).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {body}");
+    }
+
+    // The gateway's state, with its token only.
+    let mut gateway = station.client();
+    for token in [None, Some("wrong")] {
+        gateway.bearer = token.map(str::to_owned);
+        let (status, _) = gateway.request(Method::GET, "/gateway/state", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+    let (status, _) = admin.request(Method::GET, "/gateway/state", None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a session is not the gateway"
+    );
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let (status, _) = gateway.request(Method::GET, "/queue", None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "the gateway token reaches nothing else"
+    );
+    let state = gateway.get("/gateway/state").await;
+    let first = &state["stations"][0];
+    assert_eq!(first["code"], code.as_str());
+    assert_eq!(first["timezone"], "UTC");
+    assert!(first["now_playing"]["server_time_unix_ms"].is_u64());
+    let modules: Vec<&str> = first["shows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|show| show["module"].as_str().unwrap())
+        .collect();
+    assert_eq!(modules, ["dedications", "match", "likes"]);
+    assert_eq!(first["shows"][0]["hours"][0]["start_hour"], 17);
+
+    // Writes find a show on and open, or say why not.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 7], "start_hour": 0, "end_hour": 24}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let open = |module| crate::gateway::open_show(&station.state, &code, module);
+    let saturday_free = admin.get("/shows/dedications").await;
+    let open_now = saturday_free["status"]["open"].as_bool().unwrap();
+    match open(Module::Dedications).await {
+        Ok((runtime, settings)) => {
+            assert!(open_now);
+            assert_eq!(runtime.code(), code);
+            assert!(settings.enabled);
+        }
+        Err(error) => assert!(
+            !open_now && matches!(error, ApiError::Conflict(_)),
+            "{error}"
+        ),
+    }
+    assert!(matches!(
+        crate::gateway::open_show(&station.state, "nope", Module::Dedications).await,
+        Err(ApiError::NotFound(_))
+    ));
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"match": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(matches!(
+        open(Module::Match).await,
+        Err(ApiError::ModuleOff(Module::Match))
+    ));
+    let (status, body) = admin.request(Method::GET, "/shows/match", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let state = gateway.get("/gateway/state").await;
+    assert_eq!(state["stations"][0]["shows"].as_array().unwrap().len(), 2);
+    let (status, _) = admin
+        .send(Method::PUT, "/shows/dedications", json!({"enabled": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(matches!(
+        open(Module::Dedications).await,
+        Err(ApiError::Conflict(_))
+    ));
+
+    // Notifications go to the webhooks the show chooses, with its message.
+    let (mut received, receiver) = webhook_receiver().await;
+    let (status, webhook) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Chat", "url": format!("http://{receiver}/chat"),
+                   "events": ["queue.changed"], "body_template": "{\"content\": \"{{message}}\"}"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{webhook}");
+    let webhook_id = webhook["webhook"]["id"].as_u64().unwrap();
+    let (status, refused) = admin
+        .send(
+            Method::POST,
+            "/webhooks",
+            json!({"name": "Shows", "url": format!("http://{receiver}/x"), "events": ["show.started"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{refused}");
+    let (status, saved) = admin
+        .send(
+            Method::PUT,
+            "/shows/dedications",
+            json!({"hours": [{"days": [1], "start_hour": 17, "end_hour": 18}],
+                   "website": {"title": "Your dedications"},
+                   "notifications": {"webhook_ids": [webhook_id],
+                       "events": {"show.started": {"enabled": true, "message": "{name} until {end}"},
+                                  "show.ended": {"enabled": false, "message": ""}}}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["webhooks"][0]["name"], "Chat");
+    // Monday 9 November 2026, 17:00 UTC.
+    let opens: jiff::Timestamp = "2026-11-09T17:00:00Z".parse().unwrap();
+    let from = opens
+        .checked_sub(jiff::SignedDuration::from_secs(10))
+        .unwrap();
+    let to = opens
+        .checked_add(jiff::SignedDuration::from_secs(5))
+        .unwrap();
+    crate::shows::notify_station(
+        &station.state.pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        from,
+        to,
+    )
+    .await
+    .unwrap();
+    let body = loop {
+        let (_, name, headers, body) =
+            tokio::time::timeout(Duration::from_secs(15), received.recv())
+                .await
+                .expect("a show notification")
+                .unwrap();
+        if name == "chat" && headers["x-heron-event"] == "show.started" {
+            break body;
+        }
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"content": "Your dedications until 18:00"})
+    );
+    // Ended is off: nothing for it.
+    let closes = opens
+        .checked_add(jiff::SignedDuration::from_hours(1))
+        .unwrap();
+    crate::shows::notify_station(
+        &station.state.pool,
+        &station.state.webhooks,
+        1,
+        &code,
+        closes
+            .checked_sub(jiff::SignedDuration::from_secs(10))
+            .unwrap(),
+        closes,
+    )
+    .await
+    .unwrap();
+    let ended: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM webhook_deliveries WHERE event LIKE 'show.%'")
+            .fetch_one(&station.state.pool)
+            .await
+            .unwrap();
+    assert_eq!(ended, 1);
+    station.stop().await;
+}
+
+#[tokio::test]
+async fn listeners_like_the_track_playing_only() {
+    use heron_core::Module;
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let code = station.state.stations.first().code();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let vote_path = format!("/gateway/stations/{code}/likes/vote");
+
+    // The engine plays nothing: the plays are ours.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+
+    // On by default, with no hours: open, nothing to vote on yet.
+    let likes = viewer.get("/shows/likes").await;
+    assert_eq!(likes["status"]["open"], true);
+    assert_eq!(likes["settings"]["notifications"]["events"], json!({}));
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/shows/likes",
+            json!({"hours": [{"days": [1], "start_hour": 17, "end_hour": 18}]}),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "likes have no hours"
+    );
+    assert_eq!(viewer.get("/likes/current").await["play_id"], Value::Null);
+
+    let play = |track: u64, source: &'static str, ended_seconds_ago: Option<u32>| async move {
+        let ended = match ended_seconds_ago {
+            Some(seconds) => format!("NOW(6) - INTERVAL {seconds} SECOND"),
+            None => "NULL".to_owned(),
+        };
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', NOW(6) - INTERVAL 1 MINUTE, {ended}, 'a', ?)"
+        )))
+        .bind(track)
+        .bind(source)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+    };
+    let ended = play(t[1], "rotation", Some(30)).await;
+    let fallback = play(t[2], "fallback", None).await;
+    let on_air = play(t[0], "rotation", None).await;
+
+    // Only the track playing: the gateway is told which play it is.
+    let now = viewer.get("/likes/current").await;
+    assert_eq!(now["play_id"], on_air);
+    assert_eq!(now["track_id"], t[0]);
+    let state = gateway.get("/gateway/state").await;
+    let shows = state["stations"][0]["shows"].as_array().unwrap().clone();
+    let show = shows.iter().find(|show| show["module"] == "likes").unwrap();
+    assert_eq!(show["state"], json!({"play_id": on_air}));
+
+    let write = |device: &str, play_id: u64, vote: &str| json!({"device": device, "fields": {"play_id": play_id, "vote": vote}});
+    let (status, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [
+                write("a1", on_air, "like"), write("b2", on_air, "like"),
+                write("c3", on_air, "dislike"),
+                // A past track, a fallback one: dropped.
+                write("a1", ended, "like"), write("d4", fallback, "like"),
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{taken}");
+    assert_eq!(taken, json!({"counted": 3, "dropped": 2}));
+    // A device changes its mind: its vote moves, it is not added.
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("a1", on_air, "dislike")]}),
+        )
+        .await;
+    assert_eq!(taken["counted"], 1);
+    let now = viewer.get("/likes/current").await;
+    assert_eq!(
+        (now["likes"].as_u64(), now["dislikes"].as_u64()),
+        (Some(1), Some(2))
+    );
+    // Only the gateway sends votes.
+    let (status, _) = admin
+        .send(Method::POST, &vote_path, json!({"writes": []}))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Just ended: still counted for a few seconds, then refused.
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 2 SECOND WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(viewer.get("/likes/current").await["play_id"], Value::Null);
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("e5", on_air, "like")]}),
+        )
+        .await;
+    assert_eq!(taken["counted"], 1, "the batch on its way");
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 1 MINUTE WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    let (_, taken) = gateway
+        .send(
+            Method::POST,
+            &vote_path,
+            json!({"writes": [write("f6", on_air, "like")]}),
+        )
+        .await;
+    assert_eq!(taken, json!({"counted": 0, "dropped": 1}));
+
+    // The track's page: 2 likes, 2 dislikes, on that play.
+    let track = viewer.get(&format!("/likes/tracks/{}", t[0])).await;
+    for period in ["week", "days_30", "total"] {
+        assert_eq!(
+            track[period],
+            json!({"likes": 2, "dislikes": 2}),
+            "{period}"
+        );
+    }
+    assert_eq!(track["plays"][0]["play_id"], on_air);
+    assert_eq!(track["min_votes"], 10);
+    let grid = viewer
+        .get(&format!("/tracks/{}/plays/grid?station_id=1", t[0]))
+        .await;
+    let plays: Vec<&Value> = grid["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|day| day["plays"].as_array().unwrap())
+        .collect();
+    assert!(
+        plays
+            .iter()
+            .any(|play| play["likes"] == 2 && play["dislikes"] == 2),
+        "{grid}"
+    );
+
+    // Counts per play, ranked per week. This week: t[3] 12 likes, t[4] 3
+    // of 12; ten days ago, t[2] 50 likes, out of the week.
+    let counted = |track: u64, days_ago: u32, likes: u32, dislikes: u32| async move {
+        let id = sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', NOW(6) - INTERVAL ? DAY - INTERVAL 1 MINUTE,
+                     NOW(6) - INTERVAL ? DAY, 'a', 'rotation')",
+        )
+        .bind(track)
+        .bind(days_ago)
+        .bind(days_ago)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        sqlx::query(
+            "INSERT INTO play_votes (play_id, station_id, track_id, started_at, likes, dislikes)
+             SELECT id, station_id, track_id, started_at, ?, ? FROM play_history WHERE id = ?",
+        )
+        .bind(likes)
+        .bind(dislikes)
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap();
+    };
+    counted(t[3], 0, 12, 0).await;
+    counted(t[4], 0, 3, 9).await;
+    counted(t[2], 10, 50, 0).await;
+    let week = viewer.get("/likes/week").await;
+    let ids = |list: &Value| -> Vec<u64> {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .map(|track| track["track_id"].as_u64().unwrap())
+            .collect()
+    };
+    assert_eq!(ids(&week["most_liked"]), [t[3], t[4]], "{week}");
+    assert_eq!(ids(&week["least_liked"]), [t[4], t[3]]);
+    assert_eq!(week["most_liked"][1]["share"], 0.25);
+    assert_eq!(week["min_votes"], 10);
+
+    // The track list: a column, its sort and its filters.
+    let listed = |page: Value| -> Vec<(u64, u64, u64)> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|track| {
+                (
+                    track["id"].as_u64().unwrap(),
+                    track["likes"].as_u64().unwrap(),
+                    track["dislikes"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let sorted = listed(admin.get("/tracks?station_id=1&sort=liked&desc=true").await);
+    assert_eq!(
+        sorted[..4],
+        [(t[2], 50, 0), (t[3], 12, 0), (t[4], 3, 9), (t[0], 2, 2)],
+        "ranked first, then below 10 votes"
+    );
+    assert_eq!(
+        listed(admin.get("/tracks?liked_max=40&votes_min=10").await),
+        [(t[4], 3, 9)],
+        "the tracks to rest"
+    );
+    assert_eq!(
+        listed(admin.get("/tracks?liked_min=70&likes_days=5").await)
+            .iter()
+            .map(|track| track.0)
+            .collect::<Vec<_>>(),
+        [t[3]]
+    );
+    let (status, _) = admin
+        .request(Method::GET, "/tracks?liked_min=101", None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Turned off for the station: nothing to vote on, its routes answer 404.
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"likes": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = viewer.request(Method::GET, "/likes/week", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let state = gateway.get("/gateway/state").await;
+    assert!(
+        state["stations"][0]["shows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|show| show["module"] != "likes")
+    );
+    let (status, _) = gateway
+        .send(Method::POST, &vote_path, json!({"writes": []}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(matches!(
+        crate::gateway::open_show(&station.state, &code, Module::Likes).await,
+        Err(crate::error::ApiError::ModuleOff(Module::Likes))
+    ));
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The devices' votes go an hour after their play; the counts stay.
+    sqlx::query("UPDATE play_history SET ended_at = NOW(6) - INTERVAL 2 HOUR WHERE id = ?")
+        .bind(on_air)
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(crate::likes::purge_devices(pool).await.unwrap(), 4);
+    let devices: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM play_vote_devices")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(devices, 0);
+    let total = viewer.get(&format!("/likes/tracks/{}", t[0])).await;
+    assert_eq!(total["total"], json!({"likes": 2, "dislikes": 2}));
+    station.stop().await;
 }
 
 /// A clock slot at an exact time: hard, the track on air is cut and the

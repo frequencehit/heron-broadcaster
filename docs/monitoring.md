@@ -238,11 +238,24 @@ Every service also exports `heron_build_info{service, version}` (always 1), and,
 |---|---|---|---|
 | `heron_librarian_imports_total` | counter | `result` (`identified`, `needs_review`, `unidentified`, `failed`) | Files imported from the incoming folder |
 
+### heron-public
+
+On its ops port (`HERON_OPS_ADDR`, 8085), not the public one.
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `heron_public_requests_total` | counter | `kind` (`read`, `write`, `stream`, `script`) | Requests from listeners |
+| `heron_public_refused_total` | counter | `reason` (`address`, `device`, `api`, `streams`, `proof`, `origin`, `closed`, `invalid`, `unavailable`) | Requests refused, and why |
+| `heron_public_streams` | gauge | | Event streams open: the widgets connected |
+| `heron_public_writes_total` | counter | `delivery` (`forward`, `batch`) | Writes sent on to the API |
+| `heron_public_api_up` | gauge | | 1 while the last read of the API's state worked |
+| `heron_public_state_age_seconds` | gauge | | Since the last state read from the API |
+
 Counters that only grow when something happens (`heron_engine_silence_skips_total`…) start at 0 when the engine starts, so `increase()` works from the first sample.
 
 ## Health checks
 
-Every service answers `GET /healthz` on its port:
+Every service answers `GET /healthz` on its port (`heron-public` on its ops port):
 
 ```json
 {"service": "heron-engine", "version": "0.1.0", "status": "ok"}
@@ -253,6 +266,7 @@ Every service answers `GET /healthz` on its port:
 - **`warnings`**: problems that need attention without making the service unhealthy. The engine lists:
   - `the server clock is not synchronized (is NTP running on the host?)` or `the server clock may be off by 2.5 s`;
   - `nothing to play: the queue is empty and the fallback directory has no track`.
+- `heron-public` warns while it cannot read the API's state (`the API has not answered for 12 s`): it serves what it last read.
 
 Every service restarts by itself (`restart: unless-stopped`). Docker does not restart a container only because it is unhealthy, so the engine exits on its own when its audio thread is stuck for 10 s: Docker then restarts it, and it resumes the queue it saved.
 
