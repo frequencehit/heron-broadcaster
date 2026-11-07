@@ -878,6 +878,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/certification/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per day and server: the lines kept, the sessions among them, and the
+         *     gaps. Admins only.
+         */
+        get: operations["certification_days"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certification/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A day of a server's log, as a file. Admins only; each download is
+         *     logged. `X-Heron-Gaps` lists the gaps of the day (ISO 8601 intervals,
+         *     UTC).
+         */
+        get: operations["export_day"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certification/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's servers with an access log, and how their reading goes. */
+        get: operations["list_certification_sources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/clocks": {
         parameters: {
             query?: never;
@@ -2863,6 +2921,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/certification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How long the access logs' lines are kept. */
+        get: operations["get_certification_settings"];
+        /** Replaces the certification settings. Admins only. */
+        put: operations["put_certification_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/eq": {
         parameters: {
             query?: never;
@@ -3534,6 +3610,64 @@ export interface paths {
          *     module off for the installation stays off. Admins of the station.
          */
         put: operations["put_station_modules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per day and server: the lines kept, the sessions among them, and the
+         *     gaps. Admins only.
+         */
+        get: operations["certification_days_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A day of a server's log, as a file. Admins only; each download is
+         *     logged. `X-Heron-Gaps` lists the gaps of the day (ISO 8601 intervals,
+         *     UTC).
+         */
+        get: operations["export_day_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's servers with an access log, and how their reading goes. */
+        get: operations["list_certification_sources_on_station"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4671,6 +4805,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/stream-servers/{server_id}/access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A server's access log and how its reading goes; `null` without one. */
+        get: operations["get_access_log_on_station"];
+        /**
+         * Sets where a server's access log is read from. A new place starts from
+         *     the beginning of the file. Admins only.
+         */
+        put: operations["put_access_log_on_station"];
+        post?: never;
+        /**
+         * Stops reading a server's access log. The lines kept stay until their
+         *     retention. Admins only.
+         */
+        delete: operations["delete_access_log_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/top30/chart": {
         parameters: {
             query?: never;
@@ -4967,6 +5126,31 @@ export interface paths {
          *     otherwise, naming them. Admins only.
          */
         delete: operations["delete_server"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stream-servers/{server_id}/access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A server's access log and how its reading goes; `null` without one. */
+        get: operations["get_access_log"];
+        /**
+         * Sets where a server's access log is read from. A new place starts from
+         *     the beginning of the file. Admins only.
+         */
+        put: operations["put_access_log"];
+        post?: never;
+        /**
+         * Stops reading a server's access log. The lines kept stay until their
+         *     retention. Admins only.
+         */
+        delete: operations["delete_access_log"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5732,6 +5916,43 @@ export interface components {
              * @description For this track only; for its album when left out.
              */
             track_id?: number | null;
+        };
+        AccessLogInput: {
+            /** @description Left out, the stored one is kept; `null` removes it. */
+            password?: string | null;
+            /** @description For a file: relative to the access logs folder (`main/access.log`). */
+            path?: string | null;
+            source: components["schemas"]["LogSource"];
+            /** @description For an address: `https://…`. */
+            url?: string | null;
+            username?: string | null;
+        };
+        /**
+         * @description A server's access log, its password never sent back, and how its
+         *     reading goes.
+         */
+        AccessLogView: {
+            /** @description Why the last reading failed, and since when it does. */
+            error?: string | null;
+            /** Format: int64 */
+            error_since_unix_ms?: number | null;
+            password_set: boolean;
+            path?: string | null;
+            /**
+             * Format: int64
+             * @description Bytes of the current file read.
+             */
+            position: number;
+            /** Format: int64 */
+            read_at_unix_ms?: number | null;
+            /** Format: int64 */
+            read_ok_at_unix_ms?: number | null;
+            /** Format: int64 */
+            server_id: number;
+            server_name: string;
+            source: components["schemas"]["LogSource"];
+            url?: string | null;
+            username?: string | null;
         };
         /** @description What a station keeps apart from the other stations' plays and queues. */
         AcrossStations: {
@@ -6644,6 +6865,27 @@ export interface components {
             plays_over_intro?: boolean | null;
             /** @description Kept as it is when missing (on for a new type). */
             sends_metadata?: boolean | null;
+        };
+        /** @description A day of a server's log. */
+        CertificationDay: {
+            /** @description `YYYY-MM-DD`, in the station's time zone. */
+            day: string;
+            gaps: components["schemas"]["GapView"][];
+            /** Format: int64 */
+            lines: number;
+            /** Format: int64 */
+            server_id: number;
+            /** Format: int64 */
+            sessions: number;
+        };
+        /** @description How long the access logs' lines are kept. */
+        CertificationSettings: {
+            /**
+             * Format: int32
+             * @description 1 to 25 months, 13 by default.
+             * @default 13
+             */
+            retention_months: number;
         };
         /** @description dBFS, −120 for silence. */
         ChannelLevels: {
@@ -7956,6 +8198,16 @@ export interface components {
             title?: string | null;
             to: string;
         };
+        /** @description When a log could not be read. */
+        GapView: {
+            /** Format: int64 */
+            from_unix_ms: number;
+            reason: string;
+            /** Format: int64 */
+            server_id: number;
+            /** Format: int64 */
+            to_unix_ms: number;
+        };
         /** @description The gated AGC: a slow gain to the station's loudness target. */
         GatedAgcSettings: {
             /** @default false */
@@ -8802,6 +9054,8 @@ export interface components {
             /** @enum {string} */
             type: "system";
         });
+        /** @enum {string} */
+        LogSource: "file" | "url";
         LoginRequest: {
             password: string;
             username: string;
@@ -9249,18 +9503,20 @@ export interface components {
          * @description A module.
          * @enum {string}
          */
-        Module: "medleys" | "cover_art" | "listener_statistics" | "webhooks" | "restrictions" | "eq" | "processing" | "trash" | "review" | "artists" | "labels" | "dedications" | "match" | "top30" | "likes";
+        Module: "medleys" | "cover_art" | "listener_statistics" | "webhooks" | "restrictions" | "eq" | "processing" | "trash" | "review" | "artists" | "labels" | "dedications" | "match" | "top30" | "likes" | "certification";
         /**
          * @description Which modules are on. Stored as the `modules` settings (the
          *     installation) and the `station_modules` settings of each station; a
          *     module never stored takes its default: for the installation, the
          *     modules that existed before they could be turned off are on, and the
-         *     shows off but Likes; for a station, everything is on ([`Modules::ALL_ON`]), so a
+         *     shows off but Likes, and certification off; for a station, everything is on ([`Modules::ALL_ON`]), so a
          *     station only turns off what the installation has on.
          */
         Modules: {
             /** @default true */
             artists: boolean;
+            /** @default false */
+            certification: boolean;
             /** @default true */
             cover_art: boolean;
             /** @default false */
@@ -14755,6 +15011,99 @@ export interface operations {
             };
         };
     };
+    certification_days: {
+        parameters: {
+            query: {
+                /** @description The first day, `YYYY-MM-DD` in the station's time zone. */
+                from: string;
+                /** @description The last day, included; 62 days at most. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDay"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_day: {
+        parameters: {
+            query: {
+                /** @description `YYYY-MM-DD`, in the station's time zone: the lines logged that day. */
+                day: string;
+                server_id: number;
+                /** @description Only this mount (`/live`). */
+                mount?: string;
+                format: "raw" | "combined" | "csv" | "json";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_certification_sources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLogView"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_clocks: {
         parameters: {
             query?: never;
@@ -18832,6 +19181,64 @@ export interface operations {
             };
         };
     };
+    get_certification_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_certification_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificationSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_eq: {
         parameters: {
             query?: never;
@@ -20406,6 +20813,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StationModules"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    certification_days_on_station: {
+        parameters: {
+            query: {
+                /** @description The first day, `YYYY-MM-DD` in the station's time zone. */
+                from: string;
+                /** @description The last day, included; 62 days at most. */
+                to: string;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDay"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_day_on_station: {
+        parameters: {
+            query: {
+                /** @description `YYYY-MM-DD`, in the station's time zone: the lines logged that day. */
+                day: string;
+                server_id: number;
+                /** @description Only this mount (`/live`). */
+                mount?: string;
+                format: "raw" | "combined" | "csv" | "json";
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_certification_sources_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLogView"][];
                 };
             };
             "4XX": {
@@ -23335,6 +23844,101 @@ export interface operations {
             };
         };
     };
+    get_access_log_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                server_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLogView"] | null;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_access_log_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                server_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessLogInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLogView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_access_log_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                server_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_top30_chart_on_station: {
         parameters: {
             query?: {
@@ -24035,6 +24639,95 @@ export interface operations {
             header?: never;
             path: {
                 id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_access_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLogView"] | null;
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_access_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessLogInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLogView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_access_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: number;
             };
             cookie?: never;
         };

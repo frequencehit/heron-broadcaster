@@ -31,7 +31,7 @@ describe("modules", () => {
     renderApp(
       <ModuleSwitches
         value={ALL_ON}
-        installation={{ ...ALL_ON, dedications: true, match: true, top30: true, cover_art: false }}
+        installation={{ ...ALL_ON, dedications: true, match: true, top30: true, certification: true, cover_art: false }}
         canEdit
         saving={false}
         onChange={onChange}
