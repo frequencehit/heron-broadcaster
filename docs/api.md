@@ -102,6 +102,7 @@ What belongs to a station (its engine and decks, queue, history, clocks, schedul
 | Shows | `GET /shows` (each [show](listener-interaction.md) on for the station: its settings and whether it is open now); `GET`, `PUT /shows/{module}` (`dedications`, `match`, `top30`, `likes`: hours, website, notifications, see [below](#shows); operators change them; `GET` also lists the station's webhooks by name, to choose from) |
 | Likes | `GET /likes/current`, `/likes/week`, `/likes/tracks/{id}` — see [below](#likes) |
 | Dedications | `GET`, `PUT /dedications/settings`; `GET /dedications`; `POST /dedications/{id}/accept`, `/dedications/{id}/refuse` — see [below](#dedications) |
+| Match | `GET`, `PUT /match/settings`; `GET /match/current`; `POST /match/current/close`, `/match/current/cancel`; `GET /match/history` — see [below](#match) |
 | Top 30 | `GET`, `PUT /top30/settings`; `GET /top30/chart`, `/top30/charts`; `POST`, `DELETE /top30/charts/{week}/removals/{track_id}`; `PUT /top30/charts/{week}/new-release`; `GET /top30/show` — see [below](#top-30) |
 | Gateway | `GET /gateway/state`, and each show's writes under `/gateway/stations/{code}/{module}/…`: for `heron-public` only, with the gateway token, see [below](#the-public-gateway) |
 | Public | `GET /public/now-playing`, `GET /public/history` (`before`, `limit`), `GET /public/queue`, and the same per station under `/public/stations/{code}/…` — no sign-in, see [below](#public-endpoints) |
@@ -196,7 +197,7 @@ Each [show](listener-interaction.md) has its settings per station, `GET`, `PUT /
 
 For station websites, apps and displays: no sign-in, readable from any origin (`Access-Control-Allow-Origin: *`, `GET` only, no credentials), the music only (decks A and B, not the FX player, and not tracks that send no metadata: while a jingle is on air, now-playing shows the song before it), without IDs or paths.
 
-- `GET /api/v1/public/now-playing`: `now` (artist, title, album, `cover_url`, `started_at_unix_ms`, `duration_ms`, `position_ms`, and `dedication`: `from`, `to` and `message` of an accepted [dedication](#dedications), else `null`), `null` while nothing plays or the engine is unreachable, and `server_time_unix_ms`. Cached 5 seconds (`Cache-Control: public, max-age=5`).
+- `GET /api/v1/public/now-playing`: `now` (artist, title, album, `cover_url`, `started_at_unix_ms`, `duration_ms`, `position_ms`, `dedication`: `from`, `to` and `message` of an accepted [dedication](#dedications), else `null`, and `match`: `name`, `percent` and `votes` of the [match](#match) it won, else `null`), `null` while nothing plays or the engine is unreachable, and `server_time_unix_ms`. Cached 5 seconds (`Cache-Control: public, max-age=5`).
 - `GET /api/v1/public/queue`: `upcoming`, the tracks waiting in airing order, as `queue.changed` sends them (at most 10, the music only, with `position` and `planned_start_unix_ms`), and `server_time_unix_ms`; empty while the engine is unreachable. Cached 5 seconds.
 - `GET /api/v1/public/history`: the latest plays, most recent first (artist, title, album, `cover_url`, `started_at_unix_ms`, `ended_at_unix_ms`); `limit` 1 to 50 (20), `before` for the next page. Cached 15 seconds.
 
@@ -266,6 +267,24 @@ Through the gateway (`docs/listener-interaction.md#dedications`), with the proof
 - `GET /api/v1/public/stations/{code}/dedications/follow?id=<follow>`: `status` (`pending`, `accepted`, `played`, `refused`), `reason` (`closed`, `just_played`, `unavailable`, `removed`; `null` for no reason or an inappropriate message), `artist`, `title`, `from`, `to`, `message`, `submitted_at_unix_ms`, `decided_at_unix_ms`, `planned_at_unix_ms`, `played_at_unix_ms`. `404` once deleted. Cached 5 seconds.
 
 The show's own notification events are `dedication.played` and `dedication.accepted`. Its public state (`state` in the gateway's state): `remaining` (requests left in the range, `null` while closed), `message_max`, `per_device`, `retention_days` and `today` (the dedications accepted or played since midnight, in planned order: `artist`, `title`, `from`, `to`, `message`, `at_unix_ms`, `played`). `now-playing` and the `track.started` webhook carry the track's `dedication` (`from`, `to`, `message`), `null` without one; webhook templates have `{{dedication_from}}`, `{{dedication_to}}` and `{{dedication_message}}`.
+
+## Match
+
+The [Match](listener-interaction.md#match) of a station (signed in; operators act and change the settings; `404` while the `match` module is off):
+
+- `GET`, `PUT /stations/{id}/match/settings`: `every_tracks` (a winner every N tracks, 2 to 20, 4 by default), `category_id` (the category the two tracks come from, the station's; `null`: no match), `jingle_category_id` (the announcement over the vote's track's intro, the station's; `null`: none), `close_before_s` (seconds before the next transition the vote closes, 5 to 60, 10), `live_results` (the votes on the website as they come, `true`), `loser_same_day` (a loser can be a candidate again the same day, `false`). The hours, website and notifications are the show's settings, [above](#shows).
+- `GET /stations/{id}/match/current`: the match queued or open, else `null`: `id`, `status` (`queued`, `open`), `category_id`, `category_name`, `vote_track` (`track_id`, `artist`, `title`), `jingle` (the same, or `null`), `choices` (two: `choice` `a` or `b`, `track_id`, `artist`, `title`, `votes`, `percent`), `votes`, `opened_at_unix_ms`, `closes_at_unix_ms` and `transition_at_unix_ms` (once open).
+- `POST /stations/{id}/match/current/close`: closes the vote now and decides; `POST /stations/{id}/match/current/cancel`: cancels the match, the first track staying in the queue as an ordinary track. Both answer the match as it ends; `404` without a match, `409` for a vote not open (close) or a match already decided, `503` while the engine is unreachable.
+- `GET /stations/{id}/match/history` (`limit` 1 to 200, 50 by default, `before` an ID for the next page): the matches decided or cancelled, the latest first: `id`, `status` (`closed`, `cancelled`), `opened_at_unix_ms`, `closed_at_unix_ms`, `winner` and `loser` (`track_id`, `artist`, `title`, `votes`), `votes`, `percent` (the winner's share), `decided_by` (`votes`, `tie`, `no_votes`, `early`: closed by an operator). With them, `week`: the week's `matches` and `votes` (from Monday 00:00, station time).
+
+Through the gateway, with the proof of work for the write:
+
+- `GET /api/v1/public/stations/{code}/match`: the show, as every show, with its live `state`: `match_id` (the match open to votes, `null` between two), `closes_at_unix_ms`, `live_results`, `choices` (two: `choice`, `artist`, `title`, `cover_url`, and with live results `votes` and `percent`, else `null`), `votes` (`null` without live results), `last` (the last result: `winner` and `loser` with `artist`, `title`, `cover_url`, `percent`, `votes`, `decided_by`, `closed_at_unix_ms`) and `today` (today's results, the latest first, the same way).
+- `POST /api/v1/public/stations/{code}/match/vote`: `{"match_id": 12, "choice": "a"}` (`a` or `b`). `202`; `409` for a match that is not open any more. A device's last vote counts.
+
+Behind it, the gateway sends each device's last vote every second to `POST /api/v1/gateway/stations/{code}/match/vote` as `{"writes": [{"device": "…", "fields": {"match_id": 12, "choice": "a"}}]}`: the votes for the match open count, the others are dropped (`counted`, `dropped`).
+
+The show's own notification events are `match.started` and `match.closed`. The devices' votes (`match_votes`) are deleted an hour after their match closes, a day after the vote at the latest; the matches (`matches`) are kept.
 
 ## Top 30
 

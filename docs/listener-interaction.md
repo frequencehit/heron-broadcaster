@@ -41,7 +41,7 @@ A write (a dedication, a vote) goes through, in order:
 
 A show can also ask that a field be one of a few values (`like` or `dislike`), and that a field match its live state (`play_id`: the track playing, see [Likes](#likes)): else `422` or `409`.
 
-Then a write is either **sent on** to the API at once (a dedication: one request, answered with the API's answer), **added up** in the gateway and sent every second in one batch (votes: `202` for the listener), or **kept per device**, the device's last write only, and sent every second in one batch with each device's hash (likes: `202`).
+Then a write is either **sent on** to the API at once (a dedication: one request, answered with the API's answer), **added up** in the gateway and sent every second in one batch (`202` for the listener), or **kept per device**, the device's last write only, and sent every second in one batch with each device's hash (likes and the match's votes, which a device can change: `202`).
 
 When the gateway is flooded, its limits fill and listeners get `429`: the API and the engines see no more than the usual batches, and the air carries on.
 
@@ -123,7 +123,7 @@ Each show tells the team or the community what happens, through the station's [w
   - `show.upcoming`: a set time before it opens (60 minutes by default, 1 to 1440);
   - `show.started`, with the time it ends;
   - `show.ended`, with the next opening;
-  - and each show's own events (the [Dedications](#dedications)' and the [Top 30](#top-30)'s, #132);
+  - and each show's own events (the [Dedications](#dedications)', the [Match](#match)'s and the [Top 30](#top-30)'s);
 - **the language** of the dates in the messages (English, French, Spanish, German).
 
 Placeholders in the messages: `{name}` (the show's title on the website), `{link}` (the website's page of the show, else its page on the gateway), `{end}` (the time it closes, `18:00`), `{next}` (the next opening, `Monday 9 November 17:00`). An unknown placeholder is refused (`422`). A show adds its own (`{artist}`, `{title}`…).
@@ -279,9 +279,74 @@ Only accepted dedications are sent, with the message as the operator read it. No
 
 The requests are in the database dump of the [backups](backups.md); the settings are in the configuration file.
 
+## Match
+
+*Match* (`match`) lets listeners choose the next song between two. During the show's hours, every few tracks, two tracks of one category face each other: listeners vote on the website while the track before them plays, and the one with the most votes plays next. Off until an admin turns the module on.
+
+### When a match runs
+
+- **During the show's hours** (18:00 to 19:00 on weekdays, say), which no other show of the station has.
+- **Every N tracks** (4 by default, 2 to 20): the winner of a match is every Nth track. The vote runs during the track before it, so with 4: *winner, track, track, the vote's track, winner…* Only the tracks rotation queues count; a dedication or a track queued by hand is not counted. The first match of a range votes during the first track rotation queues in the hours.
+- **The vote's track** is the track rotation picks there, as usual: music (a category whose type sends its metadata) of 60 seconds or more, long enough for a vote of 30 seconds at least. A jingle, or a track too short to vote during, does not carry a vote: the match waits for the next track.
+- **The whole match in the hours**: a match whose vote's track would end after the range closes does not start; rotation plays on.
+- **One match at a time**, and **none without a category**: the station chooses the category the two tracks come from (*Hits*, say). Without one, no match runs, and the show's page says so.
+- **With autofill only**, like any pick of rotation: with autofill off, no match runs.
+
+### The two tracks
+
+- **From the match's category, chosen by rotation** with the station's rules, as a slot calling that category would: separation, restrictions and the play ratio at the time the winner should start, the least recently played first, relaxed step by step if needed (the fallback category does not count: a match needs two tracks of its category). The second is picked with the first counted as played then: two different tracks, of two different artists while the separation rules allow it.
+- **The loser of a match does not come back the same day** (in the station's time zone), unless the station allows it (*the loser can come back the same day*). A track that won can, as the rules allow.
+- Without two tracks, no match: rotation plays on, and tries again for the next track.
+
+### On air
+
+- **An announcement**: a jingle of the station's **announcement category** (*Jingles "vote on the website"*, say) plays over the intro of the vote's track, linked to it as the jingle of a [linked slot](rotation.md#linked-slots) is (it takes the place of the slot's own linked jingle, if any). The category's type plays over the intro, so it plays on the FX player. Its jingles are picked in turn, the least recently played first. Without an announcement category, no jingle.
+- **In the queue**: the announcement, the vote's track, then **both tracks**, one after the other. They are both read ahead by the engine, so whichever wins starts without a gap.
+- **The vote opens** when the vote's track starts on air, and **closes 10 seconds before the next transition** (5 to 60, set by the station): where the next track starts mixing in, the vote's track's mix point, else its end.
+- **At the close**, the loser is taken out of the queue: the winner is next. The engine had both ready, and the 10 seconds leave it time to cue the winner.
+- **A tie, or no vote**: the least recently played of the two on the station wins, else one at random.
+- **The loser** never plays: it is not counted as played, and goes back to its category (out of matches for the rest of the day, by default).
+- In the **rotation log**, both tracks are logged as picks of the match's category when they are queued; the loser's pick is deleted at the close, the winner's stays with its play.
+
+What an operator can do (*Shows › Match*, and *On air*): **close the vote now**, which decides with the votes so far, and **cancel the match**, which keeps the first track in the queue, as an ordinary track, and takes the second out. Taking the vote's track out of the queue cancels the match the same way; so does a new engine. Taking one of the two tracks out of the queue makes the other one win when the vote closes.
+
+### Voting
+
+- **The match open now**: the show's live state names it (`match_id`); a vote names it too. A vote for a match that closed is refused (`409`).
+- **One vote per device per match**: `POST …/stations/{code}/match/vote` with `{"match_id": 12, "choice": "a"}` (`a` or `b`) and the proof of work, answered `202`. A device can change its mind until the vote closes: its last vote counts, once.
+- **Kept per device in the gateway**, the last vote of each device only, and sent to the API every second in one batch, with each device's hash. The API counts the votes it receives while the match is open: the close waits a second for the batch on its way, and drops what comes later.
+- **Live results**: the votes of each track as they come, in the gateway's state and on the website, unless the station turns them off (*live results on the website*): then only the result shows, at the close.
+
+### Notifications
+
+Besides `show.upcoming`, `show.started` and `show.ended`, both on by default, with the name on the website (`{name}`):
+
+- `match.started`: a new vote, when it opens, with `{title1}`, `{artist1}`, `{title2}`, `{artist2}` and `{close}` (when it closes, `18:05`). Default message: *New vote: {title1} or {title2}? Choose before {close}: {link}*.
+- `match.closed`: the result, at the close, with the same placeholders, `{winner}` and `{loser}` (their titles), `{percent}` (the winner's share of the votes, `58 %`) and `{votes}` (the votes in all). Default message: *★ {winner} wins with {percent} of {votes} votes, playing now!* A cancelled match sends nothing.
+
+### On the website
+
+The page and the small widget show, during the hours:
+
+- **While a vote is open**: *Choose the next track*, the two tracks (cover, title, artist) one against the other, each a button to vote for it, and a **countdown** to the close. The countdown says nothing else: no sentence about when the vote closes. With live results, each track's share of the votes as a bar and a percentage, and the votes in all. The track chosen stays marked; another click changes the vote.
+- **In the last 5 seconds**, the countdown and the two choices **blink**, so that listeners who have not voted do it now. When the browser asks for reduced motion, they do not blink: a strong outline shows instead.
+- **Between two votes**: the last result, and *the next vote is coming in a few tracks*.
+- The page also lists **today's results**: the time, the winner with its share, against the loser.
+
+Outside the hours, the closed message or nothing, as every show.
+
+When the winner plays, the public `now-playing` (and the gateway's state) says so: `match` (`name`, the show's name on the website, `percent` and `votes`), so that a website can say *chosen by the listeners, 62 % of the votes*.
+
+### What is kept
+
+- **Each match**, for good: its station, its category, the vote's track, the two tracks, when it opened and closed, the votes of each, the winner and how it was decided (votes, a tie, no vote, closed early), or that it was cancelled. They are shown on the show's *History* tab, with the week's matches and votes.
+- **Per device**, the device's hash and its vote on a match, so that a device changes its vote instead of adding one: deleted an hour after the match closes, and a day after the vote at the latest. No IP address.
+
+The matches are in the database dump of the [backups](backups.md); the settings are in the configuration file.
+
 ## Personal data
 
-- **The gateway** keeps nothing on disk. In memory: the hash of each device that wrote, with its count, until the opening range ends (at most a day); a device's last like until the next batch, a second; the challenges given, 5 minutes. Addresses are counted for the per-address limits for a minute, and dropped.
+- **The gateway** keeps nothing on disk. In memory: the hash of each device that wrote, with its count, until the opening range ends (at most a day); a device's last like or match vote until the next batch, a second; the challenges given, 5 minutes. Addresses are counted for the per-address limits for a minute, and dropped.
 - **The API** stores what a show keeps (a dedication's first name and message, the device's hash), and deletes it after the time the show says, written on the show's page; no IP address. Each show's part of these docs says what it keeps and for how long.
 - **Nothing a listener writes reaches the air, the website or a webhook without a person's approval.**
 
@@ -294,7 +359,7 @@ What a show module adds, and where:
 | `heron_core::Module` and `Modules` | Its key, and its default (off for a show, on for Likes) |
 | `heron_core::shows::Show` | Its entry: key, whether it has hours, its own notification events with their default messages, its own placeholders |
 | `heron-api`, `shows.rs` | Its part of the public state (`ShowPublic::state`, any JSON: the current match, the day's dedications), read once a second by the gateway |
-| `heron-api`, `queue.rs` | A show that plays on air (the [Top 30](#top-30)): the queue manager asks it for its programme before rotation picks (`top30::due`) |
+| `heron-api`, `queue.rs` | A show that plays on air (the [Top 30](#top-30)): the queue manager asks it for its programme before rotation picks (`top30::due`); a show that changes rotation's picks (the [Match](#match)) is asked as rotation fills the queue (`matches::plan`) |
 | `heron-api`, gateway routes | Its writes, under `/api/v1/gateway/stations/{code}/{module}/…`, behind `GatewayClient` and `gateway::open_show`, which check the token, the module and the hours |
 | `heron-public`, `actions.rs` | Its writes as the gateway takes them: path, fields and their sizes (and their values, or the field of its state they must match), the device's limit, sent on, added up or kept per device |
 | `heron-public`, `widget.js` | Its renderer: what the page and the small widget show while it is open |
