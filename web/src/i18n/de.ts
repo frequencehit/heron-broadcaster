@@ -173,6 +173,7 @@ const de = {
   "account.widthNormal": "Normal",
   "account.widthWide": "80 %",
   "account.widthFull": "100 %",
+  "account.onAirWholeQueue": "Die ganze Warteschlange auf On Air zeigen, um sie dort zu bearbeiten",
   "account.displayHelp": "„System“ folgt den Einstellungen Ihres Geräts. Ihre Auswahl gilt in jedem Browser, in dem Sie sich anmelden.",
   "account.passwordChanged": "Passwort geändert: Ihre anderen Sitzungen wurden abgemeldet",
   "account.currentPassword": "Aktuelles Passwort",
