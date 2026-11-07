@@ -3083,6 +3083,117 @@ ul.held {
   gap: 0.25rem;
 }
 
+/* Shows (docs/web.md#shows): the week of hours, the lines to copy, the
+   widget's preview. */
+.grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.25rem;
+}
+
+@media (max-width: 800px) {
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.show-week {
+  border-collapse: separate;
+  border-spacing: 2px;
+  width: 100%;
+  min-width: 32rem;
+}
+
+.show-week td {
+  height: 0.9rem;
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.show-week td.own {
+  background: var(--accent);
+}
+
+.show-week td.other {
+  background: repeating-linear-gradient(45deg, var(--border), var(--border) 3px, var(--muted) 3px, var(--muted) 5px);
+}
+
+.show-week td.clash {
+  background: var(--bad, #c62828);
+}
+
+.show-week th {
+  font-weight: 400;
+  text-align: left;
+}
+
+.show-week-key {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 2px;
+}
+
+.show-week-key.own {
+  background: var(--accent);
+}
+
+.show-week-key.other {
+  background: repeating-linear-gradient(45deg, var(--border), var(--border) 3px, var(--muted) 3px, var(--muted) 5px);
+}
+
+.show-line {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2, var(--bg));
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  min-height: 1.2rem;
+}
+
+.show-preview-messages {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-2, var(--bg));
+}
+
+.show-message {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.show-widget {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.show-widget.empty {
+  padding: 1rem;
+  border-style: dashed;
+  text-align: center;
+}
+
+.show-widget-head {
+  color: #fff;
+  padding: 0.8rem 1rem;
+  font-size: 1.1rem;
+}
+
+.show-widget-body {
+  padding: 1rem;
+  text-align: center;
+}
+
 /* A filter bar: each menu's name above it. */
 .filter-bar {
   align-items: flex-end;

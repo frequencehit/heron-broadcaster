@@ -190,9 +190,9 @@ jobs:
           scripts/generate-test-library.sh data/music 60
           scripts/generate-test-library.sh data/fallback 3
           sudo chown -R "$(id -u):$(id -g)" data/music data/fallback
-      - run: docker compose build
+      - run: docker compose --profile public build
       # The icecast profile adds a local Icecast server for the streaming check.
-      - run: docker compose --profile icecast up -d --wait --wait-timeout 300
+      - run: docker compose --profile icecast --profile public up -d --wait --wait-timeout 300
       - name: Migrations were applied
         run: |
           docker compose exec -T mariadb \
@@ -200,6 +200,8 @@ jobs:
             "SELECT COUNT(*) FROM _sqlx_migrations WHERE success = 1" | grep -qv '^0$'
       - name: Web app reaches the API
         run: curl -fsS http://localhost:8000/api/v1/status | grep -q '"database":"ok"'
+      - name: The public gateway answers, refusing without its token
+        run: test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8001/api/v1/public/stations/main/shows)" = 503
       - name: Every track is imported and analyzed
         run: scripts/wait-for-analysis.sh http://localhost:8000 60 300
       - name: The API puts the station on air
@@ -230,11 +232,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push the tested images
         if: github.event_name == 'push'
-        run: docker compose push heron-api heron-analyzer heron-librarian heron-engine heron-web
+        run: docker compose --profile public push heron-api heron-analyzer heron-librarian heron-engine heron-web heron-public
       - if: failure()
-        run: docker compose --profile icecast ps && docker compose --profile icecast logs
+        run: docker compose --profile icecast --profile public ps && docker compose --profile icecast --profile public logs
       - if: always()
-        run: docker compose --profile icecast down -v
+        run: docker compose --profile icecast --profile public down -v
 
   publish:
     name: Publish ${{ matrix.image }}
@@ -247,7 +249,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        image: [heron-api, heron-analyzer, heron-librarian, heron-engine, heron-web]
+        image: [heron-api, heron-analyzer, heron-librarian, heron-engine, heron-web, heron-public]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The packages of the repository's owner (a fork's own); GHCR names

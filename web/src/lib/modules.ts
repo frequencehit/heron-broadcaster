@@ -45,9 +45,15 @@ export const MODULES: ModuleEntry[] = [
   { key: "review", label: "nav.review", help: "modules.reviewHelp", off: "modules.reviewOff", installationOnly: true },
   { key: "artists", label: "nav.artists", help: "modules.artistsHelp", off: "modules.artistsOff", installationOnly: true },
   { key: "labels", label: "nav.labels", help: "modules.labelsHelp", off: "modules.labelsOff", installationOnly: true },
+  { key: "dedications", label: "nav.dedications", help: "modules.dedicationsHelp", off: "modules.showOff" },
+  { key: "match", label: "nav.match", help: "modules.matchHelp", off: "modules.showOff" },
+  { key: "top30", label: "nav.top30", help: "modules.top30Help", off: "modules.showOff" },
 ];
 
-/** Everything on: what is shown until the station's modules are known. */
+/**
+ * What is shown until the station's modules are known: their defaults,
+ * everything on but the shows (docs/modules.md).
+ */
 export const ALL_ON: Modules = {
   medleys: true,
   cover_art: true,
@@ -60,6 +66,9 @@ export const ALL_ON: Modules = {
   review: true,
   artists: true,
   labels: true,
+  dedications: false,
+  match: false,
+  top30: false,
 };
 
 export function moduleKey(station: number | null): readonly unknown[] {

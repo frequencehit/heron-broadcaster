@@ -44,6 +44,7 @@ import { ToDo } from "./pages/ToDo";
 import { Rotation } from "./pages/Rotation";
 import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
+import { ShowPage } from "./pages/Show";
 import { Stations } from "./pages/Stations";
 import { Statistics } from "./pages/Statistics";
 import { Track } from "./pages/Track";
@@ -124,6 +125,10 @@ function pageAt(pathname: string): ReactNode {
   const medley = match("/medleys/:id", pathname);
   if (medley) {
     return <MedleyEditor id={medley.id === "new" ? null : Number(medley.id)} />;
+  }
+  const show = match("/shows/:module", pathname);
+  if (show && (show.module === "dedications" || show.module === "match" || show.module === "top30")) {
+    return <ShowPage module={show.module} />;
   }
   const clock = match("/clocks/:id", pathname);
   if (clock) {

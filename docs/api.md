@@ -95,10 +95,12 @@ What belongs to a station (its engine and decks, queue, history, clocks, schedul
 | History | `GET /history` (`before`, `after`, `track_id`, `exclude_fx`, `limit`) |
 | Deck EQ | `GET`, `PUT /settings/eq`; `GET`, `POST /eq-presets`; `PUT`, `DELETE /eq-presets/{id}` — see [below](#deck-eq) |
 | AGC | `GET`, `PUT /settings/agc`; `GET`, `POST /agc-presets`; `PUT`, `DELETE /agc-presets/{id}` — see [below](#agc) |
-| Settings | `GET`, `PUT /settings/playout`, `/settings/analysis`, `/settings/queue`, `/settings/rotation` (with `daypart_count`, 4 or 6: the station's dayparts; the [daypart separation](rotation.md#daypart-separation) is each category's; `draw`, the station's [draw depth](rotation.md#draw-depth), `start_pct` and `max_pct`, 1 to 100, 20 and 50 by default, the start not above the maximum, `422`), `/settings/station` (time zone, `public_url`), `/settings/stream-details` (the [station details](outputs.md#station-details) sent to the stream servers), `/settings/programming`, `/settings/statistics`, `/settings/medleys`; `GET`, `PATCH /settings/library`; `GET`, `PUT`, `DELETE /settings/station/logo` (the [station logo](library.md#the-station-logo), admins change it) |
+| Settings | `GET`, `PUT /settings/playout`, `/settings/analysis`, `/settings/queue`, `/settings/rotation` (with `daypart_count`, 4 or 6: the station's dayparts; the [daypart separation](rotation.md#daypart-separation) is each category's; `draw`, the station's [draw depth](rotation.md#draw-depth), `start_pct` and `max_pct`, 1 to 100, 20 and 50 by default, the start not above the maximum, `422`), `/settings/station` (time zone, `public_url`, `gateway_url`), `/settings/stream-details` (the [station details](outputs.md#station-details) sent to the stream servers), `/settings/programming`, `/settings/statistics`, `/settings/medleys`; `GET`, `PATCH /settings/library`; `GET`, `PUT`, `DELETE /settings/station/logo` (the [station logo](library.md#the-station-logo), admins change it) |
 | Outputs | `GET`, `POST /encoder-profiles`; `GET`, `PUT`, `DELETE /encoder-profiles/{id}`; `GET`, `POST /stream-servers`; `GET`, `PUT`, `DELETE /stream-servers/{id}` (a server in use answers `409` listing its outputs and relays, see [Stream servers](outputs.md#stream-servers)); `GET`, `POST /outputs`; `GET`, `PUT`, `DELETE /outputs/{id}` (with each output's live state, its `server_id` and its `details` overriding the station's); `POST /outputs/{id}/duplicate` (a disabled copy, its mount suffixed `-copy`) |
 | Webhooks (admins) | `GET`, `POST /webhooks`; `GET`, `PUT`, `DELETE /webhooks/{id}`; `POST /webhooks/{id}/secret`; `POST /webhooks/{id}/test`; `GET /webhooks/{id}/deliveries` (`before`, `status`, `limit`); `POST /webhook-deliveries/{id}/retry` — see [below](#webhooks) |
 | Listener statistics | `GET /listeners/now`, `/listeners/samples`, `/listeners/audience` (TTSL, ATSL, cume, AQH, peak, session lengths, against the previous period), `/listeners/days`, `/listeners/hours-of-day`, `/listeners/tracks`, `/listeners/breakdown` (shares by country, device or player, small groups as *Other*; never an address or a user agent), each for the station or one output (`output_id`) and all servers or one (`server_id`) (CSV with `format=csv` for the audience, breakdown, days, hours and tracks); `GET`, `PUT /settings/statistics` (admins) — see [Listener statistics](statistics.md#api) |
+| Shows | `GET /shows` (each [show](listener-interaction.md) on for the station: its settings and whether it is open now); `GET`, `PUT /shows/{module}` (`dedications`, `match`, `top30`: hours, website, notifications, see [below](#shows); operators change them; `GET` also lists the station's webhooks by name, to choose from) |
+| Gateway | `GET /gateway/state`, and each show's writes under `/gateway/stations/{code}/{module}/…`: for `heron-public` only, with the gateway token, see [below](#the-public-gateway) |
 | Public | `GET /public/now-playing`, `GET /public/history` (`before`, `limit`), `GET /public/queue`, and the same per station under `/public/stations/{code}/…` — no sign-in, see [below](#public-endpoints) |
 | Live | `GET /live` (WebSocket) |
 
@@ -141,6 +143,7 @@ Webhooks tell other systems (a website, a chat bot, a studio display) about trac
    "upcoming": [{"position": 0, "artist": "Artist", "title": "Title", "album": null,
                  "duration_ms": 212000, "planned_start_unix_ms": 1792918037000}]}
   ```
+- **Show events:** `show.upcoming`, `show.started` and `show.ended`, chosen per show on its page, not in the webhook's `events` (which refuses them, `422`): they go to the webhooks the [show](listener-interaction.md#notifications) names. Their body has `show` (`module`, `name`, `link`, `end_unix_ms`, `next_unix_ms`) and `message`, the show's message written out; `track` is `null`.
 - **Covers:** each track (and each upcoming track) has a `cover_url`, as the [public endpoints](#public-endpoints) give it: its cover, else the station's logo, else `null`. Set the station's public address so that it is a full address, which Discord and Slack need.
 - **Body:** by default the JSON `Payload` of the OpenAPI document:
 
@@ -152,7 +155,7 @@ Webhooks tell other systems (a website, a chat bot, a studio display) about trac
    "played_ms": null, "reason": null}
   ```
 
-  Or a **body template** of your own, with its content type, for receivers that want a format of their own (Discord, Slack, a display). Placeholders: `{{event}}`, `{{station}}` (the code of the webhook's station), `{{delivery_id}}`, `{{at_unix_ms}}`, `{{track_id}}`, `{{artist}}`, `{{title}}`, `{{album}}`, `{{cover_url}}`, `{{duration_ms}}`, `{{deck}}`, `{{source}}`, `{{played_ms}}`, `{{reason}}`; for `queue.changed`, `{{upcoming_json}}` (the array, as JSON, inserted as it is: `{"next": {{upcoming_json}}}`), `{{next.artist}}`, `{{next.title}}`, `{{next.album}}`, `{{next.cover_url}}` and `{{next.planned_start_unix_ms}}` for the first upcoming track (spaces inside the braces are allowed). When the content type is JSON, values are escaped to fit between quotes: `{"content": "Now playing: {{artist}} – {{title}}"}`. Missing values are empty; unknown placeholders are refused (`422`).
+  Or a **body template** of your own, with its content type, for receivers that want a format of their own (Discord, Slack, a display). Placeholders: `{{event}}`, `{{station}}` (the code of the webhook's station), `{{delivery_id}}`, `{{at_unix_ms}}`, `{{track_id}}`, `{{artist}}`, `{{title}}`, `{{album}}`, `{{cover_url}}`, `{{duration_ms}}`, `{{deck}}`, `{{source}}`, `{{played_ms}}`, `{{reason}}`; for `queue.changed`, `{{upcoming_json}}` (the array, as JSON, inserted as it is: `{"next": {{upcoming_json}}}`), `{{next.artist}}`, `{{next.title}}`, `{{next.album}}`, `{{next.cover_url}}` and `{{next.planned_start_unix_ms}}` for the first upcoming track; `{{message}}` (a show event's message, `Artist – Title` for a track event), `{{show.module}}`, `{{show.name}}`, `{{show.link}}` (spaces inside the braces are allowed). When the content type is JSON, values are escaped to fit between quotes: `{"content": "Now playing: {{artist}} – {{title}}"}`. Missing values are empty; unknown placeholders are refused (`422`).
 - **Requests:** `POST` to the webhook's URL (`http` or `https`; it may be an address of your network: only admins can set it), with `X-Heron-Event`, `X-Heron-Delivery` (the delivery's ID), `X-Heron-Timestamp` (Unix seconds) and `X-Heron-Signature`. Redirects are not followed.
 - **Signature:** `X-Heron-Signature: sha256=<hex>`, the HMAC-SHA256 of `"{timestamp}.{body}"` with the webhook's secret (`whsec_…`, shown once when the webhook is created or given a new secret with `POST /webhooks/{id}/secret`). Receivers should compare it in constant time and refuse old timestamps. In Python:
 
@@ -163,6 +166,28 @@ Webhooks tell other systems (a website, a chat bot, a studio display) about trac
 
 - **Delivery and retries:** deliveries are sent as soon as the engine reports the change, at most 8 at a time. A delivery that does not get a `2xx` within 10 seconds is retried after 10 s, 30 s, 2 min, 10 min, 30 min, 1 h and 3 h, then marked `failed` (8 attempts). Deliveries are rows in the database, so retries survive a restart of the API; one being sent when the API stopped is sent again a minute later, so receivers may see a delivery twice (same `X-Heron-Delivery`). Deliveries of a disabled webhook that were still pending fail.
 - **Delivery log:** `GET /webhooks/{id}/deliveries` lists what was sent, its status (`pending`, `delivered`, `failed`), attempts, the receiver's status code, the error and the start of its answer (1 KiB). `POST /webhooks/{id}/test` sends a `ping` (even to a disabled webhook); `POST /webhook-deliveries/{id}/retry` sends a delivered or failed delivery again, with every attempt again. Deliveries are kept 30 days.
+
+## Shows
+
+Each [show](listener-interaction.md) has its settings per station, `GET`, `PUT /stations/{id}/shows/{module}` (operators change them; the module must be on, else `404`):
+
+```json
+{"enabled": true,
+ "hours": [{"days": [1, 2, 3, 4, 5], "start_hour": 17, "end_hour": 18}],
+ "website": {"title": "Your dedications", "color": "#c62828", "small_widget": true,
+             "closed": "message", "closed_message": "Dedications are back {day} at {hour}",
+             "page_url": "https://radio.example.org/dedications"},
+ "notifications": {"webhook_ids": [3], "lead_minutes": 60, "language": "en",
+                   "events": {"show.upcoming": {"enabled": true, "message": "{name} opens in an hour: {link}"},
+                              "show.started": {"enabled": true, "message": "{name} is open until {end}: {link}"},
+                              "show.ended": {"enabled": false, "message": "{name} is closed. Back {next}"}}}}
+```
+
+- `hours`: days 1 (Monday) to 7 (Sunday), `start_hour` 0 to 23, `end_hour` after it, up to 24, at most 50 ranges, in the station's time zone. Hours another show of the station has are refused, `409`, naming the show and the hours (`18:00–19:00 on Saturday belongs to the match`).
+- `website`: `title` (60 characters at most; empty: the show's name in the listener's language), `color` (`#rrggbb`), `small_widget`, `closed` (`message` or `nothing`), `closed_message` (200 characters at most, with `{day}` and `{hour}`; empty: the widget's own sentence), `page_url` (the website's page of the show, for `{link}`).
+- `notifications`: `webhook_ids` (webhooks of the station), `lead_minutes` (1 to 1440), `language` (`en`, `fr`, `es`, `de`), and each event with `enabled` and `message` (500 characters at most, with `{name}`, `{link}`, `{end}`, `{next}`, and the show's own placeholders; an unknown one is refused, `422`).
+
+`GET` answers `module`, `settings` (as above), `status` (`open` now, `closes_at_unix_ms` while open, `next_opening_unix_ms`), `timezone` and `webhooks` (`id`, `name` of the station's webhooks), and `PUT` answers the same. `GET /stations/{id}/shows` lists the shows on for the station, with the same answer, for the week grid of each show's page.
 
 ## Public endpoints
 
@@ -176,7 +201,31 @@ For station websites, apps and displays: no sign-in, readable from any origin (`
 
 `cover_url` is the track's cover, else the station's logo, else `null`. It is a full address when the station's settings have its public address (`public_url`, such as `https://radio.example.org`, the address `heron-web` is reached at from outside), a path (`/api/v1/public/covers/…`) otherwise: set it for websites on another address, and for webhooks. Add `?size=96` for a thumbnail.
 
-Each station has its own, by its code: `/api/v1/public/stations/{code}/now-playing`, `/queue` and `/history`; the routes without a code are the first station's. They answer through `heron-web` like the rest of the API (`http://<host>:8000/api/v1/public/now-playing`). Put a cache or rate limit in the reverse proxy in front of it if the station is busy.
+Each station has its own, by its code: `/api/v1/public/stations/{code}/now-playing`, `/queue` and `/history`; the routes without a code are the first station's. They answer through `heron-web` like the rest of the API (`http://<host>:8000/api/v1/public/now-playing`). Put a cache or rate limit in the reverse proxy in front of it if the station is busy, or use the gateway, which serves them from its cache.
+
+## The public gateway
+
+`heron-public` serves listeners, under `/api/v1/public/` like the public endpoints, on its own port (`HERON_PUBLIC_PORT`, 8001 by default). See [Listener interaction](listener-interaction.md) for what it checks and why.
+
+| Route | What it gives |
+|---|---|
+| `GET /api/v1/public/stations/{code}/now-playing`, `/queue`, `/history` | The API's public endpoints, from the gateway's cache |
+| `GET /api/v1/public/stations/{code}/shows` | The station's shows that are on: each with `module`, `title`, `color`, `small_widget`, `closed`, `closed_message`, `page_url`, `hours`, `timezone`, `open`, `closes_at_unix_ms`, `next_opening_unix_ms` and `state` (the show's own live data, `null` until the show adds it) |
+| `GET /api/v1/public/stations/{code}/{module}` | One of them (`404` when it is off) |
+| `GET /api/v1/public/stations/{code}/events` | Server-Sent Events: `state` (`now_playing`, `shows`, `server_time_unix_ms`) when connecting and at each change; a comment every 15 seconds keeps the connection open |
+| `GET /api/v1/public/stations/{code}/{module}.js` | The script of the show's page and small widget |
+| `GET /api/v1/public/stations/{code}/{module}.html` | The show's page alone |
+| `GET /api/v1/public/challenge` | A proof-of-work challenge: `challenge`, `bits`, `expires_at_unix_ms` |
+| `POST /api/v1/public/stations/{code}/{module}[/{action}]` | A show's write (a dedication, a vote), with `X-Heron-Proof: <challenge>:<nonce>`; each show documents its own |
+
+Errors are those of the API: `403` (`forbidden`: no valid proof, or a website not allowed), `404` (unknown station or show, or a show turned off), `409` (`conflict`: the show is closed), `422` (`invalid`: a field too long or unknown), `429` (`too_many_requests`, with `Retry-After`), `503` (the API not reached, or no gateway token).
+
+Behind it, the gateway calls the API with `Authorization: Bearer <HERON_PUBLIC_TOKEN>`:
+
+- `GET /api/v1/gateway/state`: every enabled station (`code`, `name`, `timezone`, `now_playing` as the public endpoint gives it, `shows`: the shows on for it), and `server_time_unix_ms`. Read once a second.
+- `POST /api/v1/gateway/stations/{code}/{module}/…`: a show's writes, with `X-Heron-Device` (the device's hash). The API checks again that the show is on (`404`) and open (`409`). A write the gateway adds up arrives as `{"counts": [{"fields": {…}, "count": 12}]}`.
+
+These routes accept only the gateway token, and the gateway token reaches nothing else: it is not a user's, and `HERON_PUBLIC_TOKEN` unset refuses it (`401`).
 
 ## Cover art
 

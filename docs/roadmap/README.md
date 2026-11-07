@@ -30,6 +30,7 @@ Progress is tracked here: the status column below and the acceptance checklists 
 | M15 | [Encrypted and tested backups](m15-encrypted-backups.md) | M12 | Done ([#51](https://github.com/dehy/heron-broadcaster/pull/51)) |
 | M16 | [Status bar](m16-status-bar.md) | M5, M7b, M13 | Done ([#58](https://github.com/dehy/heron-broadcaster/pull/58)) |
 | M17 | [About page](m17-about-page.md) | M5, M13, M16 | Done ([#62](https://github.com/dehy/heron-broadcaster/pull/62)) |
+| M18 | [Listener interaction](m18-listener-interaction.md) | M7, M13, modules | In progress |
 
 ## Dependency graph
 
