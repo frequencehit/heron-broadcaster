@@ -390,6 +390,9 @@ impl QueueManager {
         let mut linked = Vec::new();
         // Play ratio counters moved by these picks, saved once queued.
         let mut counters = Vec::new();
+        // A match in the show's hours: its tracks after one of the picks.
+        let mut planner = crate::matches::planner(&self.pool, self.station_id).await?;
+        let mut planned_match = None;
         'picking: for _ in 0..missing {
             let outcome =
                 heron_rotation::next_outcome(&library, &history, at, last.as_ref(), &mut rng);
@@ -418,6 +421,13 @@ impl QueueManager {
                 }
                 picks.push(pick);
             }
+            if let Some(planner) = planner.as_mut()
+                && let Some(planned) =
+                    planner.after(&library, &history, at, &mut picks, &mut linked, &mut rng)
+            {
+                planned_match = Some(planned);
+                break;
+            }
         }
         if picks.is_empty() {
             // Tracks held back by their ratio moved: they play sooner.
@@ -436,9 +446,23 @@ impl QueueManager {
         let ids: Vec<u64> = picks.iter().map(|pick| pick.track).collect();
         let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
         let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
+        let mut log_ids = Vec::new();
         for (pick, entry_id) in picks.iter().zip(&entry_ids) {
             let entry = (state.engine_started_at_unix_ms, *entry_id);
-            rotation::record_pick(&self.pool, self.station_id, pick, Some(entry)).await?;
+            log_ids
+                .push(rotation::record_pick(&self.pool, self.station_id, pick, Some(entry)).await?);
+        }
+        if let Some(planned) = planned_match {
+            crate::matches::queued(
+                &self.pool,
+                self.station_id,
+                &planned,
+                &picks,
+                state.engine_started_at_unix_ms,
+                &entry_ids,
+                &log_ids,
+            )
+            .await?;
         }
         rotation::save_counters(&self.pool, self.station_id, &counters).await?;
         tracing::info!(

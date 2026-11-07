@@ -722,6 +722,51 @@ pub fn next_outcome(
     }
 }
 
+/// A track of `category` to play at `at_ms`, picked as a slot calling that
+/// category would (least recently played, rules enforced and relaxed step
+/// by step), outside any clock: a show's pick (the match's two tracks,
+/// `docs/listener-interaction.md#match`). Without `enforce_rules`, the
+/// separation rules do not hold (an announcement jingle), as for a slot
+/// that does not enforce them. Tracks in `excluded` are never offered. `None` when nothing of the category can be picked: the
+/// fallback category does not stand in for it.
+///
+/// The play ratio decides as for a slot, but its counters do not move.
+pub fn from_category(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    category: CategoryId,
+    excluded: &[TrackId],
+    enforce_rules: bool,
+    rng: &mut Rng,
+) -> Option<Pick> {
+    if library.modules_off.contains(&category) {
+        return None;
+    }
+    let mut call = Call::new(library, Some(category), None);
+    call.pool.retain(|(track, _)| !excluded.contains(&track.id));
+    let slot = SlotCall {
+        call,
+        method: Method::LeastRecentlyPlayed,
+        enforce_rules,
+    };
+    let mut held = Vec::new();
+    let (track, mut explanation) = fill(library, history, at_ms, &slot, &mut held, rng)?;
+    if explanation.category_id != Some(category) {
+        return None;
+    }
+    let schedule = library.schedule_at(&library.local(at_ms));
+    explanation.schedule_id = Some(schedule.id);
+    explanation.schedule_name = Some(schedule.name.clone());
+    explanation.held_by_ratio = held;
+    Some(Pick {
+        track,
+        position: None,
+        explanation,
+        linked: None,
+    })
+}
+
 /// Start of the station hour of `at_ms` (Unix ms).
 fn hour_start_of(library: &Library, at_ms: i64) -> i64 {
     let local = library.local(at_ms);
@@ -946,6 +991,35 @@ mod tests {
             },
             TimeZone::UTC,
         )
+    }
+
+    #[test]
+    fn a_category_gives_its_tracks_with_its_rules_and_nothing_else() {
+        let library = library(vec![slot(1, Method::Random)]);
+        let mut history = History::default();
+        // Track 7 played a minute ago: track separation holds it back.
+        history.push(Play::of(&library.tracks[&7], 9 * HOUR));
+        let mut rng = Rng::new(3);
+        for _ in 0..20 {
+            let pick =
+                from_category(&library, &history, 9 * HOUR + MIN, 2, &[6], true, &mut rng).unwrap();
+            assert!([8, 9, 10].contains(&pick.track), "{}", pick.track);
+            assert_eq!(pick.explanation.category_id, Some(2));
+            assert_eq!(pick.position, None);
+        }
+        // Nothing left in the category: no pick, not even from the fallback.
+        assert!(
+            from_category(
+                &library,
+                &history,
+                HOUR,
+                2,
+                &[6, 7, 8, 9, 10],
+                true,
+                &mut rng
+            )
+            .is_none()
+        );
     }
 
     #[test]

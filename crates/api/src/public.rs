@@ -36,6 +36,9 @@ pub struct PublicTrack {
     /// The accepted dedication it plays for
     /// (`docs/listener-interaction.md#dedications`).
     pub dedication: Option<crate::dedications::OnAirDedication>,
+    /// The match it won (`docs/listener-interaction.md#match`).
+    #[serde(rename = "match")]
+    pub chosen: Option<crate::matches::OnAirMatch>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -204,6 +207,7 @@ pub async fn now_playing_of(state: &AppState, station: &Station) -> NowPlaying {
                     duration_ms: deck.length_ms,
                     position_ms: deck.position_ms,
                     dedication: None,
+                    chosen: None,
                 })
             })
     });
@@ -213,6 +217,10 @@ pub async fn now_playing_of(state: &AppState, station: &Station) -> NowPlaying {
             match crate::dedications::on_air(&state.pool, station.id(), &player).await {
                 Ok(dedication) => track.dedication = dedication,
                 Err(error) => tracing::warn!(%error, "cannot read the dedication"),
+            }
+            match crate::matches::on_air_winner(&state.pool, station.id(), &player).await {
+                Ok(chosen) => track.chosen = chosen,
+                Err(error) => tracing::warn!(%error, "cannot read the match"),
             }
             Some(track)
         }
@@ -360,6 +368,7 @@ async fn last_song(
                 duration_ms: u64::from(duration_ms.unwrap_or(0)),
                 position_ms: now.saturating_sub(started),
                 dedication: None,
+                chosen: None,
             };
             (track_id, track)
         }),

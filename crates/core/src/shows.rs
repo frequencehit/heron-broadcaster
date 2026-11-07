@@ -54,12 +54,27 @@ pub const SHOWS: [Show; 4] = [
         ],
         placeholders: &["artist", "title", "from", "to", "message", "time"],
     },
+    // Each vote as it opens, and its result (#132).
     Show {
         module: Module::Match,
         name: "The match",
         has_hours: true,
-        events: &[],
-        placeholders: &[],
+        events: &[
+            (
+                MATCH_STARTED,
+                "New vote: {title1} or {title2}? Choose before {close}: {link}",
+                true,
+            ),
+            (
+                MATCH_CLOSED,
+                "★ {winner} wins with {percent} of {votes} votes, playing now!",
+                true,
+            ),
+        ],
+        placeholders: &[
+            "title1", "artist1", "title2", "artist2", "close", "winner", "loser", "percent",
+            "votes",
+        ],
     },
     // The chart when the week closes; each rank as it plays (#134).
     Show {
@@ -104,6 +119,11 @@ pub const TOP_RANK: &str = "top.rank";
 pub const DEDICATION_PLAYED: &str = "dedication.played";
 /// A dedication, when it is accepted.
 pub const DEDICATION_ACCEPTED: &str = "dedication.accepted";
+
+/// A match's vote, as it opens.
+pub const MATCH_STARTED: &str = "match.started";
+/// A match's result, as its vote closes.
+pub const MATCH_CLOSED: &str = "match.closed";
 
 /// The placeholders of every show's messages.
 pub const COMMON_PLACEHOLDERS: [&str; 4] = ["name", "link", "end", "next"];

@@ -10770,3 +10770,610 @@ async fn follow_key_of(request: &Value, pool: &sqlx::MySqlPool) -> String {
         .await
         .unwrap()
 }
+
+/// The match (docs/listener-interaction.md#match): every N tracks in the
+/// show's hours, two tracks of its category queued after the vote's track
+/// and its announcement; votes only while open, a device changing its mind;
+/// the loser out of the queue at the close; a tie, no vote, an early close,
+/// a cancel, and the module turned off.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let runtime = station.state.stations.first();
+    let code = runtime.code();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let vote_path = format!("/gateway/stations/{code}/match/vote");
+    let tick = || async {
+        crate::matches::tick(pool, &station.state.stations, &station.state.webhooks)
+            .await
+            .unwrap();
+    };
+
+    // Nothing plays until the match is set.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 1}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+    // The music lasts long enough to vote during; the fifth track is the
+    // announcement.
+    for n in 1..=4 {
+        write_wav(
+            &station
+                .library
+                .path()
+                .join(format!("Artist {n}/Track {n}.wav")),
+            100.0,
+            220.0 * f64::from(n),
+        );
+    }
+    for track in &t[..4] {
+        sqlx::query("UPDATE tracks SET duration_ms = 100000 WHERE id = ?")
+            .bind(track)
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE track_analysis SET cue_out_ms = 100000 WHERE track_id = ?")
+            .bind(track)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
+    // Off by default: nothing answers.
+    let (status, body) = viewer.request(Method::GET, "/match/current", None).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("module_off"))
+    );
+    let ballot = |id: Value, device: &str, choice: &str| json!({"writes": [{"device": device, "fields": {"match_id": id, "choice": choice}}]});
+    let (status, _) = gateway_write(&gateway, &vote_path, None, ballot(json!(1), "d1", "a")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"match": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(viewer.get("/match/current").await, Value::Null);
+
+    // Hits, the music; the announcements, jingles.
+    let types = admin.get("/category-types").await;
+    let jingle_type = types[1]["id"].as_u64().unwrap();
+    let (status, hits) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Hits", "separation": {"track_min": 1}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{hits}");
+    let hits = hits["id"].as_u64().unwrap();
+    let (status, announce) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Vote now", "type_id": jingle_type}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{announce}");
+    let announce = announce["id"].as_u64().unwrap();
+    for (track, category) in [
+        (t[0], hits),
+        (t[1], hits),
+        (t[2], hits),
+        (t[3], hits),
+        (t[4], announce),
+    ] {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": category}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = admin
+        .send(Method::PUT, "/match/settings", json!({"category_id": 999}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = admin
+        .send(Method::PUT, "/match/settings", json!({"every_tracks": 1}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = viewer
+        .send(Method::PUT, "/match/settings", json!({"every_tracks": 3}))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, settings) = admin
+        .send(
+            Method::PUT,
+            "/match/settings",
+            json!({"every_tracks": 2, "category_id": hits, "jingle_category_id": announce}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{settings}");
+    assert_eq!(
+        (&settings["close_before_s"], &settings["live_results"]),
+        (&json!(10), &json!(true))
+    );
+
+    // Outside its hours: closed, and rotation plays on without a match.
+    let today = jiff::Timestamp::now()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .weekday()
+        .to_monday_one_offset();
+    let other_day = today % 7 + 1;
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [other_day], "start_hour": 0, "end_hour": 24}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = gateway_write(&gateway, &vote_path, None, ballot(json!(1), "d1", "a")).await;
+    assert_eq!(status, StatusCode::CONFLICT, "closed");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 1}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let entries = || async {
+        let queue = admin.get("/queue").await;
+        queue.as_array().unwrap().clone()
+    };
+    let on_air = || async {
+        let player = admin.get("/player").await;
+        player["decks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|deck| deck["on_air"] == true)
+            .and_then(|deck| deck["entry"]["entry_id"].as_u64())
+    };
+    let skip = || async {
+        let (status, _) = admin.request(Method::POST, "/player/skip", None).await;
+        assert!(status.is_success(), "{status}");
+    };
+    eventually(
+        "a track on air, one waiting",
+        Duration::from_secs(20),
+        || async { (on_air().await.is_some() && !entries().await.is_empty()).then_some(()) },
+    )
+    .await;
+    for _ in 0..2 {
+        let before = on_air().await;
+        skip().await;
+        eventually("the next track", Duration::from_secs(20), || async {
+            (on_air().await != before && !entries().await.is_empty()).then_some(())
+        })
+        .await;
+    }
+    let matches = || async {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM matches")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(matches().await, 0, "no match outside the hours");
+
+    // In its hours: the next track rotation queues carries the vote.
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/shows/match",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": 0, "end_hour": 24}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // The next match: tracks go by until one is queued.
+    let next_match = || async {
+        for _ in 0..10 {
+            let found = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let current = admin.get("/match/current").await;
+                    if !current.is_null() {
+                        return current;
+                    }
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+            })
+            .await;
+            if let Ok(current) = found {
+                return current;
+            }
+            let before = on_air().await;
+            skip().await;
+            eventually("the next track", Duration::from_secs(20), || async {
+                (on_air().await != before).then_some(())
+            })
+            .await;
+        }
+        panic!("no match queued");
+    };
+    let current = next_match().await;
+    assert_eq!(current["status"], "queued");
+    assert_eq!(current["category_id"], hits);
+    let (a, b) = (
+        current["choices"][0]["track_id"].as_u64().unwrap(),
+        current["choices"][1]["track_id"].as_u64().unwrap(),
+    );
+    let vote_track = current["vote_track"]["track_id"].as_u64().unwrap();
+    assert!(
+        a != b && t[..4].contains(&a) && t[..4].contains(&b),
+        "{current}"
+    );
+    assert_eq!(current["jingle"]["track_id"], t[4]);
+    // In the queue: the announcement linked to the vote's track, then both.
+    let queue = entries().await;
+    let at = queue
+        .iter()
+        .position(|entry| entry["track"]["track_id"] == t[4])
+        .expect("the announcement");
+    let ids: Vec<u64> = queue[at..at + 4]
+        .iter()
+        .map(|entry| entry["entry_id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(queue[at]["linked_to"], ids[1], "{queue:?}");
+    assert_eq!(
+        waiting_tracks(&json!(queue[at + 1..at + 4])),
+        [vote_track, a, b]
+    );
+    let (vote_entry, entry_a, entry_b) = (ids[1], ids[2], ids[3]);
+    // Both are in the rotation log, as picks of Hits.
+    let logged: Vec<u64> = sqlx::query_scalar(
+        "SELECT entry_id FROM rotation_picks WHERE entry_id IN (?, ?) AND category_id = ?",
+    )
+    .bind(entry_a)
+    .bind(entry_b)
+    .bind(hits)
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    assert_eq!(logged.len(), 2);
+
+    // Not open before its track starts: votes are dropped.
+    tick().await;
+    assert_eq!(admin.get("/match/current").await["status"], "queued");
+    let id = current["id"].clone();
+    let (status, taken) =
+        gateway_write(&gateway, &vote_path, None, ballot(id.clone(), "d1", "a")).await;
+    assert_eq!(status, StatusCode::OK, "{taken}");
+    assert_eq!(
+        (taken["counted"].as_u64(), taken["dropped"].as_u64()),
+        (Some(0), Some(1))
+    );
+    let (status, _) = admin
+        .request(Method::POST, "/match/current/close", None)
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "not open yet");
+
+    // The vote's track on air: open until 10 s before its end.
+    while on_air().await != Some(vote_entry) {
+        let before = on_air().await;
+        skip().await;
+        eventually("the next track", Duration::from_secs(20), || async {
+            (on_air().await != before).then_some(())
+        })
+        .await;
+    }
+    let open = eventually("the vote open", Duration::from_secs(10), || async {
+        tick().await;
+        let open = admin.get("/match/current").await;
+        (open["status"] == "open").then_some(open)
+    })
+    .await;
+    let closes = open["closes_at_unix_ms"].as_i64().unwrap();
+    let transition = open["transition_at_unix_ms"].as_i64().unwrap();
+    assert_eq!(transition - closes, 10_000);
+    let now = crate::rotation::now_ms();
+    assert!(
+        transition > now + 80_000 && transition < now + 101_000,
+        "{transition} {now}"
+    );
+    let state = gateway.get("/gateway/state").await;
+    let show = state["stations"][0]["shows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|show| show["module"] == "match")
+        .unwrap()
+        .clone();
+    assert_eq!(show["state"]["match_id"], id);
+    assert_eq!(show["state"]["closes_at_unix_ms"], closes);
+    assert_eq!(show["state"]["choices"][1]["choice"], "b");
+
+    // One vote per device, its last one counting.
+    let batch = json!({"writes": [
+        {"device": "d1", "fields": {"match_id": id, "choice": "a"}},
+        {"device": "d2", "fields": {"match_id": id, "choice": "b"}},
+        {"device": "d3", "fields": {"match_id": id, "choice": "a"}},
+        {"device": "d4", "fields": {"match_id": 999_999, "choice": "a"}},
+    ]});
+    let (status, taken) = gateway_write(&gateway, &vote_path, None, batch).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (taken["counted"].as_u64(), taken["dropped"].as_u64()),
+        (Some(3), Some(1))
+    );
+    let (_, taken) = gateway_write(&gateway, &vote_path, None, ballot(id.clone(), "d2", "a")).await;
+    assert_eq!(taken["counted"], 1);
+    let open = admin.get("/match/current").await;
+    assert_eq!(
+        (
+            &open["choices"][0]["votes"],
+            &open["choices"][0]["percent"],
+            &open["votes"]
+        ),
+        (&json!(3), &json!(100), &json!(3))
+    );
+
+    // The close: the loser leaves the queue, the winner is next.
+    sqlx::query("UPDATE matches SET closes_at = NOW(6) - INTERVAL 2 SECOND WHERE id = ?")
+        .bind(id.as_u64())
+        .execute(pool)
+        .await
+        .unwrap();
+    tick().await;
+    assert_eq!(admin.get("/match/current").await, Value::Null);
+    let (_, taken) = gateway_write(&gateway, &vote_path, None, ballot(id.clone(), "d5", "b")).await;
+    assert_eq!(taken["dropped"], 1, "closed");
+    let queue = eventually("the loser out", Duration::from_secs(10), || async {
+        let queue = entries().await;
+        (!queue.iter().any(|entry| entry["entry_id"] == entry_b)).then_some(queue)
+    })
+    .await;
+    assert_eq!(queue[0]["entry_id"], entry_a, "{queue:?}");
+    let logged: Vec<u64> =
+        sqlx::query_scalar("SELECT entry_id FROM rotation_picks WHERE entry_id IN (?, ?)")
+            .bind(entry_a)
+            .bind(entry_b)
+            .fetch_all(pool)
+            .await
+            .unwrap();
+    assert_eq!(logged, [entry_a], "the loser's pick is forgotten");
+    let history = viewer.get("/match/history").await;
+    let first = &history["matches"][0];
+    assert_eq!(
+        (
+            &first["status"],
+            &first["winner"],
+            &first["decided_by"],
+            &first["votes"]
+        ),
+        (&json!("closed"), &json!("a"), &json!("votes"), &json!(3))
+    );
+    assert_eq!(history["week"]["matches"], 1);
+    assert_eq!(history["week"]["votes"], 3);
+
+    // The winner on air: chosen by the listeners.
+    skip().await;
+    eventually("the winner on air", Duration::from_secs(20), || async {
+        (on_air().await == Some(entry_a)).then_some(())
+    })
+    .await;
+    let now_playing = eventually(
+        "chosen by the listeners",
+        Duration::from_secs(20),
+        || async {
+            let now_playing = station.client().get("/public/now-playing").await;
+            (!now_playing["now"]["match"].is_null()).then_some(now_playing)
+        },
+    )
+    .await;
+    assert_eq!(
+        now_playing["now"]["match"],
+        json!({"name": "The match", "percent": 100, "votes": 3})
+    );
+
+    // Every 2 tracks: the next track carries the next vote. A tie goes to
+    // the least recently played of the two.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/match/settings",
+            json!({"every_tracks": 2, "category_id": hits, "jingle_category_id": announce,
+                   "loser_same_day": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let open_next = || async {
+        let current = next_match().await;
+        let mut vote_entry = None;
+        for entry in entries().await {
+            if entry["track"]["track_id"] == current["vote_track"]["track_id"]
+                && entry["linked_to"].is_null()
+                && vote_entry.is_none()
+            {
+                vote_entry = entry["entry_id"].as_u64();
+            }
+        }
+        let vote_entry = vote_entry.unwrap();
+        while on_air().await != Some(vote_entry) {
+            let before = on_air().await;
+            skip().await;
+            eventually("the next track", Duration::from_secs(20), || async {
+                (on_air().await != before).then_some(())
+            })
+            .await;
+        }
+        // The API follows the engine's state: a moment later.
+        eventually("the vote open", Duration::from_secs(10), || async {
+            tick().await;
+            let open = admin.get("/match/current").await;
+            (open["status"] == "open").then_some(open)
+        })
+        .await
+    };
+    let close_now = |id: Value| async move {
+        sqlx::query("UPDATE matches SET closes_at = NOW(6) - INTERVAL 2 SECOND WHERE id = ?")
+            .bind(id.as_u64())
+            .execute(pool)
+            .await
+            .unwrap();
+        tick().await;
+        sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+            "SELECT CAST(status AS CHAR), CAST(winner AS CHAR), CAST(decided_by AS CHAR)
+             FROM matches WHERE id = ?",
+        )
+        .bind(id.as_u64())
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    };
+    let tie = open_next().await;
+    let id = tie["id"].clone();
+    let batch = json!({"writes": [
+        {"device": "d1", "fields": {"match_id": id, "choice": "a"}},
+        {"device": "d2", "fields": {"match_id": id, "choice": "b"}},
+    ]});
+    let (_, taken) = gateway_write(&gateway, &vote_path, None, batch).await;
+    assert_eq!(taken["counted"], 2);
+    let (status, winner, decided_by) = close_now(id.clone()).await;
+    assert_eq!(
+        (status.as_str(), decided_by.as_deref()),
+        ("closed", Some("tie"))
+    );
+    // The least recently played: never played first.
+    let last_played = |track: &Value| {
+        let track = track.as_u64();
+        async move {
+            sqlx::query_scalar::<_, Option<i64>>(
+                "SELECT CAST(UNIX_TIMESTAMP(MAX(started_at)) * 1000 AS SIGNED) FROM play_history
+                 WHERE track_id = ?",
+            )
+            .bind(track)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+        }
+    };
+    let (played_a, played_b) = (
+        last_played(&tie["choices"][0]["track_id"]).await,
+        last_played(&tie["choices"][1]["track_id"]).await,
+    );
+    if played_a.unwrap_or(i64::MIN) != played_b.unwrap_or(i64::MIN) {
+        let expected = if played_a.unwrap_or(i64::MIN) < played_b.unwrap_or(i64::MIN) {
+            "a"
+        } else {
+            "b"
+        };
+        assert_eq!(winner.as_deref(), Some(expected));
+    }
+
+    // No vote: decided the same way.
+    let quiet = open_next().await;
+    let (_, _, decided_by) = close_now(quiet["id"].clone()).await;
+    assert_eq!(decided_by.as_deref(), Some("no_votes"));
+
+    // Closed early by an operator, with the votes so far.
+    let early = open_next().await;
+    let (_, taken) = gateway_write(
+        &gateway,
+        &vote_path,
+        None,
+        ballot(early["id"].clone(), "d1", "b"),
+    )
+    .await;
+    assert_eq!(taken["counted"], 1);
+    let (status, _) = viewer
+        .request(Method::POST, "/match/current/close", None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, closed) = admin
+        .request(Method::POST, "/match/current/close", None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{closed}");
+    assert_eq!(
+        (&closed["status"], &closed["winner"], &closed["decided_by"]),
+        (&json!("closed"), &json!("b"), &json!("early"))
+    );
+    let early_a = early["choices"][0]["track_id"].clone();
+    let queue = entries().await;
+    assert_eq!(
+        queue[0]["track"]["track_id"], early["choices"][1]["track_id"],
+        "{queue:?}"
+    );
+    assert!(
+        queue
+            .iter()
+            .skip(1)
+            .all(|entry| entry["track"]["track_id"] != early_a)
+    );
+
+    // Cancelled: the first track stays, as an ordinary track.
+    let cancelled = open_next().await;
+    let (status, body) = admin
+        .request(Method::POST, "/match/current/cancel", None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "cancelled");
+    let queue = entries().await;
+    assert_eq!(
+        queue[0]["track"]["track_id"],
+        cancelled["choices"][0]["track_id"]
+    );
+    assert_eq!(admin.get("/match/current").await, Value::Null);
+    let (status, _) = admin
+        .request(Method::POST, "/match/current/cancel", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Turned off: the match waiting is cancelled, and nothing answers.
+    next_match().await;
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"match": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    tick().await;
+    let left: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM matches WHERE status IN ('queued', 'open')")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(left, 0);
+    let (status, _) = viewer.request(Method::GET, "/match/history", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // The devices' votes go an hour after their match.
+    sqlx::query("UPDATE matches SET closed_at = NOW(6) - INTERVAL 2 HOUR")
+        .execute(pool)
+        .await
+        .unwrap();
+    crate::matches::purge_devices(pool).await.unwrap();
+    let devices: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM match_votes")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(devices, 0);
+    station.stop().await;
+}

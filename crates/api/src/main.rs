@@ -32,6 +32,7 @@ mod library;
 mod likes;
 mod listeners;
 mod live;
+mod matches;
 mod medleys;
 mod migrate;
 mod modules;
@@ -306,6 +307,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     tasks.push(tokio::spawn(dedications::run(
         pool.clone(),
         Arc::clone(&stations),
+    )));
+    tasks.push(tokio::spawn(matches::run(
+        pool.clone(),
+        Arc::clone(&stations),
+        Arc::clone(&webhooks),
     )));
     tasks.push(tokio::spawn(top30::run(
         pool.clone(),
