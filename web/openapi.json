@@ -3833,6 +3833,64 @@
         ]
       }
     },
+    "/api/v1/library/tag-overrides": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "How many tracks have tags kept in Heron's database instead of their\nfiles. Admins.",
+        "operationId": "count_tag_overrides",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagOverridesCount"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/library/tag-overrides/write": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Writes every track's tags kept in Heron's database into its file, as\none `edit` batch that can be undone, whatever the library setting\n`write_tags` says: queues a `write_tag_overrides` task. The tags stay\nkept in Heron. Admins.",
+        "operationId": "write_tag_overrides",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryTask"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/library/tasks": {
       "get": {
         "tags": [
@@ -14411,52 +14469,13 @@
         "tags": [
           "library"
         ],
-        "summary": "Edits the tags of the selected tracks in Heron's database only, when\nthe library setting `write_tags` is off: the files are not changed.\nThe values are shown instead of the files' tags, and survive a rescan,\nuntil they are cleared. Operators and admins.",
+        "summary": "Edits the tags of the selected tracks in Heron's database only, when\nthe library setting `write_tags` is off: the files are not changed.\nThe values are shown instead of the files' tags, and survive a rescan;\n`POST /library/tag-overrides/write` writes them into the files.\nOperators and admins.",
         "operationId": "override_tags",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/TagOverrides"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SelectionResult"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/tracks/tag-overrides/clear": {
-      "post": {
-        "tags": [
-          "library"
-        ],
-        "summary": "Drops the tags kept in Heron's database for the selected tracks (at most\n10,000): they show their files' tags again. Works whatever `write_tags`\nsays. Operators and admins.",
-        "operationId": "clear_tag_overrides",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TagOverridesClear"
               }
             }
           },
@@ -27801,24 +27820,19 @@
         },
         "additionalProperties": false
       },
-      "TagOverridesClear": {
+      "TagOverridesCount": {
         "type": "object",
         "required": [
-          "selection"
+          "tracks"
         ],
         "properties": {
-          "fields": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TagField"
-            },
-            "description": "The fields to give back to the files; every field when empty."
-          },
-          "selection": {
-            "$ref": "#/components/schemas/TrackSelection"
+          "tracks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tracks with tags kept in Heron's database (the trash left out).",
+            "minimum": 0
           }
-        },
-        "additionalProperties": false
+        }
       },
       "Target": {
         "oneOf": [
@@ -28036,6 +28050,21 @@
                   "format": "int64",
                   "minimum": 0
                 }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Writes every track's tags kept in Heron's database\n(`track_tag_overrides`) into its file, as one `edit` batch, whatever\n`write_tags` says. The tags stay kept in Heron.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "write_tag_overrides"
+                ]
               }
             }
           },
@@ -28678,7 +28707,7 @@
                 "items": {
                   "$ref": "#/components/schemas/TagField"
                 },
-                "description": "Tags kept in Heron's database (library setting `write_tags` off),\nshown instead of the file's: `POST /tracks/tag-overrides/clear`\ngives them back to the file."
+                "description": "Tags kept in Heron's database (library setting `write_tags` off),\nshown instead of the file's: `POST /library/tag-overrides/write`\nwrites them into the files."
               }
             }
           }
