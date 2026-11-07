@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Listener statistics, from the stream servers: today live, then by day,
-// week or month, the hours of the day, the tracks listeners leave and the
-// players (see docs/statistics.md).
+// Listener statistics, from the stream servers: the audience figures of a
+// period, today live, then by day, week or month, the hours of the day,
+// the tracks listeners leave and the players, for the output and server of
+// the page's filter (see docs/statistics.md).
 
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
@@ -12,25 +13,42 @@ import { Card, Empty, ErrorView, Loading, PageHead, Segmented } from "../compone
 import { type PlainKey, locale, number, t } from "../i18n";
 import { duration, shortTime } from "../lib/format";
 import {
+  type Filter,
   type Grouping,
   type Measure,
   addDays,
   barLabel,
+  change,
+  changeText,
   csvUrl,
   dayOf,
   dayStart,
   decimal,
+  filterOf,
+  filterParams,
   hourLabel,
+  lengthShares,
   listeningHours,
   measureText,
   percent,
   periodLabel,
+  shortDay,
   useListenersNow,
 } from "../lib/listeners";
-import { Link } from "../lib/router";
+import { Link, setSearch, useLocation } from "../lib/router";
 import { here } from "../lib/station";
 
 type PeriodTotals = Schemas["PeriodTotals"];
+type Audience = Schemas["Audience"];
+type HourMeasure = "average" | "tune_in" | "tune_out";
+
+const LENGTHS: { key: keyof Schemas["SessionLengths"]; label: PlainKey }[] = [
+  { key: "under_1_min", label: "statistics.lengthUnder1Min" },
+  { key: "from_1_to_5_min", label: "statistics.length1To5Min" },
+  { key: "from_5_to_30_min", label: "statistics.length5To30Min" },
+  { key: "from_30_min_to_2_h", label: "statistics.length30MinTo2H" },
+  { key: "over_2_h", label: "statistics.lengthOver2H" },
+];
 
 const RANGES = [7, 30, 90, 365] as const;
 
@@ -58,7 +76,15 @@ function periodTooltip(row: PeriodTotals, measure: Measure, grouping: Grouping):
   );
 }
 
-function hourTooltip(hour: number, row: Schemas["HourOfDay"] | undefined): ReactNode {
+function hourTooltip(hour: number, row: Schemas["HourOfDay"] | undefined, measure: HourMeasure): ReactNode {
+  if (row && measure !== "average") {
+    const value = measure === "tune_in" ? row.tune_in : row.tune_out;
+    return (
+      <>
+        <strong>{t("statistics.perDay", { value: decimal(value) })}</strong> · {hourLabel(hour)}
+      </>
+    );
+  }
   if (!row) {
     return (
       <>
@@ -83,57 +109,192 @@ function Csv({ href }: Readonly<{ href: string }>) {
   );
 }
 
+/** The servers of the filter's output (every server read, for the whole station). */
+function serversOf(now: Schemas["ListenersNow"] | undefined, output: number | undefined): Schemas["ServerListeners"][] {
+  const parts = output === undefined ? undefined : now?.outputs.find((o) => o.output_id === output)?.servers;
+  return (now?.servers ?? []).filter((s) => !parts || parts.some((p) => p.server_id === s.server_id));
+}
+
 export function Statistics() {
   const station = useQuery({
     queryKey: ["settings", "station"],
     queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/station", { params: { path: here() } })),
   });
   const outputs = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/outputs", { params: { path: here() } })) });
-  const [output, setOutput] = useState<number | undefined>(undefined);
+  const now = useListenersNow();
+  // The output and server are in the address, for the whole page.
+  const filter = filterOf(useLocation().search);
+  const servers = serversOf(now.data, filter.output);
   const zone = station.data?.timezone;
+  const pick = (value: string) => (value === "" ? null : Number(value));
   return (
     <>
       <PageHead
         title={t("nav.statistics")}
         description={t("statistics.description", { zone: zone ?? "…" })}
         actions={
-          <select
-            className="input"
-            style={{ width: "auto" }}
-            aria-label={t("statistics.output")}
-            value={output ?? ""}
-            onChange={(e) => setOutput(e.target.value === "" ? undefined : Number(e.target.value))}
-          >
-            <option value="">{t("statistics.wholeStation")}</option>
-            {outputs.data?.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+          <>
+            <select
+              className="input"
+              style={{ width: "auto" }}
+              aria-label={t("statistics.output")}
+              value={filter.output ?? ""}
+              onChange={(e) => setSearch({ output: pick(e.target.value) })}
+            >
+              <option value="">{t("statistics.wholeStation")}</option>
+              {outputs.data?.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+            {(servers.length > 1 || filter.server !== undefined) && (
+              <select
+                className="input"
+                style={{ width: "auto" }}
+                aria-label={t("statistics.server")}
+                value={filter.server ?? ""}
+                onChange={(e) => setSearch({ server: pick(e.target.value) })}
+              >
+                <option value="">{t("statistics.allServers")}</option>
+                {servers.map((s) => (
+                  <option key={s.server_id} value={s.server_id}>
+                    {s.relay_of == null ? s.name : `${s.name} (${t("statistics.relay")})`}
+                  </option>
+                ))}
+                {filter.server !== undefined && !servers.some((s) => s.server_id === filter.server) && (
+                  <option value={filter.server}>#{filter.server}</option>
+                )}
+              </select>
+            )}
+          </>
         }
       />
       {station.isPending ? (
         <Loading />
       ) : (
         <div className="stack">
-          <Today zone={zone} output={output} />
-          <OverTime zone={zone} output={output} />
-          <HoursOfDay zone={zone} output={output} />
-          <Departures zone={zone} />
-          <Players zone={zone} output={output} />
+          <AudienceCard zone={zone} filter={filter} />
+          <Today zone={zone} filter={filter} />
+          <OverTime zone={zone} filter={filter} />
+          <HoursOfDay zone={zone} filter={filter} />
+          <Departures zone={zone} filter={filter} />
+          <Players zone={zone} filter={filter} />
         </div>
       )}
     </>
   );
 }
 
-function Tile({ label, value, hint }: Readonly<{ label: string; value: ReactNode; hint?: string | undefined }>) {
+function Tile({
+  label,
+  value,
+  hint,
+  sub,
+  delta,
+}: Readonly<{ label: string; value: ReactNode; hint?: string | undefined; sub?: ReactNode; delta?: { ratio: number | null; previous: string } | undefined }>) {
   return (
     <div className="stat" title={hint}>
       <span className="value">{value}</span>
       <span className="label">{label}</span>
+      {sub && <span className="muted small">{sub}</span>}
+      {delta && (
+        <span className={`small ${delta.ratio !== null && delta.ratio < 0 ? "warn" : "muted"}`} title={t("statistics.previousValue", { value: delta.previous })}>
+          {t("statistics.vsPrevious", { change: changeText(delta.ratio, locale()) })}
+        </span>
+      )}
     </div>
+  );
+}
+
+/** The day and time of a peak, in station time. */
+function peakAt(unixMs: number | null | undefined, zone: string | undefined): string | undefined {
+  if (unixMs === null || unixMs === undefined) {
+    return undefined;
+  }
+  return t("statistics.peakAt", { day: shortDay(dayOf(unixMs, zone)), time: shortTime(unixMs) });
+}
+
+function AudienceCard({ zone, filter }: Readonly<{ zone: string | undefined; filter: Filter }>) {
+  const [range, setRange] = useState(30);
+  const to = dayOf(Date.now(), zone);
+  const from = addDays(to, 1 - range);
+  const figures = useQuery({
+    queryKey: ["listeners", "audience", from, to, filter],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/v1/stations/{station_id}/listeners/audience", {
+          params: { path: here(), query: { from, to, ...query(filterParams(filter)) } },
+        }),
+      ),
+  });
+  const current: Audience | undefined = figures.data?.current;
+  const previous: Audience | undefined = figures.data?.previous;
+  const delta = (pick: (a: Audience) => number | null | undefined, write: (value: number | null | undefined) => string) =>
+    current && previous ? { ratio: change(pick(current), pick(previous)), previous: write(pick(previous)) } : undefined;
+  const hours = (value: number | null | undefined) => listeningHours(value);
+  const seconds = (value: number | null | undefined) => (value == null ? "–" : duration(value * 1000));
+  const count = (value: number | null | undefined) => (value == null ? "–" : number(value));
+  const shares = lengthShares(current?.session_lengths);
+  const lengthBars: Bar[] = shares.map((s, i) => ({
+    key: s.key,
+    label: t(LENGTHS[i]?.label ?? "statistics.lengthOver2H"),
+    value: s.share * 100,
+    tooltip: (
+      <>
+        <strong>{t(LENGTHS[i]?.label ?? "statistics.lengthOver2H")}</strong> · {t("statistics.lengthTooltip", { share: percent(s.share, locale()), count: number(s.count) })}
+      </>
+    ),
+  }));
+
+  return (
+    <Card
+      title={t("statistics.audience")}
+      actions={
+        <>
+          <RangeSelect value={range} onChange={setRange} />
+          <Csv href={csvUrl("audience", { from, to, ...filterParams(filter) })} />
+        </>
+      }
+    >
+      {figures.isPending && <Loading />}
+      {figures.isError && <ErrorView error={figures.error} />}
+      {current && (
+        <div className="stack">
+          <div className="stats-tiles">
+            <Tile
+              label={t("statistics.cume")}
+              value={decimal(current.cume, range === 1 ? 0 : 1)}
+              hint={current.listener_days == null ? undefined : t("statistics.cumeHint", { count: number(current.listener_days) })}
+              delta={delta((a) => a.cume, (v) => decimal(v))}
+            />
+            <Tile label={t("statistics.ttsl")} value={hours(current.ttsl_hours)} hint={t("statistics.ttslHint")} delta={delta((a) => a.ttsl_hours, hours)} />
+            <Tile
+              label={t("statistics.atsl")}
+              value={seconds(current.atsl_s)}
+              hint={t("statistics.atslHint")}
+              sub={current.median_session_s == null ? undefined : t("statistics.median", { value: seconds(current.median_session_s) })}
+              delta={delta((a) => a.atsl_s, seconds)}
+            />
+            <Tile label={t("statistics.aqh")} value={decimal(current.aqh)} hint={t("statistics.aqhHint")} delta={delta((a) => a.aqh, (v) => decimal(v))} />
+            <Tile label={t("statistics.peak")} value={count(current.peak)} sub={peakAt(current.peak_at_unix_ms, zone)} delta={delta((a) => a.peak, count)} />
+            <Tile label={t("statistics.sessions")} value={count(current.sessions)} delta={delta((a) => a.sessions, count)} />
+          </div>
+          {current.sessions == null ? (
+            <p className="muted small" style={{ margin: 0 }}>
+              {t("statistics.noAudience")}
+            </p>
+          ) : (
+            <>
+              <p className="muted small" style={{ margin: 0 }}>
+                {t("statistics.audienceHelp")}
+              </p>
+              {current.sessions > 0 && <BarChart bars={lengthBars} label={t("statistics.sessionLengths")} />}
+            </>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -146,9 +307,9 @@ function serverNow(now: Schemas["ListenersNow"] | undefined, server: number, out
   return outputNow?.servers.find((s) => s.server_id === server)?.listeners;
 }
 
-function Today({ zone, output }: Readonly<{ zone: string | undefined; output: number | undefined }>) {
+function Today({ zone, filter }: Readonly<{ zone: string | undefined; filter: Filter }>) {
   const now = useListenersNow();
-  const [server, setServer] = useState<number | undefined>(undefined);
+  const { output, server } = filter;
   const today = dayOf(Date.now(), zone);
   const from = dayStart(today, zone);
   const to = dayStart(addDays(today, 1), zone);
@@ -163,15 +324,16 @@ function Today({ zone, output }: Readonly<{ zone: string | undefined; output: nu
     refetchInterval: 60_000,
   });
   const totals = useQuery({
-    queryKey: ["listeners", "days", today, today, output, "day"],
+    queryKey: ["listeners", "days", today, today, filter, "day"],
     queryFn: () =>
       unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/days", { params: { path: here(), query: { from: today, to: today, ...query({ output_id: output }) } } }),
+        api.GET("/api/v1/stations/{station_id}/listeners/days", {
+          params: { path: here(), query: { from: today, to: today, ...query(filterParams(filter)) } },
+        }),
       ),
     refetchInterval: 60_000,
   });
-  const parts = output === undefined ? undefined : now.data?.outputs.find((o) => o.output_id === output)?.servers;
-  const servers = (now.data?.servers ?? []).filter((s) => !parts || parts.some((p) => p.server_id === s.server_id));
+  const servers = serversOf(now.data, output);
   const current =
     server !== undefined
       ? serverNow(now.data, server, output)
@@ -182,27 +344,7 @@ function Today({ zone, output }: Readonly<{ zone: string | undefined; output: nu
   const unread = now.data?.outputs.filter((o) => o.error && (output === undefined || o.output_id === output)) ?? [];
 
   return (
-    <Card
-      title={t("statistics.today")}
-      actions={
-        servers.length > 1 && (
-          <select
-            className="input"
-            style={{ width: "auto" }}
-            aria-label={t("statistics.server")}
-            value={server ?? ""}
-            onChange={(e) => setServer(e.target.value === "" ? undefined : Number(e.target.value))}
-          >
-            <option value="">{t("statistics.allServers")}</option>
-            {servers.map((s) => (
-              <option key={s.server_id} value={s.server_id}>
-                {s.relay_of == null ? s.name : `${s.name} (${t("statistics.relay")})`}
-              </option>
-            ))}
-          </select>
-        )
-      }
-    >
+    <Card title={t("statistics.today")}>
       <div className="stack">
         {unread.map((o) => (
           <p key={o.output_id} className="warn small" style={{ margin: 0 }}>
@@ -237,7 +379,7 @@ function Today({ zone, output }: Readonly<{ zone: string | undefined; output: nu
               tooltip={minuteTooltip}
             />
           ))}
-        {servers.length > 1 && (
+        {servers.length > 1 && server === undefined && (
           <table className="table">
             <caption className="muted small" style={{ textAlign: "left" }}>
               {t("statistics.servers")}
@@ -285,18 +427,18 @@ function RangeSelect({ value, onChange }: Readonly<{ value: number; onChange: (d
 }
 
 
-function OverTime({ zone, output }: Readonly<{ zone: string | undefined; output: number | undefined }>) {
+function OverTime({ zone, filter }: Readonly<{ zone: string | undefined; filter: Filter }>) {
   const [grouping, setGrouping] = useState<Grouping>("day");
   const [range, setRange] = useState(30);
   const [measure, setMeasure] = useState<Measure>("listening_hours");
   const to = dayOf(Date.now(), zone);
   const from = addDays(to, 1 - range);
   const totals = useQuery({
-    queryKey: ["listeners", "days", from, to, output, grouping],
+    queryKey: ["listeners", "days", from, to, filter, grouping],
     queryFn: () =>
       unwrap(
         api.GET("/api/v1/stations/{station_id}/listeners/days", {
-          params: { path: here(), query: { from, to, ...query({ output_id: output, group: grouping }) } },
+          params: { path: here(), query: { from, to, ...query({ ...filterParams(filter), group: grouping }) } },
         }),
       ),
   });
@@ -312,7 +454,7 @@ function OverTime({ zone, output }: Readonly<{ zone: string | undefined; output:
   return (
     <Card
       title={t("statistics.overTime")}
-      actions={<Csv href={csvUrl("days", { from, to, output_id: output, group: grouping })} />}
+      actions={<Csv href={csvUrl("days", { from, to, ...filterParams(filter), group: grouping })} />}
     >
       <div className="stack">
         <div className="row">
@@ -382,22 +524,26 @@ function OverTime({ zone, output }: Readonly<{ zone: string | undefined; output:
   );
 }
 
-function HoursOfDay({ zone, output }: Readonly<{ zone: string | undefined; output: number | undefined }>) {
+function HoursOfDay({ zone, filter }: Readonly<{ zone: string | undefined; filter: Filter }>) {
   const [range, setRange] = useState(30);
+  const [measure, setMeasure] = useState<HourMeasure>("average");
   const to = dayOf(Date.now(), zone);
   const from = addDays(to, 1 - range);
   const byHour = useQuery({
-    queryKey: ["listeners", "hours", from, to, output],
+    queryKey: ["listeners", "hours", from, to, filter],
     queryFn: () =>
-      unwrap(api.GET("/api/v1/stations/{station_id}/listeners/hours-of-day", { params: { path: here(), query: { from, to, ...query({ output_id: output }) } } })),
+      unwrap(
+        api.GET("/api/v1/stations/{station_id}/listeners/hours-of-day", { params: { path: here(), query: { from, to, ...query(filterParams(filter)) } } }),
+      ),
   });
+  const tunes = byHour.data?.some((h) => h.tune_in != null) ?? false;
   const bars: Bar[] = Array.from({ length: 24 }, (_, hour) => {
     const row = byHour.data?.find((h) => h.hour === hour);
     return {
       key: String(hour),
       label: hour % 3 === 0 ? hourLabel(hour) : "",
-      value: row?.average ?? 0,
-      tooltip: hourTooltip(hour, row),
+      value: (measure === "average" ? row?.average : measure === "tune_in" ? row?.tune_in : row?.tune_out) ?? 0,
+      tooltip: hourTooltip(hour, row, measure),
     };
   });
   return (
@@ -406,7 +552,7 @@ function HoursOfDay({ zone, output }: Readonly<{ zone: string | undefined; outpu
       actions={
         <>
           <RangeSelect value={range} onChange={setRange} />
-          <Csv href={csvUrl("hours-of-day", { from, to, output_id: output })} />
+          <Csv href={csvUrl("hours-of-day", { from, to, ...filterParams(filter) })} />
         </>
       }
     >
@@ -416,24 +562,39 @@ function HoursOfDay({ zone, output }: Readonly<{ zone: string | undefined; outpu
         (byHour.data.length === 0 ? (
           <Empty>{t("statistics.noData")}</Empty>
         ) : (
-          <>
+          <div className="stack">
+            {tunes && (
+              <Segmented
+                label={t("statistics.measure")}
+                value={measure}
+                onChange={setMeasure}
+                options={[
+                  { value: "average", label: t("statistics.listeners") },
+                  { value: "tune_in", label: t("statistics.tuneIn") },
+                  { value: "tune_out", label: t("statistics.tuneOut") },
+                ]}
+              />
+            )}
             <BarChart bars={bars} label={t("statistics.hoursOfDayChart")} />
-            <p className="muted small" style={{ marginBottom: 0 }}>
-              {t("statistics.hoursOfDayHelp")}
+            <p className="muted small" style={{ margin: 0 }}>
+              {measure === "average" ? t("statistics.hoursOfDayHelp") : t("statistics.tuneHelp")}
             </p>
-          </>
+          </div>
         ))}
     </Card>
   );
 }
 
-function Departures({ zone }: Readonly<{ zone: string | undefined }>) {
+function Departures({ zone, filter }: Readonly<{ zone: string | undefined; filter: Filter }>) {
   const [range, setRange] = useState(30);
   const to = dayOf(Date.now(), zone);
   const from = addDays(to, 1 - range);
   const tracks = useQuery({
-    queryKey: ["listeners", "tracks", from, to],
-    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/listeners/tracks", { params: { path: here(), query: { from, to, limit: 20 } } })),
+    queryKey: ["listeners", "tracks", from, to, filter],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/v1/stations/{station_id}/listeners/tracks", { params: { path: here(), query: { from, to, limit: 20, ...query(filterParams(filter)) } } }),
+      ),
   });
   return (
     <Card
@@ -441,7 +602,7 @@ function Departures({ zone }: Readonly<{ zone: string | undefined }>) {
       actions={
         <>
           <RangeSelect value={range} onChange={setRange} />
-          <Csv href={csvUrl("tracks", { from, to, limit: 500 })} />
+          <Csv href={csvUrl("tracks", { from, to, limit: 500, ...filterParams(filter) })} />
         </>
       }
       flush
@@ -488,14 +649,14 @@ function Departures({ zone }: Readonly<{ zone: string | undefined }>) {
   );
 }
 
-function Players({ zone, output }: Readonly<{ zone: string | undefined; output: number | undefined }>) {
+function Players({ zone, filter }: Readonly<{ zone: string | undefined; filter: Filter }>) {
   const [range, setRange] = useState(30);
   const to = dayOf(Date.now(), zone);
   const from = addDays(to, 1 - range);
   const players = useQuery({
-    queryKey: ["listeners", "players", from, to, output],
+    queryKey: ["listeners", "players", from, to, filter],
     queryFn: () =>
-      unwrap(api.GET("/api/v1/stations/{station_id}/listeners/players", { params: { path: here(), query: { from, to, ...query({ output_id: output }) } } })),
+      unwrap(api.GET("/api/v1/stations/{station_id}/listeners/players", { params: { path: here(), query: { from, to, ...query(filterParams(filter)) } } })),
   });
   return (
     <Card title={t("statistics.players")} actions={<RangeSelect value={range} onChange={setRange} />} flush>

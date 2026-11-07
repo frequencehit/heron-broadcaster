@@ -62,7 +62,7 @@ A station's streams are often repeated by **relay servers**: Icecast relays pull
 - **No double count.** A relay connects to the master as a listener of each mount it relays; that connection is left out of the master's count. It is recognized in the master's listener list by the relay's address (its `host`, resolved) and the player Icecast relays connect with (`Icecast …`). Its session is not recorded.
 - **A relay behind NAT**, whose address the master does not see: set `relay_subtract_one` on it. Its connection then counts as 1 listener per relayed mount the relay has, subtracted from the master's count. The same is done when the master's listener list cannot be read (no admin credentials): the address cannot be checked.
 - **Sessions and distinct listeners** count across the master and its relays as across outputs: a session is one listener's connection to one server for one output, and a listener is recognized by their address and player, so a listener who moves from the master to a relay is one distinct listener. Listeners behind a relay's own CDN keep the limitation below.
-- **Per server**: the minute samples are kept per server, so the statistics page shows the listeners of the master and of each relay, as well as the total; the totals per day, hour, week and month are per output and for the station.
+- **Per server**: the minute samples and the totals per day and hour are kept per server too, so every figure of the statistics page can be read for the master or one relay as well as for all of them. A relay's figures are its own listeners: those who connected to it (its connection to the master is left out, above).
 
 
 ### Per track
@@ -70,6 +70,26 @@ A station's streams are often repeated by **relay servers**: Icecast relays pull
 For each play of the music decks (not the FX player), from the [play history](api.md#play-history): the station's listeners when it started and when it ended, the change, and its departures. Over a period, tracks are compared by their **departure rate**: departures over listeners at the start, so that a track played at a busy hour does not look worse than one played at night. Tracks played fewer than 3 times in the period (`min_plays`) are left out of that ranking.
 
 Departures are counted to the minute: a session ends when its listener was last seen, so they left within the next minute, half a minute later on average, and that is when the departure is counted. A listener who leaves in the first seconds of a track may be counted on the one before. A session split at midnight is not a departure. With many plays the error averages out; a single play says little.
+
+## Audience figures
+
+The figures radios report, for a period (one day or more, station time) and the filters chosen (the station or one output, all servers or one), from the sessions and the minute samples:
+
+| Figure | Defined as |
+|---|---|
+| **TTSL**, total time spent listening | The sessions' lengths added up, in hours |
+| **ATSL**, average time spent listening | TTSL divided by the number of sessions, with the **median** session length beside it: a few very long sessions pull the average up |
+| **Cume**, unique listeners | Distinct listeners of each day (address and player, as above); for a period of several days, their average per day, with their sum (*listener-days*) |
+| **AQH**, average quarter-hour audience | For each clock quarter-hour (`:00`, `:15`, `:30`, `:45`, station time) of the period measured, the listeners heard for at least 5 minutes in it, as audience measurers count; AQH is their average over those quarter-hours |
+| **Peak** | The highest concurrent listeners of the period, and the minute it was reached (the first one, on a tie) |
+| **Sessions** | Their number, and how many lasted under 1 minute, 1 to 5 minutes, 5 to 30 minutes, 30 minutes to 2 hours, over 2 hours |
+| **Tune-in, tune-out** | For each hour of the day, the sessions that started and that ended in it, on average per day (a session split at midnight neither starts nor ends there) |
+
+- **Sessions shorter than 5 seconds are left out** of every audience figure: players and directories probing the stream make them. This floor is fixed. It is lower than the minimum session length of the day totals (1 minute by default, [Settings](#settings)), so the short listens show in the session lengths; the cume can be higher than the day's distinct listeners for that reason.
+- A session going on at midnight is split there (see [Days, hours and weeks](#days-hours-and-weeks)), so it counts as two sessions, one each day.
+- The quarter-hours are fixed clock quarter-hours, not the station's dayparts. A quarter-hour counts when a listener list was read in it.
+- Each figure comes with the same figure for the **previous period** of the same length (the 30 days before, for the last 30 days), to show the change.
+- The audience figures need the sessions and the minute samples, kept `retention_days`: a period reaching further back counts only the days still kept. Without admin credentials, only the peak is known.
 
 ## Privacy
 
@@ -100,24 +120,25 @@ and, for a relay, `relay_mounts` and `relay_subtract_one` ([Relay servers](#rela
 
 ## API
 
-Viewers can read every statistic; the routes are under `/api/v1/listeners`. Periods are dates (`YYYY-MM-DD`, station time, both included) or Unix milliseconds for minute samples; `output_id` limits the answer to one output (the whole station otherwise).
+Viewers can read every statistic; the routes are under `/api/v1/listeners`. Periods are dates (`YYYY-MM-DD`, station time, both included) or Unix milliseconds for minute samples; `output_id` limits the answer to one output (the whole station otherwise), and `server_id` to one server's part (the master or a relay; every server otherwise).
 
 | Route | Answer |
 |---|---|
 | `GET /listeners/now` | Each enabled output's listeners at the last minute, when that was, whether its sessions are available, the error if a server could not be read, and its part on each server (`servers`); each server's listeners (`servers`: master and relays, `null` when it could not be read); the station's total |
-| `GET /listeners/samples` (`from_unix_ms`, `to_unix_ms`, at most 8 days; `output_id`; `server_id`: only that server's part) | Concurrent listeners minute by minute, gaps as missing minutes |
-| `GET /listeners/days` (`from`, `to`, `output_id`, `group`: `hour`, `day` (by default), `week`, `month`) | Per period: days and minutes measured, peak, average, listening hours, sessions, average session, distinct listeners (for weeks and months, the average per day) and listener-days |
-| `GET /listeners/hours-of-day` (`from`, `to`, `output_id`) | For each hour of the day (0 to 23), averaged over the days of the period: average and peak listeners, listening hours |
-| `GET /listeners/tracks` (`from`, `to`, `min_plays` (3), `limit`) | Tracks of the period by departure rate: plays, average listeners at start and end, departures, departure rate |
-| `GET /listeners/players` (`from`, `to`, `output_id`, `limit`) | Sessions and listening hours by player (user agent) |
+| `GET /listeners/samples` (`from_unix_ms`, `to_unix_ms`, at most 8 days; `output_id`; `server_id`) | Concurrent listeners minute by minute, gaps as missing minutes |
+| `GET /listeners/audience` (`from`, `to`, `output_id`, `server_id`) | The [audience figures](#audience-figures) of the period and of the previous period of the same length: days measured, peak and when, sessions and their lengths, TTSL, ATSL, median session, cume, listener-days, AQH |
+| `GET /listeners/days` (`from`, `to`, `output_id`, `server_id`, `group`: `hour`, `day` (by default), `week`, `month`) | Per period: days and minutes measured, peak, average, listening hours, sessions, average session, distinct listeners (for weeks and months, the average per day) and listener-days |
+| `GET /listeners/hours-of-day` (`from`, `to`, `output_id`, `server_id`) | For each hour of the day (0 to 23), averaged over the days of the period: average and peak listeners, listening hours, tune-in and tune-out |
+| `GET /listeners/tracks` (`from`, `to`, `output_id`, `server_id`, `min_plays` (3), `limit`) | Tracks of the period by departure rate: plays, average listeners at start and end, departures, departure rate |
+| `GET /listeners/players` (`from`, `to`, `output_id`, `server_id`, `limit`) | Sessions and listening hours by player (user agent) |
 
-`days`, `hours-of-day` and `tracks` answer in CSV with `format=csv` (UTF-8, comma-separated, a header row, one row per day, hour or track), for reporting to rights societies or advertisers. Values not available (no sessions without admin credentials, a day with no minute measured) are empty in CSV and `null` in JSON.
+`audience`, `days`, `hours-of-day` and `tracks` answer in CSV with `format=csv` (UTF-8, comma-separated, a header row, one row per figure, day, hour or track; the audience figures with a column for the period and one for the previous period), for reporting to rights societies or advertisers. Values not available (no sessions without admin credentials, a day with no minute measured) are empty in CSV and `null` in JSON.
 
 Today's figures are computed as the minutes go by: today's row in `GET /listeners/days` changes until midnight.
 
 ## Web UI
 
-The **Statistics** page: today live (listeners minute by minute, now, peak and listening hours so far, for all servers or one: the master or a relay, and each server's listeners now), then by day, week or month over a period, the hours of the day, per output or for the whole station, the players, and the tracks with the most departures; each table can be downloaded in CSV. **On air** shows each output's current listeners, and the station's total.
+The **Statistics** page has two filters at the top, for the whole page: the output (or the whole station) and the server (all servers, the master or a relay). Both are kept in the address (`?output=`, `?server=`), so a filtered page can be bookmarked or shared. The page shows the [audience figures](#audience-figures) of a period as tiles, each with its change against the previous period, and the session lengths; today live (listeners minute by minute, now, peak and listening hours so far, and each server's listeners now); then by day, week or month over a period, the hours of the day (listeners, tune-in, tune-out), the players, and the tracks with the most departures. Every card follows the filters, and so does each CSV download. **On air** shows each output's current listeners, and the station's total.
 
 ## Metrics
 
@@ -125,11 +146,11 @@ The **Statistics** page: today live (listeners minute by minute, now, peak and l
 
 ## Storage
 
-See [Data model – Listener statistics](data-model.md#listener-statistics). Every minute, the collector writes the minute's samples, opens, continues and closes sessions, then recomputes the totals of the current hour and day (and of the previous ones, whose sessions may just have ended). The totals tables are small: one row per output and per hour.
+See [Data model – Listener statistics](data-model.md#listener-statistics). Every minute, the collector writes the minute's samples, opens, continues and closes sessions, then recomputes the totals of the current hour and day (and of the previous ones, whose sessions may just have ended). The totals tables are small: one row per output, server and hour, and for all of them. When the API first starts with per-server totals, it recomputes the totals of the days still covered by the sessions and samples kept, once.
 
 ## Limitations
 
-- The totals per day, hour, week and month are per output, not per server: the minute samples have each server's part.
+- The totals per server start with this feature: days whose samples were already purged have the totals of all servers only.
 - A relay is recognized in the master's list by the address its `host` resolves to: give its address as the master sees it, or set `relay_subtract_one`.
 - Only Icecast for now: Shoutcast with its outputs ([M11](roadmap/m11-sinks-live-dj.md)), HLS later.
 - A minute's sample is the count at the moment of the request: a listener who stays less than a minute may be missed by the concurrent counts (sessions still see them, with admin credentials, when their connection lasts across a request).

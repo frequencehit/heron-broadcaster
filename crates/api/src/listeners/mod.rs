@@ -3,6 +3,7 @@
 //! Listener statistics, read from the stream servers (`collector`), and
 //! the routes that show them. See `docs/statistics.md`.
 
+pub mod audience;
 pub mod collector;
 mod icecast;
 mod sessions;
@@ -38,6 +39,7 @@ pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(now))
         .routes(routes!(samples))
+        .routes(routes!(audience_route))
         .routes(routes!(days))
         .routes(routes!(hours_of_day))
         .routes(routes!(tracks))
@@ -207,6 +209,9 @@ pub struct PeriodQuery {
     pub to: String,
     /// Only this output; the whole station otherwise.
     pub output_id: Option<u64>,
+    /// Only this server's part (the master or a relay); every server's
+    /// otherwise.
+    pub server_id: Option<u64>,
     /// Rows per hour, day (by default), week or month.
     #[param(inline)]
     pub group: Option<Grouping>,
@@ -267,12 +272,31 @@ type TotalRow = (
     Option<u32>,
 );
 
+/// The output and server a statistic is limited to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Filter {
+    pub output_id: Option<u64>,
+    pub server_id: Option<u64>,
+}
+
+impl Filter {
+    /// `AND` conditions on the `output_id` and `server_id` of `table`.
+    fn push(self, sql: &mut sqlx::QueryBuilder<sqlx::MySql>, table: &str) {
+        if let Some(id) = self.output_id {
+            sql.push(format!(" AND {table}.output_id = ")).push_bind(id);
+        }
+        if let Some(id) = self.server_id {
+            sql.push(format!(" AND {table}.server_id = ")).push_bind(id);
+        }
+    }
+}
+
 async fn total_rows(
     state: &AppState,
     station: &Station,
     from: Date,
     to: Date,
-    output_id: Option<u64>,
+    filter: Filter,
     hourly: bool,
 ) -> ApiResult<Vec<TotalRow>> {
     let mut sql = sqlx::QueryBuilder::new(
@@ -285,9 +309,13 @@ async fn total_rows(
         .push_bind(from.to_string())
         .push(" AND day <= ")
         .push_bind(to.to_string());
-    match output_id {
+    match filter.output_id {
         Some(id) => sql.push(" AND output_id = ").push_bind(id),
         None => sql.push(" AND output_id IS NULL"),
+    };
+    match filter.server_id {
+        Some(id) => sql.push(" AND server_id = ").push_bind(id),
+        None => sql.push(" AND server_id IS NULL"),
     };
     sql.push(if hourly {
         " AND hour IS NOT NULL"
@@ -389,12 +417,16 @@ async fn days(
 ) -> ApiResult<Response> {
     let (from, to) = period(&query.from, &query.to)?;
     let grouping = query.group.unwrap_or_default();
+    let filter = Filter {
+        output_id: query.output_id,
+        server_id: query.server_id,
+    };
     let rows = total_rows(
         &state,
         &station,
         from,
         to,
-        query.output_id,
+        filter,
         grouping == Grouping::Hour,
     )
     .await?;
@@ -414,6 +446,8 @@ pub struct HoursQuery {
     pub to: String,
     /// Only this output; the whole station otherwise.
     pub output_id: Option<u64>,
+    /// Only this server's part; every server's otherwise.
+    pub server_id: Option<u64>,
     #[param(inline)]
     pub format: Option<Format>,
 }
@@ -431,6 +465,12 @@ pub struct HourOfDay {
     pub peak: u32,
     /// Listening hours, on average per day.
     pub listening_hours: f64,
+    /// Sessions of at least 5 s started in that hour, on average per day;
+    /// missing without listener lists.
+    pub tune_in: Option<f64>,
+    /// Sessions that ended in that hour (not at midnight), on average per
+    /// day.
+    pub tune_out: Option<f64>,
 }
 
 fn hours_from(rows: Vec<TotalRow>) -> Vec<HourOfDay> {
@@ -455,6 +495,8 @@ fn hours_from(rows: Vec<TotalRow>) -> Vec<HourOfDay> {
             },
             peak,
             listening_hours: listened / 60.0 / f64::from(days.max(1)),
+            tune_in: None,
+            tune_out: None,
         })
         .collect()
 }
@@ -473,7 +515,23 @@ async fn hours_of_day(
     Query(query): Query<HoursQuery>,
 ) -> ApiResult<Response> {
     let (from, to) = period(&query.from, &query.to)?;
-    let hours = hours_from(total_rows(&state, &station, from, to, query.output_id, true).await?);
+    let filter = Filter {
+        output_id: query.output_id,
+        server_id: query.server_id,
+    };
+    let mut hours = hours_from(total_rows(&state, &station, from, to, filter, true).await?);
+    let tz = station_zone(&state, &station).await?;
+    let lists = sessions_read(&state.pool, station.id(), (from, to), &tz, filter).await?;
+    if lists {
+        let listens = listens(&state.pool, station.id(), (from, to), filter).await?;
+        let tunes = audience::tune_in_out(&listens, &tz);
+        for hour in &mut hours {
+            let (tune_in, tune_out) = tunes.get(&hour.hour).copied().unwrap_or_default();
+            let days = f64::from(hour.days.max(1));
+            hour.tune_in = Some(f64::from(tune_in) / days);
+            hour.tune_out = Some(f64::from(tune_out) / days);
+        }
+    }
     Ok(match query.format.unwrap_or_default() {
         Format::Json => Json(hours).into_response(),
         Format::Csv => csv_response(
@@ -490,6 +548,10 @@ pub struct TracksQuery {
     pub from: String,
     /// Last day, included.
     pub to: String,
+    /// Only the listeners of this output; the whole station's otherwise.
+    pub output_id: Option<u64>,
+    /// Only this server's part; every server's otherwise.
+    pub server_id: Option<u64>,
     /// Tracks played fewer times are left out, 3 by default.
     pub min_plays: Option<u32>,
     /// 1 to 500, 50 by default.
@@ -558,6 +620,10 @@ async fn tracks(
         &state.pool,
         station.id(),
         (start, end),
+        Filter {
+            output_id: query.output_id,
+            server_id: query.server_id,
+        },
         statistics.min_session_s,
         query.min_plays.unwrap_or(3),
     )
@@ -577,12 +643,13 @@ pub async fn track_listeners(
     pool: &sqlx::MySqlPool,
     station_id: u64,
     (start, end): (i64, i64),
+    filter: Filter,
     min_session_s: u32,
     min_plays: u32,
 ) -> ApiResult<Vec<TrackListeners>> {
     // A session ends when its listener was last seen: they left within the
     // next minute, half a minute later on average.
-    let rows: Vec<TrackRow> = sqlx::query_as(
+    let rows = sqlx::query_as(
         "SELECT p.track_id, MAX(t.artist), MAX(t.title), COUNT(*),
                 CAST(AVG(p.start_l) AS DOUBLE), CAST(AVG(COALESCE(p.end_l, 0)) AS DOUBLE),
                 CAST(SUM(p.start_l) AS SIGNED), CAST(SUM(p.dep) AS SIGNED),
@@ -590,21 +657,25 @@ pub async fn track_listeners(
          FROM (SELECT h.track_id,
                  (SELECT SUM(s.listeners) FROM listener_samples s JOIN outputs o ON o.id = s.output_id
                   WHERE o.station_id = h.station_id
-                    AND s.sampled_at = TIMESTAMP(DATE_FORMAT(h.started_at, '%Y-%m-%d %H:%i:00')))
+                    AND s.sampled_at = TIMESTAMP(DATE_FORMAT(h.started_at, '%Y-%m-%d %H:%i:00'))
+                    AND (? IS NULL OR s.output_id = ?) AND (? IS NULL OR s.server_id = ?))
                    AS start_l,
                  (SELECT SUM(s.listeners) FROM listener_samples s JOIN outputs o ON o.id = s.output_id
                   WHERE o.station_id = h.station_id
-                    AND s.sampled_at = TIMESTAMP(DATE_FORMAT(h.ended_at, '%Y-%m-%d %H:%i:00')))
+                    AND s.sampled_at = TIMESTAMP(DATE_FORMAT(h.ended_at, '%Y-%m-%d %H:%i:00'))
+                    AND (? IS NULL OR s.output_id = ?) AND (? IS NULL OR s.server_id = ?))
                    AS end_l,
                  (SELECT MAX(s.sessions) FROM listener_samples s JOIN outputs o ON o.id = s.output_id
                   WHERE o.station_id = h.station_id
-                    AND s.sampled_at = TIMESTAMP(DATE_FORMAT(h.started_at, '%Y-%m-%d %H:%i:00')))
+                    AND s.sampled_at = TIMESTAMP(DATE_FORMAT(h.started_at, '%Y-%m-%d %H:%i:00'))
+                    AND (? IS NULL OR s.output_id = ?) AND (? IS NULL OR s.server_id = ?))
                    AS lists,
                  (SELECT COUNT(*) FROM listener_sessions x JOIN outputs o ON o.id = x.output_id
                   WHERE o.station_id = h.station_id
                     AND x.ended_at >= h.started_at - INTERVAL 30 SECOND
                     AND x.ended_at < h.ended_at - INTERVAL 30 SECOND
-                    AND x.duration_s >= ? AND NOT x.split) AS dep
+                    AND x.duration_s >= ? AND NOT x.split
+                    AND (? IS NULL OR x.output_id = ?) AND (? IS NULL OR x.server_id = ?)) AS dep
                FROM play_history h
                WHERE h.station_id = ? AND h.deck <> 'fx' AND h.track_id IS NOT NULL
                  AND h.ended_at IS NOT NULL
@@ -613,14 +684,27 @@ pub async fn track_listeners(
          WHERE p.start_l IS NOT NULL
          GROUP BY p.track_id
          HAVING COUNT(*) >= ?",
-    )
-    .bind(min_session_s)
-    .bind(station_id)
-    .bind(start as f64 / 1_000.0)
-    .bind(end as f64 / 1_000.0)
-    .bind(min_plays)
-    .fetch_all(pool)
-    .await?;
+    );
+    let mut rows = rows;
+    for _ in 0..3 {
+        rows = rows
+            .bind(filter.output_id)
+            .bind(filter.output_id)
+            .bind(filter.server_id)
+            .bind(filter.server_id);
+    }
+    let rows: Vec<TrackRow> = rows
+        .bind(min_session_s)
+        .bind(filter.output_id)
+        .bind(filter.output_id)
+        .bind(filter.server_id)
+        .bind(filter.server_id)
+        .bind(station_id)
+        .bind(start as f64 / 1_000.0)
+        .bind(end as f64 / 1_000.0)
+        .bind(min_plays)
+        .fetch_all(pool)
+        .await?;
     let mut tracks: Vec<TrackListeners> = rows
         .into_iter()
         .map(
@@ -662,6 +746,8 @@ pub struct PlayersQuery {
     pub to: String,
     /// Only this output; the whole station otherwise.
     pub output_id: Option<u64>,
+    /// Only this server's part; every server's otherwise.
+    pub server_id: Option<u64>,
     /// 1 to 100, 20 by default.
     pub limit: Option<u32>,
 }
@@ -706,12 +792,241 @@ async fn players(
         .push_bind(to.to_string())
         .push(" AND duration_s >= ")
         .push_bind(statistics.min_session_s);
-    if let Some(output_id) = query.output_id {
-        sql.push(" AND output_id = ").push_bind(output_id);
+    Filter {
+        output_id: query.output_id,
+        server_id: query.server_id,
     }
+    .push(&mut sql, "listener_sessions");
     sql.push(" GROUP BY user_agent ORDER BY listening_hours DESC, sessions DESC LIMIT ")
         .push_bind(limit);
     Ok(Json(sql.build_query_as().fetch_all(&state.pool).await?))
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct AudienceQuery {
+    /// First day (`YYYY-MM-DD`, station time).
+    pub from: String,
+    /// Last day, included.
+    pub to: String,
+    /// Only this output; the whole station otherwise.
+    pub output_id: Option<u64>,
+    /// Only this server's part; every server's otherwise.
+    pub server_id: Option<u64>,
+    #[param(inline)]
+    pub format: Option<Format>,
+}
+
+async fn station_zone(state: &AppState, station: &Station) -> ApiResult<jiff::tz::TimeZone> {
+    let settings: StationSettings =
+        settings::load_for(&state.pool, station.id(), StationSettings::SETTINGS_NAME).await?;
+    Ok(settings.time_zone())
+}
+
+/// When a period starts and ends, in Unix seconds.
+fn bounds_s((from, to): (Date, Date), tz: &jiff::tz::TimeZone) -> (f64, f64) {
+    let (start, _) = totals::day_bounds(from, tz);
+    let (_, end) = totals::day_bounds(to, tz);
+    (start as f64 / 1_000.0, end as f64 / 1_000.0)
+}
+
+/// The sessions of a period of at least [`audience::PROBE_S`].
+async fn listens(
+    pool: &sqlx::MySqlPool,
+    station_id: u64,
+    (from, to): (Date, Date),
+    filter: Filter,
+) -> ApiResult<Vec<audience::Listen>> {
+    type Row = (String, Vec<u8>, i64, i64, u32, i64);
+    let mut sql = sqlx::QueryBuilder::new(
+        "SELECT CAST(s.day AS CHAR), s.listener_key,
+                CAST(UNIX_TIMESTAMP(s.started_at) * 1000 AS SIGNED),
+                CAST(UNIX_TIMESTAMP(s.last_seen_at) * 1000 AS SIGNED), s.duration_s,
+                CAST(s.ended_at IS NOT NULL AND NOT s.split AS SIGNED)
+         FROM listener_sessions s JOIN outputs o ON o.id = s.output_id
+         WHERE o.station_id = ",
+    );
+    sql.push_bind(station_id)
+        .push(" AND s.day >= ")
+        .push_bind(from.to_string())
+        .push(" AND s.day <= ")
+        .push_bind(to.to_string())
+        .push(" AND s.duration_s >= ")
+        .push_bind(audience::PROBE_S);
+    filter.push(&mut sql, "s");
+    let rows: Vec<Row> = sql.build_query_as().fetch_all(pool).await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(day, key, started_ms, last_seen_ms, duration_s, left)| {
+            Some(audience::Listen {
+                day: day.parse().ok()?,
+                key: key.try_into().ok()?,
+                started_ms,
+                last_seen_ms,
+                duration_s,
+                left: left == 1,
+            })
+        })
+        .collect())
+}
+
+/// The days and quarter-hours of a period with minute samples, and the
+/// quarter-hours with a listener list read.
+async fn measured(
+    pool: &sqlx::MySqlPool,
+    station_id: u64,
+    period: (Date, Date),
+    tz: &jiff::tz::TimeZone,
+    filter: Filter,
+) -> ApiResult<audience::Measured> {
+    let (start, end) = bounds_s(period, tz);
+    let mut sql = sqlx::QueryBuilder::new(
+        "SELECT CAST(FLOOR(UNIX_TIMESTAMP(s.sampled_at) / 900) AS SIGNED) AS quarter,
+                CAST(MAX(s.sessions) AS SIGNED)
+         FROM listener_samples s JOIN outputs o ON o.id = s.output_id
+         WHERE o.station_id = ",
+    );
+    sql.push_bind(station_id)
+        .push(" AND s.sampled_at >= FROM_UNIXTIME(")
+        .push_bind(start)
+        .push(") AND s.sampled_at < FROM_UNIXTIME(")
+        .push_bind(end)
+        .push(")");
+    filter.push(&mut sql, "s");
+    sql.push(" GROUP BY quarter");
+    let rows: Vec<(i64, i64)> = sql.build_query_as().fetch_all(pool).await?;
+    let mut measured = audience::Measured::default();
+    for (quarter, lists) in rows {
+        measured
+            .days
+            .insert(totals::day_of(quarter * audience::QUARTER_HOUR_MS, tz));
+        if lists == 1 {
+            measured.quarters.insert(quarter);
+        }
+    }
+    Ok(measured)
+}
+
+/// Whether a listener list was read in the period.
+async fn sessions_read(
+    pool: &sqlx::MySqlPool,
+    station_id: u64,
+    period: (Date, Date),
+    tz: &jiff::tz::TimeZone,
+    filter: Filter,
+) -> ApiResult<bool> {
+    let (start, end) = bounds_s(period, tz);
+    let mut sql = sqlx::QueryBuilder::new(
+        "SELECT EXISTS(SELECT 1 FROM listener_samples s JOIN outputs o ON o.id = s.output_id
+         WHERE s.sessions AND o.station_id = ",
+    );
+    sql.push_bind(station_id)
+        .push(" AND s.sampled_at >= FROM_UNIXTIME(")
+        .push_bind(start)
+        .push(") AND s.sampled_at < FROM_UNIXTIME(")
+        .push_bind(end)
+        .push(")");
+    filter.push(&mut sql, "s");
+    sql.push(")");
+    let (read,): (bool,) = sql.build_query_as().fetch_one(pool).await?;
+    Ok(read)
+}
+
+/// The highest minute of a period, and when (the first one on a tie).
+async fn peak(
+    pool: &sqlx::MySqlPool,
+    station_id: u64,
+    period: (Date, Date),
+    tz: &jiff::tz::TimeZone,
+    filter: Filter,
+) -> ApiResult<Option<(u32, i64)>> {
+    let (start, end) = bounds_s(period, tz);
+    let mut sql = sqlx::QueryBuilder::new(
+        "SELECT CAST(UNIX_TIMESTAMP(s.sampled_at) * 1000 AS SIGNED) AS at_ms,
+                CAST(SUM(s.listeners) AS UNSIGNED) AS listeners
+         FROM listener_samples s JOIN outputs o ON o.id = s.output_id
+         WHERE o.station_id = ",
+    );
+    sql.push_bind(station_id)
+        .push(" AND s.sampled_at >= FROM_UNIXTIME(")
+        .push_bind(start)
+        .push(") AND s.sampled_at < FROM_UNIXTIME(")
+        .push_bind(end)
+        .push(")");
+    filter.push(&mut sql, "s");
+    sql.push(" GROUP BY s.sampled_at ORDER BY listeners DESC, at_ms LIMIT 1");
+    let row: Option<(i64, u64)> = sql.build_query_as().fetch_optional(pool).await?;
+    Ok(row.map(|(at, listeners)| (u32::try_from(listeners).unwrap_or(u32::MAX), at)))
+}
+
+/// The audience figures of a period.
+pub async fn audience_of(
+    pool: &sqlx::MySqlPool,
+    station_id: u64,
+    period: (Date, Date),
+    tz: &jiff::tz::TimeZone,
+    filter: Filter,
+) -> ApiResult<audience::Audience> {
+    let measured = measured(pool, station_id, period, tz, filter).await?;
+    let listens = if measured.quarters.is_empty() {
+        Vec::new()
+    } else {
+        listens(pool, station_id, period, filter).await?
+    };
+    let peak = peak(pool, station_id, period, tz, filter).await?;
+    Ok(audience::with_cume(
+        audience::audience(period, &listens, &measured, peak),
+        &measured,
+        tz,
+    ))
+}
+
+/// The period of the same length just before.
+fn previous_period((from, to): (Date, Date)) -> (Date, Date) {
+    let days = (to - from).get_days() + 1;
+    let before = |n: i32| {
+        from.checked_sub(jiff::Span::new().days(i64::from(n)))
+            .unwrap_or(from)
+    };
+    (before(days), before(1))
+}
+
+/// The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session
+/// lengths), and of the period of the same length before it.
+#[utoipa::path(get, path = "/listeners/audience", tag = "listeners",
+    params(AudienceQuery),
+    responses(
+        (status = 200, body = audience::AudienceComparison, content_type = "application/json"),
+        (status = "4XX", body = ErrorBody)))]
+async fn audience_route(
+    _user: CurrentUser,
+    State(state): State<AppState>,
+    station: Station,
+    Query(query): Query<AudienceQuery>,
+) -> ApiResult<Response> {
+    let (from, to) = period(&query.from, &query.to)?;
+    let filter = Filter {
+        output_id: query.output_id,
+        server_id: query.server_id,
+    };
+    let tz = station_zone(&state, &station).await?;
+    let current = audience_of(&state.pool, station.id(), (from, to), &tz, filter).await?;
+    let previous = audience_of(
+        &state.pool,
+        station.id(),
+        previous_period((from, to)),
+        &tz,
+        filter,
+    )
+    .await?;
+    let figures = audience::AudienceComparison { current, previous };
+    Ok(match query.format.unwrap_or_default() {
+        Format::Json => Json(figures).into_response(),
+        Format::Csv => csv_response(
+            &format!("listeners-audience-{from}-{to}.csv"),
+            &audience_csv(&figures, &tz),
+        ),
+    })
 }
 
 fn csv_response(filename: &str, body: &str) -> Response {
@@ -777,17 +1092,116 @@ fn days_csv(totals: &[PeriodTotals]) -> String {
 }
 
 fn hours_csv(hours: &[HourOfDay]) -> String {
-    let mut csv = String::from("hour,days,average,peak,listening_hours\n");
+    let mut csv = String::from("hour,days,average,peak,listening_hours,tune_in,tune_out\n");
     for h in hours {
         let _ = writeln!(
             csv,
-            "{},{},{},{},{}",
+            "{},{},{},{},{},{},{}",
             h.hour,
             h.days,
             number(h.average),
             h.peak,
-            number(h.listening_hours)
+            number(h.listening_hours),
+            optional(h.tune_in.map(number)),
+            optional(h.tune_out.map(number)),
         );
+    }
+    csv
+}
+
+fn audience_csv(figures: &audience::AudienceComparison, tz: &jiff::tz::TimeZone) -> String {
+    let (current, previous) = (&figures.current, &figures.previous);
+    let when = |at: Option<i64>| {
+        at.and_then(|ms| jiff::Timestamp::from_millisecond(ms).ok())
+            .map(|at| {
+                at.to_zoned(tz.clone())
+                    .strftime("%Y-%m-%d %H:%M")
+                    .to_string()
+            })
+            .unwrap_or_default()
+    };
+    let lengths = |a: &audience::Audience, pick: fn(&audience::SessionLengths) -> u32| {
+        optional(a.session_lengths.as_ref().map(pick))
+    };
+    let rows: [(&str, String, String); 18] = [
+        ("from", current.from.clone(), previous.from.clone()),
+        ("to", current.to.clone(), previous.to.clone()),
+        ("days", current.days.to_string(), previous.days.to_string()),
+        ("peak", optional(current.peak), optional(previous.peak)),
+        (
+            "peak_at",
+            when(current.peak_at_unix_ms),
+            when(previous.peak_at_unix_ms),
+        ),
+        (
+            "sessions",
+            optional(current.sessions),
+            optional(previous.sessions),
+        ),
+        (
+            "ttsl_hours",
+            optional(current.ttsl_hours.map(number)),
+            optional(previous.ttsl_hours.map(number)),
+        ),
+        (
+            "atsl_s",
+            optional(current.atsl_s.map(number)),
+            optional(previous.atsl_s.map(number)),
+        ),
+        (
+            "median_session_s",
+            optional(current.median_session_s.map(number)),
+            optional(previous.median_session_s.map(number)),
+        ),
+        (
+            "cume",
+            optional(current.cume.map(number)),
+            optional(previous.cume.map(number)),
+        ),
+        (
+            "listener_days",
+            optional(current.listener_days),
+            optional(previous.listener_days),
+        ),
+        (
+            "aqh",
+            optional(current.aqh.map(number)),
+            optional(previous.aqh.map(number)),
+        ),
+        (
+            "sessions_under_1_min",
+            lengths(current, |l| l.under_1_min),
+            lengths(previous, |l| l.under_1_min),
+        ),
+        (
+            "sessions_1_to_5_min",
+            lengths(current, |l| l.from_1_to_5_min),
+            lengths(previous, |l| l.from_1_to_5_min),
+        ),
+        (
+            "sessions_5_to_30_min",
+            lengths(current, |l| l.from_5_to_30_min),
+            lengths(previous, |l| l.from_5_to_30_min),
+        ),
+        (
+            "sessions_30_min_to_2_h",
+            lengths(current, |l| l.from_30_min_to_2_h),
+            lengths(previous, |l| l.from_30_min_to_2_h),
+        ),
+        (
+            "sessions_over_2_h",
+            lengths(current, |l| l.over_2_h),
+            lengths(previous, |l| l.over_2_h),
+        ),
+        (
+            "min_session_s",
+            audience::PROBE_S.to_string(),
+            audience::PROBE_S.to_string(),
+        ),
+    ];
+    let mut csv = String::from("figure,period,previous_period\n");
+    for (name, now, before) in rows {
+        let _ = writeln!(csv, "{name},{now},{before}");
     }
     csv
 }

@@ -1230,8 +1230,38 @@ async fn listener_statistics_through_the_api() {
         .await;
     assert_eq!(
         hours,
-        json!([{"hour": 8, "days": 1, "average": 9.0, "peak": 12, "listening_hours": 9.0}])
+        json!([{"hour": 8, "days": 1, "average": 9.0, "peak": 12, "listening_hours": 9.0,
+                "tune_in": null, "tune_out": null}])
     );
+    // One server's part.
+    sqlx::query(
+        "INSERT INTO listener_totals (station_id, output_id, server_id, day, hour, minutes, peak,
+             average, listening_hours)
+         VALUES (1, NULL, 7, '2026-10-19', NULL, 60, 3, 1.5, 1.5)",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    let relay_days = viewer
+        .get("/listeners/days?from=2026-10-19&to=2026-10-25&server_id=7")
+        .await;
+    assert_eq!(relay_days.as_array().unwrap().len(), 1);
+    assert_eq!(relay_days[0]["peak"], 3);
+    assert_eq!(
+        viewer
+            .get("/listeners/days?from=2026-10-19&to=2026-10-25")
+            .await[0]["peak"],
+        12
+    );
+    // The audience figures need samples and sessions, purged here.
+    let figures = viewer
+        .get("/listeners/audience?from=2026-10-19&to=2026-10-25&server_id=7")
+        .await;
+    assert_eq!(figures["current"]["from"], "2026-10-19");
+    assert_eq!(figures["current"]["days"], 0);
+    assert_eq!(figures["current"]["ttsl_hours"], json!(null));
+    assert_eq!(figures["previous"]["from"], "2026-10-12");
+    assert_eq!(figures["previous"]["to"], "2026-10-18");
 
     // CSV.
     let csv = viewer
@@ -1290,6 +1320,7 @@ async fn listener_statistics_through_the_api() {
         "/listeners/days?from=yesterday&to=2026-10-19",
         "/listeners/tracks?from=2026-10-19&to=2026-10-25&limit=0",
         "/listeners/players?from=2026-10-19&to=2026-10-25&limit=101",
+        "/listeners/audience?from=2026-10-25&to=2026-10-19",
     ] {
         let (status, _) = viewer.request(Method::GET, bad, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
@@ -1298,6 +1329,8 @@ async fn listener_statistics_through_the_api() {
         format!("/listeners/samples?from_unix_ms=0&to_unix_ms=60000&output_id={id}"),
         format!("/listeners/players?from=2026-10-19&to=2026-10-25&output_id={id}&limit=5"),
         "/listeners/tracks?from=2026-10-19&to=2026-10-25&min_plays=1&limit=5".to_owned(),
+        format!("/listeners/tracks?from=2026-10-19&to=2026-10-25&output_id={id}&server_id=7"),
+        "/listeners/players?from=2026-10-19&to=2026-10-25&server_id=7".to_owned(),
     ] {
         assert_eq!(viewer.get(&path).await, json!([]), "{path}");
     }
@@ -1310,8 +1343,14 @@ async fn listener_statistics_through_the_api() {
     };
     assert_eq!(
         csv("/listeners/hours-of-day?from=2026-10-19&to=2026-10-25&format=csv").await,
-        "hour,days,average,peak,listening_hours\n8,1,9.00,12,9.00\n"
+        "hour,days,average,peak,listening_hours,tune_in,tune_out\n8,1,9.00,12,9.00,,\n"
     );
+    let audience = csv("/listeners/audience?from=2026-10-19&to=2026-10-25&format=csv").await;
+    let lines: Vec<&str> = audience.lines().collect();
+    assert_eq!(lines[0], "figure,period,previous_period");
+    assert_eq!(lines[1], "from,2026-10-19,2026-10-12");
+    assert!(lines.contains(&"ttsl_hours,,"), "{audience}");
+    assert!(lines.contains(&"min_session_s,5,5"), "{audience}");
     assert_eq!(
         csv("/listeners/tracks?from=2026-10-19&to=2026-10-25&format=csv").await,
         "track_id,artist,title,plays,listeners_start,listeners_end,departures,departure_rate\n"

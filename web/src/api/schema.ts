@@ -1516,6 +1516,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/listeners/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session
+         *     lengths), and of the period of the same length before it.
+         */
+        get: operations["audience_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/listeners/days": {
         parameters: {
             query?: never;
@@ -3039,6 +3059,26 @@ export interface paths {
         };
         /** Plays, most recent first. */
         get: operations["list_history_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/listeners/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session
+         *     lengths), and of the period of the same length before it.
+         */
+        get: operations["audience_route_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5083,6 +5123,70 @@ export interface components {
             source: string;
         };
         /**
+         * @description The audience figures of a period. Those from sessions are missing
+         *     without listener lists.
+         */
+        Audience: {
+            /**
+             * Format: double
+             * @description Average quarter-hour audience: listeners heard 5 minutes or more in
+             *     a clock quarter-hour, on average over the quarter-hours measured.
+             */
+            aqh?: number | null;
+            /**
+             * Format: double
+             * @description Average time spent listening: TTSL over the sessions, in seconds.
+             */
+            atsl_s?: number | null;
+            /**
+             * Format: double
+             * @description Distinct listeners per day, on average over the days measured.
+             */
+            cume?: number | null;
+            /**
+             * Format: int32
+             * @description Days with a minute measured.
+             */
+            days: number;
+            /** @description First day (`YYYY-MM-DD`, station time). */
+            from: string;
+            /**
+             * Format: int32
+             * @description Distinct listeners of each day, added up.
+             */
+            listener_days?: number | null;
+            /** Format: double */
+            median_session_s?: number | null;
+            /**
+             * Format: int32
+             * @description The most listeners at once.
+             */
+            peak?: number | null;
+            /**
+             * Format: int64
+             * @description The (first) minute of the peak.
+             */
+            peak_at_unix_ms?: number | null;
+            session_lengths?: components["schemas"]["SessionLengths"] | null;
+            /**
+             * Format: int32
+             * @description Sessions of at least 5 s.
+             */
+            sessions?: number | null;
+            /** @description Last day, included. */
+            to: string;
+            /**
+             * Format: double
+             * @description Total time spent listening: the sessions added up, in hours.
+             */
+            ttsl_hours?: number | null;
+        };
+        /** @description The figures of a period and of the period of the same length before. */
+        AudienceComparison: {
+            current: components["schemas"]["Audience"];
+            previous: components["schemas"]["Audience"];
+        };
+        /**
          * @description Which key opens an encrypted backup.
          * @enum {string}
          */
@@ -6655,6 +6759,18 @@ export interface components {
              * @description The highest peak.
              */
             peak: number;
+            /**
+             * Format: double
+             * @description Sessions of at least 5 s started in that hour, on average per day;
+             *     missing without listener lists.
+             */
+            tune_in?: number | null;
+            /**
+             * Format: double
+             * @description Sessions that ended in that hour (not at midnight), on average per
+             *     day.
+             */
+            tune_out?: number | null;
         };
         ImportApplyRequest: {
             categories?: components["schemas"]["ImportCategoryChoice"][];
@@ -9003,6 +9119,19 @@ export interface components {
             service: string;
             /** @description Missing when the service was never seen or does not say. */
             version?: string | null;
+        };
+        /** @description Sessions by length. */
+        SessionLengths: {
+            /** Format: int32 */
+            from_1_to_5_min: number;
+            /** Format: int32 */
+            from_30_min_to_2_h: number;
+            /** Format: int32 */
+            from_5_to_30_min: number;
+            /** Format: int32 */
+            over_2_h: number;
+            /** Format: int32 */
+            under_1_min: number;
         };
         /**
          * @description The engine's silence watchdog: after this long of silence on the master
@@ -13780,6 +13909,43 @@ export interface operations {
             };
         };
     };
+    audience_route: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceComparison"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     days: {
         parameters: {
             query: {
@@ -13789,6 +13955,11 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
                 /** @description Rows per hour, day (by default), week or month. */
                 group?: "hour" | "day" | "week" | "month";
                 format?: "json" | "csv";
@@ -13826,6 +13997,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 format?: "json" | "csv";
             };
             header?: never;
@@ -13888,6 +14061,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description 1 to 100, 20 by default. */
                 limit?: number;
             };
@@ -13961,6 +14136,10 @@ export interface operations {
                 from: string;
                 /** @description Last day, included. */
                 to: string;
+                /** @description Only the listeners of this output; the whole station's otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description Tracks played fewer times are left out, 3 by default. */
                 min_plays?: number;
                 /** @description 1 to 500, 50 by default. */
@@ -17413,6 +17592,46 @@ export interface operations {
             };
         };
     };
+    audience_route_on_station: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceComparison"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     days_on_station: {
         parameters: {
             query: {
@@ -17422,6 +17641,11 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
                 /** @description Rows per hour, day (by default), week or month. */
                 group?: "hour" | "day" | "week" | "month";
                 format?: "json" | "csv";
@@ -17462,6 +17686,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 format?: "json" | "csv";
             };
             header?: never;
@@ -17530,6 +17756,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description 1 to 100, 20 by default. */
                 limit?: number;
             };
@@ -17609,6 +17837,10 @@ export interface operations {
                 from: string;
                 /** @description Last day, included. */
                 to: string;
+                /** @description Only the listeners of this output; the whole station's otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description Tracks played fewer times are left out, 3 by default. */
                 min_plays?: number;
                 /** @description 1 to 500, 50 by default. */
