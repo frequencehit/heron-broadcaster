@@ -18,7 +18,11 @@ pub const REACH_MS: i64 = 15 * 60_000;
 /// ...or this many slots, or fewer, are left before it.
 pub const REACH_SLOTS: usize = 4;
 /// Endings simulated for a pick.
-pub const DRAWS: u32 = 8;
+pub const DRAWS: u32 = 10;
+/// A second late counts as this many seconds early when endings are
+/// compared: ending before the exact time is better than after it, which
+/// brings the track before closer to the cut and its fade.
+const LATE_WEIGHT: i64 = 3;
 /// The most picks an ending simulates before the exact slot.
 pub const MAX_PICKS: usize = 20;
 /// A track's last play counts this long ago at most (never played ones
@@ -66,14 +70,21 @@ struct Ending {
 
 impl Ending {
     /// Lower is better: nothing faded out, in the window, the closest to
-    /// the exact time, the least filling, the fewest rules relaxed, the
-    /// tracks played longest ago.
+    /// the exact time (a second late weighing [`LATE_WEIGHT`] seconds
+    /// early), the least filling, the fewest rules relaxed, the tracks
+    /// played longest ago.
     fn rank(&self) -> (bool, bool, bool, i64, u32, u32, Reverse<i64>) {
         (
             self.end.is_none(),
             self.faded,
             !self.end.is_some_and(|(_, in_window)| in_window),
-            self.end.map_or(i64::MAX, |(offset, _)| offset.abs()),
+            self.end.map_or(i64::MAX, |(offset, _)| {
+                if offset > 0 {
+                    offset.saturating_mul(LATE_WEIGHT)
+                } else {
+                    -offset
+                }
+            }),
             self.filling_ms,
             self.relaxed_steps,
             Reverse(self.age_ms),
@@ -480,10 +491,31 @@ mod tests {
         };
         assert!(close.rank() < far.rank());
         let unfilled = Ending {
-            end: Some((2 * SEC, true)),
+            end: Some((-SEC, true)),
             ..Ending::default()
         };
         assert!(unfilled.rank() < close.rank());
+        // Late weighs three times early: 2 s late loses to 4 s early...
+        let late = Ending {
+            end: Some((2 * SEC, true)),
+            ..Ending::default()
+        };
+        let early = Ending {
+            end: Some((-4 * SEC, true)),
+            ..Ending::default()
+        };
+        assert!(early.rank() < late.rank());
+        // ...but wins over 8 s early, and 20 s late loses to 25 s early.
+        assert!(late.rank() < far.rank());
+        let very_late = Ending {
+            end: Some((20 * SEC, true)),
+            ..Ending::default()
+        };
+        let quite_early = Ending {
+            end: Some((-25 * SEC, true)),
+            ..Ending::default()
+        };
+        assert!(quite_early.rank() < very_late.rank());
         // An ending not reached loses to any other.
         assert!(faded.rank() < Ending::default().rank());
     }

@@ -9,6 +9,9 @@ import { t } from "../i18n";
 import { duration } from "../lib/format";
 import type { WaveformData } from "./Waveform";
 
+/** The height of the track page's waveform (11rem, see `.waveform canvas`), in pixels: the graph's where it is shown at a fixed height. */
+export const WAVEFORM_HEIGHT = 176;
+
 /** The drawing's size when it scales with its width. */
 const DEFAULT_W = 720;
 const DEFAULT_H = 200;
