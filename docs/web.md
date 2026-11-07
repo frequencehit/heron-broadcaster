@@ -129,7 +129,7 @@ Points dragged on the waveform become the track's overrides once saved. *Next st
 - **Missing covers:** with the cover art module, the albums whose Cover Art Archive search was unsure (*covers to check*), then the songs with no cover.
 - **Organize** and **Changes:** organizing the library after a dry run, and every batch of file changes with undo.
 
-A **song** here is an enabled track whose file is there, in at least one category of the Song type (the one that exists from the start, whatever its name now): jingles, ads, liners and the tracks in no category are left out. The lists are library-wide, a page of 50 at a time, sorted by artist or title (and reversed). Each track links to its page: the *Sound* tab, where the intro and the hook are set, or *Details* for its cover. Nothing is edited on *To do* itself.
+A **song** here is an enabled track whose file is there, in at least one category of the Song type (the one that exists from the start, whatever its name now): jingles, ads, liners and the tracks in no category are left out. The lists are library-wide, or of one song category chosen above them (kept from tab to tab, `?category=`), a page of 50 at a time, sorted by artist or title (and reversed); the counts in the tabs stay library-wide. Each track links to its page: the *Sound* tab, where the intro and the hook are set, or *Details* for its cover. Nothing is edited on *To do* itself.
 
 ## Cover art
 
