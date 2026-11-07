@@ -174,6 +174,7 @@ const fr = {
   "account.widthNormal": "Normale",
   "account.widthWide": "80 %",
   "account.widthFull": "100 %",
+  "account.onAirWholeQueue": "Afficher toute la file sur À l'antenne, pour la modifier là",
   "account.displayHelp": "Système suit les réglages de votre appareil. Vos choix vous suivent sur chaque navigateur où vous vous connectez.",
   "account.passwordChanged": "Mot de passe modifié : vos autres sessions sont déconnectées",
   "account.currentPassword": "Mot de passe actuel",

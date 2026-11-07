@@ -1038,7 +1038,7 @@
         "tags": [
           "auth"
         ],
-        "summary": "Saves your preferences: the web UI's theme, language and width.",
+        "summary": "Saves your preferences: the web UI's theme, language, width and whether\nthe On air page shows the whole queue.",
         "operationId": "set_preferences",
         "requestBody": {
           "content": {
@@ -22155,6 +22155,13 @@
             ],
             "description": "A language tag (`en`, `fr`…) or `system`. The API does not know which\nlanguages the web UI has: it falls back on the browser's for one it\nlacks."
           },
+          "on_air_whole_queue": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The On air page shows the whole queue, editable there."
+          },
           "theme": {
             "oneOf": [
               {
@@ -28024,6 +28031,7 @@
           "theme",
           "language",
           "width",
+          "on_air_whole_queue",
           "created_at_unix_ms",
           "station_roles",
           "two_factor"
@@ -28051,6 +28059,10 @@
               "null"
             ],
             "format": "int64"
+          },
+          "on_air_whole_queue": {
+            "type": "boolean",
+            "description": "The On air page shows the whole queue, editable there, instead of\nits first tracks."
           },
           "role": {
             "$ref": "#/components/schemas/Role"

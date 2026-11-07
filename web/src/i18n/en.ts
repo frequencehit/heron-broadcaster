@@ -171,6 +171,7 @@ const en = {
   "account.widthNormal": "Normal",
   "account.widthWide": "80%",
   "account.widthFull": "100%",
+  "account.onAirWholeQueue": "Show the whole queue on On air, to edit it there",
   "account.displayHelp": "System follows your device's settings. Your choices follow you on every browser you sign in with.",
   "account.passwordChanged": "Password changed: your other sessions are signed out",
   "account.currentPassword": "Current password",
