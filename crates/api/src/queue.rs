@@ -466,7 +466,7 @@ impl QueueManager {
                 // An exact slot's planned start jumps to its time.
                 let start = pick.explanation.at_unix_ms;
                 history.push(Play::of(track, start));
-                at = start + i64::from(pick.length_ms(&library));
+                at = start + i64::from(pick.next_ms(&library));
                 if pick.position.is_some() {
                     last = pick.position;
                 }
@@ -480,7 +480,8 @@ impl QueueManager {
                 tracing::debug!("autofill: no playable track in the library");
             } else {
                 tracing::warn!(
-                    "rotation: restrictions forbid every track for now, \
+                    "rotation: no slot of the clock found a track for now \
+                     (restrictions, rules or an exact time), \
                      the engine's fallback directory takes over"
                 );
             }
@@ -737,6 +738,7 @@ mod tests {
                     artists: vec![],
                     categories: vec![],
                     length_ms: 46_000,
+                    mix_ms: None,
                     ratio: 10,
                     dayparts: None,
                     daypart_days: None,

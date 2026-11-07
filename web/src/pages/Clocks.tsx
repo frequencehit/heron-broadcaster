@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type Category,
@@ -62,7 +62,7 @@ import {
   methodLabel,
   stepLabel,
 } from "../lib/rotation";
-import type { Schemas } from "../api";
+import { type Schemas, errorMessage } from "../api";
 import { Link, navigate } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { here, useStation } from "../lib/station";
@@ -166,6 +166,40 @@ export function Clocks() {
   );
 }
 
+/** How long a clock waits after a change before it saves itself. */
+const AUTOSAVE_MS = 800;
+
+/** Where an existing clock's changes stand: saving, saved, or not saved and why. */
+function SaveState({
+  dirty,
+  saving,
+  error,
+  named,
+}: Readonly<{ dirty: boolean; saving: boolean; error: unknown; named: boolean }>) {
+  if (!named) {
+    return <span className="badge bad">{t("clocks.needsName")}</span>;
+  }
+  if (saving || (dirty && !error)) {
+    return (
+      <span className="muted small" role="status">
+        {t("clocks.saving")}
+      </span>
+    );
+  }
+  if (error && dirty) {
+    return (
+      <span className="badge bad" role="alert" title={errorMessage(error)}>
+        {t("clocks.notSaved", { error: errorMessage(error) })}
+      </span>
+    );
+  }
+  return (
+    <span className="muted small" role="status">
+      <Icon name="check" size={12} /> {t("clocks.savedAuto")}
+    </span>
+  );
+}
+
 /** A slot as edited, with a key that stays when slots move. */
 interface Draft extends ClockSlot {
   key: number;
@@ -214,23 +248,56 @@ function Editor({ clock }: { clock: ClockView | null }) {
     placeholderData: keepPreviousData,
   });
 
-  const save = useAction(
-    () => {
-      const body = { name, looping, slots: plain };
-      return clock
-        ? unwrap(api.PUT("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock.id }) }, body }))
-        : unwrap(api.POST("/api/v1/stations/{station_id}/clocks", { params: { path: here() }, body }));
-    },
+  // A new clock is created with its button; an existing one saves itself
+  // a moment after each change.
+  const body = { name, looping, slots: plain };
+  const client = useQueryClient();
+  const create = useAction(
+    () => unwrap(api.POST("/api/v1/stations/{station_id}/clocks", { params: { path: here() }, body })),
     {
       success: t("clocks.saved"),
       invalidate: [["clocks"]],
-      onSuccess: (saved) => {
-        if (!clock) {
-          navigate(`/clocks/${saved.id}`, { replace: true });
-        }
-      },
+      onSuccess: (created) => navigate(`/clocks/${created.id}`, { replace: true }),
     },
   );
+  const autosave = useMutation({
+    mutationFn: (next: typeof body) =>
+      unwrap(api.PUT("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock?.id ?? 0 }) }, body: next })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["clocks"] }),
+  });
+  const pending = useRef<typeof body | null>(null);
+  pending.current = clock && canEdit && dirty && name.trim() ? body : null;
+  const draftKey = JSON.stringify(body);
+  useEffect(() => {
+    if (!pending.current) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (pending.current) {
+        autosave.mutate(pending.current);
+      }
+    }, AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  // Leaving the page saves what is left.
+  useEffect(
+    () => () => {
+      if (pending.current) {
+        autosave.mutate(pending.current);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  useEffect(() => {
+    if (!pending.current) {
+      return;
+    }
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [draftKey]);
   const remove = useAction(
     () => done(api.DELETE("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock?.id ?? 0 }) } })),
     { success: t("clocks.deleted"), invalidate: [["clocks"], ["schedule"]], onSuccess: () => navigate("/clocks") },
@@ -277,14 +344,18 @@ function Editor({ clock }: { clock: ClockView | null }) {
                   <Icon name="trash" /> {t("categories.deleteButton")}
                 </ConfirmButton>
               )}
-              <button
-                type="button"
-                className="btn primary"
-                disabled={!dirty || !name.trim() || save.isPending}
-                onClick={() => save.mutate(undefined)}
-              >
-                {t("common.save")}
-              </button>
+              {clock ? (
+                <SaveState dirty={dirty} saving={autosave.isPending} error={autosave.error} named={!!name.trim()} />
+              ) : (
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!name.trim() || create.isPending}
+                  onClick={() => create.mutate(undefined)}
+                >
+                  {t("clocks.create")}
+                </button>
+              )}
             </>
           )
         }

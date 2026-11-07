@@ -4,7 +4,8 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderApp } from "../test/render";
-import { DrawDepthEditor, applyDraw, describeDrawLog } from "./DrawDepth";
+import { t } from "../i18n";
+import { DrawDepthDiagram, DrawDepthEditor, applyDraw, describeDrawLog, drawCells, drawSteps } from "./DrawDepth";
 
 describe("DrawDepthEditor", () => {
   it("shows what is inherited and sets the start or the maximum", () => {
@@ -47,5 +48,27 @@ describe("draw depth", () => {
     expect(describeDrawLog({ pct: 30, start_pct: 20, max_pct: 50, tracks: 30, blocked })).toBe(
       "30 %, 30 tracks, 4 held back by the artist, 1 held back by another station",
     );
+  });
+});
+
+describe("the draw depth diagram", () => {
+  it("draws the start, the widening, what is never drawn and the recent tracks", () => {
+    const cells = drawCells(20, 50);
+    expect(cells.filter((cell) => cell === "start")).toHaveLength(10);
+    expect(cells.filter((cell) => cell === "widen")).toHaveLength(15);
+    expect(cells.slice(25).every((cell) => cell === "off" || cell === "recent")).toBe(true);
+    expect(cells.at(-1)).toBe("recent");
+  });
+
+  it("widens by 10 points up to the maximum", () => {
+    expect(drawSteps(20, 50)).toEqual([20, 30, 40, 50]);
+    expect(drawSteps(25, 50)).toEqual([25, 35, 45, 50]);
+    expect(drawSteps(50, 50)).toEqual([50]);
+  });
+
+  it("says when the whole category can be drawn", () => {
+    renderApp(<DrawDepthDiagram start={20} max={100} />);
+    expect(screen.getByText(t("draw.diagramAll"))).toBeTruthy();
+    expect(drawCells(20, 100).includes("off")).toBe(false);
   });
 });

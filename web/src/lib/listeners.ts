@@ -161,3 +161,208 @@ export function statisticsInput(
   }
   return input;
 }
+
+/** The output and server the Statistics page is limited to (`?output=`, `?server=`). */
+export interface Filter {
+  output: number | undefined;
+  server: number | undefined;
+}
+
+function id(value: string | null): number | undefined {
+  const parsed = Number(value);
+  return value && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/** The filter of the page's address. */
+export function filterOf(search: URLSearchParams): Filter {
+  return { output: id(search.get("output")), server: id(search.get("server")) };
+}
+
+/** The filter as query parameters of the statistics routes. */
+export function filterParams(filter: Filter): { output_id: number | undefined; server_id: number | undefined } {
+  return { output_id: filter.output, server_id: filter.server };
+}
+
+/** The change from the previous period, as a ratio; `null` when it cannot be told. */
+export function change(current: number | null | undefined, previous: number | null | undefined): number | null {
+  if (current === null || current === undefined || previous === null || previous === undefined || previous <= 0) {
+    return null;
+  }
+  return (current - previous) / previous;
+}
+
+/** A change written with its sign, `+12.5 %`, `−3 %`. */
+export function changeText(ratio: number | null, language?: string): string {
+  if (ratio === null || !Number.isFinite(ratio)) {
+    return "–";
+  }
+  return new Intl.NumberFormat(language, { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(ratio);
+}
+
+type SessionLengths = Schemas["SessionLengths"];
+
+/** The session lengths, shortest first, with their share of the sessions. */
+export function lengthShares(lengths: SessionLengths | null | undefined): { key: keyof SessionLengths; count: number; share: number }[] {
+  if (!lengths) {
+    return [];
+  }
+  const keys: (keyof SessionLengths)[] = ["under_1_min", "from_1_to_5_min", "from_5_to_30_min", "from_30_min_to_2_h", "over_2_h"];
+  const total = keys.reduce((sum, key) => sum + lengths[key], 0);
+  return keys.map((key) => ({ key, count: lengths[key], share: total > 0 ? lengths[key] / total : 0 }));
+}
+
+/** The periods the page offers, in days, and the default one. */
+export const PERIODS = [7, 30, 90, 365] as const;
+export const DEFAULT_DAYS = 30;
+
+/** The period of the whole page: the last `days` days up to today (station time). */
+export interface Period {
+  days: number;
+  from: string;
+  to: string;
+}
+
+/** The period of the page's address (`?days=`), ending `today`. */
+export function periodOf(search: URLSearchParams, today: string): Period {
+  const asked = Number(search.get("days"));
+  const days = (PERIODS as readonly number[]).includes(asked) ? asked : DEFAULT_DAYS;
+  return { days, from: addDays(today, 1 - days), to: today };
+}
+
+/**
+ * Average listeners by day of the week (Monday first) and hour, from the
+ * hourly totals: each hour's average weighted by its minutes measured;
+ * `null` where nothing was measured.
+ */
+export function weekHours(rows: PeriodTotals[]): (number | null)[][] {
+  const sums = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ listened: 0, minutes: 0 })));
+  for (const row of rows) {
+    if (row.hour === null || row.hour === undefined || row.minutes === 0) {
+      continue;
+    }
+    const [y, m, d] = row.day.split("-").map(Number);
+    const weekday = (new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).getUTCDay() + 6) % 7;
+    const cell = sums[weekday]?.[row.hour];
+    if (cell) {
+      cell.listened += row.average * row.minutes;
+      cell.minutes += row.minutes;
+    }
+  }
+  return sums.map((day) => day.map((cell) => (cell.minutes === 0 ? null : cell.listened / cell.minutes)));
+}
+
+/** The days of the week, short, Monday first. */
+export function weekdayNames(language?: string): string[] {
+  const format = new Intl.DateTimeFormat(language, { weekday: "short", timeZone: "UTC" });
+  // 2026-10-19 is a Monday.
+  return Array.from({ length: 7 }, (_, i) => format.format(new Date(Date.UTC(2026, 9, 19 + i))));
+}
+
+/** How strong a heatmap cell is, 0.08 to 1: an hour with listeners never looks empty. */
+export function heat(value: number, top: number): number {
+  if (top <= 0 || value <= 0) {
+    return 0.08;
+  }
+  return 0.08 + 0.92 * Math.min(1, value / top);
+}
+
+/** A country's name in `language`, from its ISO code. */
+export function countryName(code: string, language?: string): string {
+  try {
+    return new Intl.DisplayNames(language ? [language] : undefined, { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** Whether the GeoIP database is DB-IP's, which asks to be credited. */
+export function isDbIp(database: string): boolean {
+  return /db-?ip/i.test(database);
+}
+
+/**
+ * The stations the Statistics page shows (`?stations=`): the station of the
+ * switcher, all of them added up, a comparison of the switcher's with others
+ * (`1,2`), or of all of them.
+ */
+export type StationsView =
+  | { kind: "one" }
+  | { kind: "all" }
+  | { kind: "compare"; ids: number[] }
+  | { kind: "compare-all" };
+
+/** The view of the page's address, among the stations the user sees (`seen`). */
+export function viewOf(search: URLSearchParams, seen: readonly number[]): StationsView {
+  if (seen.length < 2) {
+    return { kind: "one" };
+  }
+  const value = search.get("stations");
+  if (value === "all") {
+    return { kind: "all" };
+  }
+  if (value === "compare-all") {
+    return { kind: "compare-all" };
+  }
+  const ids = [...new Set((value ?? "").split(",").map(Number))].filter((id) => seen.includes(id));
+  return ids.length >= 2 ? { kind: "compare", ids } : { kind: "one" };
+}
+
+/** The view as it is written in the address; `null` for the switcher's station. */
+export function viewValue(view: StationsView): string | null {
+  switch (view.kind) {
+    case "all":
+    case "compare-all":
+      return view.kind;
+    case "compare":
+      return view.ids.join(",");
+    default:
+      return null;
+  }
+}
+
+/** The `stations` parameter of the routes of several stations. */
+export function stationsParam(view: StationsView): string {
+  return view.kind === "compare" ? view.ids.join(",") : "all";
+}
+
+/** One color per station, in the order of the answer: the theme's, so both themes read. */
+export const SERIES = ["var(--accent)", "var(--deck-b)", "var(--deck-a)", "var(--fx)", "var(--good)", "var(--bad)", "var(--muted)"];
+
+export function seriesColor(index: number): string {
+  return SERIES[index % SERIES.length] ?? "var(--accent)";
+}
+
+/** Where to download a table of several stations in CSV. */
+export function stationsCsvUrl(path: string, view: StationsView, params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams({ format: "csv", stations: stationsParam(view) });
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      search.set(key, String(value));
+    }
+  }
+  return `/api/v1/stations/listeners/${path}?${search.toString()}`;
+}
+
+/**
+ * The groups of several stations' shares, side by side: the stations
+ * together's order, then the groups only some stations have; each with every
+ * station's listener share (0 where it has none).
+ */
+export function shareColumns(
+  total: readonly Schemas["Share"][],
+  stations: readonly (readonly Schemas["Share"][])[],
+): { share: Schemas["Share"]; shares: number[] }[] {
+  const key = (share: Schemas["Share"]) => `${share.kind}-${share.name ?? ""}`;
+  const groups: Schemas["Share"][] = [...total];
+  for (const groupsOf of stations) {
+    for (const share of groupsOf) {
+      if (!groups.some((g) => key(g) === key(share))) {
+        groups.push(share);
+      }
+    }
+  }
+  return groups.map((share) => ({
+    share,
+    shares: stations.map((groupsOf) => groupsOf.find((g) => key(g) === key(share))?.listener_share ?? 0),
+  }));
+}

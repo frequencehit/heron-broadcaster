@@ -205,8 +205,10 @@ function ownDayparts(value: string | null): boolean | undefined {
   return value === "category" ? false : undefined;
 }
 
-/** Filters of the URL beyond search, show and category. */
+/** Filters of the URL beyond search, category, ratio and sort: under *More filters*. */
 const MORE_FILTERS = [
+  "filter",
+  "dayparts",
   "station",
   "labels_all",
   "labels_any",
@@ -237,13 +239,12 @@ export function Library() {
   const { search } = useLocation();
   const canEdit = useCan("operator");
   const coverArt = useModule("cover_art");
+  const labelsOn = useModule("labels");
   const preview = usePreview();
-  const filter = (search.get("filter") ?? "") as TrackFilter | "";
   const sort = (search.get("sort") ?? "artist") as TrackSort;
   const desc = search.get("desc") === "true";
   const category = search.get("category") ?? "";
   const ratio = search.get("ratio") ?? "";
-  const dayparts = search.get("dayparts") ?? "";
   const page = Math.max(0, Number(search.get("page") ?? 0) || 0);
   const batch = search.get("batch");
   const [text, setText] = useState(search.get("q") ?? "");
@@ -389,7 +390,9 @@ export function Library() {
   };
   // The cover goes before the title; the others after the artist.
   const showCover = coverArt && columns.includes("cover");
-  const shown = COLUMNS.filter((c) => c.value !== "cover" && columns.includes(c.value));
+  const shown = COLUMNS.filter(
+    (c) => c.value !== "cover" && (labelsOn || c.value !== "labels") && columns.includes(c.value),
+  );
 
   return (
     <>
@@ -420,36 +423,23 @@ export function Library() {
             </span>
           </div>
         )}
-        <div className="card-head">
-          <div className="row" style={{ flex: 1 }}>
-            <label className="row" style={{ flex: "1 1 16rem", flexWrap: "nowrap" }}>
-              <Icon name="search" />
-              <span className="visually-hidden">{t("library.search")}</span>
-              <input
-                className="input"
-                type="search"
-                placeholder={t("library.searchPlaceholder")}
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-              />
-            </label>
-            <label>
-              <span className="visually-hidden">{t("library.show")}</span>
-              <select
-                className="input"
-                value={filter}
-                onChange={(event) => setSearch({ filter: event.target.value, page: undefined })}
-              >
-                {FILTERS.filter((option) => coverArt || option.value !== "no_cover").map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </option>
-                ))}
-              </select>
-            </label>
+        <div className="card-head" style={{ flexDirection: "column", alignItems: "stretch" }}>
+          <label className="row" style={{ flexWrap: "nowrap" }}>
+            <Icon name="search" />
+            <span className="visually-hidden">{t("library.search")}</span>
+            <input
+              className="input"
+              type="search"
+              style={{ flex: 1 }}
+              placeholder={t("library.searchPlaceholder")}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+          </label>
+          <div className="row filter-bar">
             <StationFilter filter={stationFilter} disabled={category === "none"} />
-            <label>
-              <span className="visually-hidden">{t("library.category")}</span>
+            <label className="stacked">
+              <span>{t("library.categories")}</span>
               <select
                 className="input"
                 value={category}
@@ -478,23 +468,9 @@ export function Library() {
                 ))}
               </select>
             </label>
-            <label className="row small">
-              <span className="muted">{t("trackDayparts.column")}</span>
-              <select
-                className="input"
-                value={dayparts}
-                onChange={(event) => setSearch({ dayparts: event.target.value || undefined, page: undefined })}
-              >
-                {DAYPART_CHOICES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span className="row" style={{ flexWrap: "nowrap" }}>
-              <label>
-                <span className="visually-hidden">{t("library.sortBy")}</span>
+            <span className="row" style={{ flexWrap: "nowrap", alignItems: "flex-end" }}>
+              <label className="stacked">
+                <span>{t("library.sortLabel")}</span>
                 <select
                   className="input"
                   value={sort}
@@ -502,7 +478,7 @@ export function Library() {
                 >
                   {SORTS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {t("library.sortOption", { sort: t(option.label) })}
+                      {t(option.label)}
                     </option>
                   ))}
                 </select>
@@ -528,7 +504,14 @@ export function Library() {
             <ColumnsMenu columns={columns} onToggle={toggleColumn} />
           </div>
         </div>
-        {moreOpen && <MoreFilters search={search} labels={labels.data ?? []} programming={programming.data} />}
+        {moreOpen && (
+          <MoreFilters
+            search={search}
+            labels={labelsOn ? (labels.data ?? []) : []}
+            programming={programming.data}
+            coverArt={coverArt}
+          />
+        )}
         {deletingNow && (
           <div className="card-head">
             <span>{t("library.deleting")}</span>
@@ -589,7 +572,7 @@ export function Library() {
                 <Menu
                   label={t("library.moreActions")}
                   items={[
-                    { label: t("library.labelsAction"), onSelect: () => setDialog("labels") },
+                    ...(labelsOn ? [{ label: t("library.labelsAction"), onSelect: () => setDialog("labels") }] : []),
                     { label: t("library.categoryAction"), onSelect: () => setDialog("category") },
                     { label: t("library.programmingAction"), onSelect: () => setDialog("programming") },
                     { label: t("ratio.action"), onSelect: () => setDialog("ratio") },
@@ -781,11 +764,14 @@ function sameRatio(tracks: TrackSummary[]): number | null {
 
 function ColumnsMenu({ columns, onToggle }: { columns: Column[]; onToggle: (column: Column, shown: boolean) => void }) {
   const coverArt = useModule("cover_art");
+  const labelsOn = useModule("labels");
   return (
     <details className="menu">
       <summary className="btn ghost small">{t("library.columns")}</summary>
       <div className="menu-panel stack">
-        {COLUMNS.filter((column) => coverArt || column.value !== "cover").map((column) => (
+        {COLUMNS.filter(
+          (column) => (coverArt || column.value !== "cover") && (labelsOn || column.value !== "labels"),
+        ).map((column) => (
           <label key={column.value} className="check">
             <input
               type="checkbox"
@@ -807,10 +793,12 @@ function MoreFilters({
   search,
   labels,
   programming,
+  coverArt,
 }: {
   search: URLSearchParams;
   labels: Schemas["Label"][];
   programming: Schemas["ProgrammingSettings"] | undefined;
+  coverArt: boolean;
 }) {
   const value = (name: string) => search.get(name) ?? "";
   const set = (name: string, next: string | undefined) => setSearch({ [name]: next || undefined, page: undefined });
@@ -865,6 +853,26 @@ function MoreFilters({
   return (
     <div className="card-body stack">
       <div className="filters-grid">
+        <label className="field">
+          <span>{t("library.show")}</span>
+          <select className="input" value={value("filter")} onChange={(event) => set("filter", event.target.value)}>
+            {FILTERS.filter((option) => coverArt || option.value !== "no_cover").map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>{t("trackDayparts.column")}</span>
+          <select className="input" value={value("dayparts")} onChange={(event) => set("dayparts", event.target.value)}>
+            {DAYPART_CHOICES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+        </label>
         {stations.length > 1 && (
           <label className="field">
             <span>{t("library.playsOn")}</span>
@@ -1158,13 +1166,14 @@ function RatioPill({ track }: { track: TrackSummary }) {
 
 /** What a deletion takes, before it is confirmed. */
 export function DeleteQuestion({ tracks }: { tracks: TrackSummary[] }) {
+  const trashOn = useModule("trash");
   const shown = tracks.slice(0, 15);
   return (
     <>
       <p>
         {rich("library.deleteQuestion", {
           count: tracks.length,
-          trash: <Link to="/trash">{t("nav.trash")}</Link>,
+          trash: trashOn ? <Link to="/trash">{t("nav.trash")}</Link> : t("nav.trash"),
         })}
       </p>
       <ul className="small" style={{ margin: 0 }}>

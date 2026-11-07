@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { type Schemas, api, unwrap } from "../api";
 import { type PlainKey, rich, t } from "../i18n";
+import { useModule } from "../lib/modules";
 import { Link } from "../lib/router";
 import { useAction } from "../lib/session";
 import { Field, Modal, Segmented } from "./ui";
@@ -19,10 +20,13 @@ export type Selection = Schemas["TrackSelection"];
 export type TagField = Schemas["TagField"];
 export type Label = Schemas["Label"];
 
+/** The labels; none asked for while the labels module is off (docs/modules.md). */
 export function useLabels() {
+  const on = useModule("labels");
   return useQuery({
     queryKey: ["labels"],
     queryFn: () => unwrap(api.GET("/api/v1/labels")),
+    enabled: on,
   });
 }
 
@@ -464,7 +468,7 @@ export function ProgrammingDialog({ open, onClose, selection, files, tracks }: T
         )}
         <p className="muted small" style={{ margin: 0 }}>
           {rich("selection.programmingHelp", {
-            link: <Link to="/settings">{t("selection.settingsLink")}</Link>,
+            link: <Link to="/settings?tab=programming">{t("selection.settingsLink")}</Link>,
             measured: <em>{t("selection.measured")}</em>,
           })}
         </p>
@@ -502,6 +506,7 @@ export function TagsDialog({
   current,
   genres,
 }: DialogProps & { current?: TagValues; genres?: string[] }) {
+  const reviewOn = useModule("review");
   const [changes, setChanges] = useState<Partial<Record<TagField, Change<string>>>>({});
   const [details, setDetails] = useState<TagField[]>([]);
   const [task, setTask] = useState<number | null>(null);
@@ -612,7 +617,9 @@ export function TagsDialog({
             {tracks > 1 ? t("selection.tagsHelpMany") : t("selection.tagsHelpOne")}{" "}
             {keep
               ? t("selection.keptHelp")
-              : rich("selection.tagsUndo", { link: <Link to="/to-organize">{t("nav.review")}</Link> })}
+              : rich("selection.tagsUndo", {
+                  link: reviewOn ? <Link to="/to-do?tab=batches">{t("nav.review")}</Link> : t("nav.review"),
+                })}
           </p>
           <div className="form-grid">
             {TAG_FIELDS.map(({ field, label, number: numeric }) => {

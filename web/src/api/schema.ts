@@ -23,6 +23,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/about/stopped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Takes the workers that have stopped reporting off the list: the
+         *     containers of earlier runs, each with its own instance name. One that
+         *     runs again reports again and comes back. Admins.
+         */
+        delete: operations["clear_stopped"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agc-presets": {
         parameters: {
             query?: never;
@@ -370,7 +391,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Saves your preferences: the web UI's theme, language and width. */
+        /**
+         * Saves your preferences: the web UI's theme, language, width and whether
+         *     the On air page shows the whole queue.
+         */
         put: operations["set_preferences"];
         post?: never;
         delete?: never;
@@ -1454,6 +1478,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/todo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many tracks to identify, and active songs missing an intro, a hook
+         *     or a cover: the counts of the *To do* page, whose lists are
+         *     `GET /library/review` and `GET /tracks?active_songs=true&filter=…`.
+         */
+        get: operations["todo_counts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/trash": {
         parameters: {
             query?: never;
@@ -1513,6 +1558,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/listeners/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session
+         *     lengths), and of the period of the same length before it.
+         */
+        get: operations["audience_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/listeners/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shares of the listeners and of the time spent listening by
+         *     country, device or player, small groups as *Other*. No address and no
+         *     user agent: countries, devices and player families only.
+         */
+        get: operations["breakdown_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/listeners/days": {
         parameters: {
             query?: never;
@@ -1562,26 +1648,6 @@ export interface paths {
         };
         /** Each output's listeners at the last minute, and the station's. */
         get: operations["now"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/listeners/players": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sessions and listening hours by player (user agent), most listened
-         *     first.
-         */
-        get: operations["players"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2906,6 +2972,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/listeners/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Each station's audience figures and the previous period's, and the
+         *     stations' together.
+         */
+        get: operations["stations_audience"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Each station's shares by country, device or player, and the stations'
+         *     together.
+         */
+        get: operations["stations_breakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Each station's totals per hour, day, week or month, and the stations'
+         *     together.
+         */
+        get: operations["stations_days"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/hours-of-day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Each station's hours of the day, and the stations' together. */
+        get: operations["stations_hours_of_day"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Each station's listeners at the last minute, and their total. */
+        get: operations["stations_now"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/listeners/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Each station's listeners minute by minute, and the stations' added up. */
+        get: operations["stations_samples"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{id}": {
         parameters: {
             query?: never;
@@ -3044,6 +3221,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/listeners/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session
+         *     lengths), and of the period of the same length before it.
+         */
+        get: operations["audience_route_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/listeners/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shares of the listeners and of the time spent listening by
+         *     country, device or player, small groups as *Other*. No address and no
+         *     user agent: countries, devices and player families only.
+         */
+        get: operations["breakdown_route_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/listeners/days": {
         parameters: {
             query?: never;
@@ -3093,26 +3311,6 @@ export interface paths {
         };
         /** Each output's listeners at the last minute, and the station's. */
         get: operations["now_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/listeners/players": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sessions and listening hours by player (user agent), most listened
-         *     first.
-         */
-        get: operations["players_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5060,6 +5258,70 @@ export interface components {
             source: string;
         };
         /**
+         * @description The audience figures of a period. Those from sessions are missing
+         *     without listener lists.
+         */
+        Audience: {
+            /**
+             * Format: double
+             * @description Average quarter-hour audience: listeners heard 5 minutes or more in
+             *     a clock quarter-hour, on average over the quarter-hours measured.
+             */
+            aqh?: number | null;
+            /**
+             * Format: double
+             * @description Average time spent listening: TTSL over the sessions, in seconds.
+             */
+            atsl_s?: number | null;
+            /**
+             * Format: double
+             * @description Distinct listeners per day, on average over the days measured.
+             */
+            cume?: number | null;
+            /**
+             * Format: int32
+             * @description Days with a minute measured.
+             */
+            days: number;
+            /** @description First day (`YYYY-MM-DD`, station time). */
+            from: string;
+            /**
+             * Format: int32
+             * @description Distinct listeners of each day, added up.
+             */
+            listener_days?: number | null;
+            /** Format: double */
+            median_session_s?: number | null;
+            /**
+             * Format: int32
+             * @description The most listeners at once.
+             */
+            peak?: number | null;
+            /**
+             * Format: int64
+             * @description The (first) minute of the peak.
+             */
+            peak_at_unix_ms?: number | null;
+            session_lengths?: components["schemas"]["SessionLengths"] | null;
+            /**
+             * Format: int32
+             * @description Sessions of at least 5 s.
+             */
+            sessions?: number | null;
+            /** @description Last day, included. */
+            to: string;
+            /**
+             * Format: double
+             * @description Total time spent listening: the sessions added up, in hours.
+             */
+            ttsl_hours?: number | null;
+        };
+        /** @description The figures of a period and of the period of the same length before. */
+        AudienceComparison: {
+            current: components["schemas"]["Audience"];
+            previous: components["schemas"]["Audience"];
+        };
+        /**
          * @description Which key opens an encrypted backup.
          * @enum {string}
          */
@@ -5263,6 +5525,16 @@ export interface components {
             title: number;
             /** Format: int32 */
             track: number;
+        };
+        /** @description The shares of a period by country, device or player. */
+        Breakdown: {
+            /**
+             * @description The GeoIP country database's type when countries are on (a
+             *     database by DB-IP asks to be credited), `null` otherwise.
+             */
+            geoip?: string | null;
+            /** @description The most listened first, then *Unknown* and *Other*. */
+            groups: components["schemas"]["Share"][];
         };
         Buffer: {
             /**
@@ -6264,6 +6536,7 @@ export interface components {
              *     track, picked with this one.
              */
             linked?: boolean;
+            lookahead?: components["schemas"]["LookaheadLog"] | null;
             /** @description Applied: least recently played at step 10. */
             method: components["schemas"]["Method"];
             /**
@@ -6631,6 +6904,18 @@ export interface components {
              * @description The highest peak.
              */
             peak: number;
+            /**
+             * Format: double
+             * @description Sessions of at least 5 s started in that hour, on average per day;
+             *     missing without listener lists.
+             */
+            tune_in?: number | null;
+            /**
+             * Format: double
+             * @description Sessions that ended in that hour (not at midnight), on average per
+             *     day.
+             */
+            tune_out?: number | null;
         };
         ImportApplyRequest: {
             categories?: components["schemas"]["ImportCategoryChoice"][];
@@ -7246,6 +7531,46 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @description How a pick looked ahead, in the rotation log. */
+        LookaheadLog: {
+            /**
+             * Format: int32
+             * @description Endings simulated.
+             */
+            draws: number;
+            /**
+             * Format: int64
+             * @description The exact time looked ahead to (Unix ms).
+             */
+            exact_at_unix_ms: number;
+            /**
+             * @description The best ending fades out the track before the exact slot: it ends
+             *     after the cut (the end of the window, the exact time in hard mode).
+             *     Fading nothing comes first: every ending simulated did.
+             */
+            faded: boolean;
+            /**
+             * Format: int32
+             * @description Time filled before the exact slot (medley or filler track).
+             */
+            filling_ms: number;
+            /**
+             * @description The best ending: the tracks before the exact slot end inside its
+             *     window (at the exact time in hard mode).
+             */
+            in_window: boolean;
+            /**
+             * Format: int64
+             * @description Where they end, from the exact time; negative when early. Missing
+             *     when no ending reached the exact slot.
+             */
+            offset_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Relaxation steps of its picks, added up.
+             */
+            relaxed_steps: number;
+        };
         /** @description Loudness normalization from the analyzed integrated loudness (EBU R128). */
         LoudnessSettings: {
             /** @default true */
@@ -7493,11 +7818,25 @@ export interface components {
          */
         Modules: {
             /** @default true */
+            artists: boolean;
+            /** @default true */
             cover_art: boolean;
+            /** @default true */
+            eq: boolean;
+            /** @default true */
+            labels: boolean;
             /** @default true */
             listener_statistics: boolean;
             /** @default true */
             medleys: boolean;
+            /** @default true */
+            processing: boolean;
+            /** @default true */
+            restrictions: boolean;
+            /** @default true */
+            review: boolean;
+            /** @default true */
+            trash: boolean;
             /** @default true */
             webhooks: boolean;
         };
@@ -7934,17 +8273,6 @@ export interface components {
          * @enum {string}
          */
         PlaySource: "rotation" | "request" | "fallback" | "manual";
-        PlayerListening: {
-            /** Format: double */
-            listening_hours: number;
-            /**
-             * Format: int64
-             * @description Sessions of the minimum length.
-             */
-            sessions: number;
-            /** @description As the player sends it. */
-            user_agent: string;
-        };
         /** @description Decks, queue and outputs of the engine. */
         PlayerState: {
             cued?: components["schemas"]["QueueEntry"] | null;
@@ -8019,15 +8347,16 @@ export interface components {
         };
         /** @description What to change; what is left out stays as it is. */
         Preferences: {
-            /** @description Use the whole width of the screen instead of a centred column. */
-            full_width?: boolean | null;
             /**
              * @description A language tag (`en`, `fr`…) or `system`. The API does not know which
              *     languages the web UI has: it falls back on the browser's for one it
              *     lacks.
              */
             language?: string | null;
+            /** @description The On air page shows the whole queue, editable there. */
+            on_air_whole_queue?: boolean | null;
             theme?: components["schemas"]["Theme"] | null;
+            width?: components["schemas"]["Width"] | null;
         };
         Preparation: {
             /**
@@ -8202,6 +8531,14 @@ export interface components {
              *     jingle, and moving either moves both.
              */
             linked_to?: number | null;
+            /**
+             * Format: int32
+             * @description Where the next track starts, in ms from this entry's cue-in: the
+             *     engine's transition into the entry after it. Missing from engines
+             *     before it, and for the jingle over the cued track's intro: at its
+             *     end.
+             */
+            next_start_ms?: number | null;
             track: components["schemas"]["QueuedTrack"];
         };
         /**
@@ -8917,6 +9254,53 @@ export interface components {
             /** @description Missing when the service was never seen or does not say. */
             version?: string | null;
         };
+        /** @description Sessions by length. */
+        SessionLengths: {
+            /** Format: int32 */
+            from_1_to_5_min: number;
+            /** Format: int32 */
+            from_30_min_to_2_h: number;
+            /** Format: int32 */
+            from_5_to_30_min: number;
+            /** Format: int32 */
+            over_2_h: number;
+            /** Format: int32 */
+            under_1_min: number;
+        };
+        /** @description A country, device or player over a period. */
+        Share: {
+            kind: components["schemas"]["ShareKind"];
+            /**
+             * Format: double
+             * @description Its share of the listeners, 0 to 1.
+             */
+            listener_share: number;
+            /**
+             * Format: int32
+             * @description Distinct listeners of each day, added up.
+             */
+            listeners: number;
+            /**
+             * @description The country code (`FR`), the device (`mobile`, `desktop`,
+             *     `smart_speaker`, `car`, `tv`) or the player family; missing for
+             *     *Unknown* and *Other*.
+             */
+            name?: string | null;
+            /** Format: int32 */
+            sessions: number;
+            /**
+             * Format: double
+             * @description Time spent listening, in hours.
+             */
+            ttsl_hours: number;
+            /**
+             * Format: double
+             * @description Its share of the time spent listening, 0 to 1.
+             */
+            ttsl_share: number;
+        };
+        /** @enum {string} */
+        ShareKind: "named" | "unknown" | "other";
         /**
          * @description The engine's silence watchdog: after this long of silence on the master
          *     bus (below −50 dBFS), it skips to the next track, then to the fallback
@@ -9177,6 +9561,16 @@ export interface components {
             /** Format: int32 */
             track_total?: number | null;
         };
+        StationAudience: components["schemas"]["StationRef"] & {
+            current: components["schemas"]["Audience"];
+            previous: components["schemas"]["Audience"];
+        };
+        StationDays: components["schemas"]["StationRef"] & {
+            periods: components["schemas"]["PeriodTotals"][];
+        };
+        StationHours: components["schemas"]["StationRef"] & {
+            hours: components["schemas"]["HourOfDay"][];
+        };
         /** @description A station as stored. */
         StationInfo: {
             /**
@@ -9218,6 +9612,14 @@ export interface components {
             /** @description The station's own switches. */
             station: components["schemas"]["Modules"];
         };
+        /** @description A station's listeners at the last minute. */
+        StationNow: components["schemas"]["StationRef"] & {
+            /**
+             * Format: int32
+             * @description Its outputs' listeners added up; missing when none could be read.
+             */
+            total?: number | null;
+        };
         StationPlays: {
             /** Format: int64 */
             last_played_at_unix_ms?: number | null;
@@ -9254,6 +9656,13 @@ export interface components {
             /** Format: int64 */
             station_id: number;
         };
+        /** @description A station of the answer. */
+        StationRef: {
+            code: string;
+            name: string;
+            /** Format: int64 */
+            station_id: number;
+        };
         StationRequest: {
             code: string;
             /**
@@ -9275,6 +9684,9 @@ export interface components {
          * @enum {string}
          */
         StationRoleName: "none" | "viewer" | "operator" | "admin";
+        StationSamples: components["schemas"]["StationRef"] & {
+            samples: components["schemas"]["MinuteSample"][];
+        };
         /** @description The station itself. */
         StationSettings: {
             /**
@@ -9288,6 +9700,9 @@ export interface components {
              *     `Europe/Paris`. By default the server's (`TZ`), or UTC.
              */
             timezone: string;
+        };
+        StationShares: components["schemas"]["StationRef"] & {
+            groups: components["schemas"]["Share"][];
         };
         /**
          * @description The station's separation windows, in minutes (`rotation` settings); 0
@@ -9319,6 +9734,47 @@ export interface components {
              * @default 240
              */
             track_min: number;
+        };
+        StationsAudience: {
+            stations: components["schemas"]["StationAudience"][];
+            /**
+             * @description The stations together: the peak and AQH on their minutes added up,
+             *     a listener of two stations once.
+             */
+            total: components["schemas"]["AudienceComparison"];
+        };
+        StationsBreakdown: {
+            /**
+             * @description The GeoIP country database's type when countries are on, `null`
+             *     otherwise.
+             */
+            geoip?: string | null;
+            stations: components["schemas"]["StationShares"][];
+            /** @description The stations together: a listener of two stations once. */
+            total: components["schemas"]["Share"][];
+        };
+        StationsDays: {
+            stations: components["schemas"]["StationDays"][];
+            /** @description The stations together, in the first one's time zone. */
+            total: components["schemas"]["PeriodTotals"][];
+        };
+        StationsHours: {
+            stations: components["schemas"]["StationHours"][];
+            /** @description The stations together, in the first one's time zone. */
+            total: components["schemas"]["HourOfDay"][];
+        };
+        StationsNow: {
+            stations: components["schemas"]["StationNow"][];
+            /**
+             * Format: int32
+             * @description The stations' listeners added up; missing when none could be read.
+             */
+            total?: number | null;
+        };
+        StationsSamples: {
+            stations: components["schemas"]["StationSamples"][];
+            /** @description The stations' listeners added up, minute by minute. */
+            total: components["schemas"]["MinuteSample"][];
         };
         /** @description Listener statistics. See `docs/statistics.md#settings`. */
         StatisticsSettings: {
@@ -9379,6 +9835,11 @@ export interface components {
              * @default -40
              */
             threshold_db: number;
+        };
+        /** @description How many stopped workers `DELETE /about/stopped` took off the list. */
+        StoppedCleared: {
+            /** Format: int64 */
+            removed: number;
         };
         /**
          * @description What the station tells the stream servers about itself, shown in stream
@@ -9654,6 +10115,29 @@ export interface components {
          * @enum {string}
          */
         Theme: "system" | "light" | "dark";
+        /** @description What there is to do on the library: the counts of the *To do* page. */
+        TodoCounts: {
+            /**
+             * Format: int64
+             * @description Active songs with no cover; `null` while cover art is turned off.
+             */
+            no_cover?: number | null;
+            /**
+             * Format: int64
+             * @description Active songs with no hook.
+             */
+            no_hook: number;
+            /**
+             * Format: int64
+             * @description Active songs (`GET /tracks?active_songs=true`) with no intro point.
+             */
+            no_intro: number;
+            /**
+             * Format: int64
+             * @description Tracks waiting for review (`GET /library/review`'s `total`).
+             */
+            to_identify: number;
+        };
         /** @description An authenticator app to set up. */
         TotpSetup: {
             /** @description The QR code, as an SVG image. */
@@ -9802,7 +10286,7 @@ export interface components {
             year_tag?: number | null;
         };
         /** @enum {string} */
-        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
+        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover" | "no_intro" | "no_hook";
         TrackIdentification: {
             /** @description Why the track needs review. */
             reason?: string | null;
@@ -9957,6 +10441,12 @@ export interface components {
          *     for the actions on a selection. Lists of IDs are comma-separated.
          */
         TrackQuery: {
+            /**
+             * @description Only the enabled songs whose file is there: tracks in at least one
+             *     category of the Song type (the one that exists from the start,
+             *     whatever its name), not disabled, not missing. What *To do* lists.
+             */
+            active_songs?: boolean | null;
             /**
              * Format: int32
              * @description Tracks added in the last this many days.
@@ -10265,7 +10755,7 @@ export interface components {
             duration_ms: number;
             /**
              * Format: int64
-             * @description When it should start, without crossfades, as the Queue page shows it.
+             * @description When it should start, crossfades included, as the Queue page shows it.
              */
             planned_start_unix_ms: number;
             /**
@@ -10279,11 +10769,6 @@ export interface components {
             /** Format: int64 */
             created_at_unix_ms: number;
             enabled: boolean;
-            /**
-             * @description The web UI uses the whole width of the screen instead of a centred
-             *     column.
-             */
-            full_width: boolean;
             /** Format: int64 */
             id: number;
             /**
@@ -10293,6 +10778,11 @@ export interface components {
             language: string;
             /** Format: int64 */
             last_login_at_unix_ms?: number | null;
+            /**
+             * @description The On air page shows the whole queue, editable there, instead of
+             *     its first tracks.
+             */
+            on_air_whole_queue: boolean;
             role: components["schemas"]["Role"];
             /**
              * @description Their role on each station; a station left out is `none`. `role` is
@@ -10304,6 +10794,7 @@ export interface components {
             /** @description Their second factors, and whether their role requires one. */
             two_factor: components["schemas"]["TwoFactorStatus"];
             username: string;
+            width: components["schemas"]["Width"];
         };
         UserPatch: {
             /** @description Disabled users cannot sign in, and their tokens stop working. */
@@ -10496,6 +10987,11 @@ export interface components {
              */
             request_factor: number;
         };
+        /**
+         * @description The web UI's width.
+         * @enum {string}
+         */
+        Width: "normal" | "wide" | "full";
         /** @description Separation windows, in minutes; 0 turns a rule off. */
         Windows: {
             /**
@@ -10569,6 +11065,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["About"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    clear_stopped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoppedCleared"];
                 };
             };
             "4XX": {
@@ -13571,6 +14094,33 @@ export interface operations {
             };
         };
     };
+    todo_counts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoCounts"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_trash: {
         parameters: {
             query?: {
@@ -13658,6 +14208,82 @@ export interface operations {
             };
         };
     };
+    audience_route: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceComparison"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    breakdown_route: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Breakdown"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     days: {
         parameters: {
             query: {
@@ -13667,6 +14293,11 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
                 /** @description Rows per hour, day (by default), week or month. */
                 group?: "hour" | "day" | "week" | "month";
                 format?: "json" | "csv";
@@ -13704,6 +14335,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 format?: "json" | "csv";
             };
             header?: never;
@@ -13745,42 +14378,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListenersNow"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    players: {
-        parameters: {
-            query: {
-                /** @description First day (`YYYY-MM-DD`, station time). */
-                from: string;
-                /** @description Last day, included. */
-                to: string;
-                /** @description Only this output; the whole station otherwise. */
-                output_id?: number;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlayerListening"][];
                 };
             };
             "4XX": {
@@ -13839,6 +14436,10 @@ export interface operations {
                 from: string;
                 /** @description Last day, included. */
                 to: string;
+                /** @description Only the listeners of this output; the whole station's otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description Tracks played fewer times are left out, 3 by default. */
                 min_plays?: number;
                 /** @description 1 to 500, 50 by default. */
@@ -16876,6 +17477,214 @@ export interface operations {
             };
         };
     };
+    stations_audience: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsAudience"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_breakdown: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsBreakdown"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_days: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Rows per hour, day (by default), week or month. */
+                group?: "hour" | "day" | "week" | "month";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsDays"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_hours_of_day: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsHours"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_now: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsNow"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stations_samples: {
+        parameters: {
+            query: {
+                /** @description `all` (every station the user sees), or station IDs (`1,2`). */
+                stations: string;
+                /** @description From this time (Unix ms). */
+                from_unix_ms: number;
+                /** @description Until this time (Unix ms), at most 8 days after `from_unix_ms`. */
+                to_unix_ms: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationsSamples"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_station_info: {
         parameters: {
             query?: never;
@@ -17291,6 +18100,88 @@ export interface operations {
             };
         };
     };
+    audience_route_on_station: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceComparison"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    breakdown_route_on_station: {
+        parameters: {
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Breakdown"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     days_on_station: {
         parameters: {
             query: {
@@ -17300,6 +18191,11 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
                 /** @description Rows per hour, day (by default), week or month. */
                 group?: "hour" | "day" | "week" | "month";
                 format?: "json" | "csv";
@@ -17340,6 +18236,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 format?: "json" | "csv";
             };
             header?: never;
@@ -17387,45 +18285,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListenersNow"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    players_on_station: {
-        parameters: {
-            query: {
-                /** @description First day (`YYYY-MM-DD`, station time). */
-                from: string;
-                /** @description Last day, included. */
-                to: string;
-                /** @description Only this output; the whole station otherwise. */
-                output_id?: number;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlayerListening"][];
                 };
             };
             "4XX": {
@@ -17487,6 +18346,10 @@ export interface operations {
                 from: string;
                 /** @description Last day, included. */
                 to: string;
+                /** @description Only the listeners of this output; the whole station's otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description Tracks played fewer times are left out, 3 by default. */
                 min_plays?: number;
                 /** @description 1 to 500, 50 by default. */
@@ -19880,7 +20743,13 @@ export interface operations {
                 category_id?: number;
                 /** @description Tracks in no category. */
                 no_category?: boolean;
-                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
+                /**
+                 * @description Only the enabled songs whose file is there: tracks in at least one
+                 *     category of the Song type (the one that exists from the start,
+                 *     whatever its name), not disabled, not missing. What *To do* lists.
+                 */
+                active_songs?: boolean;
+                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover" | "no_intro" | "no_hook";
                 /** @description Tracks with every one of these labels (IDs, comma-separated). */
                 labels_all?: string;
                 /** @description Tracks with at least one of these labels. */

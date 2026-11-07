@@ -30,6 +30,7 @@ fn track(id: TrackId, length_ms: i64) -> Track {
         artists: vec![100 + id],
         categories: vec![],
         length_ms: u32::try_from(length_ms).unwrap(),
+        mix_ms: None,
         ratio: 10,
         dayparts: None,
         daypart_days: None,
@@ -442,13 +443,22 @@ fn simulations_meet_the_exact_times_and_audit_them() {
         filler_category_id: Some(FILLER),
         ..library.settings.clone()
     };
+    // The one news flash plays every hour: its separation allows it.
+    if let Some(news) = library.categories.get_mut(&NEWS) {
+        news.separation.track_min = Some(30);
+        news.separation.title_min = Some(30);
+        news.separation.artist_min = Some(30);
+        news.separation.album_min = Some(30);
+    }
     let simulation = simulate(&library, History::default(), None, 0, 6 * HOUR, 3);
     let news: Vec<_> = simulation
         .picks
         .iter()
         .filter(|pick| pick.track_id == 50)
         .collect();
-    assert_eq!(news.len(), 6);
+    // One every hour; the one of 6:00 too when it starts early in its
+    // window, before the simulation ends.
+    assert!((6..=7).contains(&news.len()), "{}", news.len());
     for pick in &news {
         let into_hour = pick.start_unix_ms.rem_euclid(HOUR);
         assert!(
@@ -515,4 +525,84 @@ fn the_repeated_hour_runs_its_exact_times_again() {
         "{:?}",
         simulation.violations
     );
+}
+
+#[test]
+fn after_its_exact_slot_the_clock_goes_on_with_the_next_slot() {
+    // The news at the top of the hour, started at 00:20 inside its window:
+    // the songs follow it, the news is not due again (#157).
+    for mode in [ExactMode::Soft, ExactMode::Hard] {
+        let library = top_of_hour(mode, &[180_000, 200_000]);
+        let news = &library.tracks[&50];
+        let start = HOUR + 20 * SEC;
+        let history = History::new(vec![Play::of(news, start)], HashMap::new());
+        let end = start + i64::from(news.length_ms);
+        for seed in 0..10 {
+            let next = pick(&library, &history, end, at(0, 1), seed);
+            assert_ne!(next.track, 50, "{mode:?}, seed {seed}");
+            assert!(next.explanation.exact.is_none());
+            assert_eq!(next.position.map(|position| position.slot), Some(1));
+        }
+    }
+}
+
+#[test]
+fn after_its_exact_slot_a_looping_clock_does_not_run_it_again_this_hour() {
+    let mut library = top_of_hour(ExactMode::Soft, &[180_000, 200_000]);
+    for clock in library.clocks.values_mut() {
+        clock.looping = true;
+    }
+    let news = &library.tracks[&50];
+    let start = HOUR + 20 * SEC;
+    let history = History::new(vec![Play::of(news, start)], HashMap::new());
+    let next = pick(
+        &library,
+        &history,
+        start + i64::from(news.length_ms),
+        at(0, 1),
+        1,
+    );
+    assert_ne!(next.track, 50);
+}
+
+#[test]
+fn a_hard_exact_time_draws_wider_before_cutting_a_track() {
+    // The three songs played longest ago would cross the exact time; the
+    // others end before it.
+    let mut lengths = vec![300 * SEC; 3];
+    lengths.extend([60 * SEC; 7]);
+    let mut library = library(
+        vec![
+            with_exact(NEWS, exact(0, ExactMode::Hard)),
+            slot(SONGS),
+            Slot {
+                method: Method::LeastRecentlyPlayed,
+                ..slot(SONGS)
+            },
+        ],
+        &lengths,
+    );
+    if let Some(songs) = library.categories.get_mut(&SONGS) {
+        songs.separation.draw_start_pct = Some(30);
+        songs.separation.draw_max_pct = Some(100);
+    }
+    let history = History::new(
+        Vec::new(),
+        (1..=10)
+            .map(|id| (id, if id <= 3 { -20 * HOUR } else { -10 * HOUR }))
+            .collect(),
+    );
+    for seed in 0..10 {
+        let pick = crate::select::outcome(
+            &library,
+            &history,
+            58 * MIN + 30 * SEC,
+            Some(&at(1, 0)),
+            &mut Rng::new(seed),
+            false,
+        )
+        .pick
+        .unwrap();
+        assert!(pick.track > 3, "{}", pick.track);
+    }
 }

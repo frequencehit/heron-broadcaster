@@ -16,7 +16,7 @@ import { startLive, stopLive, useLive } from "./lib/live";
 import { Link, match, navigate, useLocation } from "./lib/router";
 import { ME_KEY, StationScope, UserContext, useCan, useMeQuery, useUser } from "./lib/session";
 import { chooseStation, here, initialStation, stationRole, useStation } from "./lib/station";
-import { applyFullWidth, applyTheme, storedFullWidth, storedTheme } from "./lib/theme";
+import { applyTheme, applyWidth, storedTheme, storedWidth } from "./lib/theme";
 import { mustEnrol } from "./lib/twoFactor";
 import { buildLabel, differentBuilds, webBuild } from "./lib/version";
 import { About } from "./pages/About";
@@ -40,7 +40,7 @@ import { Playout } from "./pages/Playout";
 import { QueuePage } from "./pages/Queue";
 import { Restrictions } from "./pages/Restrictions";
 import { Import } from "./pages/Import";
-import { Review } from "./pages/Review";
+import { ToDo } from "./pages/ToDo";
 import { Rotation } from "./pages/Rotation";
 import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
@@ -52,7 +52,7 @@ import { Users } from "./pages/Users";
 import { Webhooks } from "./pages/Webhooks";
 
 applyTheme(storedTheme());
-applyFullWidth(storedFullWidth());
+applyWidth(storedWidth());
 
 export function App() {
   const client = useQueryClient();
@@ -64,7 +64,7 @@ export function App() {
   useEffect(() => {
     if (user) {
       applyTheme(user.theme);
-      applyFullWidth(user.full_width);
+      applyWidth(user.width);
       void setLanguage(toSetting(user.language));
       // The live WebSocket opens once the station shown is known (Shell).
     } else if (user === null) {
@@ -107,6 +107,12 @@ function route(pathname: string): ReactNode {
   const page = pageAt(pathname);
   const module = placeOf(pathname)?.page.module;
   return module ? <ModuleGate module={module}>{page}</ModuleGate> : page;
+}
+
+/** Goes to `to` in place of the page shown, as if it had been asked for. */
+function Redirect({ to }: { to: string }) {
+  useEffect(() => navigate(to, { replace: true }), [to]);
+  return null;
 }
 
 /** The page at `pathname`, its module aside. */
@@ -156,8 +162,11 @@ function pageAt(pathname: string): ReactNode {
       return <Restrictions />;
     case "/rotation-log":
       return <Rotation />;
+    case "/to-do":
+      return <ToDo />;
     case "/to-organize":
-      return <Review />;
+      // Its former address, tabs kept.
+      return <Redirect to={`/to-do${window.location.search}`} />;
     case "/migrate":
       return <Import />;
     case "/playout":
@@ -297,7 +306,7 @@ function Shell() {
                   aria-current={isCurrent(page.path, pathname) ? "page" : undefined}
                 >
                   <Icon name={page.icon} /> {t(page.label)}
-                  {page.path === "/to-organize" && reviewCount > 0 && (
+                  {page.path === "/to-do" && reviewCount > 0 && (
                     <span className="count" title={t("nav.reviewCount")}>
                       {reviewCount}
                     </span>

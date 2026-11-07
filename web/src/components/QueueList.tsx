@@ -51,19 +51,32 @@ export function useWaiting(): QueueEntry[] | undefined {
 }
 
 /**
- * When each waiting track should start (Unix ms), without crossfades. A
+ * How long from an entry's start to the next one's: where the engine
+ * starts the next track (its transition), else the entry's length.
+ */
+export function nextStartMs(entry: QueueEntry): number {
+  return entry.next_start_ms ?? Math.max(0, entry.track.cue_out_ms - entry.track.cue_in_ms);
+}
+
+/**
+ * When each waiting track should start (Unix ms), crossfades included. A
  * jingle over an intro takes no time of its own.
  */
-function startTimes(
+export function startTimes(
   entries: QueueEntry[],
   firstStart: number | null,
   overIntro: number | null,
 ): (number | null)[] {
   let at = firstStart;
   return entries.map((entry) => {
+    // An exact time: the engine starts it then at the latest.
+    const exact = entry.track.start_at_unix_ms;
+    if (exact !== null && exact !== undefined) {
+      at = at === null ? exact : Math.min(at, Math.max(exact, Date.now()));
+    }
     const start = at;
     if (at !== null && entry.entry_id !== overIntro) {
-      at += Math.max(0, entry.track.cue_out_ms - entry.track.cue_in_ms);
+      at += nextStartMs(entry);
     }
     return start;
   });
@@ -111,13 +124,11 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
     return <Empty>{t("queue.empty")}</Empty>;
   }
 
-  // The on-air deck's remaining time gives the first start.
+  // The on-air deck's time up to its transition gives the first start.
   const onAir = player.decks.find((deck) => deck.on_air && deck.deck !== "fx");
   const position = onAir ? positionNow(positions, onAir.deck, player.paused) : null;
   const firstStart =
-    onAir?.entry && position
-      ? Date.now() + Math.max(0, onAir.entry.track.cue_out_ms - position.position_ms)
-      : null;
+    onAir?.entry && position ? Date.now() + Math.max(0, nextStartMs(onAir.entry) - position.position_ms) : null;
   const starts = startTimes(entries, firstStart, player.cued_jingle?.entry_id ?? null);
   const shown = limit ? entries.slice(0, limit) : entries;
   const links = linkRoles(entries);
@@ -244,11 +255,6 @@ function Item({
               <Icon name="link" size={12} /> {t("queue.linked")}
             </span>
           )}
-          {track.start_at_unix_ms !== null && track.start_at_unix_ms !== undefined && (
-            <span className="badge accent" title={t("queue.startsAtHint")}>
-              <Icon name="clock" size={12} /> {t("queue.startsAt", { time: clockTime(track.start_at_unix_ms) })}
-            </span>
-          )}
           {track.continues && (
             <span className="badge" title={t("queue.continuesHint")}>
               {t("queue.continues")}
@@ -268,9 +274,19 @@ function Item({
           <CategoryChips categories={categories} />
         </div>
       </div>
-      <span className="start" title={t("queue.expectedStart")}>
-        {start !== null ? `≈ ${clockTime(start)}` : ""}
-      </span>
+      {track.start_at_unix_ms !== null && track.start_at_unix_ms !== undefined && start !== null ? (
+        <span
+          className="start badge accent"
+          title={t("queue.startsAtHint")}
+          aria-label={t("queue.startsAt", { time: clockTime(start) })}
+        >
+          <Icon name="clock" size={12} /> {clockTime(start)}
+        </span>
+      ) : (
+        <span className="start" title={t("queue.expectedStart")}>
+          {start !== null ? `≈ ${clockTime(start)}` : ""}
+        </span>
+      )}
       {canEdit && (
         <div className="row" style={{ flexWrap: "nowrap", gap: "0.25rem" }}>
           {index > 0 && (

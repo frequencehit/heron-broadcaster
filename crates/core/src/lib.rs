@@ -19,6 +19,7 @@ pub use modules::{Module, Modules};
 pub use output::{EncoderKind, EncoderProfile, OutputConfig, OutputKind, OutputsConfig};
 pub use playout::{
     CrossfadeSettings, FadeCurve, LoudnessSettings, PlaySource, PlayoutSettings,
-    SilenceWatchdogSettings, TrackOverrides, TrackPlayout, Transition, plan_transition,
+    SilenceWatchdogSettings, TrackOverrides, TrackPlayout, Transition, next_start_ms,
+    plan_transition,
 };
 pub use settings::{AnalysisSettings, LibrarySettings};

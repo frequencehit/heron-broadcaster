@@ -438,7 +438,17 @@ async fn about_page_roles_and_secrets() {
     assert_eq!(worker(&about, "heron-librarian")["running"], false);
     assert_eq!(worker(&about, "heron-librarian")["version"], "0.2.0");
 
+    // The stopped ones are taken off the list by an admin, the running ones stay.
+    let (status, _) = viewer.request(Method::DELETE, "/about/stopped", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     let admin = station.signed_in("admin").await;
+    let (status, cleared) = admin.request(Method::DELETE, "/about/stopped", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(cleared["removed"], 1);
+    let about = viewer.get("/about").await;
+    assert_eq!(worker(&about, "heron-analyzer")["running"], true);
+    assert!(worker(&about, "heron-librarian")["version"].is_null());
+
     let about = admin.get("/about").await;
     assert!(about["runtime"]["cpu_cores"].as_u64().unwrap() >= 1);
     assert!(about["dependencies"]["database"]["version"].is_string());
@@ -1220,8 +1230,38 @@ async fn listener_statistics_through_the_api() {
         .await;
     assert_eq!(
         hours,
-        json!([{"hour": 8, "days": 1, "average": 9.0, "peak": 12, "listening_hours": 9.0}])
+        json!([{"hour": 8, "days": 1, "average": 9.0, "peak": 12, "listening_hours": 9.0,
+                "tune_in": null, "tune_out": null}])
     );
+    // One server's part.
+    sqlx::query(
+        "INSERT INTO listener_totals (station_id, output_id, server_id, day, hour, minutes, peak,
+             average, listening_hours)
+         VALUES (1, NULL, 7, '2026-10-19', NULL, 60, 3, 1.5, 1.5)",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    let relay_days = viewer
+        .get("/listeners/days?from=2026-10-19&to=2026-10-25&server_id=7")
+        .await;
+    assert_eq!(relay_days.as_array().unwrap().len(), 1);
+    assert_eq!(relay_days[0]["peak"], 3);
+    assert_eq!(
+        viewer
+            .get("/listeners/days?from=2026-10-19&to=2026-10-25")
+            .await[0]["peak"],
+        12
+    );
+    // The audience figures need samples and sessions, purged here.
+    let figures = viewer
+        .get("/listeners/audience?from=2026-10-19&to=2026-10-25&server_id=7")
+        .await;
+    assert_eq!(figures["current"]["from"], "2026-10-19");
+    assert_eq!(figures["current"]["days"], 0);
+    assert_eq!(figures["current"]["ttsl_hours"], json!(null));
+    assert_eq!(figures["previous"]["from"], "2026-10-12");
+    assert_eq!(figures["previous"]["to"], "2026-10-18");
 
     // CSV.
     let csv = viewer
@@ -1264,9 +1304,9 @@ async fn listener_statistics_through_the_api() {
     );
     assert_eq!(
         viewer
-            .get("/listeners/players?from=2026-10-19&to=2026-10-25")
+            .get("/listeners/breakdown?from=2026-10-19&to=2026-10-25&by=player")
             .await,
-        json!([])
+        json!({"geoip": null, "groups": []})
     );
     assert_eq!(
         viewer
@@ -1279,17 +1319,123 @@ async fn listener_statistics_through_the_api() {
         "/listeners/days?from=2026-10-25&to=2026-10-19",
         "/listeners/days?from=yesterday&to=2026-10-19",
         "/listeners/tracks?from=2026-10-19&to=2026-10-25&limit=0",
-        "/listeners/players?from=2026-10-19&to=2026-10-25&limit=101",
+        "/listeners/breakdown?from=2026-10-25&to=2026-10-19",
+        "/listeners/audience?from=2026-10-25&to=2026-10-19",
     ] {
         let (status, _) = viewer.request(Method::GET, bad, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
     }
     for path in [
         format!("/listeners/samples?from_unix_ms=0&to_unix_ms=60000&output_id={id}"),
-        format!("/listeners/players?from=2026-10-19&to=2026-10-25&output_id={id}&limit=5"),
         "/listeners/tracks?from=2026-10-19&to=2026-10-25&min_plays=1&limit=5".to_owned(),
+        format!("/listeners/tracks?from=2026-10-19&to=2026-10-25&output_id={id}&server_id=7"),
     ] {
         assert_eq!(viewer.get(&path).await, json!([]), "{path}");
+    }
+
+    // Sessions from known countries and players: shares by country, device
+    // and player, small groups as Other, never a user agent.
+    let players = [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) Version/17.4 Mobile/15E148 Safari/604.1",
+        "VLC/3.0.20 LibVLC/3.0.20",
+        "VLC/3.0.21 LibVLC/3.0.21",
+        "AlexaMediaPlayer/2.1.4676.0 (Linux;Android 5.1.1)",
+    ];
+    // (country, player, listeners): FR 6 on VLC (two versions), BE 5 on
+    // iPhones, IS 1 on a smart speaker, 2 not found.
+    let mut n = 0u8;
+    for (country, player, listeners) in [
+        (Some("FR"), players[1], 3),
+        (Some("FR"), players[2], 3),
+        (Some("BE"), players[0], 5),
+        (Some("IS"), players[3], 1),
+        (None, players[0], 2),
+    ] {
+        for _ in 0..listeners {
+            n += 1;
+            sqlx::query(
+                "INSERT INTO listener_sessions (output_id, server_id, listener_key, user_agent,
+                     country, client_id, day, started_at, last_seen_at, ended_at, duration_s)
+                 VALUES (?, 7, ?, ?, ?, ?, '2026-10-20', '2026-10-20 10:00:00',
+                         '2026-10-20 10:30:00', '2026-10-20 10:30:00', 1800)",
+            )
+            .bind(id)
+            .bind([n; 32].as_slice())
+            .bind(player)
+            .bind(country)
+            .bind(u64::from(n))
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+    }
+    let by = |what: &str| format!("/listeners/breakdown?from=2026-10-19&to=2026-10-25&by={what}");
+    let groups = |answer: &serde_json::Value| -> Vec<(String, Option<String>, u64)> {
+        answer["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|g| {
+                (
+                    g["kind"].as_str().unwrap().to_owned(),
+                    g["name"].as_str().map(str::to_owned),
+                    g["listeners"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let named = |kind: &str, name: Option<&str>, listeners: u64| {
+        (kind.to_owned(), name.map(str::to_owned), listeners)
+    };
+    let countries = viewer.get(&by("country")).await;
+    assert_eq!(
+        groups(&countries),
+        [
+            named("named", Some("FR"), 6),
+            named("named", Some("BE"), 5),
+            named("unknown", None, 2),
+            named("other", None, 1),
+        ]
+    );
+    assert_eq!(countries["groups"][0]["listener_share"], 6.0 / 14.0);
+    let devices = viewer.get(&by("device")).await;
+    assert_eq!(
+        groups(&devices),
+        [
+            named("named", Some("mobile"), 7),
+            named("named", Some("desktop"), 6),
+            named("named", Some("smart_speaker"), 1),
+        ]
+    );
+    let player_groups = viewer.get(&by("player")).await;
+    assert_eq!(
+        groups(&player_groups),
+        [
+            named("named", Some("Safari"), 7),
+            named("named", Some("VLC"), 6),
+            named("named", Some("Alexa"), 1),
+        ]
+    );
+    // One server, one output: the same; another server: nothing.
+    assert_eq!(
+        groups(
+            &viewer
+                .get(&format!("{}&output_id={id}&server_id=7", by("player")))
+                .await
+        )
+        .len(),
+        3
+    );
+    assert_eq!(
+        viewer.get(&format!("{}&server_id=8", by("player"))).await["groups"],
+        json!([])
+    );
+    for answer in [&countries, &devices, &player_groups] {
+        let text = answer.to_string();
+        assert!(
+            !text.contains("Mozilla") && !text.contains("3.0.2"),
+            "{text}"
+        );
     }
     let csv = |path: &str| {
         let request = viewer
@@ -1300,7 +1446,19 @@ async fn listener_statistics_through_the_api() {
     };
     assert_eq!(
         csv("/listeners/hours-of-day?from=2026-10-19&to=2026-10-25&format=csv").await,
-        "hour,days,average,peak,listening_hours\n8,1,9.00,12,9.00\n"
+        "hour,days,average,peak,listening_hours,tune_in,tune_out\n8,1,9.00,12,9.00,,\n"
+    );
+    let audience = csv("/listeners/audience?from=2026-10-19&to=2026-10-25&format=csv").await;
+    let lines: Vec<&str> = audience.lines().collect();
+    assert_eq!(lines[0], "figure,period,previous_period");
+    assert_eq!(lines[1], "from,2026-10-19,2026-10-12");
+    assert!(lines.contains(&"ttsl_hours,,"), "{audience}");
+    assert!(lines.contains(&"min_session_s,5,5"), "{audience}");
+    assert_eq!(
+        csv(&format!("{}&format=csv", by("country"))).await,
+        "country,listeners,listener_share,sessions,ttsl_hours,ttsl_share\n\
+         FR,6,0.4286,6,3.00,0.4286\nBE,5,0.3571,5,2.50,0.3571\n\
+         unknown,2,0.1429,2,1.00,0.1429\nother,1,0.0714,1,0.50,0.0714\n"
     );
     assert_eq!(
         csv("/listeners/tracks?from=2026-10-19&to=2026-10-25&format=csv").await,
@@ -1960,21 +2118,50 @@ async fn web_ui_routes() {
         (&json!("fr"), &json!("dark"))
     );
 
-    // And the width: a centred column unless the user wants the whole screen.
-    assert_eq!(me["full_width"], false);
+    // And the width: a centred column unless the user wants 80 % or the
+    // whole window.
+    assert_eq!(me["width"], "normal");
+    for width in ["wide", "full"] {
+        let (status, me) = admin
+            .send(Method::PUT, "/auth/preferences", json!({"width": width}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{me}");
+        assert_eq!(
+            (&me["width"], &me["language"], &me["theme"]),
+            (&json!(width), &json!("fr"), &json!("dark"))
+        );
+    }
+    assert_eq!(admin.get("/auth/me").await["width"], "full");
+    assert_eq!(viewer.get("/auth/me").await["width"], "normal");
+    for refused in [json!({"width": "80"}), json!({"full_width": true})] {
+        let (status, _) = admin.send(Method::PUT, "/auth/preferences", refused).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    // And the whole queue on On air: off unless the user turns it on.
+    assert_eq!(me["on_air_whole_queue"], false);
     let (status, me) = admin
         .send(
             Method::PUT,
             "/auth/preferences",
-            json!({"full_width": true}),
+            json!({"on_air_whole_queue": true}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{me}");
     assert_eq!(
-        (&me["full_width"], &me["language"], &me["theme"]),
-        (&json!(true), &json!("fr"), &json!("dark"))
+        (&me["on_air_whole_queue"], &me["width"], &me["theme"]),
+        (&json!(true), &json!("full"), &json!("dark"))
     );
-    assert_eq!(viewer.get("/auth/me").await["full_width"], false);
+    assert_eq!(admin.get("/auth/me").await["on_air_whole_queue"], true);
+    assert_eq!(viewer.get("/auth/me").await["on_air_whole_queue"], false);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": "yes"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let (status, _) = admin
         .send(
             Method::PUT,
@@ -8860,6 +9047,103 @@ async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories(
     station.stop().await;
 }
 
+/// The whole queue on On air is kept by a configuration backup; a file
+/// from before it restores it off.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_backup_keeps_the_whole_queue_on_air_and_an_older_one_turns_it_off() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    assert!(
+        file["tables"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|user| user["username"] == "admin" && user["on_air_whole_queue"] == 1)
+    );
+
+    // Restored as it is, it stays on.
+    let (status, report) = admin
+        .send(Method::POST, "/backups/restore", file.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    assert_eq!(admin.get("/auth/me").await["on_air_whole_queue"], true);
+
+    // A file written before the column: off.
+    file["schema"] = json!(20270702000000_i64);
+    for user in file["tables"]["users"].as_array_mut().unwrap() {
+        user.as_object_mut().unwrap().remove("on_air_whole_queue");
+    }
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    for user in admin.get("/users").await.as_array().unwrap() {
+        assert_eq!(user["on_air_whole_queue"], false, "{user}");
+    }
+    station.stop().await;
+}
+
+/// A configuration file from before the width choice: a user with the
+/// whole width (`full_width`) gets it back as `full`.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_older_backup_turns_full_width_into_a_width() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, _) = admin
+        .send(Method::PUT, "/auth/preferences", json!({"width": "wide"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    assert!(
+        file["tables"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|user| user["username"] == "admin" && user["width"] == "wide")
+    );
+    file["schema"] = json!(20270701000000_i64);
+    for user in file["tables"]["users"].as_array_mut().unwrap() {
+        let user = user.as_object_mut().unwrap();
+        user.remove("width");
+        // As backups write booleans: 1 or 0.
+        let full = i64::from(user["username"] == "admin");
+        user.insert("full_width".to_owned(), json!(full));
+    }
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+
+    let admin = station.signed_in("admin").await;
+    let users = admin.get("/users").await;
+    for user in users.as_array().unwrap() {
+        let expected = if user["username"] == "admin" {
+            "full"
+        } else {
+            "normal"
+        };
+        assert_eq!(user["width"], expected, "{user}");
+    }
+    station.stop().await;
+}
+
 /// A configuration file from before stream servers: each output holds its
 /// server's settings. Restored, its outputs are grouped into servers as the
 /// migration does, the station details lifted onto the station.
@@ -9423,6 +9707,139 @@ impl Client {
     }
 }
 
+/// The lists of *To do*: the active songs (enabled, present, in a category
+/// of the Song type) missing an intro, a hook or a cover, and their counts.
+#[tokio::test(flavor = "multi_thread")]
+async fn to_do_lists_the_songs_missing_an_intro_a_hook_or_a_cover() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+
+    // Songs: t0, t1, t2 (disabled) and t4 (also a jingle); t3 a jingle only.
+    sqlx::query(
+        "INSERT INTO categories (id, name, type_id) VALUES (101, 'Songs', 1), (102, 'Jingles', 2)",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    for (track, category) in [
+        (t[0], 101),
+        (t[1], 101),
+        (t[2], 101),
+        (t[3], 102),
+        (t[4], 101),
+        (t[4], 102),
+    ] {
+        sqlx::query("INSERT INTO track_categories (track_id, category_id) VALUES (?, ?)")
+            .bind(track)
+            .bind(category)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+    sqlx::query("UPDATE tracks SET enabled = FALSE WHERE id = ?")
+        .bind(t[2])
+        .execute(pool)
+        .await
+        .unwrap();
+    // t0 has everything; t4 an intro and half a hook.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{}/intro", t[0]),
+            json!({"intro_ms": 1000}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/tracks/{}/hook", t[0]),
+            json!({"hook_in_ms": 500, "hook_out_ms": 1500}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .put_image(
+            &format!("/tracks/{}/cover?scope=track", t[0]),
+            png(50, 50, 1),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    sqlx::query("INSERT INTO track_markers (track_id, intro_ms, hook_in_ms) VALUES (?, 800, 400)")
+        .bind(t[4])
+        .execute(pool)
+        .await
+        .unwrap();
+
+    let ids = |page: &Value| -> Vec<u64> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|track| track["id"].as_u64().unwrap())
+            .collect()
+    };
+    let songs = viewer.get("/tracks?active_songs=true").await;
+    assert_eq!(ids(&songs), vec![t[0], t[1], t[4]]);
+    let no_intro = viewer
+        .get("/tracks?active_songs=true&filter=no_intro")
+        .await;
+    assert_eq!(ids(&no_intro), vec![t[1]]);
+    let no_hook = viewer
+        .get("/tracks?active_songs=true&filter=no_hook&sort=title&desc=true")
+        .await;
+    assert_eq!(ids(&no_hook), vec![t[4], t[1]]);
+    assert_eq!(no_hook["total"], 2);
+    let no_cover = viewer
+        .get("/tracks?active_songs=true&filter=no_cover")
+        .await;
+    assert_eq!(ids(&no_cover), vec![t[1], t[4]]);
+    // Without `active_songs`, every track.
+    assert_eq!(viewer.get("/tracks?filter=no_intro").await["total"], 3);
+    assert_eq!(viewer.get("/tracks?filter=no_hook").await["total"], 4);
+
+    sqlx::query(
+        "INSERT INTO track_identifications (track_id, status, reason) VALUES (?, 'needs_review', 'doubtful')",
+    )
+    .bind(t[3])
+    .execute(pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        viewer.get("/library/todo").await,
+        json!({"to_identify": 1, "no_intro": 1, "no_hook": 2, "no_cover": 2})
+    );
+
+    // A missing file, or a track in the trash, is not to do.
+    sqlx::query("UPDATE tracks SET missing_since = NOW(6) WHERE id = ?")
+        .bind(t[4])
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE tracks SET deleted_at = NOW(6) WHERE id = ?")
+        .bind(t[1])
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        viewer.get("/library/todo").await,
+        json!({"to_identify": 1, "no_intro": 0, "no_hook": 0, "no_cover": 0})
+    );
+
+    // Without cover art, no count of covers.
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"cover_art": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(viewer.get("/library/todo").await["no_cover"], Value::Null);
+    station.stop().await;
+}
+
 /// Covers set by hand for an album or a track, served by hash with a long
 /// cache, in track lists, history and the public side (the station logo
 /// standing in), Cover Art Archive candidates, and backups.
@@ -9740,7 +10157,8 @@ async fn modules_are_turned_off_and_on_again() {
     let pool = &station.db.pool;
     let t = station.tracks.clone();
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
-                        "webhooks": true});
+                        "webhooks": true, "restrictions": true, "eq": true, "processing": true,
+                        "trash": true, "review": true, "artists": true, "labels": true});
 
     // Everything is on after an upgrade.
     assert_eq!(viewer.get("/modules").await, all_on);
@@ -9921,6 +10339,182 @@ async fn modules_are_turned_off_and_on_again() {
         .await
         .expect("a delivery once webhooks are on again")
         .unwrap();
+    station.stop().await;
+}
+
+/// Restrictions, the equalizer and processing turned off for a station:
+/// hidden and not applied (rotation ignores the restrictions, the engine
+/// gets the EQ and the AGC chain bypassed), their settings kept. The
+/// library's modules, off for the installation: their routes answer 404
+/// (docs/modules.md).
+#[tokio::test(flavor = "multi_thread")]
+async fn more_modules_are_turned_off_and_on_again() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let engine = station.state.stations.first().engine.clone();
+
+    // A restriction, an EQ and a chain in use.
+    let (status, restriction) = admin
+        .send(
+            Method::POST,
+            "/restrictions",
+            json!({"target": {"kind": "track", "id": t[1]},
+                   "rule": {"kind": "daypart", "mode": "ban", "days": [1, 2, 3, 4, 5, 6, 7],
+                            "start_hour": 0, "end_hour": 24}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{restriction}");
+    let eq = json!({
+        "music": {"enabled": true, "gains_db": [3.0, 2.0, 0.0, 0.0, -1.5, 0.0, 0.0, 1.0, 1.0, 0.0]},
+        "fx": {"enabled": true, "gains_db": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    });
+    let (status, body) = admin.send(Method::PUT, "/settings/eq", eq.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let mut agc = admin.get("/settings/agc").await;
+    agc["bypass_all"] = json!(false);
+    let (status, agc) = admin.send(Method::PUT, "/settings/agc", agc).await;
+    assert_eq!(status, StatusCode::OK, "{agc}");
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert_eq!(library.restrictions.len(), 1);
+
+    // What the engine has, once the configuration sync has run.
+    let engine_has = async |eq_enabled: bool, bypass_all: bool| {
+        for _ in 0..100 {
+            let config = engine.config().await.unwrap();
+            let engine_eq: Value = serde_json::from_str(&config.eq_settings_json).unwrap();
+            let engine_agc: Value = serde_json::from_str(&config.agc_settings_json).unwrap();
+            if engine_eq["music"]["enabled"] == eq_enabled
+                && engine_eq["fx"]["enabled"] == eq_enabled
+                && engine_agc["bypass_all"] == bypass_all
+            {
+                return (engine_eq, engine_agc);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("the engine never had eq enabled {eq_enabled}, bypass_all {bypass_all}");
+    };
+    let (engine_eq, _) = engine_has(true, false).await;
+    assert_eq!(engine_eq, eq);
+
+    // Off for the station.
+    let (status, modules) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"restrictions": false, "eq": false, "processing": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{modules}");
+    assert_eq!(modules["on"]["eq"], false);
+    for path in ["/settings/eq", "/stations/1/settings/agc"] {
+        let (status, body) = admin.request(Method::GET, path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    // Shared: they answer while the installation has them on.
+    for path in ["/restrictions", "/eq-presets", "/agc-presets"] {
+        admin.get(path).await;
+    }
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert!(
+        library.restrictions.is_empty(),
+        "restrictions still applied"
+    );
+    // Bypassed on air, the gains and blocks kept.
+    let (engine_eq, engine_agc) = engine_has(false, true).await;
+    assert_eq!(engine_eq["music"]["gains_db"], eq["music"]["gains_db"]);
+    assert_eq!(engine_agc["final_stage"], agc["final_stage"]);
+    let stored: Value = serde_json::from_str(
+        &sqlx::query_scalar::<_, String>(
+            "SELECT CAST(value AS CHAR) FROM station_settings WHERE station_id = 1 AND name = 'eq'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(stored, eq, "the station's EQ is kept");
+
+    // Off for the installation, the shared routes too.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"restrictions": false, "eq": false, "processing": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for path in [
+        "/restrictions".to_owned(),
+        format!("/restrictions/{}", restriction["id"]),
+        "/eq-presets".to_owned(),
+        "/agc-presets".to_owned(),
+    ] {
+        let (status, body) = admin.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+
+    // On again: applied as they were.
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (engine_eq, engine_agc) = engine_has(true, false).await;
+    assert_eq!(engine_eq, eq);
+    assert_eq!(engine_agc, agc);
+    assert_eq!(admin.get("/settings/eq").await, eq);
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert_eq!(library.restrictions.len(), 1);
+
+    // The library's modules: a station cannot turn them off.
+    let library_off = json!({"trash": false, "review": false, "artists": false, "labels": false});
+    let (status, modules) = admin
+        .send(Method::PUT, "/stations/1/modules", library_off.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{modules}");
+    assert_eq!(modules["station"]["trash"], true);
+    assert_eq!(modules["on"]["labels"], true);
+    admin.get("/labels").await;
+    // Off for the installation.
+    let (status, _) = admin.send(Method::PUT, "/modules", library_off).await;
+    assert_eq!(status, StatusCode::OK);
+    let modules = admin.get("/stations/1/modules").await;
+    assert_eq!(modules["on"]["trash"], false);
+    for path in [
+        "/library/trash".to_owned(),
+        "/library/todo".to_owned(),
+        "/library/review".to_owned(),
+        "/library/batches".to_owned(),
+        // Refused before the artist is looked for.
+        "/artists/1".to_owned(),
+        "/artist-suggestions".to_owned(),
+        "/labels".to_owned(),
+    ] {
+        let (status, body) = admin.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/tracks/labels",
+            json!({"selection": {"track_ids": [t[0]]}, "add": [], "remove": []}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    // The artist pickers' search still answers.
+    let (status, _) = admin.request(Method::GET, "/artists", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    admin.get("/library/trash").await;
     station.stop().await;
 }
 
@@ -10149,5 +10743,271 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
         },
     )
     .await;
+    station.stop().await;
+}
+
+/// Two stations added up and compared: the peak and AQH on their minutes
+/// together, a listener of both counted once, each user only the stations
+/// they see.
+#[tokio::test]
+async fn listener_statistics_of_several_stations() {
+    let Some(mut station) = Station::start().await else {
+        return;
+    };
+    let (_engine, _state_dir, second_url, grpc) = start_engine(station.library.path(), None).await;
+    station.tasks.push(grpc);
+    station.state.stations.set_engine("hits80", &second_url);
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let first = admin.get("/stations").await[0]["id"].as_u64().unwrap();
+    let (status, created) = admin
+        .send(
+            Method::POST,
+            "/stations",
+            json!({"name": "Hits 80", "code": "hits80"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let second = created["id"].as_u64().unwrap();
+    for path in [
+        "/settings/station".to_owned(),
+        format!("/stations/{second}/settings/station"),
+    ] {
+        let (status, body) = admin
+            .send(Method::PUT, &path, json!({"timezone": "UTC"}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{path}: {body}");
+    }
+
+    // An output each (disabled: only its statistics matter here).
+    let pool = &station.state.pool;
+    let mut outputs = Vec::new();
+    for id in [first, second] {
+        let output = sqlx::query(
+            "INSERT INTO outputs (station_id, name, kind, encoder_profile_id, config, enabled)
+             SELECT ?, 'Stats', 'hls', MIN(id), '{}', FALSE FROM encoder_profiles",
+        )
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        outputs.push(output);
+    }
+    // 2026-10-20, 10:00 to 10:29, listener lists read: the first station
+    // has 3 listeners at 10:00 then 2, the second 4 then 1.
+    for minute in 0..30u32 {
+        for (n, output) in outputs.iter().enumerate() {
+            let listeners = match (n, minute) {
+                (0, 0) => 3,
+                (0, _) => 2,
+                (_, 0) => 4,
+                _ => 1,
+            };
+            sqlx::query(
+                "INSERT INTO listener_samples (output_id, server_id, sampled_at, listeners, sessions)
+                 VALUES (?, 0, TIMESTAMP('2026-10-20 10:00:00') + INTERVAL ? MINUTE, ?, TRUE)",
+            )
+            .bind(output)
+            .bind(minute)
+            .bind(listeners)
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+    }
+    // A listens to both stations, 10:00 to 10:20; B to the first, 10:00 to
+    // 10:10; C to the second, 10:05 to 10:15.
+    for (n, (output, key, from, to)) in [
+        (outputs[0], 1u8, "10:00", "10:20"),
+        (outputs[1], 1, "10:00", "10:20"),
+        (outputs[0], 2, "10:00", "10:10"),
+        (outputs[1], 3, "10:05", "10:15"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        sqlx::query(
+            "INSERT INTO listener_sessions (output_id, server_id, listener_key, user_agent,
+                 client_id, day, started_at, last_seen_at, ended_at, duration_s)
+             VALUES (?, 0, ?, 'VLC/3.0.20 LibVLC/3.0.20', ?, '2026-10-20',
+                     TIMESTAMP(CONCAT('2026-10-20 ', ?)), TIMESTAMP(CONCAT('2026-10-20 ', ?)),
+                     TIMESTAMP(CONCAT('2026-10-20 ', ?)),
+                     TIMESTAMPDIFF(SECOND, TIMESTAMP(CONCAT('2026-10-20 ', ?)),
+                                   TIMESTAMP(CONCAT('2026-10-20 ', ?))))",
+        )
+        .bind(output)
+        .bind([key; 32].as_slice())
+        .bind(n as u64 + 1)
+        .bind(from)
+        .bind(to)
+        .bind(to)
+        .bind(from)
+        .bind(to)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+    // An older day, its samples purged: only each station's totals.
+    for (id, peak, hours) in [(first, 12, 10.0), (second, 20, 5.0)] {
+        sqlx::query(
+            "INSERT INTO listener_totals (station_id, output_id, day, hour, minutes, peak, average,
+                 listening_hours, sessions, session_s, distinct_listeners)
+             VALUES (?, NULL, '2026-10-19', NULL, 600, ?, ?, ?, 10, 6000, 5)",
+        )
+        .bind(id)
+        .bind(peak)
+        .bind(hours * 60.0 / 600.0)
+        .bind(hours)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    let both = "stations=all&from=2026-10-20&to=2026-10-20";
+    let figures = admin
+        .get(&format!("/stations/listeners/audience?{both}"))
+        .await;
+    let stations = figures["stations"].as_array().unwrap();
+    assert_eq!(stations.len(), 2, "{figures}");
+    assert_eq!(stations[0]["station_id"], first);
+    assert_eq!(stations[1]["code"], "hits80");
+    let (one, two, total) = (
+        &stations[0]["current"],
+        &stations[1]["current"],
+        &figures["total"]["current"],
+    );
+    assert_eq!((&one["peak"], &two["peak"]), (&json!(3), &json!(4)));
+    assert_eq!((&one["cume"], &two["cume"]), (&json!(2.0), &json!(2.0)));
+    assert_eq!((&one["aqh"], &two["aqh"]), (&json!(1.5), &json!(1.5)));
+    // Together: the highest minute (3 + 4 at 10:00), not 3 + 4 summed
+    // peaks by chance: 2 + 1 the other minutes; A once in the cume and in
+    // each quarter-hour.
+    assert_eq!(total["peak"], 7, "{total}");
+    assert_eq!(total["cume"], 3.0);
+    assert_eq!(total["aqh"], 2.0);
+    assert_eq!(total["sessions"], 4);
+    assert_eq!(figures["total"]["previous"]["from"], "2026-10-19");
+
+    // Per day: the minutes together; the purged day from the totals, its
+    // peak the highest of the stations'.
+    let days = admin
+        .get("/stations/listeners/days?stations=all&from=2026-10-19&to=2026-10-20")
+        .await;
+    let total = days["total"].as_array().unwrap();
+    assert_eq!(total.len(), 2, "{days}");
+    assert_eq!(total[0]["peak"], 20);
+    assert_eq!(total[0]["listening_hours"], 15.0);
+    assert_eq!(total[0]["sessions"], 20);
+    assert_eq!(total[1]["day"], "2026-10-20");
+    assert_eq!(total[1]["peak"], 7);
+    assert_eq!(total[1]["minutes"], 30);
+    assert_eq!(total[1]["distinct_listeners"], 3.0);
+    assert_eq!(days["stations"][1]["periods"][0]["peak"], 20);
+    let hours = admin
+        .get(&format!("/stations/listeners/hours-of-day?{both}"))
+        .await;
+    assert_eq!(hours["total"][0]["hour"], 10, "{hours}");
+    assert_eq!(hours["total"][0]["peak"], 7);
+    assert_eq!(hours["total"][0]["tune_in"], 4.0);
+    let players = admin
+        .get(&format!("/stations/listeners/breakdown?{both}&by=player"))
+        .await;
+    assert_eq!(players["total"][0]["name"], "VLC", "{players}");
+    assert_eq!(players["total"][0]["listeners"], 3);
+    assert_eq!(players["total"][0]["sessions"], 4);
+    assert_eq!(players["stations"][0]["groups"][0]["listeners"], 2);
+    let samples = admin
+        .get("/stations/listeners/samples?stations=all&from_unix_ms=1792490400000&to_unix_ms=1792490460000")
+        .await;
+    assert_eq!(
+        samples["total"],
+        json!([{"at_unix_ms": 1_792_490_400_000i64, "listeners": 7},
+               {"at_unix_ms": 1_792_490_460_000i64, "listeners": 3}])
+    );
+    assert_eq!(samples["stations"][1]["samples"][0]["listeners"], 4);
+    let now = admin.get("/stations/listeners/now?stations=all").await;
+    assert_eq!(now["total"], json!(null));
+    assert_eq!(now["stations"].as_array().unwrap().len(), 2);
+
+    // CSV, with a station column.
+    let csv = admin
+        .http
+        .get(format!(
+            "{}/stations/listeners/days?stations=all&from=2026-10-19&to=2026-10-20&format=csv",
+            admin.base
+        ))
+        .header("cookie", admin.cookie.as_deref().unwrap())
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let lines: Vec<&str> = csv.lines().collect();
+    assert!(lines[0].starts_with("station,day,hour,"), "{csv}");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("hits80,2026-10-19,"))
+    );
+    assert!(
+        lines.last().unwrap().starts_with(",2026-10-20,,1,30,7,"),
+        "{csv}"
+    );
+
+    // The viewer sees the first station only: all is that one, the second
+    // is not found.
+    let seen = viewer
+        .get(&format!("/stations/listeners/audience?{both}"))
+        .await;
+    assert_eq!(seen["stations"].as_array().unwrap().len(), 1, "{seen}");
+    assert_eq!(seen["total"]["current"]["peak"], 3);
+    assert_eq!(seen["total"]["current"]["cume"], 2.0);
+    viewer
+        .get(&format!(
+            "/stations/listeners/days?stations={first}&from=2026-10-20&to=2026-10-20"
+        ))
+        .await;
+    for path in [
+        format!(
+            "/stations/listeners/audience?stations={first},{second}&from=2026-10-20&to=2026-10-20"
+        ),
+        format!("/stations/listeners/days?stations={second}&from=2026-10-20&to=2026-10-20"),
+        format!("/stations/listeners/now?stations={second}"),
+        "/stations/listeners/now?stations=999".to_owned(),
+    ] {
+        let (status, _) = viewer.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+    for bad in [
+        "/stations/listeners/now?stations=one",
+        "/stations/listeners/days?stations=all&from=2026-10-20&to=2026-10-19",
+    ] {
+        let (status, _) = viewer.request(Method::GET, bad, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+
+    // Listener statistics off on the second station: left out of all,
+    // not found when named.
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/stations/{second}/modules"),
+            json!({"listener_statistics": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let now = admin.get("/stations/listeners/now?stations=all").await;
+    assert_eq!(now["stations"].as_array().unwrap().len(), 1, "{now}");
+    let (status, body) = admin
+        .request(
+            Method::GET,
+            &format!("/stations/listeners/now?stations={second}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "module_off", "{body}");
     station.stop().await;
 }

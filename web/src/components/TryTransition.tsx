@@ -11,7 +11,7 @@ import { t } from "../i18n";
 import { db, trackName } from "../lib/format";
 import { useTransitionPlayer } from "../lib/transitionPlayer";
 import { TrackSearch, useDebounced } from "./TrackSearch";
-import { TransitionGraph } from "./TransitionGraph";
+import { TransitionGraph, WAVEFORM_HEIGHT } from "./TransitionGraph";
 import { useWaveform } from "./Waveform";
 import { Card, Empty, ErrorView, Icon, Loading, Modal, Segmented, useToast } from "./ui";
 import { here } from "../lib/station";
@@ -147,6 +147,7 @@ export function TryTransition({
             outgoingWave={outgoingWave.data ?? null}
             incomingWave={incomingWave.data ?? null}
             playhead={listening.position}
+            height={WAVEFORM_HEIGHT}
           />
         ) : (
           <Loading />

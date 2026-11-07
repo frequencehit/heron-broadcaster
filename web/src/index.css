@@ -282,7 +282,11 @@ code,
   gap: 1.25rem;
 }
 
-/* The user's choice: the whole width of the screen (Account › Display). */
+/* The user's choice (Account › Display): 80 % of the window, or all of it. */
+:root[data-width="wide"] .content {
+  max-width: max(82rem, 80vw);
+}
+
 :root[data-width="full"] .content {
   max-width: none;
 }
@@ -1176,6 +1180,13 @@ a.badge-link:hover {
   flex: none;
 }
 
+/* An exact time: when the engine starts it, on a colored background. */
+.queue-item .start.badge {
+  color: var(--accent);
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+}
+
 /* A jingle and the track it announces (a linked clock slot): one block. */
 .queue-item.linked {
   box-shadow: inset 3px 0 0 var(--accent);
@@ -1885,10 +1896,174 @@ ul.steps .bar {
   z-index: 1;
 }
 
+/* The stations of a chart comparing them. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.25rem;
+  border-radius: 2px;
+}
+
+/* A tile comparing stations: a value per station, then the difference. */
+.stat .compared {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.75rem;
+  align-items: baseline;
+}
+
+.stat .compared .value {
+  border-left: 3px solid var(--station-color, var(--accent));
+  padding-left: 0.35rem;
+}
+
 .stats-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: 1rem;
+}
+
+/* An info button and its explanation (InfoTip). */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.info-tip-button {
+  display: inline-flex;
+  padding: 0.1rem;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: help;
+}
+
+.info-tip-button:hover,
+.info-tip-button:focus-visible {
+  color: var(--accent);
+}
+
+.info-tip-text {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  width: max-content;
+  max-width: min(16rem, calc(100vw - 2rem));
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.35;
+  /* No box while closed: it would widen the page at phone width. */
+  display: none;
+}
+
+.info-tip.right .info-tip-text {
+  right: 0;
+  left: auto;
+}
+
+.info-tip:hover .info-tip-text,
+.info-tip:focus-within .info-tip-text,
+.info-tip.open .info-tip-text {
+  display: block;
+}
+
+/* Statistics: average listeners by day of the week and hour. */
+.heatmap {
+  display: grid;
+  grid-template-columns: 2.4rem repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  font-size: 0.7rem;
+}
+
+.heatmap-day,
+.heatmap-hour {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.heatmap-day {
+  align-self: center;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  min-height: 0.6rem;
+  border-radius: 2px;
+}
+
+.heatmap-cell.empty {
+  background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 2px, transparent 2px, transparent 4px);
+}
+
+/* Statistics: countries, devices and players with a bar of their share. */
+.shares-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+.table.shares caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.share-bar {
+  display: block;
+  height: 0.3rem;
+  margin-top: 0.25rem;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+
+.share-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.stats-how {
+  font-size: 0.875rem;
+}
+
+.stats-how summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stats-how ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--muted);
 }
 
 /* A medley part's points, moved by 0.1 s. */
@@ -2944,4 +3119,182 @@ ul.held {
 .module-list li {
   display: grid;
   gap: 0.25rem;
+}
+
+/* A filter bar: each menu's name above it. */
+.filter-bar {
+  align-items: flex-end;
+}
+
+.filter-bar .stacked,
+.filter-bar > label.row.small {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+}
+
+.filter-bar .stacked > span:first-child,
+.filter-bar > label.row.small > span:first-child {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* A settings card split into sections, each a titled block with room around it. */
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.settings-sections fieldset > p.muted {
+  margin: 0 0 0.75rem;
+}
+
+.settings-sections details {
+  margin-top: 0.75rem;
+}
+
+.settings-sections details > p {
+  margin: 0.4rem 0 0;
+}
+
+.settings-sections fieldset > .form-grid + .field {
+  margin-top: 1rem;
+}
+
+/* The division of the day and the example's separation, side by side; the
+   two divisions on one line. */
+.daypart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem 2rem;
+}
+
+.daypart-controls .segmented {
+  align-self: flex-start;
+}
+
+.daypart-controls .field:first-child .segmented {
+  flex-wrap: nowrap;
+}
+
+.daypart-controls + .daypart-example {
+  margin-top: 0.75rem;
+}
+
+/* The draw depth beside a diagram of a category of 100 tracks. */
+.draw-columns {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) 1fr;
+  gap: 1rem 2rem;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .draw-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.draw-diagram {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.draw-diagram figcaption {
+  font-weight: 550;
+  font-size: 0.9rem;
+}
+
+.draw-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.draw-bar {
+  display: flex;
+  height: 2.2rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.draw-cell {
+  flex: 1;
+  border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.draw-cell:last-child {
+  border-right: 0;
+}
+
+.draw-cell.start,
+.draw-swatch.start {
+  background: var(--accent);
+}
+
+.draw-cell.widen,
+.draw-swatch.widen {
+  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+}
+
+.draw-cell.off,
+.draw-swatch.off {
+  background: var(--surface);
+}
+
+.draw-cell.recent,
+.draw-swatch.recent {
+  background: repeating-linear-gradient(45deg, var(--surface) 0 5px, color-mix(in srgb, var(--warn) 45%, var(--surface)) 5px 7px);
+}
+
+.draw-scale {
+  position: relative;
+  height: 1.1rem;
+}
+
+.draw-scale span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.draw-scale span:first-child {
+  transform: none;
+}
+
+.draw-scale span.end {
+  transform: translateX(-100%);
+}
+
+.draw-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  margin: 0.3rem 0;
+}
+
+.draw-swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  vertical-align: -0.1rem;
+}
+
+.draw-columns > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+/* A track page's tab: kept mounted (a preview keeps playing), hidden. */
+.track-tab[hidden] {
+  display: none;
 }

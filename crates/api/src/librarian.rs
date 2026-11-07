@@ -27,7 +27,7 @@ use crate::app::AppState;
 use crate::auth::{CurrentUser, Role};
 use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::settings;
-use crate::tracks::{ListContext, TrackSummary};
+use crate::tracks::{ListContext, TrackFilter, TrackQuery, TrackSummary};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -37,6 +37,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(apply_organization))
         .routes(routes!(list_batches))
         .routes(routes!(undo_batch))
+        .routes(routes!(todo_counts))
         .routes(routes!(list_review))
         .routes(routes!(apply_release))
         .routes(routes!(keep_tags))
@@ -433,6 +434,65 @@ pub struct ReviewQuery {
     pub offset: Option<u32>,
 }
 
+/// What there is to do on the library: the counts of the *To do* page.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TodoCounts {
+    /// Tracks waiting for review (`GET /library/review`'s `total`).
+    pub to_identify: u64,
+    /// Active songs (`GET /tracks?active_songs=true`) with no intro point.
+    pub no_intro: u64,
+    /// Active songs with no hook.
+    pub no_hook: u64,
+    /// Active songs with no cover; `null` while cover art is turned off.
+    pub no_cover: Option<u64>,
+}
+
+/// How many tracks to identify, and active songs missing an intro, a hook
+/// or a cover: the counts of the *To do* page, whose lists are
+/// `GET /library/review` and `GET /tracks?active_songs=true&filter=…`.
+#[utoipa::path(get, path = "/library/todo", tag = "library",
+    responses((status = 200, body = TodoCounts), (status = "4XX", body = ErrorBody)))]
+async fn todo_counts(
+    _user: CurrentUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<TodoCounts>> {
+    let context = ListContext::load(&state.pool).await?;
+    let songs = |filter| TrackQuery {
+        active_songs: Some(true),
+        filter: Some(filter),
+        ..TrackQuery::default()
+    };
+    let no_cover = if crate::modules::installation(&state.pool).await?.cover_art {
+        Some(
+            context
+                .count(&state.pool, &songs(TrackFilter::NoCover))
+                .await?,
+        )
+    } else {
+        None
+    };
+    Ok(Json(TodoCounts {
+        to_identify: needs_review(&state.pool).await?,
+        no_intro: context
+            .count(&state.pool, &songs(TrackFilter::NoIntro))
+            .await?,
+        no_hook: context
+            .count(&state.pool, &songs(TrackFilter::NoHook))
+            .await?,
+        no_cover,
+    }))
+}
+
+/// How many tracks wait for review.
+async fn needs_review(pool: &sqlx::MySqlPool) -> ApiResult<u64> {
+    let total: i64 = sqlx::query_scalar(
+        "SELECT CAST(COUNT(*) AS SIGNED) FROM track_identifications WHERE status = 'needs_review'",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(u64::try_from(total).unwrap_or(0))
+}
+
 /// Tracks whose identification was not confident enough to apply, with the
 /// releases they may be on.
 #[utoipa::path(get, path = "/library/review", tag = "library",
@@ -447,11 +507,7 @@ async fn list_review(
     if !(1..=200).contains(&limit) {
         return Err(ApiError::BadRequest("limit is 1 to 200".to_owned()));
     }
-    let total: i64 = sqlx::query_scalar(
-        "SELECT CAST(COUNT(*) AS SIGNED) FROM track_identifications WHERE status = 'needs_review'",
-    )
-    .fetch_one(&state.pool)
-    .await?;
+    let total = needs_review(&state.pool).await?;
     let ids: Vec<u64> = sqlx::query_scalar(
         "SELECT t.id FROM tracks t
          JOIN track_identifications i ON i.track_id = t.id AND i.status = 'needs_review'
@@ -485,10 +541,7 @@ async fn list_review(
                 .unwrap_or_default(),
         });
     }
-    Ok(Json(ReviewPage {
-        items,
-        total: u64::try_from(total).unwrap_or(0),
-    }))
+    Ok(Json(ReviewPage { items, total }))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

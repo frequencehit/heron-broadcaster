@@ -58,7 +58,7 @@ export function DaypartSettings({
         {rich("dayparts.perCategory", { link: <Link to="/categories">{t("nav.categories")}</Link> })}{" "}
         {t("dayparts.followingDays")}
       </p>
-      <div className="form-grid">
+      <div className="daypart-controls">
         <div className="field">
           <span>{t("dayparts.division")}</span>
           <Segmented
