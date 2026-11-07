@@ -1176,6 +1176,13 @@ a.badge-link:hover {
   flex: none;
 }
 
+/* An exact time: when the engine starts it, on a colored background. */
+.queue-item .start.badge {
+  color: var(--accent);
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+}
+
 /* A jingle and the track it announces (a linked clock slot): one block. */
 .queue-item.linked {
   box-shadow: inset 3px 0 0 var(--accent);

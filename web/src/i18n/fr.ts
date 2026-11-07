@@ -1162,7 +1162,7 @@ const fr = {
   "rotationPage.slotNoLongerFits": "créneau {slot} (ne tient plus avant l'heure exacte)",
   "rotationPage.slotExactPassed": "créneau {slot} (heure exacte passée)",
   "queue.startsAt": "À {time}",
-  "queue.startsAtHint": "Une heure exacte : le moteur fond ce qui joue alors et lance ce titre",
+  "queue.startsAtHint": "Heure exacte : ce titre démarre à cette heure au plus tard, et ce qui joue encore est alors fondu",
   "queue.continues": "Suite",
   "queue.continuesHint": "La fin d'un medley raccourci : la suite du titre d'avant",
   "settings.filler": "Catégorie de remplissage",
