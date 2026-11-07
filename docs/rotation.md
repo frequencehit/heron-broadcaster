@@ -116,13 +116,14 @@ An ordered list of slots. Each slot **calls a category**, and how it calls it ma
 - a **selection method**: least recently played, random or weighted (see [Draw depth](#draw-depth) for how each one draws);
 - an **enforce rules** flag;
 - separation overrides for this slot (see [Separation rules](#separation-rules)), and its draw depth (see [Draw depth](#draw-depth));
-- a **linked to the next slot** flag, for a jingle that announces the next slot's track (see [Linked slots](#linked-slots)).
+- a **linked to the next slot** flag, for a jingle that announces the next slot's track (see [Linked slots](#linked-slots));
+- an optional **exact time**, hard or soft, for a slot that must start at a given minute and second of the hour (see [Exact times](#exact-times)).
 
 Building good clocks has to be easy: the editor shows each hour as it will sound (slots, expected starts from the categories' average lengths, categories running short of tracks for their track separation), and a clock can be simulated before it goes on air. A category running short (a few jingles for a slot every quarter of an hour) only plays with its rules relaxed; the editor offers to turn *enforce rules* off on the slots calling it instead, which stops the separation rules there and keeps the restrictions.
 
 How a clock runs:
 
-- Each station hour starts its clock at the **first slot**; slots run in order. A clock shorter than the hour **starts over**; slots expected after the end of the hour do not play (the next hour starts its own clock). The track playing at the top of the hour finishes: there is no hard sync yet.
+- Each station hour starts its clock at the **first slot**; slots run in order. A clock shorter than the hour **starts over**; slots expected after the end of the hour do not play (the next hour starts its own clock). The track playing at the top of the hour finishes, unless the next hour's first slot has an [exact time](#exact-times).
 - A clock can instead **loop across hours**, like SAM Broadcaster's clockwheel: it carries on from its last slot whatever the hour, so it can be longer than an hour (a 27-line wheel of two hours plays every line). Scheduled again after another clock, it resumes where it stopped.
 - A slot that has nothing it may play, even relaxed, is skipped for the next one, and the pick says so.
 - Hours without a clock rotate the **station's library**: least recently played, with the station's [draw depth](#draw-depth), rules enforced. The station's library is the tracks of the categories tagged with the station, except those also in a category it **keeps out** (`kept_out_category_ids` in the `rotation` settings: a category of tracks set aside, say). A track kept out does not play there even if another of its categories is the station's, and a track in none of the station's categories does not play there without a clock. A station with no category yet rotates the whole library, so a new Heron plays as soon as its music is imported.
@@ -140,6 +141,7 @@ A clock often announces a track with a jingle of its kind: *jingle 90s*, then a 
 - The **last slot** can be linked: its next slot is the first one, when the clock starts over within the hour (or carries on, looping). At the end of the hour the new hour's clock does not count: the jingle is dropped.
 - **No chains:** a linked slot cannot be followed by another linked slot (the clock is refused), so a clock of one slot cannot link it.
 - The clock editor marks a linked slot as after the hour when its next slot's track is expected after the hour.
+- A linked slot and its next slot start together at an [exact time](#exact-times) set on either of them.
 
 In the queue, the jingle's entry is linked to its track's entry (`linked_to`). The engine keeps the link with its queue, across restarts and handovers:
 
@@ -148,6 +150,36 @@ In the queue, the jingle's entry is linked to its track's entry (`linked_to`). T
 - **Moving** the track, or the jingle, moves both: the jingle stays right before its track.
 - **Nothing goes between them:** a track queued or moved there goes before the jingle.
 - Skipping is unchanged. Tracks queued by hand are never linked.
+
+#### Exact times
+
+Without an exact time, the track playing at the top of the hour plays to its end, so the top of the hour, an ad break or a news flash drifts by seconds or minutes. A clock slot can have an **exact time**: minutes and seconds into the station hour (`:00:00` for the top of the hour, `:30:00` for a flash), and a mode.
+
+- **Hard:** at the exact time, what plays fades out over 1.5 s and the slot's track starts, to the second. Tracks still waiting before it are dropped.
+- **Soft:** nothing is cut while it can be avoided.
+  - **Window:** the slot may start from *before* seconds before the exact time to *after* seconds after it (10 and 30 by default, 0 to 300 each, set per slot). Rotation plans the tracks before the slot so that the last one ends inside the window.
+  - **Late tolerance:** a track ending inside the window plays to its end and the slot follows. A track that would end later is faded out at the end of the window, over 1.5 s, as in hard mode.
+  - **Fill with a medley** (off by default): when the last track rotation could plan ends before the window, the gap is filled with one of the station's [medleys](medleys.md#shortened-plays), the one landing inside the window with the fewest parts left out, shortened from its end when too long. The usual rules apply to it (separation, restrictions, play ratio, never two in a row), and the medleys module must be on for the station.
+  - **When nothing fits** (no medley, or the option off): a track of the station's **filler category** (`filler_category_id` in the `rotation` settings: short jingles, liners), else the slot starts early, the rotation log saying so.
+- **Live** ([M11](roadmap/m11-sinks-live-dj.md)): an exact time will not cut a live DJ, unless the slot's *cut live* option is on (ad breaks). The option is stored with the slot; it does nothing until live DJs exist.
+
+How rotation plans for it:
+
+- **The upcoming exact time** is the first slot with one after the clock's position, in this run of the clock, or the next hour's first slot when the next hour's clock starts with one (an exact time at `:00:00` is usually the first slot of its clock). A slot linked to the next slot goes with it: when the slot before an exact one is [linked](#linked-slots) to it, the pair starts at the exact time; a linked slot can also have the exact time itself. A clock cannot set an exact time on both slots of a pair.
+- **Before it**, each pick prefers the tracks that land: among those that pass the rules, the method chooses among the tracks ending inside the window if there are any, else among those ending before it, so more tracks can follow. In hard mode, the window is the exact time itself: what crosses it is cut. A pick far from the exact time is not concerned, since all its tracks end before the window: only the picks whose tracks can reach the window are.
+- **Slots that no longer fit** are passed over, as at the end of the hour: in soft mode, a slot whose tracks would all end after the window (a song slot with 40 s left) gives way to the next slot. In hard mode the slot plays, and its track is cut at the exact time.
+- **When the exact time is due** (the planned start reaches the window, or the exact time in hard mode), the clock jumps to the exact slot: the slots between are passed over, and the slot starts when the track before it ends (inside the window), or at the end of the window (soft) or the exact time (hard), the track before being faded out.
+- **When the exact slot comes before its window** (the slots before it ran out, or were passed over), the gap is filled: a medley (soft, with the fill on), else a track of the filler category landing in the window or ending before it, else the slot starts early. In hard mode a filler track may cross the exact time, and is cut there.
+- **Missed exact times:** a slot whose exact time has passed in this run of the clock (a clock starting over, or a looping clock reaching it late) is passed over, never played late.
+- The fades and cuts are the engine's: rotation gives the slot's queue entry its start time, and the engine fades out what plays and starts it then ([Audio engine – Exact times](audio-engine.md#exact-times)), on the server's clock. Listeners hear the stream a few seconds late (stream server buffers): the exact time is the engine's.
+- **Tracks queued by hand** before an exact time are cut at it in hard mode. In soft mode, the queue manager takes them out of the queue when they no longer fit (they would end after the window); rotation's own tracks too, when they would start after it.
+- **Clock changes:** exact times are in station time. When the clocks go back, the repeated hour runs its clock again, exact times included; when they go forward, the skipped hour's are skipped.
+
+The rotation log says how each exact time was met (`exact` in the explanation of the slot's pick): the exact time (`at_unix_ms`), the mode and window, `met` (`on_time`, `early` or `late`) with the planned start's offset from the exact time (`offset_ms`, negative when early), whether the track before is faded (`faded`, and when: `cut_at_unix_ms`), and whether it is in its window. A pick filling a gap says so (`fill`: `medley` or `filler`, the exact slot it fills, for a medley its ID, how many hooks were left out and the parts left out by their position in the medley). Slots passed over say why: *the exact time is due*, *no longer fits before the exact time*, *exact time passed*.
+
+**Planned starts** do not count crossfades: tracks start a little earlier than planned, so a soft window should keep a few seconds before the exact time. Hard times are met by the engine whatever the plan.
+
+**Simulations** run exact times without audio, the planned starts jumping to each exact time as the engine would; the audit checks each exact slot's start against its window (`exact_time` violation: *missed window*, an early start included).
 
 ### Weights
 
