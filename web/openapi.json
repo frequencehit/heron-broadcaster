@@ -6616,7 +6616,7 @@
         "tags": [
           "player"
         ],
-        "summary": "Fades out the track on air and starts the next one.",
+        "summary": "Fades out the track on air and starts the next one. The vote's track\nof a match whose vote is open: the vote closes first, with the votes so\nfar, and the winner starts.",
         "operationId": "skip",
         "responses": {
           "204": {},
@@ -7022,7 +7022,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Queues library tracks. Missing files and tracks with nothing audible are\nrefused.",
+        "summary": "Queues library tracks. Missing files and tracks with nothing audible are\nrefused, and so is a position among a match's tracks (`409`).",
         "operationId": "enqueue",
         "requestBody": {
           "content": {
@@ -7068,7 +7068,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Empties the queue, cued track included. The track on air plays on (and\nautofill, when on, queues new tracks).",
+        "summary": "Empties the queue, cued track included. The track on air plays on (and\nautofill, when on, queues new tracks). The tracks of a match waiting or\nopen stay, and the match goes on.",
         "operationId": "clear_queue",
         "responses": {
           "204": {},
@@ -7098,7 +7098,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Takes an entry out of the queue. The track on air cannot be removed: skip it.",
+        "summary": "Takes an entry out of the queue. The track on air cannot be removed: skip\nit. A match's track is refused while the match waits or its vote is\nopen (`409`): cancel the match first.",
         "operationId": "remove_entry",
         "parameters": [
           {
@@ -7140,7 +7140,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Moves a waiting entry.",
+        "summary": "Moves a waiting entry. A match's track, or a place among them, is\nrefused while the match waits or its vote is open (`409`).",
         "operationId": "move_entry",
         "parameters": [
           {
@@ -12458,7 +12458,7 @@
         "tags": [
           "player"
         ],
-        "summary": "Fades out the track on air and starts the next one.",
+        "summary": "Fades out the track on air and starts the next one. The vote's track\nof a match whose vote is open: the vote closes first, with the votes so\nfar, and the winner starts.",
         "operationId": "skip_on_station",
         "parameters": [
           {
@@ -12599,7 +12599,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Queues library tracks. Missing files and tracks with nothing audible are\nrefused.",
+        "summary": "Queues library tracks. Missing files and tracks with nothing audible are\nrefused, and so is a position among a match's tracks (`409`).",
         "operationId": "enqueue_on_station",
         "parameters": [
           {
@@ -12656,7 +12656,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Empties the queue, cued track included. The track on air plays on (and\nautofill, when on, queues new tracks).",
+        "summary": "Empties the queue, cued track included. The track on air plays on (and\nautofill, when on, queues new tracks). The tracks of a match waiting or\nopen stay, and the match goes on.",
         "operationId": "clear_queue_on_station",
         "parameters": [
           {
@@ -12697,7 +12697,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Takes an entry out of the queue. The track on air cannot be removed: skip it.",
+        "summary": "Takes an entry out of the queue. The track on air cannot be removed: skip\nit. A match's track is refused while the match waits or its vote is\nopen (`409`): cancel the match first.",
         "operationId": "remove_entry_on_station",
         "parameters": [
           {
@@ -12748,7 +12748,7 @@
         "tags": [
           "queue"
         ],
-        "summary": "Moves a waiting entry.",
+        "summary": "Moves a waiting entry. A match's track, or a place among them, is\nrefused while the match waits or its vote is open (`409`).",
         "operationId": "move_entry_on_station",
         "parameters": [
           {
@@ -25116,6 +25116,7 @@
           "status",
           "vote_track",
           "choices",
+          "entry_ids",
           "votes"
         ],
         "properties": {
@@ -25163,6 +25164,15 @@
                 "type": "null"
               }
             ]
+          },
+          "entry_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "The queue entries of the vote's track and of A and B, for the\nengine started then: locked in the queue while the match waits or\nits vote is open, with the announcement linked to the vote's track."
           },
           "id": {
             "type": "integer",

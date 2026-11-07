@@ -308,7 +308,16 @@ The requests are in the database dump of the [backups](backups.md); the settings
 - **The loser** never plays: it is not counted as played, and goes back to its category (out of matches for the rest of the day, by default).
 - In the **rotation log**, both tracks are logged as picks of the match's category when they are queued; the loser's pick is deleted at the close, the winner's stays with its play.
 
-What an operator can do (*Shows › Match*, and *On air*): **close the vote now**, which decides with the votes so far, and **cancel the match**, which keeps the first track in the queue, as an ordinary track, and takes the second out. Taking the vote's track out of the queue cancels the match the same way; so does a new engine. Taking one of the two tracks out of the queue makes the other one win when the vote closes.
+What an operator can do (*Shows › Match*, and *On air*): **close the vote now**, which decides with the votes so far, and **cancel the match**, which keeps the first track in the queue, as an ordinary track, and takes the second out. A new engine cancels the match the same way.
+
+**The match's tracks are locked in the queue** while it waits or its vote is open: the announcement, the vote's track and the two tracks. Only the match takes one out (the loser, at the close) or the operator's *cancel the match*:
+
+- **Removing, moving or playing next** one of them is refused (`409`, *this track belongs to the match in progress: cancel the match first*). The Queue page and On air mark them *Match*, without their handle, *play next* or *remove*.
+- **Nothing goes between them**: queueing or moving a track to a place among them is refused the same way. Before them, or after the second track, is free.
+- **Clearing the queue** takes out every other track and keeps the match's: the match goes on.
+- **Skipping the vote's track** while its vote is open closes the vote first, with the votes so far (*closed early*), then starts the winner. Skipping it before its vote opens, or skipping another track, skips as usual.
+
+A track the queue manager takes out by itself (its file left the library, or it was disabled) still counts as taken out: the other one wins when the vote closes, and the match is cancelled without either.
 
 ### Voting
 

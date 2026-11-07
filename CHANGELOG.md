@@ -43,6 +43,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 
 ### Changed
 
+- **The match's tracks are locked in the queue** while it waits or its vote is open (the announcement, the vote's track and the two tracks): removing, moving or playing one next, or putting a track among them, is refused; the Queue page and On air mark them *Match*. Clearing the queue keeps them, and skipping the vote's track closes the vote with the votes so far before the winner starts, instead of cancelling the match ([Listener interaction – Match](docs/listener-interaction.md#on-air)).
 - **`GET /listeners/players` is replaced by `GET /listeners/breakdown?by=player`**, which gives player families instead of user agents: no full user agent leaves the API any more.
 - **The server is a filter of the whole Statistics page**, like the output: every card and CSV download follows it, and both are kept in the address (`?output=`, `?server=`). The totals per day and hour are kept per server too (a relay's own listeners), and the statistics routes take a `server_id`; the tracks listeners leave follow the output and server as well ([Listener statistics – Relay servers](docs/statistics.md#relay-servers)).
 - **Transitions and level:** the transition preview's graph is drawn at the waveform's height, as on a track's page, whatever the page's width.

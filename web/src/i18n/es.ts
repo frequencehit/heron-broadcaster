@@ -345,6 +345,8 @@ const es = {
   "queue.overIntroHint": "Suena en el reproductor FX sobre la intro de la pista siguiente y termina donde empieza la voz",
   "queue.linked": "Vinculado",
   "queue.linkedHint": "Anuncia la pista siguiente: quitar esa pista quita este jingle, y se mueven juntos",
+  "queue.match": "Duelo",
+  "queue.matchHint": "Forma parte del duelo en curso: solo el duelo la quita, al cerrar la votación, o «Cancelar el duelo»",
   "queue.expectedStart": "Inicio previsto, fundidos encadenados incluidos",
   "queue.playNext": "Reproducir a continuación",
   "queue.playNamedNext": "Reproducir {name} a continuación",

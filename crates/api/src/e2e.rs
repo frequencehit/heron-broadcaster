@@ -11929,8 +11929,9 @@ async fn follow_key_of(request: &Value, pool: &sqlx::MySqlPool) -> String {
 /// The match (docs/listener-interaction.md#match): every N tracks in the
 /// show's hours, two tracks of its category queued after the vote's track
 /// and its announcement; votes only while open, a device changing its mind;
-/// the loser out of the queue at the close; a tie, no vote, an early close,
-/// a cancel, and the module turned off.
+/// the loser out of the queue at the close; its tracks locked in the queue
+/// and kept by a clear; a tie, no vote, an early close, a skip during the
+/// vote, a cancel, and the module turned off.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
     let Some(station) = Station::start().await else {
@@ -12204,6 +12205,7 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
         [vote_track, a, b]
     );
     let (vote_entry, entry_a, entry_b) = (ids[1], ids[2], ids[3]);
+    assert_eq!(current["entry_ids"], json!([vote_entry, entry_a, entry_b]));
     // Both are in the rotation log, as picks of Hits.
     let logged: Vec<u64> = sqlx::query_scalar(
         "SELECT entry_id FROM rotation_picks WHERE entry_id IN (?, ?) AND category_id = ?",
@@ -12232,6 +12234,35 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
         .await;
     assert_eq!(status, StatusCode::CONFLICT, "not open yet");
 
+    // Its tracks are locked: none removed, moved or played next, nothing
+    // put among them.
+    for entry in &ids {
+        let (status, body) = admin
+            .request(Method::DELETE, &format!("/queue/{entry}"), None)
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{entry}: {body}");
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/queue/{entry}/position"),
+                json!({"position": 0}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{entry}");
+    }
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/queue",
+            json!({"track_ids": [t[0]], "position": at + 2}),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "between the vote's track and A"
+    );
+
     // The vote's track on air: open until 10 s before its end.
     while on_air().await != Some(vote_entry) {
         let before = on_air().await;
@@ -12250,6 +12281,27 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
     let closes = open["closes_at_unix_ms"].as_i64().unwrap();
     let transition = open["transition_at_unix_ms"].as_i64().unwrap();
     assert_eq!(transition - closes, 10_000);
+    // The vote's track on air: nothing goes before A. Clearing the queue
+    // keeps A and B, and the match goes on.
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/queue",
+            json!({"track_ids": [t[0]], "position": 0}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "before A");
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        entries().await[..2]
+            .iter()
+            .map(|entry| entry["entry_id"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
+        [entry_a, entry_b]
+    );
+    tick().await;
+    assert_eq!(admin.get("/match/current").await["status"], "open");
     let now = crate::rotation::now_ms();
     assert!(
         transition > now + 80_000 && transition < now + 101_000,
@@ -12484,6 +12536,40 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
             .skip(1)
             .all(|entry| entry["track"]["track_id"] != early_a)
     );
+
+    // Skipped during its vote: closed with the votes so far, and the
+    // winner starts.
+    let skipped = open_next().await;
+    let (_, taken) = gateway_write(
+        &gateway,
+        &vote_path,
+        None,
+        ballot(skipped["id"].clone(), "d1", "b"),
+    )
+    .await;
+    assert_eq!(taken["counted"], 1);
+    skip().await;
+    let decided = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+        "SELECT CAST(status AS CHAR), CAST(winner AS CHAR), CAST(decided_by AS CHAR)
+         FROM matches WHERE id = ?",
+    )
+    .bind(skipped["id"].as_u64())
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (
+            decided.0.as_str(),
+            decided.1.as_deref(),
+            decided.2.as_deref()
+        ),
+        ("closed", Some("b"), Some("early"))
+    );
+    let winner_entry = skipped["entry_ids"][2].as_u64();
+    eventually("the winner on air", Duration::from_secs(20), || async {
+        (on_air().await == winner_entry).then_some(())
+    })
+    .await;
 
     // Cancelled: the first track stays, as an ordinary track.
     let cancelled = open_next().await;

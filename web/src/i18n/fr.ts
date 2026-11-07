@@ -346,6 +346,8 @@ const fr = {
   "queue.overIntroHint": "Passe sur le lecteur FX par-dessus l’intro de la piste suivante et finit là où la voix commence",
   "queue.linked": "Lié",
   "queue.linkedHint": "Annonce la piste suivante : retirer cette piste retire ce jingle, et ils se déplacent ensemble",
+  "queue.match": "Match",
+  "queue.matchHint": "Fait partie du match en cours : seul le match le retire, à la fermeture du vote, ou « Annuler le match »",
   "queue.expectedStart": "Début prévu, fondus compris",
   "queue.playNext": "Diffuser ensuite",
   "queue.playNamedNext": "Diffuser {name} ensuite",

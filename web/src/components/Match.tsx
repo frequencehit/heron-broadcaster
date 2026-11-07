@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { api, unwrap } from "../api";
 import { number, t } from "../i18n";
 import { dateTime, shortTime } from "../lib/format";
-import { type MatchSettings, type MatchView, along, clock, left, outcome, sides } from "../lib/match";
+import { type MatchSettings, type MatchView, along, clock, left, outcome, sides, useCurrentMatch as useCurrent } from "../lib/match";
 import { useModule } from "../lib/modules";
 import { useAction, useCan } from "../lib/session";
 import { here, useStation } from "../lib/station";
@@ -39,16 +39,6 @@ export function MatchPage() {
     </>
   );
   return <ShowPage module="match" tabs={tabs} common={tab === "settings"} />;
-}
-
-function useCurrent(enabled = true) {
-  const station = useStation();
-  return useQuery({
-    queryKey: ["match", "current", station],
-    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/match/current", { params: { path: here() } })),
-    enabled: enabled && station !== null,
-    refetchInterval: 2_000,
-  });
 }
 
 function useSettings(enabled = true) {
