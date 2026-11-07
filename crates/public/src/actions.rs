@@ -65,8 +65,105 @@ pub struct Action {
     pub delivery: Delivery,
 }
 
-/// The writes of every show. Each show adds its own (#131, #132).
-pub const ACTIONS: &[Action] = &[LIKE];
+/// The writes of every show. Each show adds its own (#132).
+pub const ACTIONS: &[Action] = &[DEDICATION, LIKE];
+
+/// A request for a track with a message (#131), sent on to the API, which
+/// answers its follow link. The API counts each device's requests in the
+/// range as the station sets it (1 to 10) and allows one waiting at a
+/// time; the gateway stops a device at 10, the most a station allows.
+pub const DEDICATION: Action = Action {
+    module: Module::Dedications,
+    name: "",
+    fields: &[
+        Field::text("track_id", 20, true),
+        Field::text("from", 40, true),
+        Field::text("to", 60, true),
+        Field::text("message", 500, false),
+    ],
+    per_device: 10,
+    delivery: Delivery::Forward,
+};
+
+/// A read a show adds, under `GET …/stations/{code}/{module}/{name}`: sent
+/// on to the API's `/gateway/stations/{code}/{module}/{name}`, with the
+/// gateway token, and cached per query.
+#[derive(Clone, Copy, Debug)]
+pub struct Read {
+    pub module: Module,
+    pub name: &'static str,
+    /// Its query's parameters: name, characters at most, required.
+    pub params: &'static [(&'static str, usize, bool)],
+    /// Seconds an answer is kept.
+    pub ttl: u32,
+    /// Only while the show is open (else `409`, without asking the API).
+    pub open: bool,
+}
+
+/// The reads of every show.
+pub const READS: &[Read] = &[
+    // The requestable tracks, while the dedications are open.
+    Read {
+        module: Module::Dedications,
+        name: "search",
+        params: &[("q", 60, true)],
+        ttl: 30,
+        open: true,
+    },
+    // A request, by the key of its follow link.
+    Read {
+        module: Module::Dedications,
+        name: "follow",
+        params: &[("id", 32, true)],
+        ttl: 5,
+        open: false,
+    },
+];
+
+impl Read {
+    /// The query, checked: known parameters within their size, the
+    /// required ones there; in a fixed order, as the cache's key.
+    pub fn query(&self, given: &[(String, String)]) -> Result<String, String> {
+        if let Some((name, _)) = given
+            .iter()
+            .find(|(name, _)| !self.params.iter().any(|(known, _, _)| known == name))
+        {
+            return Err(format!("unknown parameter {name}"));
+        }
+        let mut query = Vec::new();
+        for (name, max, required) in self.params {
+            match given.iter().find(|(given, _)| given == name) {
+                Some((_, value)) if value.chars().count() > *max => {
+                    return Err(format!("{name} is {max} characters at most"));
+                }
+                Some((_, value)) => query.push(format!("{name}={}", encode(value))),
+                None if *required => return Err(format!("{name} is required")),
+                None => {}
+            }
+        }
+        Ok(query.join("&"))
+    }
+}
+
+/// The read of a path, among `reads`.
+pub fn find_read<'a>(reads: &'a [Read], module: &str, name: &str) -> Option<&'a Read> {
+    reads
+        .iter()
+        .find(|read| read.module.key() == module && read.name == name)
+}
+
+/// `value` percent-encoded for a query.
+fn encode(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
 
 /// A like or a dislike of the track playing (#133): one per device per
 /// play, the last one counting, so no limit per device but the address's.
@@ -237,6 +334,58 @@ pub(crate) mod tests {
             .check(&serde_json::json!({"play_id": null, "vote": "like"}))
             .unwrap_err();
         assert!(no_play.contains("required"));
+    }
+
+    #[test]
+    fn dedications_take_a_track_and_a_short_message() {
+        assert_eq!(DEDICATION.path(), "dedications");
+        let ok =
+            serde_json::json!({"track_id": 42, "from": "Marc", "to": "Julie", "message": "Hi"});
+        assert_eq!(DEDICATION.check(&ok).unwrap().len(), 4);
+        let long = "x".repeat(501);
+        for (body, error) in [
+            (
+                serde_json::json!({"from": "Marc", "to": "Julie"}),
+                "track_id is required",
+            ),
+            (
+                serde_json::json!({"track_id": 1, "from": "Marc", "to": "Julie", "email": "a@b"}),
+                "unknown field email",
+            ),
+            (
+                serde_json::json!({"track_id": 1, "from": "Marc", "to": "Julie", "message": long}),
+                "500 characters",
+            ),
+        ] {
+            let refused = DEDICATION.check(&body).unwrap_err();
+            assert!(refused.contains(error), "{body}: {refused}");
+        }
+    }
+
+    #[test]
+    fn reads_check_their_query() {
+        let search = find_read(READS, "dedications", "search").unwrap();
+        let given = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect()
+        };
+        assert_eq!(search.query(&given(&[("q", "neon")])).unwrap(), "q=neon");
+        assert_eq!(
+            search.query(&given(&[("q", "sœur & co")])).unwrap(),
+            "q=s%C5%93ur%20%26%20co"
+        );
+        assert!(search.query(&given(&[])).unwrap_err().contains("required"));
+        assert!(
+            search
+                .query(&given(&[("q", "a"), ("x", "1")]))
+                .unwrap_err()
+                .contains("unknown")
+        );
+        assert!(search.query(&given(&[("q", &"a".repeat(61))])).is_err());
+        assert!(find_read(READS, "dedications", "other").is_none());
+        assert!(find_read(READS, "likes", "search").is_none());
     }
 
     #[test]

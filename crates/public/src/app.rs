@@ -10,11 +10,11 @@ use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, RawQuery, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, RawQuery, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use heron_core::Module;
 use jiff::Timestamp;
 use serde_json::{Value, json};
@@ -42,7 +42,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         )
         .route(
             "/api/v1/public/stations/{code}/{module}/{action}",
-            post(write_action),
+            get(read_action).post(write_action),
         )
         .layer(DefaultBodyLimit::max(MAX_BODY))
         // Any origin may read and ask; writes check theirs (`origin_allowed`).
@@ -175,7 +175,7 @@ async fn read(
             Some(query) => format!("/api/v1/public/stations/{code}/{name}?{query}"),
             None => format!("/api/v1/public/stations/{code}/{name}"),
         };
-        return gateway.cache.get(&gateway, path, ttl).await;
+        return gateway.cache.get(&gateway, path, ttl, false).await;
     }
     match name.as_str() {
         "events" => events(&gateway, &code, address),
@@ -199,6 +199,59 @@ async fn read(
             }
         }
     }
+}
+
+/// A show's own read (the dedications' search), from the API with the
+/// gateway token, cached per query.
+async fn read_action(
+    State(gateway): State<Arc<Gateway>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path((code, module, name)): Path<(String, String, String)>,
+    Query(given): Query<Vec<(String, String)>>,
+) -> Response {
+    let address = gateway.client(&headers, peer.ip());
+    if let Err(wait) = gateway.reads.hit(address, Instant::now()) {
+        return too_many("address", wait);
+    }
+    if gateway.config.token.is_none() {
+        return refuse(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "unavailable",
+            "the gateway has no token for the API",
+        );
+    }
+    metrics::counter!("heron_public_requests_total", "kind" => "read").increment(1);
+    let Some(show) =
+        show_module(&module).and_then(|m| gateway.show(&code, m.key(), Timestamp::now()))
+    else {
+        return not_found(&format!("show {module}"));
+    };
+    let Some(read) = actions::find_read(actions::READS, &module, &name) else {
+        return not_found(&format!("{module}/{name}"));
+    };
+    if read.open && show["open"] != true {
+        return refuse(
+            StatusCode::CONFLICT,
+            "conflict",
+            "closed",
+            format!("{module} is closed"),
+        );
+    }
+    let query = match read.query(&given) {
+        Ok(query) => query,
+        Err(message) => {
+            return refuse(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "invalid",
+                "invalid",
+                message,
+            );
+        }
+    };
+    let path = format!("/api/v1/gateway/stations/{code}/{module}/{name}?{query}");
+    gateway.cache.get(&gateway, path, read.ttl, true).await
 }
 
 fn events(gateway: &Gateway, code: &str, address: std::net::IpAddr) -> Response {
@@ -484,7 +537,8 @@ pub struct ReadCache {
 }
 
 impl ReadCache {
-    async fn get(&self, gateway: &Gateway, path: String, ttl: u32) -> Response {
+    /// `auth`: with the gateway token (a show's read).
+    async fn get(&self, gateway: &Gateway, path: String, ttl: u32, auth: bool) -> Response {
         let slot = {
             let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
             if slots.len() >= MAX_CACHED && !slots.contains_key(&path) {
@@ -497,7 +551,11 @@ impl ReadCache {
             .as_ref()
             .is_some_and(|cached| cached.fetched.elapsed() < Duration::from_secs(u64::from(ttl)));
         if !fresh {
-            match gateway.http.get(gateway.api(&path)).send().await {
+            let mut request = gateway.http.get(gateway.api(&path));
+            if let (true, Some(token)) = (auth, gateway.config.token.as_deref()) {
+                request = request.bearer_auth(token);
+            }
+            match request.send().await {
                 Ok(response) => {
                     let status = StatusCode::from_u16(response.status().as_u16())
                         .unwrap_or(StatusCode::BAD_GATEWAY);
@@ -558,10 +616,15 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tower::ServiceExt;
 
+    /// A show's read as the API got it: path, query, token.
+    type ShowRead = (String, Option<String>, Option<String>);
+
     /// A pretend API: counts its calls, keeps what it receives.
     #[derive(Default)]
     struct FakeApi {
         reads: AtomicUsize,
+        /// A show's reads: path and query, with the token sent.
+        show_reads: Mutex<Vec<ShowRead>>,
         received: Mutex<Vec<(String, Option<String>, Value)>>,
     }
 
@@ -581,7 +644,20 @@ mod tests {
             )
             .route(
                 "/api/v1/gateway/stations/{*path}",
-                post({
+                get({
+                    let api = Arc::clone(&api);
+                    move |Path(path): Path<String>, RawQuery(query): RawQuery, headers: HeaderMap| {
+                        let api = Arc::clone(&api);
+                        async move {
+                            let token = headers
+                                .get(header::AUTHORIZATION)
+                                .map(|value| value.to_str().unwrap().to_owned());
+                            api.show_reads.lock().unwrap().push((path, query, token));
+                            axum::Json(json!([{"track_id": 7, "artist": "Cassia Bloom", "title": "Neon Orchard"}]))
+                        }
+                    }
+                })
+                .post({
                     let api = Arc::clone(&api);
                     move |Path(path): Path<String>, headers: HeaderMap, body: axum::Json<Value>| {
                         let api = Arc::clone(&api);
@@ -826,6 +902,59 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let challenge = challenge["challenge"].as_str().unwrap().to_owned();
         format!("{challenge}:{}", solve(&challenge, bits))
+    }
+
+    #[tokio::test]
+    async fn a_shows_reads_go_to_the_api_with_the_token_and_are_cached() {
+        let (api, url) = fake_api().await;
+        let gateway = gateway(url, Config::default(), 0);
+        let uri = "/api/v1/public/stations/main/dedications/search?q=n%C3%A9on%20o";
+        for _ in 0..3 {
+            let (status, _, body) = call(&gateway, Method::GET, uri, &[], None, LISTENER).await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+            assert_eq!(body[0]["title"], "Neon Orchard");
+        }
+        {
+            let reads = api.show_reads.lock().unwrap();
+            assert_eq!(reads.len(), 1, "cached");
+            assert_eq!(reads[0].0, "main/dedications/search");
+            assert_eq!(reads[0].1.as_deref(), Some("q=n%C3%A9on%20o"));
+            assert_eq!(reads[0].2.as_deref(), Some("Bearer token"));
+        }
+        for (uri, status) in [
+            (
+                "/api/v1/public/stations/main/dedications/search",
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+            (
+                "/api/v1/public/stations/main/dedications/search?q=a&email=x",
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+            (
+                "/api/v1/public/stations/main/dedications/other?q=a",
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                "/api/v1/public/stations/main/likes/search?q=ab",
+                StatusCode::NOT_FOUND,
+            ),
+        ] {
+            let (got, _, body) = call(&gateway, Method::GET, uri, &[], None, LISTENER).await;
+            assert_eq!(got, status, "{uri}: {body}");
+        }
+        assert_eq!(api.show_reads.lock().unwrap().len(), 1);
+
+        // Closed: no search, without asking the API; the follow link still answers.
+        gateway.apply(Some(state(json!([]), 0)), Timestamp::now());
+        let (status, _, _) = call(&gateway, Method::GET, uri, &[], None, LISTENER).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        let follow = format!(
+            "/api/v1/public/stations/main/dedications/follow?id={}",
+            "a".repeat(32)
+        );
+        let (status, _, _) = call(&gateway, Method::GET, &follow, &[], None, LISTENER).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(api.show_reads.lock().unwrap().len(), 2);
     }
 
     #[tokio::test]

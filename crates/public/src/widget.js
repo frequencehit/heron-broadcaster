@@ -41,6 +41,48 @@
       back: "Back {day} at {hour}.",
       nowPlaying: "Now playing",
       sep: " to ",
+      dedications: {
+        remaining: "{n} more requests possible",
+        full: "Full for today",
+        track: "The track",
+        search: "A title, an artist…",
+        searchMore: "Type at least 2 letters.",
+        noResult: "No track found.",
+        from: "Your first name",
+        to: "For whom?",
+        message: "Your message",
+        send: "Send my dedication",
+        sending: "Sending…",
+        pick: "Choose a track first.",
+        note: "Your message is read before it is shown. {per} per range. First names and messages are deleted after {days} days.",
+        perOne: "One request",
+        perMany: "{n} requests",
+        tooMany: "You have already sent your request for this range.",
+        fullError: "Full for today: no more requests in this range.",
+        closedError: "Dedications have just closed.",
+        failed: "Your request could not be sent. Try again.",
+        yours: "Your dedication",
+        said: "{who}: “{message}”",
+        forFrom: "For {to}, from {from}",
+        sent: "Sent",
+        accepted: "Accepted",
+        onAirAt: "On air around {hour}",
+        played: "Played at {hour}",
+        keepOpen: "Keep this page open: it updates itself.",
+        refused: "Not this time",
+        reasons: {
+          just_played: "This track has just played. Try another one!",
+          unavailable: "This track cannot play now. Try another one!",
+          closed: "The dedications closed before it could be chosen.",
+          removed: "It could not be played in the end.",
+        },
+        followLink: "Follow link:",
+        another: "Send another one",
+        today: "Today's dedications",
+        playedTag: "played",
+        upcoming: "coming up",
+        onlyAccepted: "Only accepted dedications are shown.",
+      },
       top30: {
         live: "Live: the places to come are revealed on air",
         week: "Week of {date}",
@@ -73,6 +115,48 @@
       back: "Réouverture {day} à {hour}.",
       nowPlaying: "En ce moment",
       sep: " au ",
+      dedications: {
+        remaining: "encore {n} demandes possibles",
+        full: "Complet pour aujourd'hui",
+        track: "Le titre",
+        search: "Un titre, un artiste…",
+        searchMore: "Tapez au moins 2 lettres.",
+        noResult: "Aucun titre trouvé.",
+        from: "Votre prénom",
+        to: "Pour qui ?",
+        message: "Votre message",
+        send: "Envoyer ma dédicace",
+        sending: "Envoi…",
+        pick: "Choisissez d'abord un titre.",
+        note: "Votre message est relu avant d'être affiché. {per} par plage. Prénoms et messages effacés après {days} jours.",
+        perOne: "Une demande",
+        perMany: "{n} demandes",
+        tooMany: "Vous avez déjà envoyé votre demande pour cette plage.",
+        fullError: "Complet pour aujourd'hui : plus de demandes sur cette plage.",
+        closedError: "Les dédicaces viennent de fermer.",
+        failed: "Votre demande n'a pas pu être envoyée. Réessayez.",
+        yours: "Votre dédicace",
+        said: "{who} : « {message} »",
+        forFrom: "Pour {to}, de la part de {from}",
+        sent: "Envoyée",
+        accepted: "Acceptée",
+        onAirAt: "À l'antenne vers {hour}",
+        played: "Diffusée à {hour}",
+        keepOpen: "Gardez cette page ouverte : elle s'actualise seule.",
+        refused: "Pas retenue cette fois",
+        reasons: {
+          just_played: "Ce titre vient de passer. Essayez-en un autre !",
+          unavailable: "Ce titre ne peut pas passer en ce moment. Essayez-en un autre !",
+          closed: "Les dédicaces ont fermé avant qu'elle soit choisie.",
+          removed: "Elle n'a finalement pas pu passer.",
+        },
+        followLink: "Lien de suivi :",
+        another: "Envoyer une autre dédicace",
+        today: "Les dédicaces du jour",
+        playedTag: "diffusée",
+        upcoming: "à venir",
+        onlyAccepted: "Seules les dédicaces acceptées s'affichent.",
+      },
       top30: {
         live: "En direct : les places à venir se découvrent à l'antenne",
         week: "Semaine du {date}",
@@ -105,6 +189,48 @@
       back: "Vuelve el {day} a las {hour}.",
       nowPlaying: "Suena ahora",
       sep: " a ",
+      dedications: {
+        remaining: "quedan {n} peticiones",
+        full: "Completo por hoy",
+        track: "La canción",
+        search: "Una canción, un artista…",
+        searchMore: "Escribe al menos 2 letras.",
+        noResult: "No se encontró ninguna canción.",
+        from: "Tu nombre",
+        to: "¿Para quién?",
+        message: "Tu mensaje",
+        send: "Enviar mi dedicatoria",
+        sending: "Enviando…",
+        pick: "Elige primero una canción.",
+        note: "Tu mensaje se revisa antes de mostrarse. {per} por franja. Los nombres y mensajes se borran a los {days} días.",
+        perOne: "Una petición",
+        perMany: "{n} peticiones",
+        tooMany: "Ya enviaste tu petición para esta franja.",
+        fullError: "Completo por hoy: no hay más peticiones en esta franja.",
+        closedError: "Las dedicatorias acaban de cerrar.",
+        failed: "No se pudo enviar tu petición. Inténtalo de nuevo.",
+        yours: "Tu dedicatoria",
+        said: "{who}: «{message}»",
+        forFrom: "Para {to}, de parte de {from}",
+        sent: "Enviada",
+        accepted: "Aceptada",
+        onAirAt: "En antena hacia las {hour}",
+        played: "Emitida a las {hour}",
+        keepOpen: "Deja esta página abierta: se actualiza sola.",
+        refused: "Esta vez no",
+        reasons: {
+          just_played: "Esta canción acaba de sonar. ¡Prueba con otra!",
+          unavailable: "Esta canción no puede sonar ahora. ¡Prueba con otra!",
+          closed: "Las dedicatorias cerraron antes de elegirla.",
+          removed: "Al final no pudo sonar.",
+        },
+        followLink: "Enlace de seguimiento:",
+        another: "Enviar otra",
+        today: "Las dedicatorias de hoy",
+        playedTag: "emitida",
+        upcoming: "por venir",
+        onlyAccepted: "Solo se muestran las dedicatorias aceptadas.",
+      },
       top30: {
         live: "En directo: los puestos que faltan se descubren en antena",
         week: "Semana del {date}",
@@ -137,6 +263,48 @@
       back: "Wieder da am {day} um {hour}.",
       nowPlaying: "Jetzt läuft",
       sep: " bis ",
+      dedications: {
+        remaining: "noch {n} Wünsche möglich",
+        full: "Für heute voll",
+        track: "Der Titel",
+        search: "Ein Titel, ein Interpret…",
+        searchMore: "Mindestens 2 Buchstaben eingeben.",
+        noResult: "Kein Titel gefunden.",
+        from: "Dein Vorname",
+        to: "Für wen?",
+        message: "Deine Nachricht",
+        send: "Meine Widmung senden",
+        sending: "Wird gesendet…",
+        pick: "Wähle zuerst einen Titel.",
+        note: "Deine Nachricht wird gelesen, bevor sie erscheint. {per} pro Zeitfenster. Vornamen und Nachrichten werden nach {days} Tagen gelöscht.",
+        perOne: "Ein Wunsch",
+        perMany: "{n} Wünsche",
+        tooMany: "Du hast deinen Wunsch für dieses Zeitfenster schon gesendet.",
+        fullError: "Für heute voll: keine Wünsche mehr in diesem Zeitfenster.",
+        closedError: "Die Widmungen sind gerade geschlossen.",
+        failed: "Dein Wunsch konnte nicht gesendet werden. Versuch es noch einmal.",
+        yours: "Deine Widmung",
+        said: "{who}: „{message}“",
+        forFrom: "Für {to}, von {from}",
+        sent: "Gesendet",
+        accepted: "Angenommen",
+        onAirAt: "Im Radio gegen {hour}",
+        played: "Gespielt um {hour}",
+        keepOpen: "Lass diese Seite offen: Sie aktualisiert sich selbst.",
+        refused: "Diesmal nicht",
+        reasons: {
+          just_played: "Dieser Titel lief gerade. Probier einen anderen!",
+          unavailable: "Dieser Titel kann gerade nicht laufen. Probier einen anderen!",
+          closed: "Die Widmungen haben geschlossen, bevor er gewählt wurde.",
+          removed: "Er konnte am Ende nicht gespielt werden.",
+        },
+        followLink: "Link zum Verfolgen:",
+        another: "Noch eine senden",
+        today: "Die Widmungen von heute",
+        playedTag: "gespielt",
+        upcoming: "kommt noch",
+        onlyAccepted: "Nur angenommene Widmungen werden gezeigt.",
+      },
       top30: {
         live: "Live: die nächsten Plätze gibt es im Radio",
         week: "Woche vom {date}",
@@ -236,6 +404,40 @@
     ".who{flex:1;min-width:0}.who strong{display:block}.chart .q{color:#9a9a95;letter-spacing:.3em}" +
     ".tag{font-size:11px;font-weight:700;background:var(--color);color:#fff;border-radius:6px;padding:1px 6px;margin-left:6px}" +
     ".release{margin-top:12px;border:2px solid var(--color);border-radius:10px;padding:10px 14px}" +
+    ".field{display:block;margin:0 0 12px}.field>span{display:block;font-weight:600;margin-bottom:4px}" +
+    "input,textarea{font:inherit;color:inherit;background:transparent;box-sizing:border-box;width:100%;" +
+    "border:1.5px solid #c9c9c4;border-radius:10px;padding:9px 12px}" +
+    "textarea{min-height:84px;resize:vertical}" +
+    "input:focus,textarea:focus{outline:2px solid var(--color);outline-offset:1px}" +
+    ".count{text-align:right;font-size:13px}" +
+    ".row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}" +
+    ".widget .row2{display:block}" +
+    ".results{list-style:none;margin:0 0 12px;padding:0;border:1px solid #e3e3df;border-radius:10px;overflow:hidden}" +
+    ".page .results{display:flex;flex-wrap:wrap;gap:10px;border:0;overflow:visible}" +
+    ".result{font:inherit;color:inherit;text-align:left;width:100%;display:block;background:transparent;" +
+    "border:0;border-top:1px solid #e3e3df;padding:8px 12px;cursor:pointer}" +
+    ".results li:first-child .result{border-top:0}" +
+    ".page .result{border:1.5px solid #e3e3df;border-radius:10px;width:auto;min-width:200px}" +
+    ".result[aria-pressed=true]{box-shadow:inset 3px 0 var(--color);background:rgba(127,127,127,.1)}" +
+    ".page .result[aria-pressed=true]{border-color:var(--color);box-shadow:none}" +
+    ".result strong{display:block}" +
+    ".send{font:inherit;font-weight:700;font-size:17px;width:100%;padding:12px;border:0;border-radius:10px;" +
+    "background:var(--color);color:#fff;cursor:pointer;margin:4px 0 10px}" +
+    ".send:disabled{opacity:.6;cursor:default}" +
+    ".error{color:#c62828;margin:0 0 10px}.small{font-size:13px}" +
+    ".quote{border-left:4px solid var(--color);background:rgba(127,127,127,.08);padding:8px 12px;margin:0 0 14px}" +
+    ".steps{list-style:none;margin:0 0 12px;padding:0}" +
+    ".steps li{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px}" +
+    ".dot{flex:none;width:26px;height:26px;border-radius:50%;border:2px solid var(--color);color:var(--color);" +
+    "display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;box-sizing:border-box}" +
+    ".dot.done{background:var(--color);color:#fff}" +
+    ".link{font:inherit;color:inherit;background:transparent;border:0;padding:0;text-decoration:underline;cursor:pointer}" +
+    ".today{list-style:none;margin:0;padding:0}" +
+    ".today li{display:flex;gap:12px;padding:10px 0;border-top:1px solid #e3e3df}" +
+    ".today li:first-child{border-top:0}.today time{color:#5f6067;min-width:3.2em}" +
+    ".today em{display:block}" +
+    ".pill{font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;margin-left:6px;background:rgba(46,125,50,.14);color:#2e7d32}" +
+    ".pill.soon{background:rgba(21,101,192,.12);color:#1565c0}" +
     "@media (prefers-color-scheme: dark){.card{background:#1f1f1e;color:#ededea;border-color:#3a3a37}.muted,.closed svg{color:#b5b5b0}}";
   root.appendChild(style);
   var box = el("div", mode);
@@ -393,27 +595,323 @@
     }
   }
 
+
+  // Dedications (docs/listener-interaction.md#dedications): search a track
+  // the station can play, then a first name, who it is for and a message;
+  // once sent, its follow link. The form's fields are built once, so that
+  // what is typed stays while the station's state changes.
+  var ded = {
+    query: "",
+    results: null,
+    picked: null,
+    searching: null,
+    error: null,
+    sending: false,
+    follow: null,
+    followed: null,
+    polling: null,
+  };
+  var fields = null;
+
+  function field(label, input) {
+    var wrap = el("label", "field");
+    wrap.appendChild(el("span", "", label));
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function buildFields() {
+    var search = el("input");
+    search.type = "search";
+    search.maxLength = 60;
+    search.placeholder = t.dedications.search;
+    search.autocomplete = "off";
+    search.addEventListener("input", function () {
+      ded.query = search.value.trim();
+      clearTimeout(ded.searching);
+      ded.searching = setTimeout(searchTracks, 300);
+    });
+    var from = el("input");
+    from.maxLength = 40;
+    from.autocomplete = "given-name";
+    var to = el("input");
+    to.maxLength = 60;
+    var message = el("textarea");
+    message.addEventListener("input", function () { render(latest); });
+    return { search: search, from: from, to: to, message: message };
+  }
+
+  function searchTracks() {
+    if (ded.query.length < 2) {
+      ded.results = null;
+      render(latest);
+      return;
+    }
+    var asked = ded.query;
+    fetch(base + "/dedications/search?q=" + encodeURIComponent(asked))
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (found) {
+        if (asked !== ded.query) return;
+        ded.results = found;
+        render(latest);
+      }, function () {});
+  }
+
+  function trackText(track) {
+    return [track.title, track.artist].filter(Boolean).join(" – ");
+  }
+
+  function followHere() {
+    var found = /(?:^#|&)heron-dedication=([0-9a-f]{32})/.exec(location.hash);
+    return found ? found[1] : null;
+  }
+
+  function startFollow(key) {
+    ded.follow = key;
+    clearInterval(ded.polling);
+    var poll = function () {
+      fetch(base + "/dedications/follow?id=" + key)
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (followed) {
+          if (ded.follow !== key) return;
+          if (followed) ded.followed = followed;
+          if (followed && (followed.status === "played" || followed.status === "refused")) clearInterval(ded.polling);
+          if (latest) render(latest);
+        }, function () {});
+    };
+    poll();
+    ded.polling = setInterval(poll, 10000);
+  }
+
+  function sendDedication(show) {
+    var f = fields;
+    if (!ded.picked) {
+      ded.error = t.dedications.pick;
+      render(latest);
+      return;
+    }
+    ded.sending = true;
+    ded.error = null;
+    render(latest);
+    api.send("", {
+      track_id: ded.picked.track_id,
+      from: f.from.value.trim(),
+      to: f.to.value.trim(),
+      message: f.message.value.trim(),
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (body) {
+        ded.sending = false;
+        if (response.status === 201 && body.follow) {
+          ded.followed = body;
+          f.search.value = f.message.value = "";
+          ded.query = "";
+          ded.results = null;
+          ded.picked = null;
+          startFollow(body.follow);
+        } else if (response.status === 429) {
+          ded.error = t.dedications.tooMany;
+        } else if (response.status === 409) {
+          ded.error = show.open ? t.dedications.fullError : t.dedications.closedError;
+        } else if (response.status === 422 && body.message) {
+          ded.error = body.message;
+        } else {
+          ded.error = t.dedications.failed;
+        }
+        render(latest);
+      });
+    }, function () {
+      ded.sending = false;
+      ded.error = t.dedications.failed;
+      render(latest);
+    });
+  }
+
+  function step(list, done, mark, label, sub) {
+    var li = el("li");
+    var dot = el("span", "dot" + (done ? " done" : ""), mark);
+    li.appendChild(dot);
+    var words = el("div");
+    words.appendChild(el("div", "", label));
+    if (sub) words.appendChild(el("div", "muted small", sub));
+    li.appendChild(words);
+    list.appendChild(li);
+  }
+
+  function followCard(show, zone) {
+    var f = ded.followed;
+    var card = el("div", "card");
+    var color = /^#[0-9a-fA-F]{6}$/.test(show.color) ? show.color : "#c62828";
+    card.style.setProperty("--color", f && f.status === "refused" ? "#5f6067" : color);
+    var head = el("div", "head");
+    head.appendChild(el("p", "title", t.dedications.yours));
+    if (f) head.appendChild(el("p", "sub", trackText(f)));
+    card.appendChild(head);
+    var body = el("div", "body");
+    if (!f) {
+      body.appendChild(el("p", "muted", t.dedications.sending));
+      card.appendChild(body);
+      return card;
+    }
+    var quote = fill(t.dedications.forFrom, { to: f.to, from: f.from });
+    body.appendChild(el("p", "quote", f.message ? fill(t.dedications.said, { who: quote, message: f.message }) : quote));
+    var steps = el("ol", "steps");
+    if (f.status === "refused") {
+      step(steps, false, "✕", t.dedications.refused, t.dedications.reasons[f.reason] || "");
+    } else {
+      step(steps, true, "✓", t.dedications.sent, hour(f.submitted_at_unix_ms, zone));
+      if (f.status === "accepted" || f.status === "played") {
+        step(steps, true, "✓", t.dedications.accepted, f.decided_at_unix_ms ? hour(f.decided_at_unix_ms, zone) : "");
+      } else {
+        step(steps, false, "2", t.dedications.accepted, "");
+      }
+      if (f.status === "played") {
+        step(steps, true, "✓", fill(t.dedications.played, { hour: hour(f.played_at_unix_ms, zone) }), "");
+      } else if (f.planned_at_unix_ms) {
+        step(steps, false, "3", fill(t.dedications.onAirAt, { hour: hour(f.planned_at_unix_ms, zone) }), t.dedications.keepOpen);
+      } else {
+        step(steps, false, "3", fill(t.dedications.onAirAt, { hour: "…" }), t.dedications.keepOpen);
+      }
+    }
+    body.appendChild(steps);
+    var url = location.href.split("#")[0] + "#heron-dedication=" + ded.follow;
+    var link = el("p", "muted small", t.dedications.followLink + " ");
+    var a = el("a", "", url.replace(/^https?:\/\//, "").slice(0, 48) + (url.length > 56 ? "…" : ""));
+    a.href = url;
+    link.appendChild(a);
+    body.appendChild(link);
+    if (f.status === "refused" || f.status === "played") {
+      var again = el("button", "link", t.dedications.another);
+      again.type = "button";
+      again.addEventListener("click", function () {
+        clearInterval(ded.polling);
+        ded.follow = null;
+        ded.followed = null;
+        if (followHere()) history.replaceState(null, "", location.href.split("#")[0]);
+        render(latest);
+      });
+      body.appendChild(again);
+    }
+    card.appendChild(body);
+    return card;
+  }
+
+  function todayList(show, zone) {
+    var today = (show.state && show.state.today) || [];
+    if (mode !== "page" || !today.length) return null;
+    var card = el("div", "card");
+    card.style.marginTop = "16px";
+    var body = el("div", "body");
+    body.appendChild(el("p", "title", t.dedications.today));
+    var list = el("ul", "today");
+    today.forEach(function (d) {
+      var li = el("li");
+      li.appendChild(el("time", "", d.at_unix_ms ? hour(d.at_unix_ms, zone) : ""));
+      var words = el("div");
+      var title = el("strong", "", [d.artist, d.title].filter(Boolean).join(" – "));
+      title.appendChild(el("span", d.played ? "pill" : "pill soon", d.played ? t.dedications.playedTag : t.dedications.upcoming));
+      words.appendChild(title);
+      var quote = fill(t.dedications.forFrom, { to: d.to, from: d.from });
+      words.appendChild(el("em", "muted", d.message ? fill(t.dedications.said, { who: quote, message: d.message }) : quote));
+      li.appendChild(words);
+      list.appendChild(li);
+    });
+    body.appendChild(list);
+    body.appendChild(el("p", "muted small", t.dedications.onlyAccepted));
+    card.appendChild(body);
+    return card;
+  }
+
+  RENDERERS.dedications = function (body, show) {
+    if (!fields) fields = buildFields();
+    var f = fields;
+    var state = show.state || {};
+    var max = state.message_max || 140;
+    f.message.maxLength = max;
+    body.appendChild(field(t.dedications.track, f.search));
+    if (ded.query.length > 0 && ded.query.length < 2) body.appendChild(el("p", "muted small", t.dedications.searchMore));
+    if (ded.results) {
+      if (!ded.results.length) body.appendChild(el("p", "muted", t.dedications.noResult));
+      var list = el("ul", "results");
+      ded.results.forEach(function (track) {
+        var li = el("li");
+        var button = el("button", "result");
+        button.type = "button";
+        button.setAttribute("aria-pressed", ded.picked && ded.picked.track_id === track.track_id ? "true" : "false");
+        button.appendChild(el("strong", "", track.title || ""));
+        if (track.artist) button.appendChild(el("span", "muted", track.artist));
+        button.addEventListener("click", function () {
+          ded.picked = track;
+          ded.error = null;
+          render(latest);
+        });
+        li.appendChild(button);
+        list.appendChild(li);
+      });
+      body.appendChild(list);
+    }
+    var names = el("div", "row2");
+    names.appendChild(field(t.dedications.from, f.from));
+    names.appendChild(field(t.dedications.to, f.to));
+    body.appendChild(names);
+    body.appendChild(field(t.dedications.message, f.message));
+    body.appendChild(el("p", "muted count", f.message.value.length + " / " + max));
+    if (ded.error) body.appendChild(el("p", "error", ded.error));
+    var send = el("button", "send", ded.sending ? t.dedications.sending : t.dedications.send);
+    send.type = "button";
+    send.disabled = ded.sending || state.remaining === 0;
+    send.addEventListener("click", function () { sendDedication(show); });
+    body.appendChild(send);
+    var per = state.per_device > 1 ? fill(t.dedications.perMany, { n: state.per_device }) : t.dedications.perOne;
+    body.appendChild(el("p", "muted small", fill(t.dedications.note, { per: per, days: state.retention_days || 30 })));
+  };
+
   RENDERERS.top30 = function (body, show) {
     chart(body, show);
   };
 
   function render(state) {
+    if (!state) return;
+    // What is typed keeps its focus and caret when the card is drawn again.
+    var focused = root.activeElement || null;
+    var caret = focused && typeof focused.selectionStart === "number"
+      ? [focused.selectionStart, focused.selectionEnd] : null;
     box.textContent = "";
     var show = (state.shows || []).filter(function (s) { return s.module === module; })[0];
     if (!show) return;
+    draw(state, show);
+    if (focused && focused.isConnected && root.activeElement !== focused) {
+      focused.focus();
+      if (caret) {
+        try { focused.setSelectionRange(caret[0], caret[1]); } catch (error) { /* not a text field */ }
+      }
+    }
+  }
+
+  function draw(state, show) {
     if (mode === "widget" && !show.small_widget) return;
     if (!show.open && show.closed === "nothing") return;
     var name = show.title || t.names[module] || module;
+    var zone = show.timezone || state.timezone;
+    // A dedication sent: its follow link, open or closed.
+    if (module === "dedications" && ded.follow) {
+      box.appendChild(followCard(show, zone));
+      var past = todayList(show, zone);
+      if (past) box.appendChild(past);
+      return;
+    }
     var card = el("div", "card");
     var color = /^#[0-9a-fA-F]{6}$/.test(show.color) ? show.color : "#c62828";
     card.style.setProperty("--color", show.open ? color : "#5f6067");
     var head = el("div", "head");
     head.appendChild(el("p", "title", name));
-    var zone = show.timezone || state.timezone;
     if (show.open && module === "likes") {
       head.appendChild(el("p", "sub", t.likes.sub));
     } else if (show.open && show.closes_at_unix_ms) {
-      head.appendChild(el("p", "sub", fill(t.until, { hour: hour(show.closes_at_unix_ms, zone) })));
+      var until = fill(t.until, { hour: hour(show.closes_at_unix_ms, zone) });
+      var left = module === "dedications" && show.state ? show.state.remaining : null;
+      if (left === 0) until += " · " + t.dedications.full;
+      else if (typeof left === "number") until += " · " + fill(t.dedications.remaining, { n: left });
+      head.appendChild(el("p", "sub", until));
     } else if (!show.open) {
       head.appendChild(el("p", "sub", state.name || ""));
     }
@@ -444,6 +942,10 @@
       }
     }
     box.appendChild(card);
+    if (module === "dedications") {
+      var today = todayList(show, zone);
+      if (today) box.appendChild(today);
+    }
   }
 
   // For the shows' writes: a proof of work, then the write.
@@ -499,6 +1001,7 @@
   };
 
   var latest = null;
+  if (module === "dedications" && followHere()) startFollow(followHere());
   var events = new EventSource(base + "/events");
   events.addEventListener("state", function (event) {
     try {
