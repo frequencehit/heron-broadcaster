@@ -30,9 +30,13 @@ const CURRENT: Audience = {
 };
 const PREVIOUS: Audience = { ...CURRENT, from: "2026-09-08", to: "2026-10-07", sessions: 8, cume: 8, peak: 42 };
 
-const ROUTES = ["audience", "days", "hours-of-day", "tracks", "players"] as const;
+const ROUTES = ["audience", "days", "hours-of-day", "tracks", "breakdown"] as const;
 
-function show(search: string, audience: { current: Audience; previous: Audience } = { current: CURRENT, previous: PREVIOUS }) {
+function show(
+  search: string,
+  audience: { current: Audience; previous: Audience } = { current: CURRENT, previous: PREVIOUS },
+  more: Record<string, unknown> = {},
+) {
   window.history.replaceState(null, "", `/statistics${search}`);
   chooseStation(1);
   answer({
@@ -49,12 +53,37 @@ function show(search: string, audience: { current: Audience; previous: Audience 
     },
     "GET /api/v1/stations/{station_id}/listeners/samples": [],
     "GET /api/v1/stations/{station_id}/listeners/audience": audience,
-    "GET /api/v1/stations/{station_id}/listeners/days": [],
+    "GET /api/v1/stations/{station_id}/listeners/days": (options: unknown) =>
+      (options as { params: { query: { group?: string } } }).params.query.group === "hour"
+        ? [
+            // Monday 2 November, 8:00.
+            { day: "2026-11-02", hour: 8, days: 1, minutes: 60, peak: 9, average: 6, listening_hours: 6, sessions: null, average_session_s: null, distinct_listeners: null, listener_days: null },
+          ]
+        : [],
     "GET /api/v1/stations/{station_id}/listeners/hours-of-day": [
       { hour: 8, days: 30, average: 4, peak: 9, listening_hours: 4, tune_in: 1.5, tune_out: 0.5 },
     ],
     "GET /api/v1/stations/{station_id}/listeners/tracks": [],
-    "GET /api/v1/stations/{station_id}/listeners/players": [],
+    "GET /api/v1/stations/{station_id}/listeners/breakdown": (options: unknown) => {
+      const by = (options as { params: { query: { by: string } } }).params.query.by;
+      const group = (kind: "named" | "unknown" | "other", name: string | null, share: number) => ({
+        kind,
+        name,
+        listeners: Math.round(share * 20),
+        listener_share: share,
+        sessions: 3,
+        ttsl_hours: 1,
+        ttsl_share: share,
+      });
+      if (by === "country") {
+        return { geoip: "DBIP-Country-Lite", groups: [group("named", "FR", 0.6), group("unknown", null, 0.25), group("other", null, 0.15)] };
+      }
+      if (by === "device") {
+        return { geoip: "DBIP-Country-Lite", groups: [group("named", "smart_speaker", 0.7), group("other", null, 0.3)] };
+      }
+      return { geoip: "DBIP-Country-Lite", groups: [group("named", "VLC", 1)] };
+    },
+    ...more,
   });
   renderApp(<Statistics />);
 }
@@ -78,7 +107,7 @@ describe("Statistics", () => {
 
   it("limits every card to the server of the address", async () => {
     show("?server=2");
-    await waitFor(() => expect(query("players")).toBeTruthy());
+    await waitFor(() => expect(query("breakdown")).toBeTruthy());
     for (const route of ROUTES) {
       await waitFor(() => expect(query(route)).toMatchObject({ server_id: 2 }));
     }
@@ -141,6 +170,39 @@ describe("Statistics", () => {
     expect(how.closest("details")).toBeTruthy();
     expect(screen.getByText(t("statistics.howShort"))).toBeTruthy();
     expect(screen.getByText(t("statistics.howQuarters", { zone: "UTC" }))).toBeTruthy();
+  });
+
+  it("reads like a report over the period of the address", async () => {
+    show("?days=7");
+    const period = (await screen.findByLabelText(t("statistics.range"))) as HTMLSelectElement;
+    expect(period.value).toBe("7");
+    // Today's card asks for today only: the others for the period.
+    for (const route of ROUTES.filter((r) => r !== "days")) {
+      await waitFor(() => expect(query(route)).toMatchObject({ to: expect.any(String) as string }));
+      const asked = query(route) as { from: string; to: string };
+      expect((Date.parse(asked.to) - Date.parse(asked.from)) / 86_400_000).toBe(6);
+    }
+    // The heatmap, the countries with their credit, devices and players.
+    expect(await screen.findByRole("img", { name: t("statistics.heatmap") })).toBeTruthy();
+    expect(screen.getByTitle(t("statistics.heatmapCell", { day: "Mon", hour: "08h", value: "6" }))).toBeTruthy();
+    expect(await screen.findByText("France")).toBeTruthy();
+    expect(screen.getByText(t("statistics.unknownCountry"))).toBeTruthy();
+    expect(screen.getAllByText(t("statistics.otherGroup")).length).toBe(2);
+    expect(screen.getByRole("link", { name: t("statistics.dbipCredit") }).getAttribute("href")).toBe("https://db-ip.com");
+    expect(screen.getByText(t("statistics.deviceSmartSpeaker"))).toBeTruthy();
+    expect(screen.getByText("VLC")).toBeTruthy();
+    expect(screen.getByRole("link", { name: t("statistics.csvPlayers") }).getAttribute("href")).toContain("by=player");
+    // A period of its own: in the address.
+    fireEvent.change(period, { target: { value: "90" } });
+    await waitFor(() => expect(window.location.search).toBe("?days=90"));
+    fireEvent.change(period, { target: { value: "30" } });
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  it("leaves countries out without a GeoIP database", async () => {
+    show("", undefined, { "GET /api/v1/stations/{station_id}/listeners/breakdown": { geoip: null, groups: [] } });
+    expect(await screen.findByText(t("statistics.devicesPlayers"))).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText(t("statistics.countries"))).toBeNull());
   });
 
   it("says why the figures from sessions are missing", async () => {

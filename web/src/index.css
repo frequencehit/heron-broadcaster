@@ -1953,6 +1953,64 @@ ul.steps .bar {
   opacity: 1;
 }
 
+/* Statistics: average listeners by day of the week and hour. */
+.heatmap {
+  display: grid;
+  grid-template-columns: 2.4rem repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  font-size: 0.7rem;
+}
+
+.heatmap-day,
+.heatmap-hour {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.heatmap-day {
+  align-self: center;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  min-height: 0.6rem;
+  border-radius: 2px;
+}
+
+.heatmap-cell.empty {
+  background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 2px, transparent 2px, transparent 4px);
+}
+
+/* Statistics: countries, devices and players with a bar of their share. */
+.shares-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+.table.shares caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.share-bar {
+  display: block;
+  height: 0.3rem;
+  margin-top: 0.25rem;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+
+.share-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
 .stats-how {
   font-size: 0.875rem;
 }
