@@ -149,12 +149,12 @@ A station keeps a list of **stream servers** (*Outputs › Servers*). Several ou
 | `public_url` | none: `http://host:port` | The server's address as listeners reach it, e.g. `https://stream.example.org` |
 | `relay_of` | none | The master server, for a [relay](statistics.md#relay-servers) |
 | `relay_mounts` | none: all of the master's | A relay's mounts: `[{"mount": "/live"}, {"mount": "/aac", "relay_mount": "/aac-relay"}]`, with the mount's name on the relay when it differs |
-| `access_log` | none | Where Heron reads the server's access log for [audience certification](certification.md#where-it-is-read-from): a file or an address |
 | `relay_subtract_one` | `false` | A relay whose address the master does not see (behind NAT): its connection to the master counts as 1 listener per mount, subtracted |
 
 - **The engine still gets the full configuration of each output**, as before: the API joins the server's address, port and source credentials, the output's mount and the station details into the output's settings when it pushes them ([Configuration flow](#configuration-flow)). The engine never reads the database.
 - **Changing a server changes every output using it**: the API pushes the outputs again, and the engine reconnects those whose settings changed (a new address or source password). The admin credentials, the public address and the relay settings are not pushed: changing only them reconnects nothing.
 - A server used by an output, or the master of a relay, cannot be deleted: `409`, with the outputs and relays that use it.
+- A server can have an **access log**, read for [audience certification](certification.md#where-it-is-read-from): a file or an address, set apart from the server (`/stream-servers/{id}/access-log`).
 - A **relay** (`relay_of` set) is a server repeating the master's mounts: Heron sends nothing to it and no output can pick it; it is only read for the statistics, and needs no source credentials. Its master must be a server of the same station that is not itself a relay.
 
 ### Station details

@@ -8,7 +8,7 @@ This is not the [listener statistics](statistics.md): those are rebuilt by Heron
 
 ### What is read
 
-Each [stream server](outputs.md#stream-servers), relays included, can have an **access log** (*Outputs › Servers*, the server's *Access log*). Icecast writes one line per session when the listener leaves, in the *combined* format, with the session's length in seconds at the end:
+Each [stream server](outputs.md#stream-servers), relays included, can have an **access log** (the *Certification* page, admins). Icecast writes one line per session when the listener leaves, in the *combined* format, with the session's length in seconds at the end:
 
 ```
 203.0.113.7 - - [07/Nov/2026:20:41:05 +0100] "GET /live HTTP/1.1" 200 5242880 "https://radio.example.org/" "VLC/3.0.20 LibVLC/3.0.20" 1342
@@ -25,9 +25,9 @@ A line is a session: the address, the mount (`/live`), the status, the bytes sen
 
 Heron reads each log **once a minute**, from where it stopped: the position is kept per server, so no line is read twice, even across restarts. An address is read with HTTP range requests (`Range: bytes=<position>-`): the web server must allow them, which serving a static file does.
 
-**Rotation:** when the file is shorter than the position, it was rotated. Heron first reads the end of the previous file, `<path>.1` or `<url>.1` when it exists, then starts the new file from the beginning. Without a previous file, the lines written between the last reading and the rotation are lost; the server's page says so, with when.
+**Rotation:** when the file is shorter than the position, it was rotated. Heron first reads the end of the previous file, `<path>.1` or `<url>.1` when it exists, then starts the new file from the beginning. Without a previous file, the lines written between the last reading and the rotation are lost: a gap is kept, with when.
 
-**A server Heron cannot read** shows the error and since when on its page and in the [status](monitoring.md), and nothing is guessed: the gap stays, and the export says which hours it misses.
+**A server Heron cannot read** shows the error and since when on the *Certification* page, and nothing is guessed: once it is read again, the time it could not be is kept as a gap, which the days and the export show.
 
 ### Deployment
 
@@ -45,11 +45,11 @@ A remote server's web server serves the file, behind a login, for example `https
 
 ## Storage and retention
 
-Each line is kept with its server, its station and what was parsed from it, and the line itself, unchanged. Sessions are kept **13 months** by default (*Settings › Certification*, 1 to 25 months), then deleted with their lines, every night. The positions in the logs are kept with the servers.
+Each line is kept with its server, its station and what was parsed from it, and the line itself, unchanged. Lines are kept **13 months** by default (the *Certification* page, 1 to 25 months, for the installation), then deleted every hour with the gaps and the download log. The positions in the logs are kept with the servers. The access log settings are not in the [configuration backups](backups.md) yet; the lines are in the database dump.
 
 ## Export
 
-For a **day** (in the station's time zone), a **server** and optionally a **mount**, from *Statistics › Certification* and from the API:
+For a **day** (in the station's time zone), a **server** and optionally a **mount**, from the *Certification* page and from the API:
 
 | Format | What it is |
 |---|---|
@@ -58,7 +58,7 @@ For a **day** (in the station's time zone), a **server** and optionally a **moun
 | `csv` | One row per session: `server`, `mount`, `address`, `user_agent`, `referer`, `status`, `bytes`, `started_at`, `ended_at`, `duration_s` (times in UTC, ISO 8601) |
 | `json` | The same, as an array |
 
-A day takes the sessions that **ended** that day, as the server logged them. Nothing is filtered or merged: short sessions, robots and repeated addresses are the certifier's to judge. A day with a gap in the reading says so: the export has its hours in a header (`X-Heron-Gaps`), and the page warns before downloading.
+A day takes the sessions that **ended** that day, as the server logged them. Nothing is filtered or merged: short sessions, robots and repeated addresses are the certifier's to judge. A day with a gap in the reading says so: the export lists them in a header (`X-Heron-Gaps`, ISO 8601 intervals in UTC, comma-separated), and the page shows them next to the day.
 
 ## Automatic delivery
 
@@ -70,6 +70,7 @@ The access logs hold the listeners' **addresses** and players: personal data.
 
 - Kept for the retention period only, then deleted; turning the module off does not keep them longer.
 - **Never shown** in the web interface: the page gives counts, gaps and the downloads, not the lines.
+- **The download log** (`certification_downloads`: who, when, which day, server, mount and format) is kept as long as the lines.
 - **Admins only** download exports. Each download is logged with who, which day and which server.
 - The access log's password is never sent back by the API.
 - What is sent to whom is the station's to say in its privacy notice: the certifier receives the exports, and nothing else leaves Heron.
@@ -80,10 +81,13 @@ The access logs hold the listeners' **addresses** and players: personal data.
 
 ## API
 
-- `GET`, `PUT /stream-servers/{id}` gain `access_log`: `null`, or `{"source": "file", "path"}`, or `{"source": "url", "url", "username", "password"}` (the password is write-only). `GET /stream-servers/{id}/access-log` gives its state: `position`, `read_at_unix_ms`, `error` and since when, the lines and sessions read today.
-- `GET`, `PUT /settings/certification` (admins): `retention_months` (1 to 25, 13).
-- `GET /certification/days?from&to` (admins): per day and server, the sessions, the lines and the gaps.
-- `GET /certification/export?day=2026-11-07&server_id=3&mount=/live&format=raw|combined|csv|json` (admins): the file, named `<station>-<server>-<day>.<ext>`; `X-Heron-Gaps` lists the hours missing.
+Admins only, but `GET /settings/certification`:
+
+- `GET`, `PUT`, `DELETE /stream-servers/{id}/access-log`: where the server's log is read, `{"source": "file", "path"}` or `{"source": "url", "url", "username", "password"}` (the password is write-only: left out, it is kept; `null` removes it), and how its reading goes: `position`, `read_at_unix_ms`, `read_ok_at_unix_ms`, `error` and `error_since_unix_ms`. A new file or address starts from its beginning.
+- `GET /certification/sources`: the station's servers with an access log, the same way.
+- `GET`, `PUT /settings/certification`: `retention_months` (1 to 25, 13).
+- `GET /certification/days?from&to` (62 days at most): per day and server, the lines, the sessions among them and the gaps.
+- `GET /certification/export?day=2026-11-07&server_id=3&mount=/live&format=raw|combined|csv|json`: the file, named `<station>-<server>-<day>.<ext>`; `X-Heron-Gaps` lists the gaps.
 
 ## Limitations
 

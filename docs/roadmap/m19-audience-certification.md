@@ -16,7 +16,7 @@ Part 1, collecting and exporting:
 - **Read once a minute from the position kept**, so that no line is read twice, across restarts too; log rotation followed through the previous file (`.1`); a server that cannot be read shows its error and since when, and the hours missed are kept as gaps.
 - **Lines kept unchanged with what is parsed from them:** address, mount, status, bytes, referer, User-Agent, end and length of the session. Lines that are not a listener's are kept but are not sessions.
 - **Retention:** 13 months by default, 1 to 25, then deleted every night.
-- **Export** for a day, a server and optionally a mount: `raw`, `combined`, `csv` and `json`, from *Statistics › Certification* and the API, admins only, each download logged; the gaps of the day said.
+- **Export** for a day, a server and optionally a mount: `raw`, `combined`, `csv` and `json`, from the *Certification* page and the API, admins only, each download logged; the gaps of the day said.
 - **A `certification` module**, off by default.
 
 Part 2, delivery (a second pull request):
@@ -34,7 +34,7 @@ Part 2, delivery (a second pull request):
 ## Deliverables
 
 - `heron-api`: the access log settings of the stream servers, the reader (file and address, positions, rotation, gaps), the storage and its retention, the export routes, the module.
-- `heron-web`: the server's *Access log* settings and state, *Settings › Certification*, the *Certification* tab of Statistics with the days and the downloads.
+- `heron-web`: a *Certification* page after Statistics (admins): each server's access log, its state, the days and the downloads, the retention.
 - Migrations: the access log settings and positions, the sessions and their lines, the gaps, the download log.
 - Docker Compose: the access logs folder, read-only.
 - Docs: [Audience certification](../certification.md), [Outputs – Stream servers](../outputs.md#stream-servers), [Modules](../modules.md), [API](../api.md), [Web UI](../web.md), CHANGELOG.
