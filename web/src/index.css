@@ -3129,3 +3129,8 @@ ul.held {
   flex-direction: column;
   gap: 0.9rem;
 }
+
+/* A track page's tab: kept mounted (a preview keeps playing), hidden. */
+.track-tab[hidden] {
+  display: none;
+}
