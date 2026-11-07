@@ -2,6 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  seriesColor,
+  shareColumns,
+  stationsCsvUrl,
+  stationsParam,
+  viewOf,
+  viewValue,
   addDays,
   barLabel,
   DEFAULT_DAYS,
@@ -169,5 +175,52 @@ describe("the report's period, heatmap and shares", () => {
     expect(heat(0, 10)).toBeCloseTo(0.08);
     expect(heat(10, 10)).toBe(1);
     expect(heat(5, 0)).toBeCloseTo(0.08);
+  });
+});
+
+describe("several stations", () => {
+  const search = (value: string) => new URLSearchParams(value);
+
+  it("reads the stations of the address among those the user sees", () => {
+    expect(viewOf(search("stations=all"), [1, 2])).toEqual({ kind: "all" });
+    expect(viewOf(search("stations=compare-all"), [1, 2, 3])).toEqual({ kind: "compare-all" });
+    expect(viewOf(search("stations=1,2"), [1, 2])).toEqual({ kind: "compare", ids: [1, 2] });
+    // A station the user does not see is left out; one left is no comparison.
+    expect(viewOf(search("stations=1,4"), [1, 2])).toEqual({ kind: "one" });
+    expect(viewOf(search("stations=2,2"), [1, 2])).toEqual({ kind: "one" });
+    expect(viewOf(search(""), [1, 2])).toEqual({ kind: "one" });
+    // One station: nothing to add up.
+    expect(viewOf(search("stations=all"), [1])).toEqual({ kind: "one" });
+  });
+
+  it("writes them in the address and asks the API for them", () => {
+    expect(viewValue({ kind: "one" })).toBeNull();
+    expect(viewValue({ kind: "all" })).toBe("all");
+    expect(viewValue({ kind: "compare", ids: [1, 3] })).toBe("1,3");
+    expect(stationsParam({ kind: "compare-all" })).toBe("all");
+    expect(stationsParam({ kind: "compare", ids: [1, 3] })).toBe("1,3");
+    expect(stationsCsvUrl("days", { kind: "all" }, { from: "2026-11-01", to: undefined })).toBe(
+      "/api/v1/stations/listeners/days?format=csv&stations=all&from=2026-11-01",
+    );
+    expect(seriesColor(0)).toBe("var(--accent)");
+    expect(seriesColor(7)).toBe(seriesColor(0));
+  });
+
+  it("puts the stations' shares side by side", () => {
+    const share = (kind: "named" | "other", name: string | null, listener_share: number) => ({
+      kind,
+      name,
+      listeners: 1,
+      listener_share,
+      sessions: 1,
+      ttsl_hours: 1,
+      ttsl_share: listener_share,
+    });
+    const rows = shareColumns([share("named", "FR", 0.8), share("other", null, 0.2)], [[share("named", "FR", 1)], [share("named", "FR", 0.5), share("named", "BE", 0.5)]]);
+    expect(rows.map((r) => [r.share.name, r.shares])).toEqual([
+      ["FR", [1, 0.5]],
+      [null, [0, 0]],
+      ["BE", [0, 0.5]],
+    ]);
   });
 });

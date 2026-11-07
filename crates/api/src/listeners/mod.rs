@@ -10,6 +10,7 @@ pub mod collector;
 pub mod geoip;
 mod icecast;
 mod sessions;
+mod several;
 pub mod totals;
 
 use std::collections::BTreeMap;
@@ -47,6 +48,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(hours_of_day))
         .routes(routes!(tracks))
         .routes(routes!(breakdown_route))
+        .merge(several::router())
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
@@ -294,9 +296,24 @@ impl Filter {
     }
 }
 
+/// `o.station_id IN (…)`: the stations of a statistic, one or several
+/// added up.
+fn push_stations(sql: &mut sqlx::QueryBuilder<sqlx::MySql>, stations: &[u64]) {
+    if stations.is_empty() {
+        sql.push("FALSE");
+        return;
+    }
+    sql.push("o.station_id IN (");
+    let mut list = sql.separated(", ");
+    for &id in stations {
+        list.push_bind(id);
+    }
+    list.push_unseparated(")");
+}
+
 async fn total_rows(
     state: &AppState,
-    station: &Station,
+    station_id: u64,
     from: Date,
     to: Date,
     filter: Filter,
@@ -307,7 +324,7 @@ async fn total_rows(
                 session_s, distinct_listeners
          FROM listener_totals WHERE station_id = ",
     );
-    sql.push_bind(station.id())
+    sql.push_bind(station_id)
         .push(" AND day >= ")
         .push_bind(from.to_string())
         .push(" AND day <= ")
@@ -426,7 +443,7 @@ async fn days(
     };
     let rows = total_rows(
         &state,
-        &station,
+        station.id(),
         from,
         to,
         filter,
@@ -504,6 +521,28 @@ fn hours_from(rows: Vec<TotalRow>) -> Vec<HourOfDay> {
         .collect()
 }
 
+/// The tune-in and tune-out of each hour, when listener lists were read.
+async fn with_tunes(
+    pool: &sqlx::MySqlPool,
+    mut hours: Vec<HourOfDay>,
+    stations: &[u64],
+    period: (Date, Date),
+    tz: &jiff::tz::TimeZone,
+    filter: Filter,
+) -> ApiResult<Vec<HourOfDay>> {
+    if sessions_read(pool, stations, period, tz, filter).await? {
+        let listens = listens(pool, stations, period, filter).await?;
+        let tunes = audience::tune_in_out(&listens, tz);
+        for hour in &mut hours {
+            let (tune_in, tune_out) = tunes.get(&hour.hour).copied().unwrap_or_default();
+            let days = f64::from(hour.days.max(1));
+            hour.tune_in = Some(f64::from(tune_in) / days);
+            hour.tune_out = Some(f64::from(tune_out) / days);
+        }
+    }
+    Ok(hours)
+}
+
 /// Each hour of the day (station time), averaged over the days of the
 /// period.
 #[utoipa::path(get, path = "/listeners/hours-of-day", tag = "listeners",
@@ -522,19 +561,17 @@ async fn hours_of_day(
         output_id: query.output_id,
         server_id: query.server_id,
     };
-    let mut hours = hours_from(total_rows(&state, &station, from, to, filter, true).await?);
+    let rows = total_rows(&state, station.id(), from, to, filter, true).await?;
     let tz = station_zone(&state, &station).await?;
-    let lists = sessions_read(&state.pool, station.id(), (from, to), &tz, filter).await?;
-    if lists {
-        let listens = listens(&state.pool, station.id(), (from, to), filter).await?;
-        let tunes = audience::tune_in_out(&listens, &tz);
-        for hour in &mut hours {
-            let (tune_in, tune_out) = tunes.get(&hour.hour).copied().unwrap_or_default();
-            let days = f64::from(hour.days.max(1));
-            hour.tune_in = Some(f64::from(tune_in) / days);
-            hour.tune_out = Some(f64::from(tune_out) / days);
-        }
-    }
+    let hours = with_tunes(
+        &state.pool,
+        hours_from(rows),
+        &[station.id()],
+        (from, to),
+        &tz,
+        filter,
+    )
+    .await?;
     Ok(match query.format.unwrap_or_default() {
         Format::Json => Json(hours).into_response(),
         Format::Csv => csv_response(
@@ -771,7 +808,7 @@ fn bounds_s((from, to): (Date, Date), tz: &jiff::tz::TimeZone) -> (f64, f64) {
 /// The sessions of a period of at least [`audience::PROBE_S`].
 async fn listens(
     pool: &sqlx::MySqlPool,
-    station_id: u64,
+    stations: &[u64],
     (from, to): (Date, Date),
     filter: Filter,
 ) -> ApiResult<Vec<audience::Listen>> {
@@ -782,10 +819,10 @@ async fn listens(
                 CAST(UNIX_TIMESTAMP(s.last_seen_at) * 1000 AS SIGNED), s.duration_s,
                 CAST(s.ended_at IS NOT NULL AND NOT s.split AS SIGNED)
          FROM listener_sessions s JOIN outputs o ON o.id = s.output_id
-         WHERE o.station_id = ",
+         WHERE ",
     );
-    sql.push_bind(station_id)
-        .push(" AND s.day >= ")
+    push_stations(&mut sql, stations);
+    sql.push(" AND s.day >= ")
         .push_bind(from.to_string())
         .push(" AND s.day <= ")
         .push_bind(to.to_string())
@@ -812,7 +849,7 @@ async fn listens(
 /// quarter-hours with a listener list read.
 async fn measured(
     pool: &sqlx::MySqlPool,
-    station_id: u64,
+    stations: &[u64],
     period: (Date, Date),
     tz: &jiff::tz::TimeZone,
     filter: Filter,
@@ -822,10 +859,10 @@ async fn measured(
         "SELECT CAST(FLOOR(UNIX_TIMESTAMP(s.sampled_at) / 900) AS SIGNED) AS quarter,
                 CAST(MAX(s.sessions) AS SIGNED)
          FROM listener_samples s JOIN outputs o ON o.id = s.output_id
-         WHERE o.station_id = ",
+         WHERE ",
     );
-    sql.push_bind(station_id)
-        .push(" AND s.sampled_at >= FROM_UNIXTIME(")
+    push_stations(&mut sql, stations);
+    sql.push(" AND s.sampled_at >= FROM_UNIXTIME(")
         .push_bind(start)
         .push(") AND s.sampled_at < FROM_UNIXTIME(")
         .push_bind(end)
@@ -848,7 +885,7 @@ async fn measured(
 /// Whether a listener list was read in the period.
 async fn sessions_read(
     pool: &sqlx::MySqlPool,
-    station_id: u64,
+    stations: &[u64],
     period: (Date, Date),
     tz: &jiff::tz::TimeZone,
     filter: Filter,
@@ -856,10 +893,10 @@ async fn sessions_read(
     let (start, end) = bounds_s(period, tz);
     let mut sql = sqlx::QueryBuilder::new(
         "SELECT EXISTS(SELECT 1 FROM listener_samples s JOIN outputs o ON o.id = s.output_id
-         WHERE s.sessions AND o.station_id = ",
+         WHERE s.sessions AND ",
     );
-    sql.push_bind(station_id)
-        .push(" AND s.sampled_at >= FROM_UNIXTIME(")
+    push_stations(&mut sql, stations);
+    sql.push(" AND s.sampled_at >= FROM_UNIXTIME(")
         .push_bind(start)
         .push(") AND s.sampled_at < FROM_UNIXTIME(")
         .push_bind(end)
@@ -873,7 +910,7 @@ async fn sessions_read(
 /// The highest minute of a period, and when (the first one on a tie).
 async fn peak(
     pool: &sqlx::MySqlPool,
-    station_id: u64,
+    stations: &[u64],
     period: (Date, Date),
     tz: &jiff::tz::TimeZone,
     filter: Filter,
@@ -883,10 +920,10 @@ async fn peak(
         "SELECT CAST(UNIX_TIMESTAMP(s.sampled_at) * 1000 AS SIGNED) AS at_ms,
                 CAST(SUM(s.listeners) AS UNSIGNED) AS listeners
          FROM listener_samples s JOIN outputs o ON o.id = s.output_id
-         WHERE o.station_id = ",
+         WHERE ",
     );
-    sql.push_bind(station_id)
-        .push(" AND s.sampled_at >= FROM_UNIXTIME(")
+    push_stations(&mut sql, stations);
+    sql.push(" AND s.sampled_at >= FROM_UNIXTIME(")
         .push_bind(start)
         .push(") AND s.sampled_at < FROM_UNIXTIME(")
         .push_bind(end)
@@ -900,18 +937,18 @@ async fn peak(
 /// The audience figures of a period.
 pub async fn audience_of(
     pool: &sqlx::MySqlPool,
-    station_id: u64,
+    stations: &[u64],
     period: (Date, Date),
     tz: &jiff::tz::TimeZone,
     filter: Filter,
 ) -> ApiResult<audience::Audience> {
-    let measured = measured(pool, station_id, period, tz, filter).await?;
+    let measured = measured(pool, stations, period, tz, filter).await?;
     let listens = if measured.quarters.is_empty() {
         Vec::new()
     } else {
-        listens(pool, station_id, period, filter).await?
+        listens(pool, stations, period, filter).await?
     };
-    let peak = peak(pool, station_id, period, tz, filter).await?;
+    let peak = peak(pool, stations, period, tz, filter).await?;
     Ok(audience::with_cume(
         audience::audience(period, &listens, &measured, peak),
         &measured,
@@ -948,10 +985,10 @@ async fn audience_route(
         server_id: query.server_id,
     };
     let tz = station_zone(&state, &station).await?;
-    let current = audience_of(&state.pool, station.id(), (from, to), &tz, filter).await?;
+    let current = audience_of(&state.pool, &[station.id()], (from, to), &tz, filter).await?;
     let previous = audience_of(
         &state.pool,
-        station.id(),
+        &[station.id()],
         previous_period((from, to)),
         &tz,
         filter,
@@ -999,7 +1036,7 @@ pub struct Breakdown {
 /// group.
 async fn counted(
     pool: &sqlx::MySqlPool,
-    station_id: u64,
+    stations: &[u64],
     (from, to): (Date, Date),
     filter: Filter,
     by: breakdown::By,
@@ -1008,10 +1045,10 @@ async fn counted(
     let mut sql = sqlx::QueryBuilder::new(
         "SELECT CAST(s.day AS CHAR), s.listener_key, s.user_agent, s.country, s.duration_s
          FROM listener_sessions s JOIN outputs o ON o.id = s.output_id
-         WHERE o.station_id = ",
+         WHERE ",
     );
-    sql.push_bind(station_id)
-        .push(" AND s.day >= ")
+    push_stations(&mut sql, stations);
+    sql.push(" AND s.day >= ")
         .push_bind(from.to_string())
         .push(" AND s.day <= ")
         .push_bind(to.to_string())
@@ -1074,7 +1111,7 @@ async fn breakdown_route(
         output_id: query.output_id,
         server_id: query.server_id,
     };
-    let sessions = counted(&state.pool, station.id(), (from, to), filter, by).await?;
+    let sessions = counted(&state.pool, &[station.id()], (from, to), filter, by).await?;
     let figures = Breakdown {
         geoip: state.listeners.geoip_database(),
         groups: breakdown::shares(&sessions, by.min_listeners()),

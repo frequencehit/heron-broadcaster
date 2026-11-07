@@ -54,6 +54,17 @@ Distinct listeners cannot be added up across days: a listener is not recognized 
 
 The station's figures add up the outputs minute by minute: its peak is the highest sum, not the sum of the outputs' peaks. A listener on two outputs at once counts once in its distinct listeners.
 
+### Several stations
+
+A user who sees several stations can **add them up** or **compare** them, among the stations they see (their [station roles](stations.md#roles); admins see every station) with listener statistics on.
+
+- **Added up**, the stations' figures are counted like a station's outputs: minute by minute and session by session, not by adding the stations' figures. The **peak** is the highest minute of the stations together, **AQH** counts the listeners of each quarter-hour across the stations, and the hours of the day, today and the trend come from the stations' minutes added up.
+- **A listener of two stations counts once.** The listener key is made with the same daily key for every station, so the same address and player on two stations the same day is one listener: the **cume**, the distinct listeners of a day and the shares count them once, as a listener on two outputs of a station. Each station's own figures are as on its own page.
+- **The time zone** of the stations added up is the first one's (in the stations' order): its days, hours and quarter-hours. Each station's own figures keep its own time zone. Stations in different time zones are added up by date: their days do not start at the same time.
+- **Days whose minute samples were purged** (older than `retention_days`) have only each station's totals left: added up, their listening hours, sessions and listeners are the stations' added up (a listener of two stations twice), and their peak is the highest of the stations' peaks, the least it was.
+- **Outputs and servers** belong to one station: added up or compared, the figures are the whole stations', on every server.
+- **The tracks listeners leave** stay per station: a track's departures are those of the station that played it.
+
 ## Relay servers
 
 A station's streams are often repeated by **relay servers**: Icecast relays pulling the master's mounts, so that listeners spread over several machines. A relay is a stream server with `relay_of` set to its master ([Stream servers](outputs.md#stream-servers)): Heron sends nothing to it, no output picks it, it is only read for the statistics, with its own address, port and admin credentials. It relays all of the master's mounts, or a list of them (`relay_mounts`), with their name on the relay when it differs.
@@ -169,6 +180,19 @@ Viewers can read every statistic; the routes are under `/api/v1/listeners`. Peri
 | `GET /listeners/tracks` (`from`, `to`, `output_id`, `server_id`, `min_plays` (3), `limit`) | Tracks of the period by departure rate: plays, average listeners at start and end, departures, departure rate |
 | `GET /listeners/breakdown` (`from`, `to`, `output_id`, `server_id`, `by`: `country`, `device`, `player`) | The [shares](#shares) of each country, device or player: listeners (listener-days), sessions, TTSL and their shares, small groups as *Other*; whether countries are on (`geoip`: the database's type, or `null`) |
 
+**Several stations** are read at once under `/api/v1/stations/listeners/…`, with `stations`: `all` (every station the user sees with listener statistics on) or station IDs (`1,2`). A station that does not exist or that the user does not see answers `404`, as its own routes do; one with listener statistics off answers `404` (`module_off`). Each route takes the parameters of its station's route but `output_id` and `server_id`, and answers each station's figures (`stations`, in the stations' order, with their ID, code and name) and the stations [added up](#several-stations) (`total`):
+
+| Route | Answer |
+|---|---|
+| `GET /stations/listeners/now` | Each station's listeners at the last minute, and their total |
+| `GET /stations/listeners/samples` (`from_unix_ms`, `to_unix_ms`) | Each station's listeners minute by minute, and the stations' added up |
+| `GET /stations/listeners/audience` (`from`, `to`) | Each station's audience figures and the previous period's, and the stations' together |
+| `GET /stations/listeners/days` (`from`, `to`, `group`) | Each station's totals per period, and the stations' together |
+| `GET /stations/listeners/hours-of-day` (`from`, `to`) | Each station's hours of the day, and the stations' together |
+| `GET /stations/listeners/breakdown` (`from`, `to`, `by`) | Each station's shares, and the stations' together |
+
+Their CSV has a first `station` column: the station's code, empty for the stations added up.
+
 `audience`, `breakdown`, `days`, `hours-of-day` and `tracks` answer in CSV with `format=csv` (UTF-8, comma-separated, a header row, one row per figure, day, hour or track; the audience figures with a column for the period and one for the previous period), for reporting to rights societies or advertisers. Values not available (no sessions without admin credentials, a day with no minute measured) are empty in CSV and `null` in JSON.
 
 Today's figures are computed as the minutes go by: today's row in `GET /listeners/days` changes until midnight.
@@ -180,6 +204,12 @@ The **Statistics** page has two filters at the top, for the whole page: the outp
 The page reads like an audience report: first today live (listeners minute by minute, now, peak and listening hours so far, and each server's listeners now), then the [audience figures](#audience-figures) as tiles, each with its change against the previous period, and the session lengths; the trend over time (by day, week or month: listeners, peak, average, listening hours); the hours of the day as a **heatmap**, day of the week by hour, of the average listeners (Monday first), with the tune-in and tune-out of each hour; the countries (with a GeoIP database), the devices and the players, each as bars and a table of shares; and the tracks listeners leave. Every card follows the filters, and so does each CSV download. The charts follow the light and dark themes and fit a phone's width.
 
 Each tile gives the figure's plain name first and its acronym after it (*Total listening time (TTSL)*, *Average listening time (ATSL)*, *Unique listeners (cume)*, *Average quarter-hour audience (AQH)*, *Peak audience*), with an info button that explains it in one sentence: on hover, on focus and on a tap, and read by screen readers as the button's description. The session lengths, tune-in/tune-out and the shares have one too. *How these figures are counted*, at the bottom of the page, sums up the rules: the 5-second floor, what a listener is (address and player, not recognized from one day to the next), the relays' own connections left out, the clock quarter-hours in the station's time zone, the comparison with the previous period, which figures need the listener sessions, and small countries shown as *Other*. **On air** shows each output's current listeners, and the station's total.
+
+A user who sees several stations has a **station** choice before the filters (`?stations=`): *This station* (by default), *All stations* (`all`: every card [added up](#several-stations)), *Compare with* another station (`?stations=1,2`: the station shown and the other one) or *Compare all stations* (`compare-all`). A user with one station has no such choice. With several stations, the output and server filters show *All* and are disabled, and *Tracks listeners leave* shows the station of the switcher, named in its title.
+
+- **All stations:** the page as for one station, with the stations' figures added up. The cume's explanation says that a listener of two stations counts once.
+- **Compare two stations:** each tile gives both stations' figures side by side, one color per station, and the difference of the second against the first. Today, the trend and the hours of the day are lines, one per station, in the same colors, with a legend; countries, devices and players have a column of listener shares per station.
+- **Compare all stations:** a table with a row per station (TTSL, ATSL, cume, AQH, peak, sessions, each with its change against the previous period) and a row for all of them, then the lines of today, the trend and the hours of the day, one per station, and the shares per station.
 
 ## Metrics
 
@@ -198,4 +228,5 @@ See [Data model – Listener statistics](data-model.md#listener-statistics). Eve
 - Only Icecast for now: Shoutcast with its outputs ([M11](roadmap/m11-sinks-live-dj.md)), HLS later.
 - A minute's sample is the count at the moment of the request: a listener who stays less than a minute may be missed by the concurrent counts (sessions still see them, with admin credentials, when their connection lasts across a request).
 - Statistics start when the API first reads the server; nothing is recovered for the time the API was down.
+- Several stations are added up in the first station's time zone ([Several stations](#several-stations)): stations in other time zones are added up by date.
 - Listeners going through a relay or a CDN in front of Icecast all appear with the relay's address: they are counted, but a reconnecting listener behind it cannot be told apart from another one with the same player.

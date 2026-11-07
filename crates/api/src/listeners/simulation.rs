@@ -452,7 +452,7 @@ async fn simulated_listeners_are_counted() {
     let by_country = super::breakdown::shares(
         &super::counted(
             &pool,
-            1,
+            &[1],
             (date(2026, 10, 20), date(2026, 10, 20)),
             super::Filter::default(),
             super::breakdown::By::Country,
@@ -607,7 +607,7 @@ async fn simulated_listeners_are_counted() {
         server_id: None,
     };
     let day20 = (date(2026, 10, 20), date(2026, 10, 20));
-    let figures = super::audience_of(&pool, 1, day20, &TimeZone::UTC, live_only)
+    let figures = super::audience_of(&pool, &[1], day20, &TimeZone::UTC, live_only)
         .await
         .unwrap();
     assert_eq!(
@@ -635,7 +635,7 @@ async fn simulated_listeners_are_counted() {
     // The day before: nothing measured.
     let before = super::audience_of(
         &pool,
-        1,
+        &[1],
         super::previous_period(day20),
         &TimeZone::UTC,
         live_only,
@@ -880,7 +880,7 @@ async fn relays_add_their_listeners_without_their_connections() {
         server_id: Some(known_id),
     };
     let day20 = (date(2026, 10, 20), date(2026, 10, 20));
-    let figures = super::audience_of(&pool, 1, day20, &TimeZone::UTC, relay_only)
+    let figures = super::audience_of(&pool, &[1], day20, &TimeZone::UTC, relay_only)
         .await
         .unwrap();
     assert_eq!((figures.peak, figures.sessions), (Some(2), Some(2)));

@@ -4,7 +4,8 @@
 // the output, server and period of the page's filter: the audience
 // figures, the trend, the hours of the week as a heatmap, countries,
 // devices and players, the tracks listeners leave, then today live (see
-// docs/statistics.md).
+// docs/statistics.md). A user who sees several stations can add them up or
+// compare them (StatisticsStations.tsx).
 
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, type ReactNode, useState } from "react";
@@ -42,16 +43,30 @@ import {
   periodLabel,
   periodOf,
   shortDay,
+  type StationsView,
+  stationsCsvUrl,
   useListenersNow,
+  viewOf,
+  viewValue,
   weekHours,
   weekdayNames,
 } from "../lib/listeners";
 import { Link, setSearch, useLocation } from "../lib/router";
 import { here } from "../lib/station";
+import { useStations } from "../components/Stations";
+import {
+  CompareAudience,
+  CompareHours,
+  CompareOverTime,
+  CompareShares,
+  CompareToday,
+  StationsSelect,
+  useStationsNow,
+} from "./StatisticsStations";
 
 type PeriodTotals = Schemas["PeriodTotals"];
 type Share = Schemas["Share"];
-type By = "country" | "device" | "player";
+export type By = "country" | "device" | "player";
 type Audience = Schemas["Audience"];
 type HourMeasure = "average" | "tune_in" | "tune_out";
 
@@ -64,7 +79,7 @@ const LENGTHS: { key: keyof Schemas["SessionLengths"]; label: PlainKey }[] = [
 ];
 
 
-const MEASURES: { value: Measure; label: PlainKey }[] = [
+export const MEASURES: { value: Measure; label: PlainKey }[] = [
   { value: "listening_hours", label: "statistics.listeningHours" },
   { value: "peak", label: "statistics.peak" },
   { value: "average", label: "statistics.average" },
@@ -72,7 +87,7 @@ const MEASURES: { value: Measure; label: PlainKey }[] = [
 ];
 
 /** What the pointer shows on today's chart. */
-function minuteTooltip(point: Point): ReactNode {
+export function minuteTooltip(point: Point): ReactNode {
   return (
     <>
       <strong>{number(point.value)}</strong> · {shortTime(point.at)}
@@ -113,7 +128,7 @@ function hourTooltip(hour: number, row: Schemas["HourOfDay"] | undefined, measur
   );
 }
 
-function Csv({ href }: Readonly<{ href: string }>) {
+export function Csv({ href }: Readonly<{ href: string }>) {
   return (
     <a className="btn small" href={href} download>
       {t("statistics.csv")}
@@ -134,11 +149,16 @@ export function Statistics() {
   });
   const outputs = useQuery({ queryKey: ["outputs"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/outputs", { params: { path: here() } })) });
   const now = useListenersNow();
-  // The output and server are in the address, for the whole page.
-  const filter = filterOf(useLocation().search);
+  const search = useLocation().search;
+  const seen = useStations();
+  // The stations, output and server are in the address, for the whole page;
+  // several stations share no output or server.
+  const view = viewOf(search, seen.map((s) => s.id));
+  const several = view.kind !== "one";
+  const filter: Filter = several ? { output: undefined, server: undefined } : filterOf(search);
   const servers = serversOf(now.data, filter.output);
   const zone = station.data?.timezone;
-  const period = periodOf(useLocation().search, dayOf(Date.now(), zone));
+  const period = periodOf(search, dayOf(Date.now(), zone));
   const pick = (value: string) => (value === "" ? null : Number(value));
   return (
     <>
@@ -147,14 +167,22 @@ export function Statistics() {
         description={t("statistics.description", { zone: zone ?? "…" })}
         actions={
           <>
+            {seen.length > 1 && (
+              <StationsSelect
+                stations={seen}
+                view={view}
+                onChange={(next) => setSearch({ stations: viewValue(next), output: null, server: null })}
+              />
+            )}
             <select
               className="input"
               style={{ width: "auto" }}
               aria-label={t("statistics.output")}
               value={filter.output ?? ""}
+              disabled={several}
               onChange={(e) => setSearch({ output: pick(e.target.value) })}
             >
-              <option value="">{t("statistics.wholeStation")}</option>
+              <option value="">{several ? t("statistics.allOutputs") : t("statistics.wholeStation")}</option>
               {outputs.data?.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
@@ -167,6 +195,7 @@ export function Statistics() {
                 style={{ width: "auto" }}
                 aria-label={t("statistics.server")}
                 value={filter.server ?? ""}
+                disabled={several}
                 onChange={(e) => setSearch({ server: pick(e.target.value) })}
               >
                 <option value="">{t("statistics.allServers")}</option>
@@ -188,14 +217,26 @@ export function Statistics() {
         <Loading />
       ) : (
         <div className="stack">
-          <Today zone={zone} filter={filter} />
-          <AudienceCard zone={zone} filter={filter} period={period} />
-          <OverTime filter={filter} period={period} />
-          <HoursOfDay filter={filter} period={period} />
-          <Countries filter={filter} period={period} />
-          <DevicesAndPlayers filter={filter} period={period} />
-          <Departures filter={filter} period={period} />
-          <HowCounted zone={zone} />
+          {view.kind === "compare" || view.kind === "compare-all" ? (
+            <>
+              <CompareToday view={view} zone={zone} />
+              <CompareAudience view={view} period={period} zone={zone} />
+              <CompareOverTime view={view} period={period} />
+              <CompareHours view={view} period={period} />
+              <CompareShares view={view} period={period} />
+            </>
+          ) : (
+            <>
+              <Today zone={zone} filter={filter} view={view} />
+              <AudienceCard zone={zone} filter={filter} period={period} view={view} />
+              <OverTime filter={filter} period={period} view={view} />
+              <HoursOfDay filter={filter} period={period} view={view} />
+              <Countries filter={filter} period={period} view={view} />
+              <DevicesAndPlayers filter={filter} period={period} view={view} />
+            </>
+          )}
+          <Departures filter={filter} period={period} station={several ? seen.find((s) => s.id === here().station_id)?.name : undefined} />
+          <HowCounted zone={zone} several={seen.length > 1} />
         </div>
       )}
     </>
@@ -203,7 +244,7 @@ export function Statistics() {
 }
 
 /** How the figures are counted, at the bottom of the page. */
-function HowCounted({ zone }: Readonly<{ zone: string | undefined }>) {
+function HowCounted({ zone, several }: Readonly<{ zone: string | undefined; several: boolean }>) {
   return (
     <details className="stats-how">
       <summary>{t("statistics.howCounted")}</summary>
@@ -217,12 +258,13 @@ function HowCounted({ zone }: Readonly<{ zone: string | undefined }>) {
         <li>{t("statistics.howPeak")}</li>
         <li>{t("statistics.howCountries")}</li>
         <li>{t("statistics.howOther")}</li>
+        {several && <li>{t("statistics.howStations")}</li>}
       </ul>
     </details>
   );
 }
 
-function Tile({
+export function Tile({
   label,
   value,
   hint,
@@ -261,23 +303,29 @@ function Tile({
 }
 
 /** The day and time of a peak, in station time. */
-function peakAt(unixMs: number | null | undefined, zone: string | undefined): string | undefined {
+export function peakAt(unixMs: number | null | undefined, zone: string | undefined): string | undefined {
   if (unixMs === null || unixMs === undefined) {
     return undefined;
   }
   return t("statistics.peakAt", { day: shortDay(dayOf(unixMs, zone)), time: shortTime(unixMs) });
 }
 
-function AudienceCard({ zone, filter, period }: Readonly<{ zone: string | undefined; filter: Filter; period: Period }>) {
+/** Whether the cards add up every station (`all`) rather than show one. */
+type OneOrAll = Readonly<{ view: StationsView }>;
+
+function AudienceCard({ zone, filter, period, view }: Readonly<{ zone: string | undefined; filter: Filter; period: Period }> & OneOrAll) {
   const { from, to } = period;
+  const all = view.kind === "all";
   const figures = useQuery({
-    queryKey: ["listeners", "audience", from, to, filter],
+    queryKey: ["listeners", "audience", from, to, filter, all],
     queryFn: () =>
-      unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/audience", {
-          params: { path: here(), query: { from, to, ...query(filterParams(filter)) } },
-        }),
-      ),
+      all
+        ? unwrap(api.GET("/api/v1/stations/listeners/audience", { params: { query: { stations: "all", from, to } } })).then((d) => d.total)
+        : unwrap(
+            api.GET("/api/v1/stations/{station_id}/listeners/audience", {
+              params: { path: here(), query: { from, to, ...query(filterParams(filter)) } },
+            }),
+          ),
   });
   const current: Audience | undefined = figures.data?.current;
   const previous: Audience | undefined = figures.data?.previous;
@@ -303,7 +351,7 @@ function AudienceCard({ zone, filter, period }: Readonly<{ zone: string | undefi
       title={t("statistics.audience")}
       actions={
         <>
-          <Csv href={csvUrl("audience", { from, to, ...filterParams(filter) })} />
+          <Csv href={all ? stationsCsvUrl("audience", view, { from, to }) : csvUrl("audience", { from, to, ...filterParams(filter) })} />
         </>
       }
     >
@@ -315,7 +363,7 @@ function AudienceCard({ zone, filter, period }: Readonly<{ zone: string | undefi
             <Tile
               label={t("statistics.cume")}
               value={decimal(current.cume, period.days === 1 ? 0 : 1)}
-              tip={t("statistics.cumeTip")}
+              tip={all ? t("statistics.cumeTipStations") : t("statistics.cumeTip")}
               sub={period.days === 1 || current.listener_days == null ? undefined : t("statistics.cumeHint", { count: number(current.listener_days) })}
               delta={delta((a) => a.cume, (v) => decimal(v))}
             />
@@ -371,30 +419,33 @@ function serverNow(now: Schemas["ListenersNow"] | undefined, server: number, out
   return outputNow?.servers.find((s) => s.server_id === server)?.listeners;
 }
 
-function Today({ zone, filter }: Readonly<{ zone: string | undefined; filter: Filter }>) {
-  const now = useListenersNow();
+function Today({ zone, filter, view }: Readonly<{ zone: string | undefined; filter: Filter }> & OneOrAll) {
+  const all = view.kind === "all";
+  const one = useListenersNow();
+  const together = useStationsNow(view, all);
+  // Added up, the stations' total; no output or server.
+  const now = all ? { data: together.data ? { outputs: [], servers: [], total: together.data.total ?? null } : undefined } : one;
   const { output, server } = filter;
   const today = dayOf(Date.now(), zone);
   const from = dayStart(today, zone);
   const to = dayStart(addDays(today, 1), zone);
   const samples = useQuery({
-    queryKey: ["listeners", "samples", from, output, server],
+    queryKey: ["listeners", "samples", from, output, server, all],
     queryFn: () =>
-      unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/samples", {
-          params: { path: here(), query: { from_unix_ms: from, to_unix_ms: to, ...query({ output_id: output, server_id: server }) } },
-        }),
-      ),
+      all
+        ? unwrap(
+            api.GET("/api/v1/stations/listeners/samples", { params: { query: { stations: "all", from_unix_ms: from, to_unix_ms: to } } }),
+          ).then((d) => d.total)
+        : unwrap(
+            api.GET("/api/v1/stations/{station_id}/listeners/samples", {
+              params: { path: here(), query: { from_unix_ms: from, to_unix_ms: to, ...query({ output_id: output, server_id: server }) } },
+            }),
+          ),
     refetchInterval: 60_000,
   });
   const totals = useQuery({
-    queryKey: ["listeners", "days", today, today, filter, "day"],
-    queryFn: () =>
-      unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/days", {
-          params: { path: here(), query: { from: today, to: today, ...query(filterParams(filter)) } },
-        }),
-      ),
+    queryKey: ["listeners", "days", today, today, filter, "day", all],
+    queryFn: () => days(all, filter, today, today, "day"),
     refetchInterval: 60_000,
   });
   const servers = serversOf(now.data, output);
@@ -491,18 +542,25 @@ function RangeSelect({ value, onChange }: Readonly<{ value: number; onChange: (d
 }
 
 
-function OverTime({ filter, period }: Readonly<{ filter: Filter; period: Period }>) {
+/** The totals per hour, day, week or month: one station's, or every one's added up. */
+function days(all: boolean, filter: Filter, from: string, to: string, group: Grouping | "hour") {
+  return all
+    ? unwrap(api.GET("/api/v1/stations/listeners/days", { params: { query: { stations: "all", from, to, group } } })).then((d) => d.total)
+    : unwrap(
+        api.GET("/api/v1/stations/{station_id}/listeners/days", {
+          params: { path: here(), query: { from, to, ...query({ ...filterParams(filter), group }) } },
+        }),
+      );
+}
+
+function OverTime({ filter, period, view }: Readonly<{ filter: Filter; period: Period }> & OneOrAll) {
   const [grouping, setGrouping] = useState<Grouping>("day");
   const [measure, setMeasure] = useState<Measure>("listening_hours");
   const { from, to } = period;
+  const all = view.kind === "all";
   const totals = useQuery({
-    queryKey: ["listeners", "days", from, to, filter, grouping],
-    queryFn: () =>
-      unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/days", {
-          params: { path: here(), query: { from, to, ...query({ ...filterParams(filter), group: grouping }) } },
-        }),
-      ),
+    queryKey: ["listeners", "days", from, to, filter, grouping, all],
+    queryFn: () => days(all, filter, from, to, grouping),
   });
   const rows = totals.data ?? [];
   const bars: Bar[] = rows.map((row) => ({
@@ -516,7 +574,7 @@ function OverTime({ filter, period }: Readonly<{ filter: Filter; period: Period 
   return (
     <Card
       title={t("statistics.overTime")}
-      actions={<Csv href={csvUrl("days", { from, to, ...filterParams(filter), group: grouping })} />}
+      actions={<Csv href={all ? stationsCsvUrl("days", view, { from, to, group: grouping }) : csvUrl("days", { from, to, ...filterParams(filter), group: grouping })} />}
     >
       <div className="stack">
         <div className="row">
@@ -585,24 +643,22 @@ function OverTime({ filter, period }: Readonly<{ filter: Filter; period: Period 
   );
 }
 
-function HoursOfDay({ filter, period }: Readonly<{ filter: Filter; period: Period }>) {
+function HoursOfDay({ filter, period, view }: Readonly<{ filter: Filter; period: Period }> & OneOrAll) {
   const [measure, setMeasure] = useState<HourMeasure>("average");
   const { from, to } = period;
+  const all = view.kind === "all";
   const byHour = useQuery({
-    queryKey: ["listeners", "hours", from, to, filter],
+    queryKey: ["listeners", "hours", from, to, filter, all],
     queryFn: () =>
-      unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/hours-of-day", { params: { path: here(), query: { from, to, ...query(filterParams(filter)) } } }),
-      ),
+      all
+        ? unwrap(api.GET("/api/v1/stations/listeners/hours-of-day", { params: { query: { stations: "all", from, to } } })).then((d) => d.total)
+        : unwrap(
+            api.GET("/api/v1/stations/{station_id}/listeners/hours-of-day", { params: { path: here(), query: { from, to, ...query(filterParams(filter)) } } }),
+          ),
   });
   const hourly = useQuery({
-    queryKey: ["listeners", "days", from, to, filter, "hour"],
-    queryFn: () =>
-      unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/days", {
-          params: { path: here(), query: { from, to, ...query({ ...filterParams(filter), group: "hour" as const }) } },
-        }),
-      ),
+    queryKey: ["listeners", "days", from, to, filter, "hour", all],
+    queryFn: () => days(all, filter, from, to, "hour"),
   });
   const tunes = byHour.data?.some((h) => h.tune_in != null) ?? false;
   const bars: Bar[] = Array.from({ length: 24 }, (_, hour) => {
@@ -619,7 +675,7 @@ function HoursOfDay({ filter, period }: Readonly<{ filter: Filter; period: Perio
       title={t("statistics.hoursOfDay")}
       actions={
         <>
-          <Csv href={csvUrl("hours-of-day", { from, to, ...filterParams(filter) })} />
+          <Csv href={all ? stationsCsvUrl("hours-of-day", view, { from, to }) : csvUrl("hours-of-day", { from, to, ...filterParams(filter) })} />
         </>
       }
     >
@@ -656,7 +712,8 @@ function HoursOfDay({ filter, period }: Readonly<{ filter: Filter; period: Perio
   );
 }
 
-function Departures({ filter, period }: Readonly<{ filter: Filter; period: Period }>) {
+/** The tracks listeners leave: always one station's, named when the page shows several. */
+function Departures({ filter, period, station }: Readonly<{ filter: Filter; period: Period; station: string | undefined }>) {
   const { from, to } = period;
   const tracks = useQuery({
     queryKey: ["listeners", "tracks", from, to, filter],
@@ -667,7 +724,7 @@ function Departures({ filter, period }: Readonly<{ filter: Filter; period: Perio
   });
   return (
     <Card
-      title={t("statistics.departures")}
+      title={station === undefined ? t("statistics.departures") : `${t("statistics.departures")} · ${station}`}
       actions={
         <>
           <Csv href={csvUrl("tracks", { from, to, limit: 500, ...filterParams(filter) })} />
@@ -677,6 +734,7 @@ function Departures({ filter, period }: Readonly<{ filter: Filter; period: Perio
     >
       <p className="muted small" style={{ margin: "0.75rem 1rem" }}>
         {t("statistics.departuresHelp")}
+        {station !== undefined && <> {t("statistics.departuresPerStation")}</>}
       </p>
       {tracks.isPending && <Loading />}
       {tracks.isError && <ErrorView error={tracks.error} />}
@@ -755,7 +813,7 @@ const DEVICES: Record<string, PlainKey> = {
 };
 
 /** A group's name: a country, a device or a player family. */
-function shareName(share: Share, by: By): string {
+export function shareName(share: Share, by: By): string {
   if (share.kind === "unknown") {
     return t("statistics.unknownCountry");
   }
@@ -772,17 +830,28 @@ function shareName(share: Share, by: By): string {
   return share.name;
 }
 
-function useBreakdown(by: By, filter: Filter, period: Period) {
+function useBreakdown(by: By, filter: Filter, period: Period, all: boolean) {
   const { from, to } = period;
   return useQuery({
-    queryKey: ["listeners", "breakdown", by, from, to, filter],
-    queryFn: () =>
-      unwrap(
-        api.GET("/api/v1/stations/{station_id}/listeners/breakdown", {
-          params: { path: here(), query: { from, to, by, ...query(filterParams(filter)) } },
-        }),
-      ),
+    queryKey: ["listeners", "breakdown", by, from, to, filter, all],
+    queryFn: (): Promise<Schemas["Breakdown"]> =>
+      all
+        ? unwrap(api.GET("/api/v1/stations/listeners/breakdown", { params: { query: { stations: "all", from, to, by } } })).then((d) => ({
+            geoip: d.geoip ?? null,
+            groups: d.total,
+          }))
+        : unwrap(
+            api.GET("/api/v1/stations/{station_id}/listeners/breakdown", {
+              params: { path: here(), query: { from, to, by, ...query(filterParams(filter)) } },
+            }),
+          ),
   });
+}
+
+/** Where to download a breakdown in CSV. */
+function breakdownCsv(by: By, filter: Filter, period: Period, view: StationsView): string {
+  const { from, to } = period;
+  return view.kind === "one" ? csvUrl("breakdown", { from, to, by, ...filterParams(filter) }) : stationsCsvUrl("breakdown", view, { from, to, by });
 }
 
 /** The groups of a breakdown as a table with bars: share of listeners and of TTSL. */
@@ -824,7 +893,7 @@ function ShareTable({ by, groups, caption }: Readonly<{ by: By; groups: Share[];
   );
 }
 
-function SharesHelp() {
+export function SharesHelp() {
   return (
     <p className="muted small" style={{ margin: 0 }}>
       {t("statistics.sharesHelp")} <InfoTip label={t("statistics.about", { name: t("statistics.otherGroup") })}>{t("statistics.sharesTip")}</InfoTip>
@@ -832,8 +901,8 @@ function SharesHelp() {
   );
 }
 
-function Countries({ filter, period }: Readonly<{ filter: Filter; period: Period }>) {
-  const countries = useBreakdown("country", filter, period);
+function Countries({ filter, period, view }: Readonly<{ filter: Filter; period: Period }> & OneOrAll) {
+  const countries = useBreakdown("country", filter, period, view.kind === "all");
   const data = countries.data;
   // Off without a GeoIP database, unless sessions kept a country from before.
   if (data && data.geoip == null && !data.groups.some((g) => g.kind === "named")) {
@@ -842,7 +911,7 @@ function Countries({ filter, period }: Readonly<{ filter: Filter; period: Period
   return (
     <Card
       title={t("statistics.countries")}
-      actions={<Csv href={csvUrl("breakdown", { from: period.from, to: period.to, by: "country", ...filterParams(filter) })} />}
+      actions={<Csv href={breakdownCsv("country", filter, period, view)} />}
     >
       {countries.isPending && <Loading />}
       {countries.isError && <ErrorView error={countries.error} />}
@@ -855,25 +924,31 @@ function Countries({ filter, period }: Readonly<{ filter: Filter; period: Period
             <SharesHelp />
           </div>
         ))}
-      {data?.geoip && (
-        <p className="muted small" style={{ marginBottom: 0 }}>
-          {isDbIp(data.geoip) ? (
-            <a href="https://db-ip.com" target="_blank" rel="noreferrer">
-              {t("statistics.dbipCredit")}
-            </a>
-          ) : (
-            t("statistics.geoipFrom", { database: data.geoip })
-          )}
-        </p>
-      )}
+      {data?.geoip && <GeoipCredit database={data.geoip} />}
     </Card>
   );
 }
 
-function DevicesAndPlayers({ filter, period }: Readonly<{ filter: Filter; period: Period }>) {
-  const devices = useBreakdown("device", filter, period);
-  const players = useBreakdown("player", filter, period);
-  const csv = (by: By) => csvUrl("breakdown", { from: period.from, to: period.to, by, ...filterParams(filter) });
+/** The credit a GeoIP database asks for. */
+export function GeoipCredit({ database }: Readonly<{ database: string }>) {
+  return (
+    <p className="muted small" style={{ marginBottom: 0 }}>
+      {isDbIp(database) ? (
+        <a href="https://db-ip.com" target="_blank" rel="noreferrer">
+          {t("statistics.dbipCredit")}
+        </a>
+      ) : (
+        t("statistics.geoipFrom", { database })
+      )}
+    </p>
+  );
+}
+
+function DevicesAndPlayers({ filter, period, view }: Readonly<{ filter: Filter; period: Period }> & OneOrAll) {
+  const all = view.kind === "all";
+  const devices = useBreakdown("device", filter, period, all);
+  const players = useBreakdown("player", filter, period, all);
+  const csv = (by: By) => breakdownCsv(by, filter, period, view);
   const empty = devices.data?.groups.length === 0 && players.data?.groups.length === 0;
   return (
     <Card
