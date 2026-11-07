@@ -55,7 +55,15 @@ pub enum TrackFilter {
     NeedsReview,
     /// Neither a cover of its own nor its album's.
     NoCover,
+    /// No intro point (where the vocals start).
+    NoIntro,
+    /// No hook.
+    NoHook,
 }
+
+/// The built-in Song category type (`migrations/…_category_types.sql`):
+/// renamed or not, it is the type of the songs.
+pub const SONG_TYPE_ID: u64 = 1;
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -106,6 +114,10 @@ pub struct TrackQuery {
     pub category_id: Option<u64>,
     /// Tracks in no category.
     pub no_category: Option<bool>,
+    /// Only the enabled songs whose file is there: tracks in at least one
+    /// category of the Song type (the one that exists from the start,
+    /// whatever its name), not disabled, not missing. What *To do* lists.
+    pub active_songs: Option<bool>,
     #[param(inline)]
     pub filter: Option<TrackFilter>,
     /// Tracks with every one of these labels (IDs, comma-separated).
@@ -483,6 +495,15 @@ impl ListContext {
                 " AND NOT EXISTS (SELECT 1 FROM track_categories tc WHERE tc.track_id = t.id)",
             );
         }
+        if params.active_songs == Some(true) {
+            query.push(
+                " AND t.enabled AND t.missing_since IS NULL
+                  AND EXISTS (SELECT 1 FROM track_categories tc
+                              JOIN categories c ON c.id = tc.category_id
+                              WHERE tc.track_id = t.id AND c.type_id = ",
+            );
+            query.push_bind(SONG_TYPE_ID).push(")");
+        }
         if let Some(station_id) = params.on_station_id {
             query.push(
                 " AND EXISTS (SELECT 1 FROM track_categories tc
@@ -524,6 +545,15 @@ impl ListContext {
                               WHERE i.track_id = t.id AND i.status = 'needs_review')"
             }
             Some(TrackFilter::NoCover) => " AND tcv.track_id IS NULL AND acv.album_key IS NULL",
+            Some(TrackFilter::NoIntro) => {
+                " AND NOT EXISTS (SELECT 1 FROM track_markers tm
+                                  WHERE tm.track_id = t.id AND tm.intro_ms IS NOT NULL)"
+            }
+            Some(TrackFilter::NoHook) => {
+                " AND NOT EXISTS (SELECT 1 FROM track_markers tm
+                                  WHERE tm.track_id = t.id AND tm.hook_in_ms IS NOT NULL
+                                    AND tm.hook_out_ms IS NOT NULL)"
+            }
         };
         query.push(condition);
 
@@ -759,10 +789,7 @@ impl ListContext {
         if !(1..=500).contains(&limit) {
             return Err(ApiError::BadRequest("limit is 1 to 500".to_owned()));
         }
-        let mut count = QueryBuilder::new("SELECT CAST(COUNT(*) AS SIGNED)");
-        self.push_from(&mut count);
-        self.push_filters(&mut count, params)?;
-        let total: i64 = count.build_query_scalar().fetch_one(pool).await?;
+        let total = self.count_on_station(pool, params).await?;
 
         let mut query = QueryBuilder::new("");
         self.push_select(&mut query);
@@ -780,10 +807,25 @@ impl ListContext {
         if let Some(station_id) = self.on_station_id {
             crate::ratios::add_to_summaries(pool, station_id, &mut items).await?;
         }
-        Ok(TrackPage {
-            items,
-            total: u64::try_from(total).unwrap_or(0),
-        })
+        Ok(TrackPage { items, total })
+    }
+
+    /// How many tracks match `params`.
+    pub async fn count(&self, pool: &sqlx::MySqlPool, params: &TrackQuery) -> ApiResult<u64> {
+        let context = self.for_params(pool, params).await?;
+        context.count_on_station(pool, params).await
+    }
+
+    async fn count_on_station(
+        &self,
+        pool: &sqlx::MySqlPool,
+        params: &TrackQuery,
+    ) -> ApiResult<u64> {
+        let mut count = QueryBuilder::new("SELECT CAST(COUNT(*) AS SIGNED)");
+        self.push_from(&mut count);
+        self.push_filters(&mut count, params)?;
+        let total: i64 = count.build_query_scalar().fetch_one(pool).await?;
+        Ok(u64::try_from(total).unwrap_or(0))
     }
 
     /// The summaries of `ids`, in no particular order.
