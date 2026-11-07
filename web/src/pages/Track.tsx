@@ -49,12 +49,12 @@ import {
   Segmented,
   useToast,
 } from "../components/ui";
-import { number, rich, t } from "../i18n";
+import { type PlainKey, number, rich, t } from "../i18n";
 import { ago, bytes, dateTime, db, duration, parseDuration, trackName } from "../lib/format";
 import { endingLabel } from "../lib/labels";
 import { useModule } from "../lib/modules";
 import { withNextStart } from "../lib/nextStart";
-import { Link } from "../lib/router";
+import { Link, setSearch, useLocation } from "../lib/router";
 import { useAction, useCan, useCanOn } from "../lib/session";
 import { DeleteQuestion, bitrate } from "./Library";
 import { type StationInfo, currentStation, here } from "../lib/station";
@@ -87,6 +87,17 @@ function normalize(overrides: TrackOverrides): TrackOverrides {
     },
   };
 }
+
+/** The track page's tabs, the sound first: the `tab` of the URL. */
+const TRACK_TABS = ["sound", "programming", "details", "plays"] as const;
+type TrackTab = (typeof TRACK_TABS)[number];
+
+const TRACK_TAB_LABELS: Record<TrackTab, PlainKey> = {
+  sound: "track.tabSound",
+  programming: "track.tabProgramming",
+  details: "track.tabDetails",
+  plays: "track.tabPlays",
+};
 
 export function Track({ id }: { id: number }) {
   const track = useQuery({
@@ -122,6 +133,9 @@ export function effectiveCues(track: TrackDetail, overrides: TrackOverrides) {
 
 function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutSettings | undefined }) {
   const canEdit = useCan("operator");
+  const { search } = useLocation();
+  const asked = search.get("tab") as TrackTab | null;
+  const tab: TrackTab = asked && TRACK_TABS.includes(asked) ? asked : "sound";
   const waveform = useWaveform(track.id);
   const saved = normalize(track.overrides);
   const [draft, setDraft] = useState<TrackOverrides>(saved);
@@ -501,158 +515,171 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
           })}
         </Banner>
       )}
+      <div className="tabs" role="tablist">
+        {TRACK_TABS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            onClick={() => setSearch({ tab: name === "sound" ? null : name })}
+          >
+            {t(TRACK_TAB_LABELS[name])}
+          </button>
+        ))}
+      </div>
+      <div className="stack track-tab" hidden={tab !== "sound"}>
 
-      <Card
-        title={t("track.waveform")}
-        actions={
-          <>
-            <Segmented
-              label={t("track.zoom")}
-              value={zoom}
-              onChange={setZoom}
-              options={[
-                { value: "whole", label: t("track.whole") },
-                { value: "intro", label: t("track.intro") },
-                { value: "outro", label: t("track.outro") },
-              ]}
-            />
-            {!track.missing && (
-              <>
-                <button
-                  type="button"
-                  className="btn small"
-                  onClick={() => (playing ? audio.current?.pause() : playFrom(playhead ?? cueIn))}
-                >
-                  <Icon name={playing ? "pause" : "play"} size={14} /> {playing ? t("dashboard.pause") : t("track.listen")}
-                </button>
-                <span
-                  className="num small playhead-time"
-                  title={t("track.playheadHelp", { fromCueIn: duration((playhead ?? cueIn) - cueIn, true) })}
-                >
-                  <span className="visually-hidden">{t("track.playhead")} </span>
-                  {duration(playhead ?? 0, true)} / {duration(length)}
-                  {waveform.data && (
+        <Card
+          title={t("track.waveform")}
+          actions={
+            <>
+              <Segmented
+                label={t("track.zoom")}
+                value={zoom}
+                onChange={setZoom}
+                options={[
+                  { value: "whole", label: t("track.whole") },
+                  { value: "intro", label: t("track.intro") },
+                  { value: "outro", label: t("track.outro") },
+                ]}
+              />
+              {!track.missing && (
+                <>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => (playing ? audio.current?.pause() : playFrom(playhead ?? cueIn))}
+                  >
+                    <Icon name={playing ? "pause" : "play"} size={14} /> {playing ? t("dashboard.pause") : t("track.listen")}
+                  </button>
+                  <span
+                    className="num small playhead-time"
+                    title={t("track.playheadHelp", { fromCueIn: duration((playhead ?? cueIn) - cueIn, true) })}
+                  >
+                    <span className="visually-hidden">{t("track.playhead")} </span>
+                    {duration(playhead ?? 0, true)} / {duration(length)}
+                    {waveform.data && (
+                      <>
+                        {" · "}
+                        <span title={t("track.levelHelp")}>
+                          {levelText(levelAt(waveform.data.peaks, waveform.data.intervalMs, playhead ?? 0))}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <button type="button" className="btn small" onClick={() => playFrom(cueIn)}>
+                    {t("track.fromCueIn")}
+                  </button>
+                  {(hookSet || looping) && (
+                    <button
+                      type="button"
+                      className={looping ? "btn small primary" : "btn small"}
+                      aria-pressed={looping}
+                      onClick={() => {
+                        if (looping) {
+                          audio.current?.pause();
+                        } else {
+                          playFrom(hook.in ?? 0);
+                          setLooping(true);
+                        }
+                      }}
+                    >
+                      <Icon name={looping ? "stop" : "play"} size={14} /> {looping ? t("track.stopHook") : t("track.loopHook")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => playFrom(Math.max(0, (mixPoint ?? cueOut) - 5_000))}
+                  >
+                    {t("track.ending")}
+                  </button>
+                </>
+              )}
+            </>
+          }
+        >
+          <div className="stack">
+            {waveform.isError ? (
+              <ErrorView error={waveform.error} />
+            ) : (
+              <WaveformView
+                data={waveform.data ?? null}
+                durationMs={length}
+                markers={markers}
+                regions={regions}
+                playheadMs={playhead}
+                onSeek={playFrom}
+                {...(view && { view })}
+              />
+            )}
+            <div className="legend muted">
+              <span>
+                <span className="swatch" style={{ background: "var(--good)" }} /> {t("track.cueIn")}{" "}
+                <strong className="num">{duration(cueIn, true)}</strong>
+              </span>
+              <span>
+                <span className="swatch" style={{ background: "var(--bad)" }} /> {t("track.cueOut")}{" "}
+                <strong className="num">{duration(cueOut, true)}</strong>
+              </span>
+              <span>
+                <span className="swatch" style={{ background: "var(--accent)" }} /> {t("track.nextTrackStarts")}{" "}
+                <strong className="num">
+                  {mixPoint !== null ? duration(mixPoint, true) : t("track.backToBackAt", { at: duration(cueOut, true) })}
+                </strong>
+              </span>
+              <span>{t("track.plays", { duration: duration(cueOut - cueIn) })}</span>
+              {intro !== null && (
+                <span>
+                  <span className="swatch" style={{ background: "var(--fx)" }} /> {t("track.introEnds")}{" "}
+                  <strong className="num">{duration(intro, true)}</strong>
+                  {imported?.intro2_ms != null && (
                     <>
                       {" · "}
-                      <span title={t("track.levelHelp")}>
-                        {levelText(levelAt(waveform.data.peaks, waveform.data.intervalMs, playhead ?? 0))}
-                      </span>
+                      {t("track.intro2Ends")} <strong className="num">{duration(imported.intro2_ms, true)}</strong>
                     </>
                   )}
                 </span>
-                <button type="button" className="btn small" onClick={() => playFrom(cueIn)}>
-                  {t("track.fromCueIn")}
-                </button>
-                {(hookSet || looping) && (
-                  <button
-                    type="button"
-                    className={looping ? "btn small primary" : "btn small"}
-                    aria-pressed={looping}
-                    onClick={() => {
-                      if (looping) {
-                        audio.current?.pause();
-                      } else {
-                        playFrom(hook.in ?? 0);
-                        setLooping(true);
-                      }
-                    }}
-                  >
-                    <Icon name={looping ? "stop" : "play"} size={14} /> {looping ? t("track.stopHook") : t("track.loopHook")}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="btn small"
-                  onClick={() => playFrom(Math.max(0, (mixPoint ?? cueOut) - 5_000))}
-                >
-                  {t("track.ending")}
-                </button>
-              </>
-            )}
-          </>
-        }
-      >
-        <div className="stack">
-          {waveform.isError ? (
-            <ErrorView error={waveform.error} />
-          ) : (
-            <WaveformView
-              data={waveform.data ?? null}
-              durationMs={length}
-              markers={markers}
-              regions={regions}
-              playheadMs={playhead}
-              onSeek={playFrom}
-              {...(view && { view })}
+              )}
+              {hookSet && (
+                <span>
+                  <span className="swatch" style={{ background: "var(--deck-b)" }} /> {t("track.hook")}{" "}
+                  <strong className="num">
+                    {duration(hook.in, true)} – {duration(hook.out, true)}
+                  </strong>
+                </span>
+              )}
+              {(imported?.next_soft_ms != null || imported?.next_hard_ms != null) && (
+                <span title={t("track.importedNextHelp")}>
+                  {t("track.importedNext", {
+                    soft: imported.next_soft_ms != null ? duration(imported.next_soft_ms, true) : "–",
+                    hard: imported.next_hard_ms != null ? duration(imported.next_hard_ms, true) : "–",
+                  })}
+                </span>
+              )}
+              {canEdit && <span>{t("track.dragHelp")}</span>}
+            </div>
+            <audio
+              ref={audio}
+              preload="none"
+              src={`/api/v1/tracks/${track.id}/audio`}
+              onPlay={() => setPlaying(true)}
+              onPause={() => {
+                setPlaying(false);
+                setLooping(false);
+                // Where it stopped, to the frame.
+                if (audio.current) {
+                  setPlayhead(audio.current.currentTime * 1000);
+                }
+              }}
+              onEnded={() => setPlaying(false)}
             />
-          )}
-          <div className="legend muted">
-            <span>
-              <span className="swatch" style={{ background: "var(--good)" }} /> {t("track.cueIn")}{" "}
-              <strong className="num">{duration(cueIn, true)}</strong>
-            </span>
-            <span>
-              <span className="swatch" style={{ background: "var(--bad)" }} /> {t("track.cueOut")}{" "}
-              <strong className="num">{duration(cueOut, true)}</strong>
-            </span>
-            <span>
-              <span className="swatch" style={{ background: "var(--accent)" }} /> {t("track.nextTrackStarts")}{" "}
-              <strong className="num">
-                {mixPoint !== null ? duration(mixPoint, true) : t("track.backToBackAt", { at: duration(cueOut, true) })}
-              </strong>
-            </span>
-            <span>{t("track.plays", { duration: duration(cueOut - cueIn) })}</span>
-            {intro !== null && (
-              <span>
-                <span className="swatch" style={{ background: "var(--fx)" }} /> {t("track.introEnds")}{" "}
-                <strong className="num">{duration(intro, true)}</strong>
-                {imported?.intro2_ms != null && (
-                  <>
-                    {" · "}
-                    {t("track.intro2Ends")} <strong className="num">{duration(imported.intro2_ms, true)}</strong>
-                  </>
-                )}
-              </span>
-            )}
-            {hookSet && (
-              <span>
-                <span className="swatch" style={{ background: "var(--deck-b)" }} /> {t("track.hook")}{" "}
-                <strong className="num">
-                  {duration(hook.in, true)} – {duration(hook.out, true)}
-                </strong>
-              </span>
-            )}
-            {(imported?.next_soft_ms != null || imported?.next_hard_ms != null) && (
-              <span title={t("track.importedNextHelp")}>
-                {t("track.importedNext", {
-                  soft: imported.next_soft_ms != null ? duration(imported.next_soft_ms, true) : "–",
-                  hard: imported.next_hard_ms != null ? duration(imported.next_hard_ms, true) : "–",
-                })}
-              </span>
-            )}
-            {canEdit && <span>{t("track.dragHelp")}</span>}
           </div>
-          <audio
-            ref={audio}
-            preload="none"
-            src={`/api/v1/tracks/${track.id}/audio`}
-            onPlay={() => setPlaying(true)}
-            onPause={() => {
-              setPlaying(false);
-              setLooping(false);
-              // Where it stopped, to the frame.
-              if (audio.current) {
-                setPlayhead(audio.current.currentTime * 1000);
-              }
-            }}
-            onEnded={() => setPlaying(false)}
-          />
-        </div>
-      </Card>
+        </Card>
 
-      {track.analysis && <TryTransition trackId={track.id} trackName={trackName(track)} overrides={draft} />}
+        {track.analysis && <TryTransition trackId={track.id} trackName={trackName(track)} overrides={draft} />}
 
-      <div className="grid two">
         <OverridesCard
           track={track}
           settings={settings}
@@ -685,17 +712,25 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
           onClear={() => clearOverrides.mutate(undefined)}
           saving={saveOverrides.isPending}
         />
+      </div>
+      <div className="grid two track-tab" hidden={tab !== "programming"}>
         <div className="stack">
-          <CoverCard track={track} />
+          <CategoriesCard track={track} canEdit={canEdit} />
           <RatioCard track={track} canEdit={canEdit} />
+        </div>
+        <div className="stack">
           <TrackDaypartsCard track={track} canEdit={canEdit} />
           <ProgrammingCard track={track} canEdit={canEdit} />
-          <CategoriesCard track={track} canEdit={canEdit} />
-          <DetailsCard track={track} />
-          <PlaysCard track={track} />
         </div>
       </div>
-      <PlayGrids trackId={track.id} />
+      <div className="grid two track-tab" hidden={tab !== "details"}>
+        <CoverCard track={track} />
+        <DetailsCard track={track} />
+      </div>
+      <div className="stack track-tab" hidden={tab !== "plays"}>
+        <PlaysCard track={track} />
+        <PlayGrids trackId={track.id} />
+      </div>
       <TagsDialog
         open={editingTags}
         onClose={() => setEditingTags(false)}
