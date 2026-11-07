@@ -20,7 +20,7 @@ import { useListenersNow } from "../lib/listeners";
 import { positionNow, useLive } from "../lib/live";
 import { useStationCategories } from "./Clocks";
 import { Link } from "../lib/router";
-import { useAction, useCan } from "../lib/session";
+import { useAction, useCan, useUser } from "../lib/session";
 import { introFromCueIn, jingleStart } from "../lib/intro";
 import { here } from "../lib/station";
 
@@ -54,6 +54,8 @@ export function Dashboard() {
   const player = useLive((live) => live.player);
   const levels = useLive((live) => live.levels);
   const canOperate = useCan("operator");
+  // The whole queue, editable here, or its first tracks and the Queue page.
+  const wholeQueue = useUser().on_air_whole_queue;
   const [fxOpen, setFxOpen] = useState(false);
 
   const skip = useAction(() => done(api.POST("/api/v1/stations/{station_id}/player/skip", { params: { path: here() } })), { success: t("dashboard.skipped") });
@@ -139,10 +141,12 @@ export function Dashboard() {
 
           <Card
             title={t("dashboard.upNext")}
-            actions={<Link to="/queue" className="btn small">{t("dashboard.editQueue")}</Link>}
+            actions={
+              !wholeQueue && <Link to="/queue" className="btn small">{t("dashboard.editQueue")}</Link>
+            }
             flush
           >
-            <QueueList limit={6} />
+            {wholeQueue ? <QueueList /> : <QueueList limit={6} />}
           </Card>
         </div>
 

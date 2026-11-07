@@ -173,6 +173,7 @@ const es = {
   "account.widthNormal": "Normal",
   "account.widthWide": "80 %",
   "account.widthFull": "100 %",
+  "account.onAirWholeQueue": "Mostrar toda la cola en Al aire, para editarla allí",
   "account.displayHelp": "«Sistema» sigue los ajustes del dispositivo. Sus preferencias se aplican en todos los navegadores en los que inicie sesión.",
   "account.passwordChanged": "Contraseña cambiada: se han cerrado sus demás sesiones",
   "account.currentPassword": "Contraseña actual",

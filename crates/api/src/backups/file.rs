@@ -239,6 +239,8 @@ const TABLES: &[Table] = &[
             Plain("language"),
             // `full_width` in older files (upgrade_row).
             Plain("width"),
+            // Not in older files: off.
+            Plain("on_air_whole_queue"),
         ],
         Mode::Upsert,
         &["username"],
@@ -1033,9 +1035,12 @@ const UPGRADES: &[(i64, &str)] = &[
 fn upgrade_row<'a>(table: &str, row: &'a Map<String, Value>) -> Cow<'a, Map<String, Value>> {
     if table == "users" && row.contains_key("full_width") {
         let mut row = row.clone();
-        let full = row.remove("full_width").and_then(|full| full.as_bool());
+        // Backups write booleans as the database holds them, 1 or 0.
+        let full = row
+            .remove("full_width")
+            .is_some_and(|full| full.as_bool().unwrap_or_else(|| full.as_i64() == Some(1)));
         if !row.contains_key("width") {
-            let width = if full == Some(true) { "full" } else { "normal" };
+            let width = if full { "full" } else { "normal" };
             row.insert("width".to_owned(), Value::from(width));
         }
         return Cow::Owned(row);
@@ -1275,6 +1280,15 @@ mod tests {
         assert_eq!(
             width(serde_json::json!({"width": "wide", "full_width": true})),
             Some("wide".into())
+        );
+        // As backups write them: 1 or 0.
+        assert_eq!(
+            width(serde_json::json!({"full_width": 1})),
+            Some("full".into())
+        );
+        assert_eq!(
+            width(serde_json::json!({"full_width": 0})),
+            Some("normal".into())
         );
         assert_eq!(width(serde_json::json!({})), None);
         let row = serde_json::json!({"full_width": true});

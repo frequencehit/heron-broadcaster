@@ -27,6 +27,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Draw depth:** a slot draws at random (or by weight in a weighted slot) among the 20 % of its category's tracks played longest ago on the station, at least 3 tracks, never played ones included, so two rounds of a category do not play in the same order. When nothing in the draw passes the rules, it widens by 10 points up to 50 % before any rule is relaxed; the rules are then relaxed with the draw at its maximum, and the most recently played half is never drawn from. Set per station, per category and per clock slot (start and maximum), shown in the rotation log and checked by simulations ([Rotation – Draw depth](docs/rotation.md#draw-depth)).
 - **Exact times:** a clock slot can start at a time of the hour (`:00:00`, `:30:00`). **Hard:** what plays fades out over 1.5 s and the slot starts, to the second. **Soft:** rotation plans the tracks before it to end in a window (10 s before to 30 s after, per slot); a track that would end after the window is faded out at its end; a gap before the window is filled by a station medley, shortened from its end when too long (the last liner + hook pairs left out, the closing liner kept, without a new render), or by a track of the station's new filler category, else the slot starts early. The engine cuts at the exact time on the server's clock, across restarts and handovers. The rotation log says how each exact time was met, simulations show it and their audit flags missed windows ([Rotation – Exact times](docs/rotation.md#exact-times)).
 - **Looking ahead before exact times:** within 15 minutes or 4 slots of an exact time, rotation simulates 8 endings up to it with the real rules and queues the first pick of the best one: fading nothing out first (a filler jingle rather than a song faded out), then ending in the window closest to the exact time, with the least filling, with the fewest rules relaxed. Before a hard exact time, a pick widens its draw before choosing a track that would be cut. The rotation log shows the endings simulated and how the best one ends ([Rotation – Exact times](docs/rotation.md#exact-times)).
+- **The whole queue on On air** (Account › Display, off by default): the *Up next* card lists every waiting track, to reorder, play next and remove there, without the *Edit the queue* button; adding tracks stays on the Queue page. `on_air_whole_queue` in `GET /auth/me` and `PUT /auth/preferences`, kept in configuration backups (off in older ones) ([Web UI – Themes](docs/web.md#themes)).
 
 ### Changed
 
@@ -44,6 +45,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Settings › Programming › Rotation** is split into titled sections (separation, dayparts, draw depth, when no track fits, weight after a play, the station's library, across stations), each with a one-line explanation; how each slot method draws is folded away, the draw depth has a diagram that follows its two values, and the two divisions of the day sit on one line.
 - **A track's page** is in tabs: *Sound*, *Programming*, *Details* and *Plays*.
 - **Clocks save themselves** a moment after each change: no *Save* button to forget. The page says *Saving…*, *Saved* or why a change was not saved; a new clock is still created with its button.
+- **A track's page:** the playhead's time and level sit under the waveform, on the right; *Try a transition* draws its graph at the waveform's height whatever the page's width.
 
 ### Fixed
 
@@ -51,6 +53,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - Backups have their database dump again after MariaDB moves to a new version: the Compose file has MariaDB upgrade its own tables when it starts (`MARIADB_AUTO_UPGRADE`). `mariadb-dump` failed on them before (*Column count of mysql.proc is wrong*).
 - The queue starts a track with an [exact time](docs/rotation.md#exact-times) at that time at the latest, on a colored background, instead of an estimate counted from the tracks before it, and the tracks after it follow from that time.
 - **Autofill stopped after an exact time** until the hour changed, when the exact slot was the clock's first slot: rotation went back to it, found it due again and, unable to play it twice, picked nothing. A clock that does not loop now goes on with the slots after the one just played, and the slot just played is never due again in the same hour. The log also says rotation found nothing to queue instead of blaming restrictions.
+- A user with the whole width in an older backup (`full_width`, written as `1`) gets the *100 %* width back on restore, not the normal one.
 
 ## 0.3.0 – 2026-11-05
 
