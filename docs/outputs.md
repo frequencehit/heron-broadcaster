@@ -149,6 +149,7 @@ A station keeps a list of **stream servers** (*Outputs › Servers*). Several ou
 | `public_url` | none: `http://host:port` | The server's address as listeners reach it, e.g. `https://stream.example.org` |
 | `relay_of` | none | The master server, for a [relay](statistics.md#relay-servers) |
 | `relay_mounts` | none: all of the master's | A relay's mounts: `[{"mount": "/live"}, {"mount": "/aac", "relay_mount": "/aac-relay"}]`, with the mount's name on the relay when it differs |
+| `access_log` | none | Where Heron reads the server's access log for [audience certification](certification.md#where-it-is-read-from): a file or an address |
 | `relay_subtract_one` | `false` | A relay whose address the master does not see (behind NAT): its connection to the master counts as 1 listener per mount, subtracted |
 
 - **The engine still gets the full configuration of each output**, as before: the API joins the server's address, port and source credentials, the output's mount and the station details into the output's settings when it pushes them ([Configuration flow](#configuration-flow)). The engine never reads the database.
