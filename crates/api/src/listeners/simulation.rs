@@ -201,14 +201,26 @@ async fn total(
     output: Option<u64>,
     hour: Option<u8>,
 ) -> TotalRow {
+    server_total(pool, day, output, None, hour).await
+}
+
+/// A row of one server's totals (`None`: every server's).
+async fn server_total(
+    pool: &sqlx::MySqlPool,
+    day: &str,
+    output: Option<u64>,
+    server: Option<u64>,
+    hour: Option<u8>,
+) -> TotalRow {
     sqlx::query_as(
         "SELECT hour, minutes, peak, listening_hours, sessions, distinct_listeners
          FROM listener_totals WHERE day = ? AND output_key = COALESCE(?, 0)
-           AND hour_key = COALESCE(?, 255)",
+           AND hour_key = COALESCE(?, 255) AND server_key = COALESCE(?, 0)",
     )
     .bind(day)
     .bind(output)
     .bind(hour)
+    .bind(server)
     .fetch_one(pool)
     .await
     .unwrap()
@@ -516,7 +528,8 @@ async fn simulated_listeners_are_counted() {
     let first = add_play(&pool, "First", at(10, 20, 0), at(10, 30, 0)).await;
     let second = add_play(&pool, "Second", at(10, 40, 0), at(10, 50, 0)).await;
     let third = add_play(&pool, "Third", at(11, 0, 0), at(11, 10, 0)).await;
-    let tracks = super::track_listeners(&pool, 1, (at(0, 0, 0), at(24, 0, 0)), 60, 1)
+    let whole_day = (at(0, 0, 0), at(24, 0, 0));
+    let tracks = super::track_listeners(&pool, 1, whole_day, super::Filter::default(), 60, 1)
         .await
         .unwrap();
     let ranking: Vec<(u64, f64, Option<u32>)> = tracks
@@ -530,6 +543,68 @@ async fn simulated_listeners_are_counted() {
             (second, 2.0, Some(1)),
             (first, 3.0, Some(1))
         ]
+    );
+
+    // The tracks of the other output: no listener lists, no departures.
+    let other_only = super::Filter {
+        output_id: Some(other),
+        server_id: None,
+    };
+    let tracks = super::track_listeners(&pool, 1, whole_day, other_only, 60, 1)
+        .await
+        .unwrap();
+    assert!(tracks.iter().all(|t| t.departures.is_none()), "{tracks:?}");
+
+    // The audience figures of the output with sessions: every session of
+    // 5 s or more, the probe's 11 s too.
+    let live_only = super::Filter {
+        output_id: Some(live),
+        server_id: None,
+    };
+    let day20 = (date(2026, 10, 20), date(2026, 10, 20));
+    let figures = super::audience_of(&pool, 1, day20, &TimeZone::UTC, live_only)
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            figures.sessions,
+            figures.listener_days,
+            figures.cume,
+            figures.peak
+        ),
+        (Some(5), Some(5), Some(5.0), Some(3)),
+        "{figures:?}"
+    );
+    let lengths = figures.session_lengths.unwrap();
+    // The probe; D (4 min) and E (90 s); A (44 min) and B (59 min).
+    assert_eq!(
+        (
+            lengths.under_1_min,
+            lengths.from_1_to_5_min,
+            lengths.from_5_to_30_min,
+            lengths.from_30_min_to_2_h
+        ),
+        (1, 2, 0, 2)
+    );
+    assert!(figures.aqh.unwrap() > 0.0);
+    // The day before: nothing measured.
+    let before = super::audience_of(
+        &pool,
+        1,
+        super::previous_period(day20),
+        &TimeZone::UTC,
+        live_only,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        (
+            before.from.as_str(),
+            before.days,
+            before.sessions,
+            before.peak
+        ),
+        ("2026-10-19", 0, None, None)
     );
 
     // A shorter minimum session counts the probe once totals are recomputed.
@@ -743,5 +818,26 @@ async fn relays_add_their_listeners_without_their_connections() {
     assert_eq!(day_live.distinct_listeners, Some(2));
     let station = total(&pool, "2026-10-20", None, None).await;
     assert_eq!(station.peak, 5);
+
+    // Each server's own figures: the relay's listeners, without its
+    // connection to the master.
+    let relay = server_total(&pool, "2026-10-20", Some(live), Some(known_id), None).await;
+    assert_eq!(
+        (relay.peak, relay.sessions, relay.distinct_listeners),
+        (2, Some(2), Some(2))
+    );
+    let on_master = server_total(&pool, "2026-10-20", None, Some(master_id), None).await;
+    assert_eq!((on_master.peak, on_master.distinct_listeners), (1, Some(1)));
+    let nat_part = server_total(&pool, "2026-10-20", Some(live), Some(nat_id), None).await;
+    assert_eq!((nat_part.minutes, nat_part.sessions), (8, None));
+    let relay_only = super::Filter {
+        output_id: None,
+        server_id: Some(known_id),
+    };
+    let day20 = (date(2026, 10, 20), date(2026, 10, 20));
+    let figures = super::audience_of(&pool, 1, day20, &TimeZone::UTC, relay_only)
+        .await
+        .unwrap();
+    assert_eq!((figures.peak, figures.sessions), (Some(2), Some(2)));
     db.drop().await;
 }
