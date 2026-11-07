@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
-use heron_core::playout::{TrackPlayout, Transition, db_to_gain, plan_transition};
+use heron_core::playout::{TrackPlayout, Transition, db_to_gain, next_start_ms, plan_transition};
 use heron_core::{
     AgcSettings, CrossfadeSettings, DeckEq, EqSettings, FadeCurve, PlaySource, PlayoutSettings,
 };
@@ -208,6 +208,10 @@ pub struct PlayerSnapshot {
     pub queue: Vec<QueueEntry>,
     pub rendered_ms: u64,
     pub underruns: u64,
+    /// Where the next track starts, by entry, in ms from its cue-in: for
+    /// the track on air, the cued one and the queue, the transition into
+    /// the entry after it (into a full-length track for the last one).
+    pub next_starts: HashMap<u64, u32>,
 }
 
 /// The queue as saved on disk, to resume it after a restart.
@@ -1703,7 +1707,32 @@ impl Player {
             queue: self.queue.iter().cloned().collect(),
             rendered_ms: frames_to_ms(status.frame.load(Ordering::Relaxed)),
             underruns: status.underruns.load(Ordering::Relaxed),
+            next_starts: self.next_starts(),
         }
+    }
+
+    /// [`PlayerSnapshot::next_starts`]: the track on air, the cued one,
+    /// then the queue, each into the one after it. The jingle over the
+    /// cued track's intro plays beside it, on the FX player.
+    fn next_starts(&self) -> HashMap<u64, u32> {
+        let crossfade = self.crossfade();
+        let order: Vec<&QueueEntry> = [self.on_air, self.cued]
+            .into_iter()
+            .flatten()
+            .filter_map(|entry_id| self.loaded.get(&entry_id))
+            .chain(&self.queue)
+            .collect();
+        order
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                let incoming = order.get(index + 1).map(|next| &next.track.playout);
+                (
+                    entry.entry_id,
+                    next_start_ms(&entry.track.playout, incoming, &crossfade),
+                )
+            })
+            .collect()
     }
 }
 

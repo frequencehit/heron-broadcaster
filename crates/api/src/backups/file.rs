@@ -239,6 +239,8 @@ const TABLES: &[Table] = &[
             Plain("language"),
             // `full_width` in older files (upgrade_row).
             Plain("width"),
+            // Not in older files: off.
+            Plain("on_air_whole_queue"),
         ],
         Mode::Upsert,
         &["username"],

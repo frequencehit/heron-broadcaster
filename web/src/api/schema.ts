@@ -391,7 +391,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Saves your preferences: the web UI's theme, language and width. */
+        /**
+         * Saves your preferences: the web UI's theme, language, width and whether
+         *     the On air page shows the whole queue.
+         */
         put: operations["set_preferences"];
         post?: never;
         delete?: never;
@@ -6523,6 +6526,7 @@ export interface components {
              *     track, picked with this one.
              */
             linked?: boolean;
+            lookahead?: components["schemas"]["LookaheadLog"] | null;
             /** @description Applied: least recently played at step 10. */
             method: components["schemas"]["Method"];
             /**
@@ -7564,6 +7568,46 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @description How a pick looked ahead, in the rotation log. */
+        LookaheadLog: {
+            /**
+             * Format: int32
+             * @description Endings simulated.
+             */
+            draws: number;
+            /**
+             * Format: int64
+             * @description The exact time looked ahead to (Unix ms).
+             */
+            exact_at_unix_ms: number;
+            /**
+             * @description The best ending fades out the track before the exact slot: it ends
+             *     after the cut (the end of the window, the exact time in hard mode).
+             *     Fading nothing comes first: every ending simulated did.
+             */
+            faded: boolean;
+            /**
+             * Format: int32
+             * @description Time filled before the exact slot (medley or filler track).
+             */
+            filling_ms: number;
+            /**
+             * @description The best ending: the tracks before the exact slot end inside its
+             *     window (at the exact time in hard mode).
+             */
+            in_window: boolean;
+            /**
+             * Format: int64
+             * @description Where they end, from the exact time; negative when early. Missing
+             *     when no ending reached the exact slot.
+             */
+            offset_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Relaxation steps of its picks, added up.
+             */
+            relaxed_steps: number;
+        };
         /** @description Loudness normalization from the analyzed integrated loudness (EBU R128). */
         LoudnessSettings: {
             /** @default true */
@@ -8409,6 +8453,8 @@ export interface components {
              *     lacks.
              */
             language?: string | null;
+            /** @description The On air page shows the whole queue, editable there. */
+            on_air_whole_queue?: boolean | null;
             theme?: components["schemas"]["Theme"] | null;
             width?: components["schemas"]["Width"] | null;
         };
@@ -8585,6 +8631,14 @@ export interface components {
              *     jingle, and moving either moves both.
              */
             linked_to?: number | null;
+            /**
+             * Format: int32
+             * @description Where the next track starts, in ms from this entry's cue-in: the
+             *     engine's transition into the entry after it. Missing from engines
+             *     before it, and for the jingle over the cued track's intro: at its
+             *     end.
+             */
+            next_start_ms?: number | null;
             track: components["schemas"]["QueuedTrack"];
         };
         /**
@@ -10804,7 +10858,7 @@ export interface components {
             duration_ms: number;
             /**
              * Format: int64
-             * @description When it should start, without crossfades, as the Queue page shows it.
+             * @description When it should start, crossfades included, as the Queue page shows it.
              */
             planned_start_unix_ms: number;
             /**
@@ -10827,6 +10881,11 @@ export interface components {
             language: string;
             /** Format: int64 */
             last_login_at_unix_ms?: number | null;
+            /**
+             * @description The On air page shows the whole queue, editable there, instead of
+             *     its first tracks.
+             */
+            on_air_whole_queue: boolean;
             role: components["schemas"]["Role"];
             /**
              * @description Their role on each station; a station left out is `none`. `role` is

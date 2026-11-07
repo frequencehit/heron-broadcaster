@@ -56,4 +56,31 @@ describe("Account › Display", () => {
       "true",
     );
   });
+
+  it("shows the whole queue on On air when asked, and saves it", async () => {
+    answer({
+      "GET /api/v1/tokens": [],
+      "GET /api/v1/auth/two-factor": { passkeys: [], recovery_codes_left: 0 },
+      "PUT /api/v1/auth/preferences": (options: { body: { on_air_whole_queue: boolean } }) => ({
+        ...user(),
+        on_air_whole_queue: options.body.on_air_whole_queue,
+      }),
+    });
+    renderApp(<Account />);
+    const whole = screen.getByRole("checkbox", { name: t("account.onAirWholeQueue") });
+    expect((whole as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(whole);
+    await waitFor(() => expect(sent("PUT /api/v1/auth/preferences")).toHaveLength(1));
+    expect(sent("PUT /api/v1/auth/preferences")[0]?.options).toEqual({ body: { on_air_whole_queue: true } });
+  });
+
+  it("shows the user's choice of the whole queue", () => {
+    answer({
+      "GET /api/v1/tokens": [],
+      "GET /api/v1/auth/two-factor": { passkeys: [], recovery_codes_left: 0 },
+    });
+    renderApp(<Account />, { ...user(), on_air_whole_queue: true });
+    const whole = screen.getByRole("checkbox", { name: t("account.onAirWholeQueue") });
+    expect((whole as HTMLInputElement).checked).toBe(true);
+  });
 });

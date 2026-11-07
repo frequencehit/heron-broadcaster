@@ -498,6 +498,7 @@ async fn autofill(
                     entry_id: 0,
                     track: Some(track.clone()),
                     linked_to: None,
+                    next_start_ms: None,
                 }));
                 client
                     .enqueue(pb::EnqueueRequest {

@@ -413,6 +413,20 @@ pub fn plan_transition(
     }
 }
 
+/// Where the track after `outgoing` starts, in ms from `outgoing`'s
+/// cue-in: the transition into `incoming`, or into a full-length track when
+/// it is not known yet (rotation's planning, the last waiting track).
+pub fn next_start_ms(
+    outgoing: &TrackPlayout,
+    incoming: Option<&TrackPlayout>,
+    settings: &CrossfadeSettings,
+) -> u32 {
+    let full_length = TrackPlayout::unanalyzed(u32::MAX);
+    plan_transition(outgoing, incoming.unwrap_or(&full_length), settings)
+        .next_start_ms
+        .saturating_sub(outgoing.cue_in_ms)
+}
+
 /// Converts a gain in dB to a linear factor.
 pub fn db_to_gain(db: f64) -> f32 {
     10f64.powf(db / 20.0) as f32
@@ -483,6 +497,22 @@ mod tests {
         }
         assert!(FadeCurve::Logarithmic.fade_in(0.5) > 0.5);
         assert!(FadeCurve::Exponential.fade_in(0.5) < 0.5);
+    }
+
+    #[test]
+    fn the_next_track_starts_at_the_transition_from_the_cue_in() {
+        let settings = CrossfadeSettings::default();
+        let song = track(1_000, 200_000, Some(194_000));
+        // Into a full-length track: the mix point.
+        assert_eq!(next_start_ms(&song, None, &settings), 193_000);
+        // Into a jingle: back to back.
+        let jingle = track(0, 5_000, None);
+        assert_eq!(next_start_ms(&song, Some(&jingle), &settings), 199_000);
+        // Without a mix point: at its end.
+        assert_eq!(
+            next_start_ms(&track(1_000, 200_000, None), None, &settings),
+            199_000
+        );
     }
 
     #[test]

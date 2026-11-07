@@ -474,7 +474,7 @@ impl QueueManager {
                 // An exact slot's planned start jumps to its time.
                 let start = pick.explanation.at_unix_ms;
                 history.push(Play::of(track, start));
-                at = start + i64::from(pick.length_ms(&library));
+                at = start + i64::from(pick.next_ms(&library));
                 if pick.position.is_some() {
                     last = pick.position;
                 }
@@ -796,6 +796,7 @@ mod tests {
                     artists: vec![],
                     categories: vec![],
                     length_ms: 46_000,
+                    mix_ms: None,
                     ratio: 10,
                     dayparts: None,
                     daypart_days: None,
