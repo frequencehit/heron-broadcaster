@@ -114,6 +114,46 @@ The address of the gateway, as the website reaches it, is the station's **gatewa
 
 The website can also build its own pages on the [public API of the gateway](api.md#the-public-gateway).
 
+### Styling it from the website
+
+The website's styles do not reach inside the widget, but its own stylesheet can change it through names that stay the same from one version to the next, whatever the widget's inner classes become. The element the script draws in has the classes `heron-widget` and `heron-{module}` (`heron-match`), and `data-mode` (`page` or `widget`).
+
+**Variables**, set on that element (or any parent), each with its default:
+
+| Variable | Default | What it changes |
+|---|---|---|
+| `--heron-font` | the system font | The font family |
+| `--heron-font-size` | `15px` | The text size (titles and figures keep their own: style them by their part) |
+| `--heron-text` | dark grey, light grey in a dark color scheme | The text color |
+| `--heron-muted` | mid grey | Secondary text |
+| `--heron-bg` | white, near black in a dark color scheme | The background (one value for both schemes once set) |
+| `--heron-border` | light grey | Borders and separators |
+| `--heron-radius` | `14px` | The corners of the card |
+| `--heron-max-width` | `420px` for the small widget, none for the page | The card's width at most |
+
+**Parts**, for anything else (size, spacing, colors of one zone), with `::part()`:
+
+| Part | What it is |
+|---|---|
+| `page`, `widget` | The whole widget, as a page or as the small widget |
+| `card`, `header`, `title`, `subtitle`, `body` | The card, its colored header with the show's title and its line under it, and its content |
+| `closed` | The message outside the hours |
+| `now-playing`, `track`, `cover` | The track playing, a track's name, a cover |
+| `duel`, `question`, `choice`, `versus`, `percent`, `bar`, `countdown` | The match: the two tracks, the question above them, each track to vote for, *against* between them, its share, its bar, the countdown |
+| `votes`, `vote-button` | The likes' buttons |
+| `chart`, `rank`, `movement`, `tag`, `new-release` | The Top 30: the chart, a rank, its movement, a badge, the new release |
+| `field`, `input`, `results`, `result`, `send-button`, `quote`, `steps`, `today` | The dedications: a field, a text box, the tracks found, one of them, the button sending it, the message, the steps of a request, today's dedications |
+| `pill`, `link`, `error` | A small status badge, a link-like button, an error |
+
+```css
+.heron-match { --heron-font: "Inter", sans-serif; --heron-radius: 6px; }
+.heron-match::part(title) { font-size: 28px; }
+.heron-match::part(choice) { padding: 24px; }
+.heron-widget[data-mode="widget"] { --heron-max-width: 100%; }
+```
+
+The show's color stays its own (*On the website*); the widget's layout for small screens and reduced motion stays too.
+
 ## Notifications
 
 Each show tells the team or the community what happens, through the station's [webhooks](api.md#webhooks), whose body templates already format messages for Discord, Slack or any other service. On each show's page:
