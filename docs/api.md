@@ -99,7 +99,8 @@ What belongs to a station (its engine and decks, queue, history, clocks, schedul
 | Outputs | `GET`, `POST /encoder-profiles`; `GET`, `PUT`, `DELETE /encoder-profiles/{id}`; `GET`, `POST /outputs`; `GET`, `PUT`, `DELETE /outputs/{id}` (with each output's live state, and its `statistics` settings: the stream server's admin credentials) |
 | Webhooks (admins) | `GET`, `POST /webhooks`; `GET`, `PUT`, `DELETE /webhooks/{id}`; `POST /webhooks/{id}/secret`; `POST /webhooks/{id}/test`; `GET /webhooks/{id}/deliveries` (`before`, `status`, `limit`); `POST /webhook-deliveries/{id}/retry` — see [below](#webhooks) |
 | Listener statistics | `GET /listeners/now`, `/listeners/samples`, `/listeners/days`, `/listeners/hours-of-day`, `/listeners/tracks`, `/listeners/players` (CSV with `format=csv` for days, hours and tracks); `GET`, `PUT /settings/statistics` (admins) — see [Listener statistics](statistics.md#api) |
-| Shows | `GET /shows` (each [show](listener-interaction.md) on for the station: its settings and whether it is open now); `GET`, `PUT /shows/{module}` (`dedications`, `match`, `top30`: hours, website, notifications, see [below](#shows); operators change them; `GET` also lists the station's webhooks by name, to choose from) |
+| Shows | `GET /shows` (each [show](listener-interaction.md) on for the station: its settings and whether it is open now); `GET`, `PUT /shows/{module}` (`dedications`, `match`, `top30`, `likes`: hours, website, notifications, see [below](#shows); operators change them; `GET` also lists the station's webhooks by name, to choose from) |
+| Likes | `GET /likes/current`, `/likes/week`, `/likes/tracks/{id}` — see [below](#likes) |
 | Gateway | `GET /gateway/state`, and each show's writes under `/gateway/stations/{code}/{module}/…`: for `heron-public` only, with the gateway token, see [below](#the-public-gateway) |
 | Public | `GET /public/now-playing`, `GET /public/history` (`before`, `limit`), `GET /public/queue`, and the same per station under `/public/stations/{code}/…` — no sign-in, see [below](#public-endpoints) |
 | Live | `GET /live` (WebSocket) |
@@ -183,7 +184,7 @@ Each [show](listener-interaction.md) has its settings per station, `GET`, `PUT /
                               "show.ended": {"enabled": false, "message": "{name} is closed. Back {next}"}}}}
 ```
 
-- `hours`: days 1 (Monday) to 7 (Sunday), `start_hour` 0 to 23, `end_hour` after it, up to 24, at most 50 ranges, in the station's time zone. Hours another show of the station has are refused, `409`, naming the show and the hours (`18:00–19:00 on Saturday belongs to the match`).
+- `hours`: none for [Likes](#likes), which are open all the time (`422`). Days 1 (Monday) to 7 (Sunday), `start_hour` 0 to 23, `end_hour` after it, up to 24, at most 50 ranges, in the station's time zone. Hours another show of the station has are refused, `409`, naming the show and the hours (`18:00–19:00 on Saturday belongs to the match`).
 - `website`: `title` (60 characters at most; empty: the show's name in the listener's language), `color` (`#rrggbb`), `small_widget`, `closed` (`message` or `nothing`), `closed_message` (200 characters at most, with `{day}` and `{hour}`; empty: the widget's own sentence), `page_url` (the website's page of the show, for `{link}`).
 - `notifications`: `webhook_ids` (webhooks of the station), `lead_minutes` (1 to 1440), `language` (`en`, `fr`, `es`, `de`), and each event with `enabled` and `message` (500 characters at most, with `{name}`, `{link}`, `{end}`, `{next}`, and the show's own placeholders; an unknown one is refused, `422`).
 
@@ -223,9 +224,27 @@ Errors are those of the API: `403` (`forbidden`: no valid proof, or a website no
 Behind it, the gateway calls the API with `Authorization: Bearer <HERON_PUBLIC_TOKEN>`:
 
 - `GET /api/v1/gateway/state`: every enabled station (`code`, `name`, `timezone`, `now_playing` as the public endpoint gives it, `shows`: the shows on for it), and `server_time_unix_ms`. Read once a second.
-- `POST /api/v1/gateway/stations/{code}/{module}/…`: a show's writes, with `X-Heron-Device` (the device's hash). The API checks again that the show is on (`404`) and open (`409`). A write the gateway adds up arrives as `{"counts": [{"fields": {…}, "count": 12}]}`.
+- `POST /api/v1/gateway/stations/{code}/{module}/…`: a show's writes, with `X-Heron-Device` (the device's hash). The API checks again that the show is on (`404`) and open (`409`). A write the gateway adds up arrives as `{"counts": [{"fields": {…}, "count": 12}]}`; one it keeps per device as `{"writes": [{"device": "…", "fields": {…}}]}`, each device's last.
 
 These routes accept only the gateway token, and the gateway token reaches nothing else: it is not a user's, and `HERON_PUBLIC_TOKEN` unset refuses it (`401`).
+
+## Likes
+
+Listeners' [likes](listener-interaction.md#likes) on the tracks played, per station (signed in; `404` while the `likes` module is off):
+
+- `GET /stations/{id}/likes/current`: the play listeners can vote on now, `play_id`, `track_id`, `likes`, `dislikes`; `null` while nothing can be voted on (a jingle, nothing on air).
+- `GET /stations/{id}/likes/week`: the most liked and least liked tracks of the week so far, from Monday 00:00 in the station's time zone: `from_unix_ms`, `min_votes` (10), and `most_liked`, `least_liked`, 10 each (`track_id`, `artist`, `title`, `likes`, `dislikes`, `share` from 0 to 1, `plays`), among the tracks with at least `min_votes` votes. Ties go to the track with the most votes.
+- `GET /stations/{id}/likes/tracks/{track_id}`: a track's votes on the station: `week`, `days_30` and `total` (each `likes`, `dislikes`), and `plays`, its latest 20 plays with votes (`play_id`, `started_at_unix_ms`, `likes`, `dislikes`).
+
+On the track list, `GET /tracks` gives each track's `likes` and `dislikes` over `likes_days` days (1 to 3650, 30 by default), on the station of `station_id` (every station's when left out), and takes:
+
+- `sort=liked`: by share of likes, lowest first (`desc=true`: highest first); tracks below 10 votes come after those ranked, those without votes last;
+- `liked_min`, `liked_max`: the share of likes in percent, 0 to 100 (tracks without votes are left out);
+- `votes_min`: at least this many votes.
+
+Each play of `GET /tracks/{id}/plays/grid` has its `likes` and `dislikes`.
+
+Votes are counted per play (`play_votes`: the play, its station, its track, when it started, likes and dislikes), kept as long as the history: a period's ranking adds up the plays that started in it, per track and per station.
 
 ## Cover art
 
