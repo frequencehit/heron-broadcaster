@@ -474,7 +474,10 @@ impl DedicationCheck {
             separation_min: None,
             at_unix_ms: None,
             restriction_id: None,
-            blocking: matches!(kind, DedicationCheckKind::Restriction | DedicationCheckKind::Unplayable),
+            blocking: matches!(
+                kind,
+                DedicationCheckKind::Restriction | DedicationCheckKind::Unplayable
+            ),
         }
     }
 }
@@ -613,7 +616,12 @@ fn range_of(
 
 /// The first separation rule `track` breaks at `at_ms` against `plays`
 /// (before and after it), with how long before `at_ms` the play was.
-fn separation(library: &Library, plays: &[Play], track: u64, at_ms: i64) -> Option<DedicationCheck> {
+fn separation(
+    library: &Library,
+    plays: &[Play],
+    track: u64,
+    at_ms: i64,
+) -> Option<DedicationCheck> {
     let found = library.tracks.get(&track)?;
     let windows = library.settings.separation;
     let mut broken: Option<(DedicationCheckKind, i64, u32)> = None;
@@ -874,11 +882,16 @@ async fn list_dedications(
         .push_bind(limit);
     let rows: Vec<Row> = select.build_query_as().fetch_all(pool).await?;
     let mut dedications: Vec<Dedication> = rows.into_iter().map(Dedication::from).collect();
-    if dedications.iter().any(|d| d.status == DedicationStatus::Pending) {
+    if dedications
+        .iter()
+        .any(|d| d.status == DedicationStatus::Pending)
+    {
         let player = station.engine.state().borrow().clone();
         let context = Context::load(pool, station.id(), player.as_deref()).await?;
         for dedication in &mut dedications {
-            if let (DedicationStatus::Pending, Some(track)) = (dedication.status, dedication.track_id) {
+            if let (DedicationStatus::Pending, Some(track)) =
+                (dedication.status, dedication.track_id)
+            {
                 dedication.checks = context.checks(track);
             } else if dedication.status == DedicationStatus::Pending {
                 dedication.checks = vec![DedicationCheck::of(DedicationCheckKind::Unplayable)];
@@ -1067,7 +1080,10 @@ async fn refuse_dedication(
     Json(request): Json<RefuseDedication>,
 ) -> ApiResult<Json<Dedication>> {
     user.require(Role::Operator)?;
-    if matches!(request.reason, Some(DedicationReason::Closed | DedicationReason::Removed)) {
+    if matches!(
+        request.reason,
+        Some(DedicationReason::Closed | DedicationReason::Removed)
+    ) {
         return Err(ApiError::Invalid(
             "the reason is just_played, unavailable, inappropriate or null".to_owned(),
         ));
