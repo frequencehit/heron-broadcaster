@@ -94,6 +94,12 @@ pub enum WebhookEvent {
     /// A dedication is accepted.
     #[serde(rename = "dedication.accepted")]
     DedicationAccepted,
+    /// A match's vote opens.
+    #[serde(rename = "match.started")]
+    MatchStarted,
+    /// A match's vote closes, with its result.
+    #[serde(rename = "match.closed")]
+    MatchClosed,
 }
 
 impl WebhookEvent {
@@ -111,6 +117,8 @@ impl WebhookEvent {
             Self::TopRank => "top.rank",
             Self::DedicationPlayed => "dedication.played",
             Self::DedicationAccepted => "dedication.accepted",
+            Self::MatchStarted => "match.started",
+            Self::MatchClosed => "match.closed",
         }
     }
 
@@ -125,6 +133,8 @@ impl WebhookEvent {
                 | Self::TopRank
                 | Self::DedicationPlayed
                 | Self::DedicationAccepted
+                | Self::MatchStarted
+                | Self::MatchClosed
         )
     }
 

@@ -83,6 +83,25 @@
         upcoming: "coming up",
         onlyAccepted: "Only accepted dedications are shown.",
       },
+      match: {
+        sub: "Choose the next track",
+        question: "Which track next?",
+        versus: "VS",
+        votes: "{n} votes",
+        oneVote: "1 vote",
+        mine: "Your choice",
+        change: "You can change your mind until the end.",
+        sending: "Sending…",
+        refused: "Your vote could not be counted. Try again.",
+        closed: "The vote is closed: the result on air!",
+        next: "The next vote is coming in a few tracks.",
+        won: "{title} won with {percent}",
+        last: "Last match",
+        today: "Today's results",
+        against: "against {track}",
+        tie: "tie, least recently played",
+        noVotes: "no vote",
+      },
       top30: {
         live: "Live: the places to come are revealed on air",
         week: "Week of {date}",
@@ -156,6 +175,25 @@
         playedTag: "diffusée",
         upcoming: "à venir",
         onlyAccepted: "Seules les dédicaces acceptées s'affichent.",
+      },
+      match: {
+        sub: "Choisissez le prochain titre",
+        question: "Quel titre juste après ?",
+        versus: "CONTRE",
+        votes: "{n} votes",
+        oneVote: "1 vote",
+        mine: "Votre choix",
+        change: "Vous pouvez changer d'avis jusqu'à la fin.",
+        sending: "Envoi…",
+        refused: "Votre vote n'a pas pu être compté. Réessayez.",
+        closed: "Vote fermé : le résultat à l'antenne !",
+        next: "Le prochain vote arrive dans quelques titres.",
+        won: "{title} l'emporte avec {percent}",
+        last: "Dernier match",
+        today: "Les résultats du jour",
+        against: "contre {track}",
+        tie: "égalité, le moins récent",
+        noVotes: "aucun vote",
       },
       top30: {
         live: "En direct : les places à venir se découvrent à l'antenne",
@@ -231,6 +269,25 @@
         upcoming: "por venir",
         onlyAccepted: "Solo se muestran las dedicatorias aceptadas.",
       },
+      match: {
+        sub: "Elige la próxima canción",
+        question: "¿Qué canción después?",
+        versus: "CONTRA",
+        votes: "{n} votos",
+        oneVote: "1 voto",
+        mine: "Tu elección",
+        change: "Puedes cambiar de opinión hasta el final.",
+        sending: "Enviando…",
+        refused: "No se pudo contar tu voto. Inténtalo de nuevo.",
+        closed: "Votación cerrada: ¡el resultado en antena!",
+        next: "La próxima votación llega en unas canciones.",
+        won: "{title} gana con {percent}",
+        last: "Último duelo",
+        today: "Los resultados de hoy",
+        against: "contra {track}",
+        tie: "empate, la menos reciente",
+        noVotes: "ningún voto",
+      },
       top30: {
         live: "En directo: los puestos que faltan se descubren en antena",
         week: "Semana del {date}",
@@ -304,6 +361,25 @@
         playedTag: "gespielt",
         upcoming: "kommt noch",
         onlyAccepted: "Nur angenommene Widmungen werden gezeigt.",
+      },
+      match: {
+        sub: "Wähle den nächsten Titel",
+        question: "Welcher Titel als Nächstes?",
+        versus: "GEGEN",
+        votes: "{n} Stimmen",
+        oneVote: "1 Stimme",
+        mine: "Deine Wahl",
+        change: "Du kannst deine Meinung bis zum Schluss ändern.",
+        sending: "Wird gesendet…",
+        refused: "Deine Stimme konnte nicht gezählt werden. Versuche es noch einmal.",
+        closed: "Abstimmung beendet: das Ergebnis im Programm!",
+        next: "Die nächste Abstimmung kommt in ein paar Titeln.",
+        won: "{title} gewinnt mit {percent}",
+        last: "Letztes Duell",
+        today: "Die Ergebnisse von heute",
+        against: "gegen {track}",
+        tie: "Gleichstand, der am längsten nicht gespielte",
+        noVotes: "keine Stimme",
       },
       top30: {
         live: "Live: die nächsten Plätze gibt es im Radio",
@@ -438,6 +514,31 @@
     ".today em{display:block}" +
     ".pill{font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;margin-left:6px;background:rgba(46,125,50,.14);color:#2e7d32}" +
     ".pill.soon{background:rgba(21,101,192,.12);color:#1565c0}" +
+    ".head.timed{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}" +
+    ".clock{font-weight:800;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.22);border-radius:8px;padding:3px 10px}" +
+    ".duel{display:flex;flex-direction:column;gap:8px}" +
+    ".versus{text-align:center;font-size:13px;font-weight:800;letter-spacing:.12em;color:#5f6067}" +
+    ".choice{font:inherit;color:inherit;text-align:left;display:flex;align-items:center;gap:12px;width:100%;" +
+    "padding:10px 14px;border:2px solid #e3e3df;border-radius:12px;cursor:pointer;box-sizing:border-box;" +
+    "background:linear-gradient(90deg,color-mix(in srgb,var(--color) 14%,transparent) var(--share,0%),transparent var(--share,0%))}" +
+    ".choice[aria-pressed=true]{border-color:var(--color)}" +
+    ".choice:disabled{cursor:default}" +
+    ".art{flex:none;width:52px;height:52px;border-radius:8px;object-fit:cover;background:var(--color);color:#fff;" +
+    "display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-weight:800}" +
+    ".choice .who strong{font-size:17px}.pct{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}" +
+    ".page .duel{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px}" +
+    ".page .choice{flex-direction:column;align-items:stretch;padding:16px}" +
+    ".page .art{width:100%;height:auto;aspect-ratio:2/1;font-size:64px}" +
+    ".page .choice .who strong{font-size:24px}.page .pct{font-size:34px}" +
+    ".bar{height:8px;border-radius:4px;background:#e3e3df;overflow:hidden}.bar span{display:block;height:100%;background:var(--color)}" +
+    ".page .question{display:flex;justify-content:space-between;align-items:center;margin:0 0 16px}" +
+    ".page .question strong{font-size:24px}.page .question .clock{font-size:44px;background:none;color:var(--color);padding:0}" +
+    ".center{text-align:center}" +
+    "@keyframes hurry{50%{opacity:.3}}" +
+    ".hurry .clock,.hurry .choice{animation:hurry 1s steps(1,end) infinite}" +
+    "@media (prefers-reduced-motion: reduce){.hurry .clock,.hurry .choice{animation:none;outline:3px solid var(--color);outline-offset:2px}" +
+    ".head .clock{outline-color:#fff}}" +
+    "@media (max-width:560px){.page .duel{grid-template-columns:1fr}}" +
     "@media (prefers-color-scheme: dark){.card{background:#1f1f1e;color:#ededea;border-color:#3a3a37}.muted,.closed svg{color:#b5b5b0}}";
   root.appendChild(style);
   var box = el("div", mode);
@@ -869,6 +970,162 @@
     chart(body, show);
   };
 
+  // The match (docs/listener-interaction.md#match): the two tracks, a vote
+  // for one, the countdown to the close, blinking in its last 5 seconds.
+  // The vote is kept for its match only, in memory.
+  var ballot = { match: null, choice: null, note: null };
+  var clockOffset = 0;
+
+  function remaining(show) {
+    var closes = show && show.state && show.state.closes_at_unix_ms;
+    if (!closes) return null;
+    return Math.max(0, closes - (Date.now() + clockOffset));
+  }
+
+  function clockText(ms) {
+    var s = Math.ceil(ms / 1000);
+    return Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+  }
+
+  // Updates the countdowns between two events, without drawing again.
+  function tick() {
+    if (module !== "match") return;
+    var show = latest && (latest.shows || []).filter(function (s) { return s.module === "match"; })[0];
+    var left = remaining(show);
+    var clocks = root.querySelectorAll(".clock");
+    for (var i = 0; i < clocks.length; i++) clocks[i].textContent = left === null ? "" : clockText(left);
+    var card = root.querySelector(".card");
+    if (card) card.classList.toggle("hurry", left !== null && left > 0 && left <= 5000);
+    var buttons = root.querySelectorAll(".choice");
+    for (var j = 0; j < buttons.length; j++) buttons[j].disabled = left === 0;
+  }
+
+  function votesText(n) {
+    return n === 1 ? t.match.oneVote : fill(t.match.votes, { n: n });
+  }
+
+  function art(track) {
+    if (track.cover_url) {
+      var img = el("img", "art");
+      img.alt = "";
+      img.src = track.cover_url + (track.cover_url.indexOf("?") < 0 ? "?size=" + (mode === "page" ? 600 : 160) : "");
+      return img;
+    }
+    return el("span", "art", (track.title || "?").charAt(0).toUpperCase());
+  }
+
+  function trackName(track) {
+    return [track.artist, track.title].filter(Boolean).join(" – ");
+  }
+
+  function resultLine(result, zone) {
+    var li = el("li");
+    if (result.closed_at_unix_ms) li.appendChild(el("time", "", hour(result.closed_at_unix_ms, zone)));
+    var who = el("div", "who");
+    var line = el("strong", "", trackName(result.winner));
+    var how = result.decided_by === "tie" ? t.match.tie
+      : result.decided_by === "no_votes" ? t.match.noVotes : result.percent + " %";
+    line.appendChild(el("span", "pill", how));
+    who.appendChild(line);
+    who.appendChild(el("span", "muted", fill(t.match.against, { track: trackName(result.loser) })));
+    li.appendChild(who);
+    return li;
+  }
+
+  RENDERERS.match = function (body, show, state, api) {
+    var match = show.state || {};
+    var zone = show.timezone || state.timezone;
+    if (state.now_playing && state.now_playing.server_time_unix_ms) {
+      clockOffset = state.now_playing.server_time_unix_ms - Date.now();
+    }
+    if (!match.match_id) {
+      var last = match.last;
+      if (last) {
+        body.appendChild(el("p", "muted small", t.match.last));
+        var row = el("div", "np");
+        row.appendChild(art(last.winner));
+        var words = el("div");
+        words.appendChild(el("strong", "", fill(t.match.won, { title: last.winner.title || "", percent: last.percent + " %" })));
+        words.appendChild(el("div", "muted", fill(t.match.against, { track: trackName(last.loser) })));
+        row.appendChild(words);
+        body.appendChild(row);
+      }
+      body.appendChild(el("p", "muted", ballot.match ? t.match.closed : t.match.next));
+      return;
+    }
+    if (ballot.match !== match.match_id) ballot = { match: match.match_id, choice: null, note: null };
+    var left = remaining(show);
+    if (mode === "page") {
+      var question = el("div", "question");
+      question.appendChild(el("strong", "", t.match.question));
+      question.appendChild(el("span", "clock", left === null ? "" : clockText(left)));
+      body.appendChild(question);
+    }
+    var duel = el("div", "duel");
+    (match.choices || []).forEach(function (choice, index) {
+      if (index === 1) duel.appendChild(el("div", "versus", t.match.versus));
+      var button = el("button", "choice");
+      button.type = "button";
+      button.disabled = left === 0;
+      button.setAttribute("aria-pressed", ballot.choice === choice.choice ? "true" : "false");
+      var live = typeof choice.percent === "number";
+      if (live) button.style.setProperty("--share", choice.percent + "%");
+      button.appendChild(art(choice));
+      var who = el("span", "who");
+      who.appendChild(el("strong", "", choice.title || ""));
+      if (choice.artist) who.appendChild(el("span", "muted", choice.artist));
+      if (mode === "page" && live) {
+        var bar = el("span", "bar");
+        var fillBar = el("span");
+        fillBar.style.width = choice.percent + "%";
+        bar.appendChild(fillBar);
+        who.appendChild(bar);
+      }
+      button.appendChild(who);
+      if (live) button.appendChild(el("span", "pct", choice.percent + " %"));
+      button.addEventListener("click", function () {
+        if (ballot.choice === choice.choice) return;
+        var mine = ballot;
+        mine.choice = choice.choice;
+        mine.note = t.match.sending;
+        render(latest);
+        api.send("vote", { match_id: match.match_id, choice: choice.choice }).then(
+          function (response) {
+            mine.note = response.ok ? t.match.change : response.status === 409 ? t.match.closed : t.match.refused;
+            if (!response.ok) mine.choice = null;
+            render(latest);
+          },
+          function () {
+            mine.note = t.match.refused;
+            mine.choice = null;
+            render(latest);
+          }
+        );
+      });
+      duel.appendChild(button);
+    });
+    body.appendChild(duel);
+    if (typeof match.votes === "number") body.appendChild(el("p", "muted center small", votesText(match.votes)));
+    if (ballot.note) body.appendChild(el("p", "muted center small", ballot.note));
+  };
+
+  // Today's results, under the page.
+  function matchResults(show, zone) {
+    var today = show.state && show.state.today;
+    if (mode !== "page" || !today || !today.length) return null;
+    var card = el("div", "card");
+    card.style.marginTop = "16px";
+    var body = el("div", "body");
+    body.appendChild(el("p", "title", t.match.today));
+    var list = el("ul", "today");
+    today.forEach(function (result) { list.appendChild(resultLine(result, zone)); });
+    body.appendChild(list);
+    card.appendChild(body);
+    return card;
+  }
+
+  if (module === "match") setInterval(tick, 250);
+
   function render(state) {
     if (!state) return;
     // What is typed keeps its focus and caret when the card is drawn again.
@@ -906,6 +1163,15 @@
     head.appendChild(el("p", "title", name));
     if (show.open && module === "likes") {
       head.appendChild(el("p", "sub", t.likes.sub));
+    } else if (show.open && module === "match") {
+      // The countdown, in the head of the small widget; nothing more.
+      var words = el("div");
+      words.appendChild(head.firstChild);
+      words.appendChild(el("p", "sub", t.match.sub));
+      head.appendChild(words);
+      head.className = "head timed";
+      var left = remaining(show);
+      if (mode === "widget" && left !== null) head.appendChild(el("span", "clock", clockText(left)));
     } else if (show.open && show.closes_at_unix_ms) {
       var until = fill(t.until, { hour: hour(show.closes_at_unix_ms, zone) });
       var left = module === "dedications" && show.state ? show.state.remaining : null;
@@ -946,6 +1212,11 @@
       var today = todayList(show, zone);
       if (today) box.appendChild(today);
     }
+    if (module === "match" && show.open) {
+      var results = matchResults(show, zone);
+      if (results) box.appendChild(results);
+    }
+    tick();
   }
 
   // For the shows' writes: a proof of work, then the write.

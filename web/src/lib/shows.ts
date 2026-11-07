@@ -54,6 +54,11 @@ export function ownEvents(key: string): { name: string; label: PlainKey }[] {
         { name: "dedication.played", label: "dedications.event.played" },
         { name: "dedication.accepted", label: "dedications.event.accepted" },
       ];
+    case "match":
+      return [
+        { name: "match.started", label: "match.event.started" },
+        { name: "match.closed", label: "match.event.closed" },
+      ];
     default:
       return [];
   }
@@ -66,6 +71,8 @@ export function ownPlaceholders(key: string): string[] {
       return ["artist", "title", "top3", "rank"];
     case "dedications":
       return ["artist", "title", "from", "to", "message", "time"];
+    case "match":
+      return ["title1", "artist1", "title2", "artist2", "close", "winner", "loser", "percent", "votes"];
     default:
       return [];
   }
@@ -89,6 +96,18 @@ export function ownExample(key: string): Record<string, string> {
         to: "Papi Jean",
         message: "Happy 80th!",
         time: "17:36",
+      };
+    case "match":
+      return {
+        title1: "Neon Orchard",
+        artist1: "Cassia Bloom",
+        title2: "Running Lights",
+        artist2: "Echo Parade",
+        close: "18:05",
+        winner: "Neon Orchard",
+        loser: "Running Lights",
+        percent: "58 %",
+        votes: "79",
       };
     default:
       return {};

@@ -3559,6 +3559,59 @@
         ]
       }
     },
+    "/api/v1/gateway/stations/{code}/match/vote": {
+      "post": {
+        "tags": [
+          "gateway"
+        ],
+        "summary": "Each device's last vote, from the gateway, every second. A vote counts\nwhile its match is open; a device's vote replaces its earlier one.",
+        "operationId": "gateway_match_votes",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "The station's code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchVoteBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchVotesTaken"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/api/v1/history": {
       "get": {
         "tags": [
@@ -5281,6 +5334,219 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LiveMessage"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/match/current": {
+      "get": {
+        "tags": [
+          "match"
+        ],
+        "summary": "The match waiting for its vote or open, else `null`.",
+        "operationId": "current_match",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/MatchView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/match/current/cancel": {
+      "post": {
+        "tags": [
+          "match"
+        ],
+        "summary": "Cancels the match: the first track stays in the queue as an ordinary\ntrack, the second leaves it. Operators.",
+        "operationId": "cancel_match",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/match/current/close": {
+      "post": {
+        "tags": [
+          "match"
+        ],
+        "summary": "Closes the vote now and decides with the votes so far. `409` while the\nvote is not open. Operators.",
+        "operationId": "close_match",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/match/history": {
+      "get": {
+        "tags": [
+          "match"
+        ],
+        "summary": "The matches decided or cancelled, the latest first, and the week's\nmatches and votes.",
+        "operationId": "match_history",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, 50 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "The matches before this ID: the next page.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchHistory"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/match/settings": {
+      "get": {
+        "tags": [
+          "match"
+        ],
+        "summary": "The station's match settings.",
+        "operationId": "get_match_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "match"
+        ],
+        "summary": "Replaces the station's match settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_match_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchSettings"
                 }
               }
             }
@@ -11327,6 +11593,283 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LiveMessage"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/match/current": {
+      "get": {
+        "tags": [
+          "match"
+        ],
+        "summary": "The match waiting for its vote or open, else `null`.",
+        "operationId": "current_match_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/MatchView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/match/current/cancel": {
+      "post": {
+        "tags": [
+          "match"
+        ],
+        "summary": "Cancels the match: the first track stays in the queue as an ordinary\ntrack, the second leaves it. Operators.",
+        "operationId": "cancel_match_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/match/current/close": {
+      "post": {
+        "tags": [
+          "match"
+        ],
+        "summary": "Closes the vote now and decides with the votes so far. `409` while the\nvote is not open. Operators.",
+        "operationId": "close_match_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/match/history": {
+      "get": {
+        "tags": [
+          "match"
+        ],
+        "summary": "The matches decided or cancelled, the latest first, and the week's\nmatches and votes.",
+        "operationId": "match_history_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, 50 by default.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "The matches before this ID: the next page.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchHistory"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/match/settings": {
+      "get": {
+        "tags": [
+          "match"
+        ],
+        "summary": "The station's match settings.",
+        "operationId": "get_match_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "match"
+        ],
+        "summary": "Replaces the station's match settings. The categories must be the\nstation's (`422`). Operators.",
+        "operationId": "put_match_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchSettings"
                 }
               }
             }
@@ -24380,6 +24923,384 @@
         },
         "additionalProperties": false
       },
+      "MatchChoice": {
+        "type": "object",
+        "description": "One of the two tracks, with its votes.",
+        "required": [
+          "choice",
+          "votes",
+          "percent"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "choice": {
+            "$ref": "#/components/schemas/MatchSide"
+          },
+          "percent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its share of the votes, 0 to 100.",
+            "minimum": 0
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "votes": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "MatchDecision": {
+        "type": "string",
+        "description": "How the winner was decided.",
+        "enum": [
+          "votes",
+          "tie",
+          "no_votes",
+          "early"
+        ]
+      },
+      "MatchDeviceVote": {
+        "type": "object",
+        "description": "A device's last vote.",
+        "required": [
+          "device",
+          "fields"
+        ],
+        "properties": {
+          "device": {
+            "type": "string",
+            "description": "The gateway's hash of the device."
+          },
+          "fields": {
+            "$ref": "#/components/schemas/MatchVoteFields"
+          }
+        }
+      },
+      "MatchHistory": {
+        "type": "object",
+        "required": [
+          "matches",
+          "week"
+        ],
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatchView"
+            },
+            "description": "Decided or cancelled, the latest first."
+          },
+          "week": {
+            "$ref": "#/components/schemas/MatchWeek"
+          }
+        }
+      },
+      "MatchSettings": {
+        "type": "object",
+        "description": "A station's match settings (`station_settings`, `match`). Its hours,\nwebsite and notifications are its show settings.",
+        "properties": {
+          "category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The category the two tracks come from, the station's; none: no\nmatch.",
+            "default": null,
+            "minimum": 0
+          },
+          "close_before_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Seconds before the next transition the vote closes, 5 to 60.",
+            "default": 10,
+            "minimum": 0
+          },
+          "every_tracks": {
+            "type": "integer",
+            "format": "int32",
+            "description": "A winner every N tracks, 2 to 20: the vote runs during the track\nbefore it.",
+            "default": 4,
+            "minimum": 0
+          },
+          "jingle_category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The announcement over the intro of the vote's track; none: no\njingle.",
+            "default": null,
+            "minimum": 0
+          },
+          "live_results": {
+            "type": "boolean",
+            "description": "The votes on the website as they come; off: the result only.",
+            "default": true
+          },
+          "loser_same_day": {
+            "type": "boolean",
+            "description": "A loser can be one of the two tracks again the same day.",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "MatchSide": {
+        "type": "string",
+        "description": "One of the two tracks.",
+        "enum": [
+          "a",
+          "b"
+        ]
+      },
+      "MatchStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "open",
+          "closed",
+          "cancelled"
+        ]
+      },
+      "MatchTrack": {
+        "type": "object",
+        "description": "A track of a match.",
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "MatchView": {
+        "type": "object",
+        "description": "A match waiting for its vote or open, for operators.",
+        "required": [
+          "id",
+          "status",
+          "vote_track",
+          "choices",
+          "votes"
+        ],
+        "properties": {
+          "category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "category_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatchChoice"
+            },
+            "description": "A, then B."
+          },
+          "closed_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "closes_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "decided_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MatchDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "jingle": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MatchTrack",
+                "description": "The announcement over its intro."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "opened_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the vote's track started."
+          },
+          "status": {
+            "$ref": "#/components/schemas/MatchStatus"
+          },
+          "transition_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The next transition, as planned when the vote opened."
+          },
+          "vote_track": {
+            "$ref": "#/components/schemas/MatchTrack",
+            "description": "The track the vote runs during."
+          },
+          "votes": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "winner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MatchSide",
+                "description": "Once decided."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "MatchVoteBatch": {
+        "type": "object",
+        "description": "Each device's last vote since the last batch.",
+        "required": [
+          "writes"
+        ],
+        "properties": {
+          "writes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatchDeviceVote"
+            }
+          }
+        }
+      },
+      "MatchVoteFields": {
+        "type": "object",
+        "description": "What a listener sent.",
+        "required": [
+          "match_id",
+          "choice"
+        ],
+        "properties": {
+          "choice": {
+            "$ref": "#/components/schemas/MatchSide"
+          },
+          "match_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "MatchVotesTaken": {
+        "type": "object",
+        "required": [
+          "counted",
+          "dropped"
+        ],
+        "properties": {
+          "counted": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The votes counted.",
+            "minimum": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Those dropped: for a match that is not open, or another station's.",
+            "minimum": 0
+          }
+        }
+      },
+      "MatchWeek": {
+        "type": "object",
+        "description": "The week's matches and votes.",
+        "required": [
+          "from_unix_ms",
+          "matches",
+          "votes"
+        ],
+        "properties": {
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monday 00:00, in the station's time zone."
+          },
+          "matches": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "votes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "Medley": {
         "type": "object",
         "required": [
@@ -25223,6 +26144,32 @@
           },
           "to": {
             "type": "string"
+          }
+        }
+      },
+      "OnAirMatch": {
+        "type": "object",
+        "description": "What `now-playing` says of a track the listeners chose.",
+        "required": [
+          "name",
+          "percent",
+          "votes"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The show's name on the website."
+          },
+          "percent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its share of the votes, 0 to 100.",
+            "minimum": 0
+          },
+          "votes": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -26686,6 +27633,17 @@
             "format": "int64",
             "description": "From the cue-in to the cue-out.",
             "minimum": 0
+          },
+          "match": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OnAirMatch",
+                "description": "The match it won (`docs/listener-interaction.md#match`)."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "position_ms": {
             "type": "integer",
@@ -33763,7 +34721,9 @@
           "top.published",
           "top.rank",
           "dedication.played",
-          "dedication.accepted"
+          "dedication.accepted",
+          "match.started",
+          "match.closed"
         ]
       },
       "WebhookInput": {
@@ -34171,6 +35131,10 @@
     {
       "name": "dedications",
       "description": "Listeners' requests for a track with a message, accepted into the queue or refused"
+    },
+    {
+      "name": "match",
+      "description": "Listeners vote for the next track between two, every few tracks"
     },
     {
       "name": "top30",

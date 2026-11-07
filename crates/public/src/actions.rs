@@ -65,8 +65,8 @@ pub struct Action {
     pub delivery: Delivery,
 }
 
-/// The writes of every show. Each show adds its own (#132).
-pub const ACTIONS: &[Action] = &[DEDICATION, LIKE];
+/// The writes of every show. Each show adds its own.
+pub const ACTIONS: &[Action] = &[DEDICATION, LIKE, MATCH_VOTE];
 
 /// A request for a track with a message (#131), sent on to the API, which
 /// answers its follow link. The API counts each device's requests in the
@@ -183,6 +183,31 @@ pub const LIKE: Action = Action {
             max_chars: 7,
             required: true,
             choices: &["like", "dislike"],
+            current: false,
+        },
+    ],
+    per_device: 0,
+    delivery: Delivery::Latest,
+};
+
+/// A vote for one of the match's two tracks (#132): for the match open
+/// now, one per device per match, the last one counting until the close.
+pub const MATCH_VOTE: Action = Action {
+    module: Module::Match,
+    name: "vote",
+    fields: &[
+        Field {
+            name: "match_id",
+            max_chars: 20,
+            required: true,
+            choices: &[],
+            current: true,
+        },
+        Field {
+            name: "choice",
+            max_chars: 1,
+            required: true,
+            choices: &["a", "b"],
             current: false,
         },
     ],
@@ -334,6 +359,42 @@ pub(crate) mod tests {
             .check(&serde_json::json!({"play_id": null, "vote": "like"}))
             .unwrap_err();
         assert!(no_play.contains("required"));
+    }
+
+    #[test]
+    fn match_votes_name_the_open_match_and_a_or_b() {
+        assert_eq!(MATCH_VOTE.path(), "match/vote");
+        assert!(find(ACTIONS, "match", "vote").is_some());
+        let vote = MATCH_VOTE
+            .check(&serde_json::json!({"match_id": 7, "choice": "b"}))
+            .unwrap();
+        for (body, error) in [
+            (
+                serde_json::json!({"match_id": 7, "choice": "c"}),
+                "one of a, b",
+            ),
+            (serde_json::json!({"choice": "a"}), "match_id is required"),
+            (
+                serde_json::json!({"match_id": 7, "choice": "a", "device": "x"}),
+                "unknown field device",
+            ),
+        ] {
+            let refused = MATCH_VOTE.check(&body).unwrap_err();
+            assert!(refused.contains(error), "{body}: {refused}");
+        }
+        // Only the match open now; none between two.
+        assert_eq!(
+            MATCH_VOTE.stale(&vote, &serde_json::json!({"match_id": 7})),
+            None
+        );
+        assert_eq!(
+            MATCH_VOTE.stale(&vote, &serde_json::json!({"match_id": 6})),
+            Some("match_id")
+        );
+        assert_eq!(
+            MATCH_VOTE.stale(&vote, &serde_json::json!({"match_id": null})),
+            Some("match_id")
+        );
     }
 
     #[test]

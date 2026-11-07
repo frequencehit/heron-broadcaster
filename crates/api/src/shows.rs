@@ -90,6 +90,9 @@ pub async fn public_shows(pool: &MySqlPool, station_id: u64) -> ApiResult<Vec<Sh
             public.state =
                 crate::dedications::public_state(pool, station_id, &settings, &timezone).await?;
         }
+        if show.module == Module::Match {
+            public.state = crate::matches::public_state(pool, station_id, &timezone).await?;
+        }
         if show.module == Module::Top30 {
             public.state =
                 crate::top30::public_state(pool, station_id, &settings, &timezone).await?;

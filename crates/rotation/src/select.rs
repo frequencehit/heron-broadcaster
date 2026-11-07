@@ -544,6 +544,9 @@ struct SlotCall<'l> {
     draw: Option<DrawDepth>,
     /// Filling a gap: the rules as configured only, never relaxed.
     first_only: bool,
+    /// Whether what played before counts (restrictions after a category, a
+    /// type never twice in a row): not for a jingle over a track's intro.
+    after_previous: bool,
 }
 
 /// Counts a track held back by `rule` in `blocked`.
@@ -582,6 +585,7 @@ fn fill(
     let local = library.local(at_ms).datetime();
     let previous = history
         .previous(at_ms)
+        .filter(|_| slot.after_previous)
         .map(|play| play.categories.as_slice());
     // The days of the slot's category, or of a track's own.
     let days = slot
@@ -949,6 +953,63 @@ pub(crate) fn outcome(
     }
 }
 
+/// A track of `category` to play at `at_ms`, picked as a slot calling that
+/// category would (least recently played, rules enforced and relaxed step
+/// by step), outside any clock: a show's pick (the match's two tracks,
+/// `docs/listener-interaction.md#match`). Without `enforce_rules`, the
+/// separation rules do not hold (an announcement jingle), as for a slot
+/// that does not enforce them, nor does what played before (restrictions
+/// after a category, a type never twice in a row): it plays over the next
+/// track's intro. Tracks in `excluded` are never offered.
+/// `None` when nothing of the category can be picked: the fallback
+/// category does not stand in for it.
+///
+/// The play ratio decides as for a slot, but its counters do not move.
+pub fn from_category(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    category: CategoryId,
+    excluded: &[TrackId],
+    enforce_rules: bool,
+    rng: &mut Rng,
+) -> Option<Pick> {
+    if library.modules_off.contains(&category) {
+        return None;
+    }
+    let mut call = Call::new(library, Some(category), None);
+    call.pool.retain(|(track, _)| !excluded.contains(&track.id));
+    let slot = SlotCall {
+        call,
+        method: Method::LeastRecentlyPlayed,
+        enforce_rules,
+        draw: Some(library.draw(
+            library.categories.get(&category).map(|c| &c.separation),
+            None,
+        )),
+        first_only: false,
+        after_previous: enforce_rules,
+    };
+    let mut held = Vec::new();
+    let (track, mut explanation, _) =
+        fill(library, history, at_ms, &slot, &mut held, rng, None).ok()?;
+    if explanation.category_id != Some(category) {
+        return None;
+    }
+    let schedule = library.schedule_at(&library.local(at_ms));
+    explanation.schedule_id = Some(schedule.id);
+    explanation.schedule_name = Some(schedule.name.clone());
+    explanation.held_by_ratio = held;
+    Some(Pick {
+        track,
+        position: None,
+        explanation,
+        linked: None,
+        medley_cut: None,
+        start_at_ms: None,
+    })
+}
+
 /// The next exact time ahead of a pick, for [`lookahead`].
 pub(crate) struct Ahead {
     pub window: Window,
@@ -1181,6 +1242,7 @@ impl Picker<'_, '_> {
             draw: (slot.method != Method::Random)
                 .then(|| library.draw(category.map(|c| &c.separation), Some(&slot.separation))),
             first_only: false,
+            after_previous: true,
         };
         let position = u32::try_from(index).unwrap_or(u32::MAX);
         // A looping clock's position is in the hour the track plays in.
@@ -1318,6 +1380,7 @@ impl Picker<'_, '_> {
                 enforce_rules: true,
                 draw: Some(library.draw(Some(&category.separation), None)),
                 first_only: true,
+                after_previous: true,
             };
             let fit = Fit {
                 window: upcoming.window,
@@ -1391,6 +1454,7 @@ pub(crate) fn pick(
             enforce_rules: true,
             draw: Some(library.draw(None, None)),
             first_only: false,
+            after_previous: true,
         };
         return fill(
             library,
@@ -1634,6 +1698,51 @@ mod tests {
             },
             TimeZone::UTC,
         )
+    }
+
+    #[test]
+    fn an_announcement_follows_a_jingle() {
+        // Categories 1 and 2 are jingles: never two in a row.
+        let mut library = library(vec![slot(1, Method::Random)]);
+        library.no_two_in_a_row = HashMap::from([(1, 7), (2, 7)]);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 9 * HOUR));
+        let at = 9 * HOUR + MIN;
+        let mut rng = Rng::new(3);
+        // A slot's pick keeps the rule; an announcement, over the next
+        // track's intro, does not.
+        assert!(from_category(&library, &history, at, 2, &[], true, &mut rng).is_none());
+        let pick = from_category(&library, &history, at, 2, &[], false, &mut rng).unwrap();
+        assert_eq!(pick.explanation.category_id, Some(2));
+    }
+
+    #[test]
+    fn a_category_gives_its_tracks_with_its_rules_and_nothing_else() {
+        let library = library(vec![slot(1, Method::Random)]);
+        let mut history = History::default();
+        // Track 7 played a minute ago: track separation holds it back.
+        history.push(Play::of(&library.tracks[&7], 9 * HOUR));
+        let mut rng = Rng::new(3);
+        for _ in 0..20 {
+            let pick =
+                from_category(&library, &history, 9 * HOUR + MIN, 2, &[6], true, &mut rng).unwrap();
+            assert!([8, 9, 10].contains(&pick.track), "{}", pick.track);
+            assert_eq!(pick.explanation.category_id, Some(2));
+            assert_eq!(pick.position, None);
+        }
+        // Nothing left in the category: no pick, not even from the fallback.
+        assert!(
+            from_category(
+                &library,
+                &history,
+                HOUR,
+                2,
+                &[6, 7, 8, 9, 10],
+                true,
+                &mut rng
+            )
+            .is_none()
+        );
     }
 
     #[test]
