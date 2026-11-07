@@ -39,6 +39,35 @@
         }
       }
     },
+    "/api/v1/about/stopped": {
+      "delete": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Takes the workers that have stopped reporting off the list: the\ncontainers of earlier runs, each with its own instance name. One that\nruns again reports again and comes back. Admins.",
+        "operationId": "clear_stopped",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoppedCleared"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agc-presets": {
       "get": {
         "tags": [
@@ -25333,6 +25362,20 @@
           }
         },
         "additionalProperties": false
+      },
+      "StoppedCleared": {
+        "type": "object",
+        "description": "How many stopped workers `DELETE /about/stopped` took off the list.",
+        "required": [
+          "removed"
+        ],
+        "properties": {
+          "removed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "StreamDetails": {
         "type": "object",
