@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Library management through heron-librarian: identifications to review,
-// organizing the library after a dry run, and undoing batches.
+// What is left to do on the library (docs/web.md › To do): identifications
+// to review, the songs missing an intro, a hook or a cover, and, through
+// heron-librarian, organizing the library after a dry run and undoing batches.
 
 import { ModuleOff } from "../components/Modules";
 import { useModule } from "../lib/modules";
 import { CoverCandidates } from "../components/Cover";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type Schemas, api, done, unwrap } from "../api";
 import { TaskState, useTask } from "../components/Task";
@@ -26,12 +27,25 @@ import { dateTime, duration, trackName } from "../lib/format";
 import { Link, setSearch, useLocation } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 
-type Tab = "review" | "covers" | "organize" | "batches";
+type Tab = "review" | "intros" | "hooks" | "covers" | "organize" | "batches";
 
-export function Review() {
+/** The query key of the tabs' counts, refreshed with what changes them. */
+export const TODO_COUNTS = ["todo-counts"];
+
+export function ToDo() {
   const { search } = useLocation();
   const tab = (search.get("tab") ?? "review") as Tab;
   const coverArt = useModule("cover_art");
+  const counts = useQuery({
+    queryKey: TODO_COUNTS,
+    queryFn: () => unwrap(api.GET("/api/v1/library/todo")),
+  });
+  const count: Partial<Record<Tab, number | null | undefined>> = {
+    review: counts.data?.to_identify,
+    intros: counts.data?.no_intro,
+    hooks: counts.data?.no_hook,
+    covers: counts.data?.no_cover,
+  };
   return (
     <>
       <PageHead
@@ -41,29 +55,169 @@ export function Review() {
       <nav className="tabs" aria-label={t("review.sections")}>
         {(
           [
-            ["review", "review.tab.identifications"],
-            ["covers", "review.tab.covers"],
+            ["review", "todo.tab.identify"],
+            ["intros", "todo.tab.intros"],
+            ["hooks", "todo.tab.hooks"],
+            ["covers", "todo.tab.covers"],
             ["organize", "review.tab.organize"],
             ["batches", "review.tab.changes"],
           ] as const satisfies readonly (readonly [Tab, PlainKey])[]
         )
           .filter(([value]) => coverArt || value !== "covers")
-          .map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-selected={tab === value}
-            onClick={() => setSearch({ tab: value === "review" ? undefined : value })}
-          >
-            {t(label)}
-          </button>
-        ))}
+          .map(([value, label]) => {
+            const n = count[value];
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-selected={tab === value}
+                onClick={() =>
+                  setSearch({ tab: value === "review" ? undefined : value, page: undefined, sort: undefined, desc: undefined })
+                }
+              >
+                {t(label)} {n ? <span className="count">{number(n)}</span> : null}
+              </button>
+            );
+          })}
       </nav>
       {tab === "review" && <Identifications />}
-      {tab === "covers" && (coverArt ? <CoversToCheck /> : <ModuleOff module="cover_art" />)}
+      {tab === "intros" && <MissingSongs filter="no_intro" empty="todo.noMissingIntro" />}
+      {tab === "hooks" && <MissingSongs filter="no_hook" empty="todo.noMissingHook" />}
+      {tab === "covers" &&
+        (coverArt ? (
+          <div className="stack">
+            <CoversToCheck />
+            <MissingSongs filter="no_cover" empty="todo.noMissingCover" trackTab="details" />
+          </div>
+        ) : (
+          <ModuleOff module="cover_art" />
+        ))}
       {tab === "organize" && <Organize />}
       {tab === "batches" && <Batches />}
     </>
+  );
+}
+
+// Songs missing an intro, a hook or a cover ---------------------------------
+
+const PAGE = 50;
+
+type MissingSort = "artist" | "title";
+
+function MissingSongs({
+  filter,
+  empty,
+  trackTab,
+}: {
+  filter: "no_intro" | "no_hook" | "no_cover";
+  empty: PlainKey;
+  /** The tab of the track's page that fixes it: *Sound* by default. */
+  trackTab?: "details";
+}) {
+  const { search } = useLocation();
+  const page = Math.max(0, Number(search.get("page") ?? 0) || 0);
+  const sort: MissingSort = search.get("sort") === "title" ? "title" : "artist";
+  const desc = search.get("desc") === "true";
+  const songs = useQuery({
+    queryKey: ["tracks", "todo", filter, sort, desc, page],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/v1/tracks", {
+          params: { query: { active_songs: true, filter, sort, desc, limit: PAGE, offset: page * PAGE } },
+        }),
+      ),
+    placeholderData: keepPreviousData,
+  });
+  const items = songs.data?.items ?? [];
+  const total = songs.data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+  const href = (id: number) => (trackTab ? `/library/${id}?tab=${trackTab}` : `/library/${id}`);
+  return (
+    <Card flush>
+      <div className="card-body row between">
+        <span className="muted small">{t("todo.songsHelp")}</span>
+        <span className="row" style={{ flexWrap: "nowrap", alignItems: "flex-end" }}>
+          <label className="stacked">
+            <span>{t("library.sortLabel")}</span>
+            <select
+              className="input"
+              value={sort}
+              onChange={(event) =>
+                setSearch({ sort: event.target.value === "artist" ? undefined : event.target.value, page: undefined })
+              }
+            >
+              <option value="artist">{t("library.sort.artist")}</option>
+              <option value="title">{t("library.sort.title")}</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="btn ghost small"
+            aria-pressed={desc}
+            title={t("library.reverseHelp")}
+            onClick={() => setSearch({ desc: desc ? undefined : "true", page: undefined })}
+          >
+            {desc ? t("library.reversed") : t("library.reverse")}
+          </button>
+        </span>
+      </div>
+      {songs.isPending && <Loading />}
+      {songs.isError && (
+        <div className="card-body">
+          <ErrorView error={songs.error} />
+        </div>
+      )}
+      {songs.data && items.length === 0 && <Empty>{t(empty)}</Empty>}
+      {items.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t("library.sort.title")}</th>
+                <th>{t("library.sort.artist")}</th>
+                <th className="hide-narrow">{t("library.sort.album")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((track) => (
+                <tr key={track.id}>
+                  <td className="title-cell">
+                    <Link to={href(track.id)} className="ellipsis">
+                      {track.title ?? track.path}
+                    </Link>
+                  </td>
+                  <td className="ellipsis">{track.artist ?? "–"}</td>
+                  <td className="hide-narrow ellipsis">{track.album ?? "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {total > PAGE && (
+        <div className="pager">
+          <button
+            type="button"
+            className="btn small"
+            disabled={page === 0}
+            onClick={() => setSearch({ page: page - 1 || undefined })}
+          >
+            {t("library.previous")}
+          </button>
+          <span className="muted small num">
+            {t("library.page", { page: page + 1, pages })} · {t("common.tracks", { count: total })}
+          </span>
+          <button
+            type="button"
+            className="btn small"
+            disabled={page + 1 >= pages}
+            onClick={() => setSearch({ page: page + 1 })}
+          >
+            {t("library.nextPage")}
+          </button>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -81,14 +235,11 @@ function CoversToCheck() {
     return <ErrorView error={albums.error} />;
   }
   if (albums.data.length === 0) {
-    return (
-      <Card>
-        <Empty>{t("review.noCovers")}</Empty>
-      </Card>
-    );
+    return null;
   }
   return (
     <div className="stack">
+      <h2 style={{ margin: 0 }}>{t("todo.coversToCheck")}</h2>
       <p className="muted" style={{ margin: 0 }}>
         {t("review.coversIntro")}
       </p>
@@ -105,6 +256,7 @@ function CoverAlbum({ album }: { album: Schemas["CandidateAlbum"] }) {
   const refresh = () => {
     void client.invalidateQueries({ queryKey: ["cover-candidates"] });
     void client.invalidateQueries({ queryKey: ["tracks"] });
+    void client.invalidateQueries({ queryKey: TODO_COUNTS });
   };
   const refuse = useAction(
     () => done(api.POST("/api/v1/covers/candidates/refuse", { body: { album_key: album.album_key } })),
@@ -190,7 +342,7 @@ function ReviewItem({ item }: { item: Schemas["ReviewItem"] }) {
   );
   const keep = useAction(
     () => done(api.POST("/api/v1/tracks/{id}/review/keep", { params: { path: { id: item.track.id } } })),
-    { success: t("review.kept"), invalidate: [["review"], ["review-count"]] },
+    { success: t("review.kept"), invalidate: [["review"], ["review-count"], TODO_COUNTS] },
   );
 
   useEffect(() => {
@@ -198,6 +350,7 @@ function ReviewItem({ item }: { item: Schemas["ReviewItem"] }) {
       toast(t("review.applied", { track: trackName(item.track) }));
       void client.invalidateQueries({ queryKey: ["review"] });
       void client.invalidateQueries({ queryKey: ["review-count"] });
+      void client.invalidateQueries({ queryKey: TODO_COUNTS });
       void client.invalidateQueries({ queryKey: ["library-batches"] });
     } else if (task.data?.status === "failed") {
       toast(task.data.error ?? t("review.applyFailed"), true);

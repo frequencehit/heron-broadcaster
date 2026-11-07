@@ -30,7 +30,7 @@ export const PAGES: Page[] = [
   { path: "/labels", label: "nav.labels", icon: "label", module: "labels" },
   { path: "/medleys", label: "nav.medleys", icon: "queue", module: "medleys" },
   { path: "/artists", label: "nav.artists", icon: "mic", module: "artists" },
-  { path: "/to-organize", label: "nav.review", icon: "review", module: "review" },
+  { path: "/to-do", label: "nav.review", icon: "review", module: "review" },
   { path: "/trash", label: "nav.trash", icon: "trash", module: "trash" },
   { path: "/migrate", label: "nav.import", icon: "upload", admin: true },
   { path: "/clocks", label: "nav.clocks", icon: "clock", section: "nav.programming", station: true },
