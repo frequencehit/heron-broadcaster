@@ -36,6 +36,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Outputs in the API** give a `server_id` and only their mount in `config`; their `statistics` (the admin credentials) moved to the stream server. A migration groups the existing outputs into servers ([Upgrading – Edge](docs/upgrading.md#edge)).
 - **Settings** are in tabs: *Station*, *Programming*, *Audio*, *Library* and *Statistics*.
 - **The track list's bar** keeps the station, category, play ratio and sort menus, each with its name above it; the status menu (playable, missing, silent…) and the daypart separation filter moved to *More filters*, which opens by itself when one of them is set (as from the library's *missing* or *silent* links).
+- **Settings › Programming › Rotation** is split into titled sections (separation, dayparts, draw depth, when no track fits, weight after a play, the station's library, across stations), each with a one-line explanation; how each slot method draws is folded away.
 
 ### Fixed
 
