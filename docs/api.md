@@ -101,6 +101,7 @@ What belongs to a station (its engine and decks, queue, history, clocks, schedul
 | Listener statistics | `GET /listeners/now`, `/listeners/samples`, `/listeners/days`, `/listeners/hours-of-day`, `/listeners/tracks`, `/listeners/players` (CSV with `format=csv` for days, hours and tracks); `GET`, `PUT /settings/statistics` (admins) — see [Listener statistics](statistics.md#api) |
 | Shows | `GET /shows` (each [show](listener-interaction.md) on for the station: its settings and whether it is open now); `GET`, `PUT /shows/{module}` (`dedications`, `match`, `top30`, `likes`: hours, website, notifications, see [below](#shows); operators change them; `GET` also lists the station's webhooks by name, to choose from) |
 | Likes | `GET /likes/current`, `/likes/week`, `/likes/tracks/{id}` — see [below](#likes) |
+| Top 30 | `GET`, `PUT /top30/settings`; `GET /top30/chart`, `/top30/charts`; `POST`, `DELETE /top30/charts/{week}/removals/{track_id}`; `PUT /top30/charts/{week}/new-release`; `GET /top30/show` — see [below](#top-30) |
 | Gateway | `GET /gateway/state`, and each show's writes under `/gateway/stations/{code}/{module}/…`: for `heron-public` only, with the gateway token, see [below](#the-public-gateway) |
 | Public | `GET /public/now-playing`, `GET /public/history` (`before`, `limit`), `GET /public/queue`, and the same per station under `/public/stations/{code}/…` — no sign-in, see [below](#public-endpoints) |
 | Live | `GET /live` (WebSocket) |
@@ -245,6 +246,26 @@ On the track list, `GET /tracks` gives each track's `likes` and `dislikes` over 
 Each play of `GET /tracks/{id}/plays/grid` has its `likes` and `dislikes`.
 
 Votes are counted per play (`play_votes`: the play, its station, its track, when it started, likes and dislikes), kept as long as the history: a period's ranking adds up the plays that started in it, per track and per station.
+
+## Top 30
+
+The [Top 30](listener-interaction.md#top-30) of a station (signed in; operators change it; `404` while the `top30` module is off). A week is named by its Monday, `2026-11-02`.
+
+- `GET`, `PUT /stations/{id}/top30/settings`:
+
+  ```json
+  {"close_day": 7, "close_hour": 17, "min_votes": 10, "size": 30,
+   "category_ids": [], "jingle_category_id": 12, "new_release_category_id": 15}
+  ```
+
+  `close_day` 1 (Monday) to 7, `close_hour` 0 to 24 (Monday needs 1 or more: the week starts on Monday 00:00), `min_votes` 1 to 1000, `size` 1 to 50, `category_ids` the eligible categories (empty: the station's music), the jingle and new release categories or `null`. A category that is not the station's is refused, `422`. The show's hours, website and notifications are its [show settings](#shows).
+- `GET /stations/{id}/top30/chart` (`week`: a past week; this week by default): `week`, `from_unix_ms`, `closes_at_unix_ms`, `frozen` (closed and kept; else the chart as it stands now), `votes` (over the week, eligible tracks), `entries` (each `rank`, `track_id`, `artist`, `title`, `likes`, `dislikes`, `share` from 0 to 1, `plays`, `movement`: `up`, `down`, `same`, `new` or `reentry`, `previous_rank`, `weeks`), `removed` (`track_id`, `artist`, `title`, `removed_by`, `removed_at_unix_ms`), `new_release` (`track_id`, `artist`, `title`, `proposed`: not chosen by hand; `null` without a new release category) and `locked` (a show was built from it: no change any more). Ranks follow the shares as they are when it is read, until it is frozen.
+- `GET /stations/{id}/top30/charts` (`before`, a week, for the next page; `limit` 1 to 100, 20 by default): the frozen charts, the latest first: `week`, `from_unix_ms`, `closes_at_unix_ms`, `size` and `number_one` (`track_id`, `artist`, `title`).
+- `POST /stations/{id}/top30/charts/{week}/removals/{track_id}`: takes the track out of the week's chart, the tracks after it moving up; `DELETE` puts it back. Refused, `409`, once a show was built from the chart, or for a week to come. Answers the chart.
+- `PUT /stations/{id}/top30/charts/{week}/new-release`: `{"track_id": 42}` chooses the new release (a track of the new release category, else `422`), `{"track_id": null}` goes back to the proposed one. `409` once a show was built from the chart. Answers the chart.
+- `GET /stations/{id}/top30/show`: the show on now, else the next one within a week (`null` without hours): `opens_at_unix_ms`, `closes_at_unix_ms`, `week` (the chart it plays; `null` without one), `built` (its programme is built: it is the one on air), `items` in order (`kind`: `jingle`, `track` or `new_release`; `rank`, `track_id`, `artist`, `title`, `length_ms`, `planned_at_unix_ms`, `skipped`: why it is passed over, or `null`; `queued`), `left_out` (the ranks left out to fit the slot), `music_ms`, `jingles_ms`, `new_release_ms` and `total_ms`. Before it is built, it is what would be built now.
+
+The show's own notification events are `top.published` and `top.rank` ([Top 30 – Notifications](listener-interaction.md#top-30)). Its public state (`state` in the gateway's state): `chart` (`week`, `entries`: each `rank` and, once revealed, `artist`, `title`, `movement`, `previous_rank`, `weeks`, `on_air`; hidden ones have only their `rank` and `hidden: true`), `new_release` (`artist`, `title`, `hidden` until it plays), `live` (the show is playing it), `on_air_rank`, and `votes_count_for_unix_ms` (the opening the votes of now count for; `null` between the close and Monday). `chart` is `null` before the first show.
 
 ## Cover art
 
