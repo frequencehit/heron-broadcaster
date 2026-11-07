@@ -109,8 +109,7 @@ pub struct SeparationOverrides {
     /// 0: off), never a clock slot's.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daypart_days: Option<u8>,
-    /// The draw depth's start, in percent, 1 to 100
-    /// ([`crate::draw::DrawDepth`]).
+    /// The draw depth's start, in percent, 1 to 100.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub draw_start_pct: Option<u8>,
     /// The draw depth's maximum, in percent, 1 to 100.

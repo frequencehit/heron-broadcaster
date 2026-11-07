@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Words for rotation: days, hours, rules, methods and separation windows.
+// Words for rotation: days, hours, rules, methods, separation windows and
+// draw depths.
 
 import type { ClockSlot, Method, Rule, SeparationOverrides, Target, Windows } from "../api";
 import { type PlainKey, locale, number, t } from "../i18n";
@@ -162,7 +163,21 @@ export function describeOverrides(overrides: SeparationOverrides | undefined): s
   const described = WINDOW_NAMES.filter(([key]) => overrides[key] !== undefined && overrides[key] !== null).map(
     ([key, name]) => t("rotation.window", { name: t(name), length: minutes(overrides[key] ?? 0) }),
   );
+  const draw = describeDraw(overrides);
+  if (draw) {
+    described.push(draw);
+  }
   return described.join(", ");
+}
+
+/** The draw depth set: `draw 20–50 %`, `draw …–80 %`; empty when none is. */
+export function describeDraw(overrides: SeparationOverrides | undefined): string {
+  const start = overrides?.draw_start_pct;
+  const max = overrides?.draw_max_pct;
+  if (start == null && max == null) {
+    return "";
+  }
+  return t("draw.value", { start: start == null ? "…" : number(start), max: max == null ? "…" : number(max) });
 }
 
 /** Daypart separation: `dayparts 2`, `dayparts off`. */

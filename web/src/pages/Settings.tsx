@@ -246,6 +246,39 @@ function RotationCard() {
               />
             </Field>
           </div>
+          <fieldset>
+            <legend>{t("draw.title")}</legend>
+            <p className="muted small" style={{ marginTop: 0 }}>
+              {t("settings.drawHelp")}
+            </p>
+            <div className="form-grid">
+              <Field label={t("draw.start")}>
+                <NumberInput
+                  value={draft.draw.start_pct}
+                  min={1}
+                  max={draft.draw.max_pct}
+                  step={1}
+                  suffix="%"
+                  disabled={!canEdit}
+                  onChange={(pct) => set({ draw: { ...draft.draw, start_pct: Math.round(pct) } })}
+                />
+              </Field>
+              <Field label={t("draw.max")}>
+                <NumberInput
+                  value={draft.draw.max_pct}
+                  min={draft.draw.start_pct}
+                  max={100}
+                  step={1}
+                  suffix="%"
+                  disabled={!canEdit}
+                  onChange={(pct) => set({ draw: { ...draft.draw, max_pct: Math.round(pct) } })}
+                />
+              </Field>
+            </div>
+            <p className="muted small" style={{ marginBottom: 0 }}>
+              {t("draw.methods")}
+            </p>
+          </fieldset>
           <Field label={t("settings.keptOut")} hint={t("settings.keptOutHint")}>
             <span className="station-checks">
               {categories.data?.map((category) => (

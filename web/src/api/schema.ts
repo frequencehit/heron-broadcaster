@@ -8492,8 +8492,7 @@ export interface components {
             draw_max_pct?: number | null;
             /**
              * Format: int32
-             * @description The draw depth's start, in percent, 1 to 100
-             *     ([`crate::draw::DrawDepth`]).
+             * @description The draw depth's start, in percent, 1 to 100.
              */
             draw_start_pct?: number | null;
             /** Format: int32 */

@@ -20,6 +20,7 @@ import { Banner, Card, ConfirmButton, Empty, ErrorView, Field, Loading, PageHead
 import { number, rich, t } from "../i18n";
 import { ago, clockTime, dateTime } from "../lib/format";
 import { DaypartBadge, daypartNote } from "../components/Dayparts";
+import { describeDrawLog } from "../components/DrawDepth";
 import { daypartsList } from "../lib/dayparts";
 import { describeWindows, methodLabel, stepLabel } from "../lib/rotation";
 import { ratioLabel } from "../lib/ratio";
@@ -223,6 +224,12 @@ function Details({ explanation }: { explanation: Explanation }) {
         <>
           <dt>{t("rotationPage.acrossWindows")}</dt>
           <dd>{acrossWindows.join(" · ")}</dd>
+        </>
+      )}
+      {explanation.draw && (
+        <>
+          <dt>{t("rotationPage.draw")}</dt>
+          <dd>{describeDrawLog(explanation.draw)}</dd>
         </>
       )}
       <dt>{t("rotationPage.chosenAmong")}</dt>
