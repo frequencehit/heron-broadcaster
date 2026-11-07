@@ -35,6 +35,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Listener statistics read each stream server once a minute**, for all its mounts, instead of once per output.
 - **Outputs in the API** give a `server_id` and only their mount in `config`; their `statistics` (the admin credentials) moved to the stream server. A migration groups the existing outputs into servers ([Upgrading – Edge](docs/upgrading.md#edge)).
 - **Settings** are in tabs: *Station*, *Programming*, *Audio*, *Library* and *Statistics*.
+- **Page width** (Account › Display): *Normal*, *80 %* or *100 %* of the window, instead of a *whole width* checkbox. The API's `full_width` is now `width` (`normal`, `wide` or `full`); a migration and older configuration backups turn `full_width` into `full`.
 - **The track list's bar**: search on its own line, then the station, category, play ratio and sort menus, each with its name above it; the status menu (playable, missing, silent…) and the daypart separation filter moved to *More filters*, which opens by itself when one of them is set (as from the library's *missing* or *silent* links).
 
 ### Fixed
