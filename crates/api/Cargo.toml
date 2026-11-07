@@ -24,7 +24,7 @@ getrandom.workspace = true
 # Signs webhook deliveries.
 hmac.workspace = true
 heron-analysis = { workspace = true, features = ["mysql"] }
-heron-core = { workspace = true, features = ["openapi"] }
+heron-core = { workspace = true, features = ["openapi", "shows"] }
 heron-library.workspace = true
 # Checks encoder profiles and outputs before they are saved.
 heron-outputs.workspace = true

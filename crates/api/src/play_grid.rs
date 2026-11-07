@@ -55,6 +55,9 @@ pub struct GridPlay {
     pub time: String,
     pub station_id: u64,
     pub source: PlaySource,
+    /// Listeners' likes and dislikes of the play.
+    pub likes: u64,
+    pub dislikes: u64,
 }
 
 /// A day of the last 30.
@@ -159,8 +162,9 @@ pub async fn grid(pool: &MySqlPool, request: &GridRequest, now: Timestamp) -> Ap
 
     let mut sql = sqlx::QueryBuilder::new(
         "SELECT CAST(UNIX_TIMESTAMP(h.started_at) * 1000 AS SIGNED), h.station_id,
-                CAST(h.source AS CHAR)
-         FROM play_history h
+                CAST(h.source AS CHAR),
+                CAST(COALESCE(v.likes, 0) AS UNSIGNED), CAST(COALESCE(v.dislikes, 0) AS UNSIGNED)
+         FROM play_history h LEFT JOIN play_votes v ON v.play_id = h.id
          WHERE h.track_id = ",
     );
     sql.push_bind(request.track_id)
@@ -180,11 +184,11 @@ pub async fn grid(pool: &MySqlPool, request: &GridRequest, now: Timestamp) -> Ap
         sql.push(" AND h.source = ").push_bind(source_text(source));
     }
     sql.push(" ORDER BY h.started_at, h.id");
-    let rows: Vec<(i64, u64, String)> = sql.build_query_as().fetch_all(pool).await?;
+    let rows: Vec<(i64, u64, String, u64, u64)> = sql.build_query_as().fetch_all(pool).await?;
 
     let mut by_day: BTreeMap<Date, Vec<GridPlay>> = BTreeMap::new();
     let mut by_hour: BTreeMap<(u8, u8), Vec<GridPlay>> = BTreeMap::new();
-    for (started_at_unix_ms, station_id, source) in rows {
+    for (started_at_unix_ms, station_id, source, likes, dislikes) in rows {
         let local = Timestamp::from_millisecond(started_at_unix_ms)
             .map_err(internal)?
             .to_zoned(zone.clone());
@@ -195,6 +199,8 @@ pub async fn grid(pool: &MySqlPool, request: &GridRequest, now: Timestamp) -> Ap
             time: local.strftime("%H:%M").to_string(),
             station_id,
             source: source_from(&source),
+            likes,
+            dislikes,
         };
         if date >= hours_from {
             // The hour the clock shows: when it goes back, both 02:00 hours.
@@ -314,6 +320,7 @@ mod tests {
             let paris = StationSettings {
                 timezone: "Europe/Paris".to_owned(),
                 public_url: None,
+                gateway_url: None,
             };
             settings::save_for(&db.pool, station, StationSettings::SETTINGS_NAME, &paris)
                 .await

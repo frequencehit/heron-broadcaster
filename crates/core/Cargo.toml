@@ -12,9 +12,13 @@ publish = false
 [features]
 # OpenAPI schemas of the settings, for heron-api.
 openapi = ["dep:utoipa"]
+# The shows' opening hours (docs/listener-interaction.md), for heron-api
+# and heron-public.
+shows = ["dep:jiff"]
 
 [dependencies]
 blake3.workspace = true
+jiff = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 utoipa = { workspace = true, optional = true }

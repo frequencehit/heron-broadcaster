@@ -21,7 +21,7 @@ function station(id: number, code: string): Schemas["StationInfo"] {
 }
 
 function play(date: string, time: string, station_id: number, source: GridPlay["source"]): GridPlay {
-  return { started_at_unix_ms: Date.parse(`${date}T${time}:00Z`), date, time, station_id, source };
+  return { started_at_unix_ms: Date.parse(`${date}T${time}:00Z`), date, time, station_id, source, likes: 0, dislikes: 0 };
 }
 
 /** 30 days ending Thursday 5 November 2026: two plays on Monday 2 November, one today. */
