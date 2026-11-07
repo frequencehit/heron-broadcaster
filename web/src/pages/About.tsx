@@ -7,8 +7,9 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { type About as AboutData, type ApiStatus, api, fetchStatus, unwrap } from "../api";
-import { Banner, Card, ErrorView, Loading, PageHead, useToast } from "../components/ui";
+import { Banner, Card, ConfirmButton, ErrorView, Loading, PageHead, useToast } from "../components/ui";
 import { t } from "../i18n";
+import { useAction, useCan } from "../lib/session";
 import { clockText, configText, diagnostics, serviceName, uptime } from "../lib/about";
 import { buildLabel, differentBuilds, webBuild } from "../lib/version";
 
@@ -20,6 +21,14 @@ export function About() {
   const status = useQuery({ queryKey: ["status"], queryFn: ({ signal }) => fetchStatus(signal) });
   const web = webBuild();
   const apiBuild = status.data ? { version: status.data.version, revision: status.data.revision } : null;
+  const isAdmin = useCan("admin");
+  // The workers that stopped reporting: earlier containers, each its own instance.
+  const stopped = (about.data?.services ?? []).filter((service) => service.instance && !service.running && service.version)
+    .length;
+  const clear = useAction(() => unwrap(api.DELETE("/api/v1/about/stopped")), {
+    success: (result) => t("about.stoppedCleared", { count: result.removed }),
+    invalidate: [["about"]],
+  });
 
   const copy = async () => {
     if (!about.data || !apiBuild) {
@@ -39,9 +48,22 @@ export function About() {
         title={t("about.title")}
         description={t("about.description")}
         actions={
-          <button type="button" className="btn" onClick={copy} disabled={!about.data || !apiBuild}>
-            {t("about.copy")}
-          </button>
+          <>
+            {isAdmin && stopped > 0 && (
+              <ConfirmButton
+                className="btn"
+                confirm={t("about.clearStopped")}
+                question={<p>{t("about.clearStoppedQuestion", { count: stopped })}</p>}
+                disabled={clear.isPending}
+                onConfirm={() => clear.mutate(undefined)}
+              >
+                {t("about.clearStopped")}
+              </ConfirmButton>
+            )}
+            <button type="button" className="btn" onClick={copy} disabled={!about.data || !apiBuild}>
+              {t("about.copy")}
+            </button>
+          </>
         }
       />
       {about.isPending && <Loading />}

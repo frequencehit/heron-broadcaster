@@ -121,7 +121,9 @@ pub struct CrossfadeOverrides {
     pub fade_in: Option<Fade>,
     pub mode: Option<CrossfadeMode>,
     pub fixed_ms: Option<u32>,
-    /// `false` plays the transition out of this track back to back, without overlap.
+    /// `false` plays the transition out of this track back to back, without
+    /// overlap; `true` crossfades it at its own point whatever the two
+    /// tracks' lengths (the first span of a shortened medley).
     pub crossfade: Option<bool>,
 }
 
@@ -352,9 +354,11 @@ pub fn plan_transition(
     if overrides.crossfade == Some(false) {
         return back_to_back;
     }
+    // `true`: crossfaded whatever the lengths (a shortened medley's spans).
+    let forced = overrides.crossfade == Some(true);
     // A short track (a jingle) that sets where the next track starts keeps
     // that point, without fades: the tracks only overlap.
-    if outgoing.playable_ms() <= settings.min_track_ms {
+    if !forced && outgoing.playable_ms() <= settings.min_track_ms {
         let own_point = match (overrides.mode, overrides.fixed_ms) {
             (Some(CrossfadeMode::Fixed), Some(fixed_ms)) => {
                 Some(outgoing.cue_out_ms.saturating_sub(fixed_ms))
@@ -370,7 +374,7 @@ pub fn plan_transition(
                 fade_in: None,
             });
     }
-    if incoming.playable_ms() <= settings.min_track_ms {
+    if !forced && incoming.playable_ms() <= settings.min_track_ms {
         return back_to_back;
     }
 
@@ -428,6 +432,36 @@ mod tests {
             true_peak_db: Some(-0.5),
             crossfade: CrossfadeOverrides::default(),
         }
+    }
+
+    #[test]
+    fn a_forced_crossfade_ignores_the_lengths() {
+        let settings = CrossfadeSettings::default();
+        let mut first = track(0, 15_000, None);
+        first.crossfade = CrossfadeOverrides {
+            mode: Some(CrossfadeMode::Fixed),
+            fixed_ms: Some(500),
+            fade_out: Some(Fade {
+                time_ms: 500,
+                ..Fade::default()
+            }),
+            crossfade: Some(true),
+            ..CrossfadeOverrides::default()
+        };
+        let second = track(40_000, 43_500, None);
+        let transition = plan_transition(&first, &second, &settings);
+        assert_eq!(transition.next_start_ms, 14_500);
+        assert!(transition.fade_out.is_some());
+        // Without it, a short track after a long one is back to back.
+        first.crossfade.crossfade = None;
+        let first = TrackPlayout {
+            cue_out_ms: 25_000,
+            ..first
+        };
+        assert_eq!(
+            plan_transition(&first, &second, &settings).next_start_ms,
+            25_000
+        );
     }
 
     #[test]

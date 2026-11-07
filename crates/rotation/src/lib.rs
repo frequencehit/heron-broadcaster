@@ -15,6 +15,10 @@ use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
 pub mod dayparts;
+pub mod draw;
+pub mod exact;
+#[cfg(test)]
+mod exact_tests;
 pub mod names;
 pub mod ratio;
 pub mod restrict;
@@ -24,7 +28,11 @@ pub mod schedule;
 mod select;
 mod sim;
 
-pub use dayparts::DaypartLog;
+pub use dayparts::{DaypartFrom, DaypartLog};
+pub use draw::{DrawDepth, DrawLog};
+pub use exact::{
+    ExactLog, ExactMode, ExactTime, FillKind, FillLog, Medley, MedleyCut, Met, Window,
+};
 pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
@@ -112,6 +120,9 @@ pub struct RotationSettings {
     /// Where relaxation ends (steps 9 and 10). The station's library when
     /// unset.
     pub fallback_category_id: Option<CategoryId>,
+    /// Where a gap before an exact time is filled from when no medley
+    /// fits: short jingles, liners. None: the slot starts early.
+    pub filler_category_id: Option<CategoryId>,
     /// Categories whose tracks are kept out of the station's library (hours
     /// without a clock, the fallback without a category), even when another
     /// of their categories is the station's: tracks set aside.
@@ -119,6 +130,9 @@ pub struct RotationSettings {
     pub weights: WeightSettings,
     /// Rules across stations: off by default.
     pub across: AcrossStations,
+    /// The draw depth of the categories and slots that set none of their
+    /// own, and of hours without a clock.
+    pub draw: DrawDepth,
 }
 
 impl Default for RotationSettings {
@@ -127,9 +141,11 @@ impl Default for RotationSettings {
             separation: StationWindows::default(),
             daypart_count: dayparts::DEFAULT_COUNT,
             fallback_category_id: None,
+            filler_category_id: None,
             kept_out_category_ids: Vec::new(),
             weights: WeightSettings::default(),
             across: AcrossStations::default(),
+            draw: DrawDepth::default(),
         }
     }
 }
@@ -168,6 +184,7 @@ impl RotationSettings {
             return Err("daypart_count is 4 or 6".to_owned());
         }
         self.across.windows().check()?;
+        self.draw.check()?;
         let weights = &self.weights;
         if !(0.5..=1.0).contains(&weights.play_factor) {
             return Err("weights.play_factor is between 0.5 and 1".to_owned());
@@ -194,6 +211,12 @@ pub struct Track {
     /// Play ratio in tenths, 1 to 10: plays this many times out of the 10
     /// times rotation picks it ([`ratio`]).
     pub ratio: u8,
+    /// The track's own daypart separation, in place of its categories'
+    /// (0: off for it); `None`: its category's ([`Library::for_track`]).
+    pub dayparts: Option<u8>,
+    /// The track's own same daypart on the following days, 0 to 7, in
+    /// place of its categories'; `None`: its category's.
+    pub daypart_days: Option<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -220,6 +243,8 @@ pub struct Slot {
     /// Plays only if the next slot's track plays right after it (a jingle
     /// announcing it): picked together, or not at all.
     pub linked_to_next: bool,
+    /// Starts at a time of the hour, hard or soft.
+    pub exact: Option<ExactTime>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -241,6 +266,24 @@ impl Clock {
         count > 1
             && self.slots[index].linked_to_next
             && !self.slots[(index + 1) % count].linked_to_next
+    }
+
+    /// The exact time the slot at `index` starts at: its own, or its next
+    /// slot's when it is linked to it (the pair starts together).
+    pub fn exact(&self, index: usize) -> Option<ExactTime> {
+        let count = self.slots.len();
+        self.slots[index].exact.or_else(|| {
+            self.linked(index)
+                .then(|| self.slots[(index + 1) % count].exact)
+                .flatten()
+        })
+    }
+
+    /// Whether the slot at `index` is the second of a linked pair, which
+    /// starts with the slot before it.
+    pub fn follows_linked(&self, index: usize) -> bool {
+        let count = self.slots.len();
+        count > 1 && self.linked((index + count - 1) % count)
     }
 }
 
@@ -269,6 +312,11 @@ pub struct Library {
     /// category, while medleys are off): clock slots calling them are
     /// passed over, never relaxed.
     pub modules_off: HashSet<CategoryId>,
+    /// The station's medley category, where gaps before exact times are
+    /// filled from.
+    pub medley_category: Option<CategoryId>,
+    /// Rendered medleys' tracks and how they can be shortened.
+    pub medleys: HashMap<TrackId, Medley>,
 }
 
 /// Library pieces, before [`Library::new`] ties them together.
@@ -295,6 +343,10 @@ pub struct LibraryParts {
     pub station_ratios: HashMap<TrackId, u8>,
     /// Categories of a module turned off for the station.
     pub modules_off: Vec<CategoryId>,
+    /// The station's medley category.
+    pub medley_category: Option<CategoryId>,
+    /// Rendered medleys and how they can be shortened.
+    pub medleys: Vec<(TrackId, Medley)>,
 }
 
 impl Library {
@@ -349,6 +401,8 @@ impl Library {
             no_two_in_a_row: parts.no_two_in_a_row.into_iter().collect(),
             counters: parts.counters,
             modules_off: parts.modules_off.into_iter().collect(),
+            medley_category: parts.medley_category,
+            medleys: parts.medleys.into_iter().collect(),
         }
     }
 
@@ -397,6 +451,13 @@ impl Library {
     /// Whether separation counts `a` and `b` as the same artist.
     pub fn same_artist(&self, a: ArtistId, b: ArtistId) -> bool {
         a == b || self.similar.get(&a).is_some_and(|list| list.contains(&b))
+    }
+
+    /// The station's filler category.
+    pub fn filler_category(&self) -> Option<&Category> {
+        self.settings
+            .filler_category_id
+            .and_then(|id| self.categories.get(&id))
     }
 
     /// The category relaxation ends in; `None` for the station's library.
@@ -486,10 +547,37 @@ impl Library {
         windows
     }
 
+    /// The station's draw depth, overridden by a category, then by a clock
+    /// slot; a start above the maximum is at the maximum.
+    pub fn draw(
+        &self,
+        category: Option<&SeparationOverrides>,
+        slot: Option<&SeparationOverrides>,
+    ) -> DrawDepth {
+        let mut draw = self.settings.draw;
+        for overrides in [category, slot].into_iter().flatten() {
+            draw = draw.with(overrides);
+        }
+        draw.clamped()
+    }
+
+    /// `windows`, a slot's before relaxation, with the track's own daypart
+    /// separation and same daypart on the following days in place of the
+    /// category's, cut like them to the station's division.
+    pub fn for_track(&self, mut windows: Windows, track: &Track) -> Windows {
+        if let Some(separation) = track.dayparts {
+            windows.dayparts = separation.min(dayparts::max_separation(self.daypart_count()));
+        }
+        if let Some(days) = track.daypart_days {
+            windows.daypart_days = days.min(dayparts::MAX_DAYS);
+        }
+        windows
+    }
+
     /// How far back separation can look, in ms: the longest window the
     /// settings, a category or a slot uses (an hour at least), or the
     /// dayparts the longest daypart separation covers, or the days the
-    /// same daypart is kept out on.
+    /// same daypart is kept out on (a category's or a track's own).
     pub fn horizon_ms(&self) -> i64 {
         let count = self.daypart_count();
         let reach = |windows: Windows| {
@@ -505,6 +593,12 @@ impl Library {
         for slot in self.clocks.values().flat_map(|clock| &clock.slots) {
             let category = self.categories.get(&slot.category).map(|c| &c.separation);
             longest = longest.max(reach(self.windows(category, Some(&slot.separation))));
+        }
+        // Tracks with their own daypart values.
+        for track in self.tracks.values() {
+            if track.dayparts.is_some() || track.daypart_days.is_some() {
+                longest = longest.max(reach(self.for_track(Windows::OFF, track)));
+            }
         }
         i64::from(longest.max(60)) * 60_000
     }
@@ -669,6 +763,8 @@ mod tests {
             categories: vec![],
             length_ms: 180_000,
             ratio: 10,
+            dayparts: None,
+            daypart_days: None,
         };
         let library = Library::new(
             LibraryParts {

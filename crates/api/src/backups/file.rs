@@ -8,6 +8,7 @@
 //! in the settings) still does. Tracks and artists are rebuilt by a scan
 //! under other IDs: the file names them by path and by name instead.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use heron_library::covers;
@@ -236,7 +237,8 @@ const TABLES: &[Table] = &[
             Plain("enabled"),
             Plain("theme"),
             Plain("language"),
-            Plain("full_width"),
+            // `full_width` in older files (upgrade_row).
+            Plain("width"),
         ],
         Mode::Upsert,
         &["username"],
@@ -314,6 +316,32 @@ const TABLES: &[Table] = &[
         Mode::Upsert,
         &["name"],
     ),
+    // Rows are read in the order of their columns: `relay_of` first puts
+    // the masters (NULL) before their relays, which refer to them.
+    table(
+        "stream_servers",
+        &[
+            Plain("relay_of"),
+            Plain("id"),
+            Plain("station_id"),
+            Plain("name"),
+            Plain("kind"),
+            Plain("host"),
+            Plain("port"),
+            Plain("tls"),
+            Plain("source_username"),
+            Plain("source_password"),
+            Plain("admin_username"),
+            Plain("admin_password"),
+            Plain("public_url"),
+            Json("relay_mounts"),
+            Plain("relay_subtract_one"),
+        ],
+        Mode::Upsert,
+        &["name"],
+    ),
+    // `statistics`: NULL since stream servers; older files bring their
+    // admin credentials through it (UPGRADES).
     table(
         "outputs",
         &[
@@ -321,8 +349,10 @@ const TABLES: &[Table] = &[
             Plain("station_id"),
             Plain("name"),
             Plain("kind"),
+            Plain("server_id"),
             Plain("encoder_profile_id"),
             Json("config"),
+            Json("details"),
             Json("statistics"),
             Plain("metadata_enabled"),
             Plain("enabled"),
@@ -557,6 +587,8 @@ const TABLES: &[Table] = &[
             Plain("mood"),
             Plain("sound_code"),
             Plain("play_ratio"),
+            Plain("dayparts"),
+            Plain("daypart_days"),
         ],
         Mode::Library,
         &[],
@@ -875,6 +907,7 @@ pub fn check(file: &ConfigFile, schema: i64) -> ApiResult<()> {
         };
         let keys: HashSet<&str> = table.cols.iter().map(|col| col.key()).collect();
         for row in rows {
+            let row = upgrade_row(name, row);
             if let Some(key) = row.keys().find(|key| !keys.contains(key.as_str())) {
                 return Err(ApiError::Invalid(format!("{name}: unknown column {key}")));
             }
@@ -985,10 +1018,33 @@ fn push_value(query: &mut QueryBuilder<MySql>, col: Col, value: Value) {
 /// Migrations that change configuration a backup holds, run again on the
 /// rows of a file of an older schema once they are written. Each one does
 /// nothing to rows already in the new shape.
-const UPGRADES: &[(i64, &str)] = &[(
-    20261130000000,
-    include_str!("../../../../migrations/20261130000000_daypart_separation_per_category.sql"),
-)];
+const UPGRADES: &[(i64, &str)] = &[
+    (
+        20261130000000,
+        include_str!("../../../../migrations/20261130000000_daypart_separation_per_category.sql"),
+    ),
+    // Outputs holding their server's settings, grouped into servers.
+    (20270301000001, crate::outputs::GROUP_INTO_SERVERS),
+];
+
+/// A row of an older file with a column since renamed, in the new shape:
+/// `users.full_width` became `width` (the whole window, or the normal
+/// column).
+fn upgrade_row<'a>(table: &str, row: &'a Map<String, Value>) -> Cow<'a, Map<String, Value>> {
+    if table == "users" && row.contains_key("full_width") {
+        let mut row = row.clone();
+        // Backups write booleans as the database holds them, 1 or 0.
+        let full = row
+            .remove("full_width")
+            .is_some_and(|full| full.as_bool().unwrap_or_else(|| full.as_i64() == Some(1)));
+        if !row.contains_key("width") {
+            let width = if full { "full" } else { "normal" };
+            row.insert("width".to_owned(), Value::from(width));
+        }
+        return Cow::Owned(row);
+    }
+    Cow::Borrowed(row)
+}
 
 /// Writes the file's configuration over the database's, in `tx`.
 pub async fn restore(
@@ -1054,6 +1110,7 @@ pub async fn restore(
         // added), which takes its default.
         let mut resolved: Vec<Vec<Option<Value>>> = Vec::new();
         for row in rows_of(table) {
+            let row = &upgrade_row(table.name, row);
             if table.name == "settings"
                 && row
                     .get("name")
@@ -1203,6 +1260,39 @@ pub async fn restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn older_users_have_their_full_width_as_a_width() {
+        let width = |row: serde_json::Value| {
+            let row = row.as_object().unwrap().clone();
+            upgrade_row("users", &row).get("width").cloned()
+        };
+        assert_eq!(
+            width(serde_json::json!({"full_width": true})),
+            Some("full".into())
+        );
+        assert_eq!(
+            width(serde_json::json!({"full_width": false})),
+            Some("normal".into())
+        );
+        assert_eq!(
+            width(serde_json::json!({"width": "wide", "full_width": true})),
+            Some("wide".into())
+        );
+        // As backups write them: 1 or 0.
+        assert_eq!(
+            width(serde_json::json!({"full_width": 1})),
+            Some("full".into())
+        );
+        assert_eq!(
+            width(serde_json::json!({"full_width": 0})),
+            Some("normal".into())
+        );
+        assert_eq!(width(serde_json::json!({})), None);
+        let row = serde_json::json!({"full_width": true});
+        let upgraded = upgrade_row("users", row.as_object().unwrap());
+        assert!(!upgraded.contains_key("full_width"));
+    }
 
     #[test]
     fn settings_about_backups_stay_out_of_the_file() {

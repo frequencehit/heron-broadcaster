@@ -441,7 +441,17 @@ async fn about_page_roles_and_secrets() {
     assert_eq!(worker(&about, "heron-librarian")["running"], false);
     assert_eq!(worker(&about, "heron-librarian")["version"], "0.2.0");
 
+    // The stopped ones are taken off the list by an admin, the running ones stay.
+    let (status, _) = viewer.request(Method::DELETE, "/about/stopped", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     let admin = station.signed_in("admin").await;
+    let (status, cleared) = admin.request(Method::DELETE, "/about/stopped", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(cleared["removed"], 1);
+    let about = viewer.get("/about").await;
+    assert_eq!(worker(&about, "heron-analyzer")["running"], true);
+    assert!(worker(&about, "heron-librarian")["version"].is_null());
+
     let about = admin.get("/about").await;
     assert!(about["runtime"]["cpu_cores"].as_u64().unwrap() >= 1);
     assert!(about["dependencies"]["database"]["version"].is_string());
@@ -780,69 +790,218 @@ async fn settings_and_outputs_reach_the_engine() {
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
-    // An output: validated, stored without showing its password, pushed.
+    // A stream server: its passwords never shown.
     let profiles = admin.get("/encoder-profiles").await;
     let profile = profiles[0]["id"].as_u64().unwrap();
     let (status, body) = admin
         .send(
             Method::POST,
-            "/outputs",
-            json!({"name": "Bad", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "mount": "live", "password": "x"}}),
+            "/stream-servers",
+            json!({"name": "No password", "host": "127.0.0.1"}),
         )
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme",
+                   "admin_password": "adm1n-pw"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
+    assert_eq!(server["source_password_set"], true);
+    assert_eq!(server["admin_password_set"], true);
+    assert!(!server.to_string().contains("hackme") && !server.to_string().contains("adm1n-pw"));
+    let server_id = server["id"].as_u64().unwrap();
+
+    // An output: validated, its own settings only, pushed in full.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "Bad", "kind": "icecast", "encoder_profile_id": profile,
+                   "server_id": server_id, "config": {"mount": "live"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "Inline", "kind": "icecast", "encoder_profile_id": profile,
+                   "server_id": server_id,
+                   "config": {"host": "127.0.0.1", "mount": "/live", "password": "x"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "No server", "kind": "icecast", "encoder_profile_id": profile,
+                   "config": {"mount": "/live"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, details) = admin
+        .send(
+            Method::PUT,
+            "/settings/stream-details",
+            json!({"name": "My station", "genre": "Pop", "public": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{details}");
     let (status, output) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live", "password": "hackme"}}),
+                   "server_id": server_id, "config": {"mount": "/live"},
+                   "details": {"name": "My station HD"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{output}");
-    assert!(output["config"].get("password").is_none());
-    assert_eq!(output["secrets_set"], json!(["password"]));
+    assert_eq!(output["config"], json!({"mount": "/live"}));
+    assert_eq!(output["details"], json!({"name": "My station HD"}));
     assert_eq!(output["listen_url"], "http://127.0.0.1:9/live");
     let id = output["id"].as_u64().unwrap();
-    eventually(
+    let engine_output = |json: &str, id: u64| {
+        let config: heron_core::OutputsConfig = serde_json::from_str(json).unwrap();
+        config.outputs.into_iter().find(|o| o.id == id)
+    };
+    let pushed = eventually(
         "the output in the engine",
         Duration::from_secs(10),
         || async {
             let config = station.state.stations.first().engine.config().await.ok()?;
-            config.outputs_json.contains("hackme").then_some(())
+            engine_output(&config.outputs_json, id)
         },
     )
     .await;
+    assert_eq!(
+        pushed.config,
+        json!({"host": "127.0.0.1", "port": 9, "mount": "/live", "username": "source",
+               "password": "hackme", "name": "My station HD", "genre": "Pop", "public": true})
+    );
 
-    // Updating without the password keeps it.
+    // The station details: an output follows those it does not override.
     let (status, _) = admin
         .send(
             Method::PUT,
-            &format!("/outputs/{id}"),
-            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/other",
-                              "public_url": "https://stream.example.org/"}}),
+            "/settings/stream-details",
+            json!({"name": "My station", "genre": "Hits"}),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    eventually(
-        "the changed output in the engine",
+    eventually("the new genre", Duration::from_secs(10), || async {
+        let config = station.state.stations.first().engine.config().await.ok()?;
+        let output = engine_output(&config.outputs_json, id)?;
+        (output.config["genre"] == "Hits"
+            && output.config["name"] == "My station HD"
+            && output.config["public"] == false)
+            .then_some(())
+    })
+    .await;
+
+    // Changing the server's password pushes its outputs again; its admin
+    // credentials and public address never reach the engine.
+    let (status, changed) = admin
+        .send(
+            Method::PUT,
+            &format!("/stream-servers/{server_id}"),
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "n3w-pw",
+                   "public_url": "https://stream.example.org/"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{changed}");
+    assert_eq!(changed["admin_password_set"], true);
+    assert_eq!(changed["outputs"], json!([{"id": id, "name": "Icecast"}]));
+    let pushed = eventually(
+        "the new password in the engine",
         Duration::from_secs(10),
         || async {
             let config = station.state.stations.first().engine.config().await.ok()?;
-            (config.outputs_json.contains("/other") && config.outputs_json.contains("hackme"))
-                .then_some(())
+            config
+                .outputs_json
+                .contains("n3w-pw")
+                .then_some(config.outputs_json)
         },
     )
     .await;
+    assert!(!pushed.contains("hackme") && !pushed.contains("adm1n-pw"));
     let outputs = eventually("the output's state", Duration::from_secs(10), || async {
         let outputs = admin.get("/outputs").await;
         outputs[0]["status"].is_object().then_some(outputs)
     })
     .await;
-    assert_eq!(outputs[0]["listen_url"], "https://stream.example.org/other");
+    assert_eq!(outputs[0]["listen_url"], "https://stream.example.org/live");
     assert_ne!(outputs[0]["status"]["state"], "connected");
+
+    // Duplicate: a disabled copy on another mount.
+    let (status, copy) = admin
+        .request(Method::POST, &format!("/outputs/{id}/duplicate"), None)
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{copy}");
+    assert_eq!(copy["name"], "Icecast (copy)");
+    assert_eq!(copy["config"], json!({"mount": "/live-copy"}));
+    assert_eq!(copy["enabled"], false);
+    assert_eq!(copy["server_id"], server_id);
+    assert_eq!(copy["details"], json!({"name": "My station HD"}));
+    let (_, second) = admin
+        .request(Method::POST, &format!("/outputs/{id}/duplicate"), None)
+        .await;
+    assert_eq!(second["name"], "Icecast (copy 2)");
+    assert_eq!(second["config"], json!({"mount": "/live-copy-2"}));
+
+    // A relay: read for the statistics, no output can pick it.
+    let (status, relay) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Relay", "host": "127.0.0.2", "relay_of": server_id, "tls": true,
+                   "relay_mounts": [{"mount": "/live", "relay_mount": "/relay"}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{relay}");
+    let relay_id = relay["id"].as_u64().unwrap();
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/outputs/{}", copy["id"]),
+            json!({"name": "Copy", "kind": "icecast", "encoder_profile_id": profile,
+                   "server_id": relay_id, "config": {"mount": "/live-copy"}, "enabled": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "TLS", "host": "127.0.0.3", "tls": true, "source_password": "x"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    // A server in use cannot be deleted: the answer names what uses it.
+    let (status, body) = admin
+        .request(
+            Method::DELETE,
+            &format!("/stream-servers/{server_id}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().contains("Icecast (copy)"),
+        "{body}"
+    );
+    for output in [&copy, &second] {
+        let (status, _) = admin
+            .request(Method::DELETE, &format!("/outputs/{}", output["id"]), None)
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
 
     // A profile in use cannot be deleted.
     let (status, _) = admin
@@ -862,10 +1021,25 @@ async fn settings_and_outputs_reach_the_engine() {
         Duration::from_secs(10),
         || async {
             let config = station.state.stations.first().engine.config().await.ok()?;
-            (!config.outputs_json.contains("hackme")).then_some(())
+            (!config.outputs_json.contains("n3w-pw")).then_some(())
         },
     )
     .await;
+    // The master still has its relay.
+    let (status, body) = admin
+        .request(
+            Method::DELETE,
+            &format!("/stream-servers/{server_id}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    for server in [relay_id, server_id] {
+        let (status, _) = admin
+            .request(Method::DELETE, &format!("/stream-servers/{server}"), None)
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
 
     // Library settings never show the AcoustID key.
     let (status, library) = admin
@@ -906,21 +1080,27 @@ async fn listener_statistics_through_the_api() {
     let profile = admin.get("/encoder-profiles").await[0]["id"]
         .as_u64()
         .unwrap();
-    let config = json!({"host": "127.0.0.1", "port": 9, "mount": "/live", "password": "hackme"});
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme",
+                   "admin_password": "adm1n-pw"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
+    assert_eq!(server["admin_password_set"], true);
+    assert!(!server.to_string().contains("adm1n-pw"));
+    let server_id = server["id"].as_u64().unwrap();
     let (status, output) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": config, "statistics": {"admin_password": "adm1n-pw"}}),
+                   "server_id": server_id, "config": {"mount": "/live"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{output}");
-    assert_eq!(
-        output["statistics"],
-        json!({"admin_username": null, "admin_password_set": true})
-    );
-    assert!(!output.to_string().contains("adm1n-pw"));
     let id = output["id"].as_u64().unwrap();
     let pushed = eventually(
         "the output in the engine",
@@ -940,17 +1120,13 @@ async fn listener_statistics_through_the_api() {
     let (status, changed) = admin
         .send(
             Method::PUT,
-            &format!("/outputs/{id}"),
-            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live"},
-                   "statistics": {"admin_username": "ops"}}),
+            &format!("/stream-servers/{server_id}"),
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "admin_username": "ops"}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{changed}");
-    assert_eq!(
-        changed["statistics"],
-        json!({"admin_username": "ops", "admin_password_set": true})
-    );
+    assert_eq!(changed["admin_username"], "ops");
+    assert_eq!(changed["admin_password_set"], true);
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(
         station
@@ -967,13 +1143,12 @@ async fn listener_statistics_through_the_api() {
     let (_, removed) = admin
         .send(
             Method::PUT,
-            &format!("/outputs/{id}"),
-            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live"},
-                   "statistics": {"admin_password": null}}),
+            &format!("/stream-servers/{server_id}"),
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "admin_password": null}),
         )
         .await;
-    assert_eq!(removed["statistics"]["admin_password_set"], false);
+    assert_eq!(removed["admin_password_set"], false);
+    assert_eq!(removed["source_password_set"], true);
 
     // Settings.
     assert_eq!(
@@ -1092,7 +1267,7 @@ async fn listener_statistics_through_the_api() {
     // The other routes answer, and check their parameters.
     assert_eq!(
         viewer.get("/listeners/now").await,
-        json!({"outputs": [], "total": null})
+        json!({"outputs": [], "total": null, "servers": []})
     );
     assert_eq!(
         viewer
@@ -1713,6 +1888,11 @@ async fn adopts_outputs_configured_on_the_engine() {
     let outputs = admin.get("/outputs").await;
     assert_eq!(outputs[0]["id"], 3);
     assert_eq!(outputs[0]["encoder_profile_id"], 7);
+    // Grouped into a stream server, its own settings only.
+    assert_eq!(outputs[0]["config"], json!({"mount": "/low"}));
+    let servers = admin.get("/stream-servers").await;
+    assert_eq!(servers[0]["name"], "127.0.0.1:9");
+    assert_eq!(outputs[0]["server_id"], servers[0]["id"]);
     let playout = admin.get("/settings/playout").await;
     assert_eq!(playout["crossfade"]["min_track_ms"], 25000);
     let eq = admin.get("/settings/eq").await;
@@ -1722,7 +1902,8 @@ async fn adopts_outputs_configured_on_the_engine() {
     assert_eq!(agc["bypass_all"], false);
     assert_eq!(agc["final_stage"]["ceiling_db"], -2.0);
 
-    // Same IDs: the engine kept its configuration as it was.
+    // Same IDs, and the same settings written as the engine had them: the
+    // engine kept its configuration as it was.
     let config = station
         .state
         .stations
@@ -1792,21 +1973,25 @@ async fn web_ui_routes() {
         (&json!("fr"), &json!("dark"))
     );
 
-    // And the width: a centred column unless the user wants the whole screen.
-    assert_eq!(me["full_width"], false);
-    let (status, me) = admin
-        .send(
-            Method::PUT,
-            "/auth/preferences",
-            json!({"full_width": true}),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK, "{me}");
-    assert_eq!(
-        (&me["full_width"], &me["language"], &me["theme"]),
-        (&json!(true), &json!("fr"), &json!("dark"))
-    );
-    assert_eq!(viewer.get("/auth/me").await["full_width"], false);
+    // And the width: a centred column unless the user wants 80 % or the
+    // whole window.
+    assert_eq!(me["width"], "normal");
+    for width in ["wide", "full"] {
+        let (status, me) = admin
+            .send(Method::PUT, "/auth/preferences", json!({"width": width}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{me}");
+        assert_eq!(
+            (&me["width"], &me["language"], &me["theme"]),
+            (&json!(width), &json!("fr"), &json!("dark"))
+        );
+    }
+    assert_eq!(admin.get("/auth/me").await["width"], "full");
+    assert_eq!(viewer.get("/auth/me").await["width"], "normal");
+    for refused in [json!({"width": "80"}), json!({"full_width": true})] {
+        let (status, _) = admin.send(Method::PUT, "/auth/preferences", refused).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
     let (status, _) = admin
         .send(
             Method::PUT,
@@ -2130,6 +2315,42 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
         )
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // The draw depth: 1 to 100 %, the start not above the maximum.
+    for draw in [
+        json!({"start_pct": 60, "max_pct": 40}),
+        json!({"start_pct": 0}),
+        json!({"max_pct": 101}),
+    ] {
+        let (status, _) = admin
+            .send(Method::PUT, "/settings/rotation", json!({"draw": draw}))
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{draw}");
+    }
+    let (status, rotation) = admin
+        .send(
+            Method::PUT,
+            "/settings/rotation",
+            json!({"draw": {"start_pct": 30, "max_pct": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rotation["draw"], json!({"start_pct": 30, "max_pct": 60}));
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/rotation", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        admin.get("/settings/rotation").await["draw"],
+        json!({"start_pct": 20, "max_pct": 50})
+    );
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Too deep", "separation": {"draw_start_pct": 70, "draw_max_pct": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Two categories, a clock calling them in turn, all week.
     let mut categories = Vec::new();
@@ -2138,11 +2359,12 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             .send(
                 Method::POST,
                 "/categories",
-                json!({"name": name, "separation": {"track_min": 1}}),
+                json!({"name": name, "separation": {"track_min": 1, "draw_max_pct": 80}}),
             )
             .await;
         assert_eq!(status, StatusCode::CREATED, "{category}");
         assert_eq!(category["separation"]["track_min"], 1);
+        assert_eq!(category["separation"]["draw_max_pct"], 80);
         for track in members {
             let (status, _) = admin
                 .send(
@@ -2170,13 +2392,14 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             json!({"name": "Hour", "slots": [
                 {"category_id": categories[0], "method": "random"},
                 {"category_id": categories[1], "method": "weighted",
-                 "separation": {"artist_min": 0}},
+                 "separation": {"artist_min": 0, "draw_start_pct": 40}},
             ]}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{clock}");
     let clock_id = clock["id"].as_u64().unwrap();
     assert_eq!(clock["slots"][1]["separation"]["artist_min"], 0);
+    assert_eq!(clock["slots"][1]["separation"]["draw_start_pct"], 40);
     assert_eq!(clock["looping"], false);
     let week: Vec<Value> = (1..=7)
         .flat_map(|day| {
@@ -2290,6 +2513,14 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             let explanation = &p["explanation"];
             assert_eq!(explanation["clock_id"], clock_id, "{p}");
             assert_ne!(p["track_id"], banned, "{p}");
+            // The random slot has no draw; the weighted one starts at its
+            // own 40 %, up to its category's 80 %.
+            if explanation["slot"] == 0 {
+                assert!(explanation["draw"].is_null(), "{p}");
+            } else if explanation["step"].as_u64().unwrap() < 11 {
+                assert_eq!(explanation["draw"]["start_pct"], 40, "{p}");
+                assert_eq!(explanation["draw"]["max_pct"], 80, "{p}");
+            }
             (
                 explanation["slot"].as_u64().unwrap(),
                 explanation["slot_category_id"].as_u64().unwrap(),
@@ -7200,6 +7431,8 @@ async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
         "/clocks",
         "/schedules",
         "/restrictions",
+        "/stream-servers",
+        "/settings/stream-details",
         "/outputs",
         "/webhooks",
         "/users",
@@ -7253,6 +7486,11 @@ async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
     // it: not configuration.
     for output in shown["/outputs"].as_array_mut().unwrap() {
         output.as_object_mut().unwrap().remove("status");
+    }
+    // A webhook's last delivery is what the station sent while the test
+    // ran (a track started), not what was set.
+    for webhook in shown["/webhooks"].as_array_mut().unwrap() {
+        webhook.as_object_mut().unwrap().remove("last_delivery");
     }
     // An artist is found again by name, under the ID the scan gave it.
     for restriction in shown["/restrictions"].as_array_mut().unwrap() {
@@ -7379,7 +7617,8 @@ async fn a_backup_restores_onto_an_empty_database() {
         .send(
             Method::POST,
             "/tracks/programming",
-            json!({"selection": {"track_ids": [t[2]]}, "bpm": 128.0, "play_ratio": 4}),
+            json!({"selection": {"track_ids": [t[2]]}, "bpm": 128.0, "play_ratio": 4,
+                   "dayparts": 0, "daypart_days": 2}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -7445,12 +7684,39 @@ async fn a_backup_restores_onto_an_empty_database() {
     }
     // Outputs, webhooks, users and their tokens.
     let profile = admin.get("/encoder-profiles").await[0]["id"].clone();
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme",
+                   "admin_password": "adm1n"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Relay", "host": "127.0.0.2", "relay_of": server["id"],
+                   "relay_mounts": [{"mount": "/live"}], "relay_subtract_one": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/settings/stream-details",
+            json!({"name": "My station", "url": "https://example.org"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
     let (status, body) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile, "enabled": false,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live", "password": "hackme"}}),
+                   "server_id": server["id"], "config": {"mount": "/live"},
+                   "details": {"genre": "Pop"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -7499,6 +7765,8 @@ async fn a_backup_restores_onto_an_empty_database() {
     .unwrap();
     let configured = configuration(&admin, &t).await;
     assert_eq!(configured[&format!("/tracks/{}", t[2])]["play_ratio"], 4);
+    assert_eq!(configured[&format!("/tracks/{}", t[2])]["dayparts"], 0);
+    assert_eq!(configured[&format!("/tracks/{}", t[2])]["daypart_days"], 2);
 
     // Backed up, then restored onto another Heron's empty database with
     // the same library.
@@ -7532,7 +7800,10 @@ async fn a_backup_restores_onto_an_empty_database() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|row| row["track"] == "Artist 3/Track 3.wav" && row["play_ratio"] == 4),
+            .any(|row| row["track"] == "Artist 3/Track 3.wav"
+                && row["play_ratio"] == 4
+                && row["dayparts"] == 0
+                && row["daypart_days"] == 2),
         "{}",
         file["tables"]["track_programming"]
     );
@@ -7564,6 +7835,12 @@ async fn a_backup_restores_onto_an_empty_database() {
         .unwrap()
         .remove("track_station_ratios");
     older.as_object_mut().unwrap().remove("disabled_by");
+    // Nor tracks' own daypart separation.
+    for row in older["tables"]["track_programming"].as_array_mut().unwrap() {
+        let row = row.as_object_mut().unwrap();
+        row.remove("dayparts");
+        row.remove("daypart_days");
+    }
     station.stop().await;
     // A track the new library does not have.
     file["tables"]["track_categories"]
@@ -7671,8 +7948,9 @@ async fn a_backup_restores_onto_an_empty_database() {
     );
     assert!(different.is_empty(), "{}", different.join("\n"));
 
-    // A file from before the ratios per station restores: every track on
-    // its default ratio, disabled tracks with no one recorded.
+    // A file from before the ratios per station and the tracks' own
+    // daypart separation restores: every track on its default ratio and
+    // its categories' dayparts, disabled tracks with no one recorded.
     let (status, body) = admin.send(Method::POST, "/backups/restore", older).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let admin = other.signed_in("admin").await;
@@ -7680,6 +7958,10 @@ async fn a_backup_restores_onto_an_empty_database() {
     let detail = admin.get(&format!("/tracks/{}", o[3])).await;
     assert_eq!(detail["enabled"], false);
     assert_eq!(detail["disabled_by"], Value::Null);
+    let detail = admin.get(&format!("/tracks/{}", o[2])).await;
+    assert_eq!(detail["play_ratio"], 4, "{detail}");
+    assert_eq!(detail["dayparts"], Value::Null, "{detail}");
+    assert_eq!(detail["daypart_days"], Value::Null, "{detail}");
     for id in [o[0], o[1]] {
         let detail = admin.get(&format!("/tracks/{id}")).await;
         assert!(
@@ -8367,6 +8649,144 @@ async fn the_same_daypart_on_the_following_days_is_set_per_category() {
     station.stop().await;
 }
 
+/// A track's own daypart separation: shared by the stations, set on a
+/// selection (0 to 10, and 0 to 7 days), back to its categories' with
+/// `null`, filtered on; it replaces its category's in rotation, and the
+/// log says whose value applied.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_track_s_own_daypart_separation_replaces_its_category_s() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let t = station.tracks.clone();
+    let set = |body: Value| {
+        let admin = &admin;
+        async move { admin.send(Method::POST, "/tracks/programming", body).await }
+    };
+    for body in [
+        json!({"selection": {"track_ids": [t[0]]}, "dayparts": 11}),
+        json!({"selection": {"track_ids": [t[0]]}, "daypart_days": 8}),
+    ] {
+        let (status, answer) = set(body).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{answer}");
+    }
+    // A viewer cannot set it.
+    let viewer = station.signed_in("viewer").await;
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            "/tracks/programming",
+            json!({"selection": {"track_ids": [t[0]]}, "dayparts": 1}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let own = |own: bool| {
+        let admin = &admin;
+        async move {
+            admin.get(&format!("/tracks?own_dayparts={own}")).await["total"]
+                .as_u64()
+                .unwrap()
+        }
+    };
+    let all = t.len() as u64;
+    assert_eq!((own(true).await, own(false).await), (0, all));
+    let (status, answer) = set(json!({"selection": {"track_ids": [t[0]]},
+                                      "dayparts": 0, "daypart_days": 2}))
+    .await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    let detail = admin.get(&format!("/tracks/{}", t[0])).await;
+    assert_eq!(
+        (&detail["dayparts"], &detail["daypart_days"]),
+        (&json!(0), &json!(2))
+    );
+    assert_eq!((own(true).await, own(false).await), (1, all - 1));
+    // Other programming details leave it as it is; `null` goes back to the
+    // categories', one value at a time.
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "bpm": 120.0})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "dayparts": null})).await;
+    assert_eq!(status, StatusCode::OK);
+    let listed = admin.get("/tracks?own_dayparts=true").await;
+    assert_eq!(listed["items"][0]["dayparts"], Value::Null, "{listed}");
+    assert_eq!(listed["items"][0]["daypart_days"], 2, "{listed}");
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "daypart_days": null})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(own(true).await, 0);
+
+    // A category keeping its tracks out of the 3 dayparts after a play;
+    // the first track's own 0 replaces it.
+    let mut rotation = admin.get("/settings/rotation").await;
+    for window in ["album_min", "artist_min", "title_min", "track_min"] {
+        rotation["separation"][window] = json!(0);
+    }
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, power) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Power", "separation": {"dayparts": 3}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{power}");
+    let id = power["id"].as_u64().unwrap();
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Hour", "slots": [{"category_id": id, "method": "random"}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    for track in &t {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": id}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "dayparts": 0})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, report) = admin
+        .send(
+            Method::POST,
+            "/rotation/simulate",
+            json!({"hours": 12, "seed": 4, "clock_id": clock["id"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let simulation = &report["simulation"];
+    assert!(
+        simulation["violations"].as_array().unwrap().is_empty(),
+        "{}",
+        simulation["violations"]
+    );
+    let picks = simulation["picks"].as_array().unwrap();
+    let mut own_picks = 0;
+    for pick in picks {
+        let daypart = &pick["explanation"]["daypart"];
+        if pick["track_id"] == t[0] {
+            own_picks += 1;
+            assert_eq!(daypart["separation"], 0, "{pick}");
+            assert_eq!(daypart["separation_from"], "track", "{pick}");
+        } else {
+            assert_eq!(daypart["separation"], 3, "{pick}");
+            assert_eq!(daypart["separation_from"], "category", "{pick}");
+        }
+        assert_eq!(daypart["days_from"], "category", "{pick}");
+    }
+    // Free of the category's rule, it plays in every daypart; held back
+    // by it, the others are relaxed.
+    assert!(own_picks > 0, "{picks:?}");
+    station.stop().await;
+}
+
 /// A configuration file of a schema from before daypart separation was set
 /// per category: the station's value goes onto its Song categories without
 /// one when restored, as the migration does.
@@ -8423,6 +8843,170 @@ async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories(
             json!({}),
             json!({}),
         ]
+    );
+    station.stop().await;
+}
+
+/// A configuration file from before the width choice: a user with the
+/// whole width (`full_width`) gets it back as `full`.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_older_backup_turns_full_width_into_a_width() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, _) = admin
+        .send(Method::PUT, "/auth/preferences", json!({"width": "wide"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    assert!(
+        file["tables"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|user| user["username"] == "admin" && user["width"] == "wide")
+    );
+    file["schema"] = json!(20270701000000_i64);
+    for user in file["tables"]["users"].as_array_mut().unwrap() {
+        let user = user.as_object_mut().unwrap();
+        user.remove("width");
+        // As backups write booleans: 1 or 0.
+        let full = i64::from(user["username"] == "admin");
+        user.insert("full_width".to_owned(), json!(full));
+    }
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+
+    let admin = station.signed_in("admin").await;
+    let users = admin.get("/users").await;
+    for user in users.as_array().unwrap() {
+        let expected = if user["username"] == "admin" {
+            "full"
+        } else {
+            "normal"
+        };
+        assert_eq!(user["width"], expected, "{user}");
+    }
+    station.stop().await;
+}
+
+/// A configuration file from before stream servers: each output holds its
+/// server's settings. Restored, its outputs are grouped into servers as the
+/// migration does, the station details lifted onto the station.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_older_backup_groups_its_outputs_into_servers() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    let profile = file["tables"]["encoder_profiles"][0]["id"].clone();
+    file["schema"] = json!(20261228000000_i64);
+    let tables = file["tables"].as_object_mut().unwrap();
+    tables.remove("stream_servers");
+    tables.insert(
+        "outputs".to_owned(),
+        json!([
+            {"id": 11, "station_id": 1, "name": "MP3", "kind": "icecast",
+             "encoder_profile_id": profile, "metadata_enabled": true, "enabled": false,
+             "config": {"host": "127.0.0.1", "port": 9, "mount": "/mp3", "password": "hackme",
+                        "name": "My station", "genre": "Pop"},
+             "statistics": {"admin_password": "adm1n"}},
+            {"id": 12, "station_id": 1, "name": "AAC", "kind": "icecast",
+             "encoder_profile_id": profile, "metadata_enabled": true, "enabled": false,
+             "config": {"host": "127.0.0.1", "port": 9, "mount": "/aac", "password": "hackme",
+                        "username": "source", "name": "My station HD", "genre": "Pop",
+                        "public_url": "https://stream.example.org"},
+             "statistics": {"admin_username": "admin", "admin_password": "adm1n"}},
+            {"id": 13, "station_id": 1, "name": "Other", "kind": "icecast",
+             "encoder_profile_id": profile, "metadata_enabled": true, "enabled": false,
+             "config": {"host": "127.0.0.1", "port": 9, "mount": "/other", "password": "else",
+                        "name": "My station", "public": true},
+             "statistics": null}
+        ]),
+    );
+    let settings = tables["station_settings"].as_array_mut().unwrap();
+    settings.retain(|row| row["name"] != "stream_details");
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+
+    let admin = station.signed_in("admin").await;
+    let servers = admin.get("/stream-servers").await;
+    let servers = servers.as_array().unwrap();
+    assert_eq!(servers.len(), 2, "{servers:?}");
+    assert_eq!(servers[0]["name"], "127.0.0.1:9");
+    assert_eq!(servers[0]["admin_password_set"], true);
+    assert_eq!(servers[0]["admin_username"], "admin");
+    // The first output's public address.
+    assert_eq!(servers[0]["public_url"], Value::Null);
+    assert_eq!(
+        servers[0]["outputs"],
+        json!([{"id": 12, "name": "AAC"}, {"id": 11, "name": "MP3"}])
+    );
+    assert_eq!(servers[1]["name"], "127.0.0.1:9 (2)");
+    assert_eq!(servers[1]["admin_password_set"], false);
+    assert_eq!(
+        admin.get("/settings/stream-details").await,
+        json!({"name": "My station", "description": null, "genre": "Pop", "url": null,
+               "public": false})
+    );
+    let outputs = admin.get("/outputs").await;
+    let shown: Vec<(Value, Value, Value)> = outputs
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| {
+            (
+                o["config"].clone(),
+                o["details"].clone(),
+                o["server_id"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            (
+                json!({"mount": "/mp3"}),
+                json!({}),
+                servers[0]["id"].clone()
+            ),
+            (
+                json!({"mount": "/aac"}),
+                json!({"name": "My station HD"}),
+                servers[0]["id"].clone()
+            ),
+            (
+                json!({"mount": "/other"}),
+                json!({"genre": "", "public": true}),
+                servers[1]["id"].clone()
+            ),
+        ]
+    );
+    // The engine gets what each output had.
+    let config = eventually(
+        "the outputs in the engine",
+        Duration::from_secs(10),
+        || async {
+            let config = station.state.stations.first().engine.config().await.ok()?;
+            let config: heron_core::OutputsConfig =
+                serde_json::from_str(&config.outputs_json).ok()?;
+            (config.outputs.len() == 3).then_some(config)
+        },
+    )
+    .await;
+    let other = config.outputs.iter().find(|o| o.id == 13).unwrap();
+    assert_eq!(
+        other.config,
+        json!({"host": "127.0.0.1", "port": 9, "mount": "/other", "username": "source",
+               "password": "else", "name": "My station", "public": true})
     );
     station.stop().await;
 }
@@ -9190,11 +9774,13 @@ async fn modules_are_turned_off_and_on_again() {
     let pool = &station.db.pool;
     let t = station.tracks.clone();
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
-                        "webhooks": true, "dedications": false, "match": false, "top30": false,
-                        "likes": true});
+                        "webhooks": true, "restrictions": true, "eq": true, "processing": true,
+                        "trash": true, "review": true, "artists": true, "labels": true,
+                        "dedications": false, "match": false, "top30": false, "likes": true});
     let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
-                        "webhooks": true, "dedications": true, "match": true, "top30": true,
-                        "likes": true});
+                        "webhooks": true, "restrictions": true, "eq": true, "processing": true,
+                        "trash": true, "review": true, "artists": true, "labels": true,
+                        "dedications": true, "match": true, "top30": true, "likes": true});
 
     // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);
@@ -9247,13 +9833,20 @@ async fn modules_are_turned_off_and_on_again() {
     let profile = admin.get("/encoder-profiles").await[0]["id"]
         .as_u64()
         .unwrap();
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
     let (status, output) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live",
-                              "password": "hackme"}}),
+                   "server_id": server["id"], "config": {"mount": "/live"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{output}");
@@ -9368,6 +9961,181 @@ async fn modules_are_turned_off_and_on_again() {
         .await
         .expect("a delivery once webhooks are on again")
         .unwrap();
+    station.stop().await;
+}
+
+/// Restrictions, the equalizer and processing turned off for a station:
+/// hidden and not applied (rotation ignores the restrictions, the engine
+/// gets the EQ and the AGC chain bypassed), their settings kept. The
+/// library's modules, off for the installation: their routes answer 404
+/// (docs/modules.md).
+#[tokio::test(flavor = "multi_thread")]
+async fn more_modules_are_turned_off_and_on_again() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    let engine = station.state.stations.first().engine.clone();
+
+    // A restriction, an EQ and a chain in use.
+    let (status, restriction) = admin
+        .send(
+            Method::POST,
+            "/restrictions",
+            json!({"target": {"kind": "track", "id": t[1]},
+                   "rule": {"kind": "daypart", "mode": "ban", "days": [1, 2, 3, 4, 5, 6, 7],
+                            "start_hour": 0, "end_hour": 24}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{restriction}");
+    let eq = json!({
+        "music": {"enabled": true, "gains_db": [3.0, 2.0, 0.0, 0.0, -1.5, 0.0, 0.0, 1.0, 1.0, 0.0]},
+        "fx": {"enabled": true, "gains_db": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    });
+    let (status, body) = admin.send(Method::PUT, "/settings/eq", eq.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let mut agc = admin.get("/settings/agc").await;
+    agc["bypass_all"] = json!(false);
+    let (status, agc) = admin.send(Method::PUT, "/settings/agc", agc).await;
+    assert_eq!(status, StatusCode::OK, "{agc}");
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert_eq!(library.restrictions.len(), 1);
+
+    // What the engine has, once the configuration sync has run.
+    let engine_has = async |eq_enabled: bool, bypass_all: bool| {
+        for _ in 0..100 {
+            let config = engine.config().await.unwrap();
+            let engine_eq: Value = serde_json::from_str(&config.eq_settings_json).unwrap();
+            let engine_agc: Value = serde_json::from_str(&config.agc_settings_json).unwrap();
+            if engine_eq["music"]["enabled"] == eq_enabled
+                && engine_eq["fx"]["enabled"] == eq_enabled
+                && engine_agc["bypass_all"] == bypass_all
+            {
+                return (engine_eq, engine_agc);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("the engine never had eq enabled {eq_enabled}, bypass_all {bypass_all}");
+    };
+    let (engine_eq, _) = engine_has(true, false).await;
+    assert_eq!(engine_eq, eq);
+
+    // Off for the station.
+    let (status, modules) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"restrictions": false, "eq": false, "processing": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{modules}");
+    assert_eq!(modules["on"]["eq"], false);
+    for path in ["/settings/eq", "/stations/1/settings/agc"] {
+        let (status, body) = admin.request(Method::GET, path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    // Shared: they answer while the installation has them on.
+    for path in ["/restrictions", "/eq-presets", "/agc-presets"] {
+        admin.get(path).await;
+    }
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert!(
+        library.restrictions.is_empty(),
+        "restrictions still applied"
+    );
+    // Bypassed on air, the gains and blocks kept.
+    let (engine_eq, engine_agc) = engine_has(false, true).await;
+    assert_eq!(engine_eq["music"]["gains_db"], eq["music"]["gains_db"]);
+    assert_eq!(engine_agc["final_stage"], agc["final_stage"]);
+    let stored: Value = serde_json::from_str(
+        &sqlx::query_scalar::<_, String>(
+            "SELECT CAST(value AS CHAR) FROM station_settings WHERE station_id = 1 AND name = 'eq'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(stored, eq, "the station's EQ is kept");
+
+    // Off for the installation, the shared routes too.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"restrictions": false, "eq": false, "processing": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for path in [
+        "/restrictions".to_owned(),
+        format!("/restrictions/{}", restriction["id"]),
+        "/eq-presets".to_owned(),
+        "/agc-presets".to_owned(),
+    ] {
+        let (status, body) = admin.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+
+    // On again: applied as they were.
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (engine_eq, engine_agc) = engine_has(true, false).await;
+    assert_eq!(engine_eq, eq);
+    assert_eq!(engine_agc, agc);
+    assert_eq!(admin.get("/settings/eq").await, eq);
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert_eq!(library.restrictions.len(), 1);
+
+    // The library's modules: a station cannot turn them off.
+    let library_off = json!({"trash": false, "review": false, "artists": false, "labels": false});
+    let (status, modules) = admin
+        .send(Method::PUT, "/stations/1/modules", library_off.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{modules}");
+    assert_eq!(modules["station"]["trash"], true);
+    assert_eq!(modules["on"]["labels"], true);
+    admin.get("/labels").await;
+    // Off for the installation.
+    let (status, _) = admin.send(Method::PUT, "/modules", library_off).await;
+    assert_eq!(status, StatusCode::OK);
+    let modules = admin.get("/stations/1/modules").await;
+    assert_eq!(modules["on"]["trash"], false);
+    for path in [
+        "/library/trash".to_owned(),
+        "/library/review".to_owned(),
+        "/library/batches".to_owned(),
+        // Refused before the artist is looked for.
+        "/artists/1".to_owned(),
+        "/artist-suggestions".to_owned(),
+        "/labels".to_owned(),
+    ] {
+        let (status, body) = admin.request(Method::GET, &path, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        assert_eq!(body["error"], "module_off", "{path}");
+    }
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/tracks/labels",
+            json!({"selection": {"track_ids": [t[0]]}, "add": [], "remove": []}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    // The artist pickers' search still answers.
+    let (status, _) = admin.request(Method::GET, "/artists", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    admin.get("/library/trash").await;
     station.stop().await;
 }
 
@@ -9940,5 +10708,229 @@ async fn listeners_like_the_track_playing_only() {
     assert_eq!(devices, 0);
     let total = viewer.get(&format!("/likes/tracks/{}", t[0])).await;
     assert_eq!(total["total"], json!({"likes": 2, "dislikes": 2}));
+    station.stop().await;
+}
+
+/// A clock slot at an exact time: hard, the track on air is cut and the
+/// slot starts then; soft, a track queued by hand that would end after the
+/// window is taken out.
+#[tokio::test(flavor = "multi_thread")]
+async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let t = &station.tracks;
+    let mut categories = Vec::new();
+    // Songs repeat at once: they also fill the gaps before exact times.
+    let free = json!({"track_min": 0, "title_min": 0, "artist_min": 0, "album_min": 0});
+    for (name, members) in [("News", &t[4..]), ("Songs", &t[..4])] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "separation": free}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (news, songs) = (categories[0], categories[1]);
+    let mut rotation = admin.get("/settings/rotation").await;
+    rotation["filler_category_id"] = json!(songs);
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // Exact times follow one another, and fit in the hour.
+    for exact in [json!({"at_s": 3_600}), json!({"at_s": 10, "after_s": 301})] {
+        let (status, body) = admin
+            .send(
+                Method::POST,
+                "/clocks",
+                json!({"name": "Bad", "slots": [{"category_id": news, "exact": exact}]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    }
+    // Keep a minute and a half from the end of the hour.
+    while rotation_now().rem_euclid(3_600_000) > 3_500_000 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let hour_start = rotation_now() - rotation_now().rem_euclid(3_600_000);
+    let hard_s = (rotation_now() - hour_start) / 1_000 + 20;
+    let soft_s = hard_s + 40;
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Exact", "slots": [
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": hard_s, "mode": "hard"}},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": soft_s, "mode": "soft", "before_s": 0, "after_s": 0}},
+                {"category_id": songs, "enforce_rules": false},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    assert_eq!(clock["slots"][1]["exact"]["mode"], "hard");
+    assert_eq!(clock["slots"][3]["exact"]["before_s"], 0);
+    let clock_id = clock["id"].as_u64().unwrap();
+    let week: Vec<Value> = (1..=7)
+        .flat_map(|day| {
+            (0..24).map(move |hour| json!({"day_of_week": day, "hour": hour, "clock_id": clock_id}))
+        })
+        .collect();
+    let (status, _) = admin.send(Method::PUT, "/schedule", json!(week)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    // Autofill played the whole library before the clock: those plays,
+    // the news among them, do not count.
+    let cleared_at = rotation_now();
+
+    // Hard: queued with its start time, started then, the track before cut.
+    let hard_at = hour_start + hard_s * 1_000;
+    let queued = |at: i64| {
+        let admin = &admin;
+        async move {
+            let queue = admin.get("/queue").await;
+            queue
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["track"]["start_at_unix_ms"] == at)
+                .cloned()
+        }
+    };
+    let entry = eventually(
+        "the hard exact slot queued",
+        Duration::from_secs(30),
+        || queued(hard_at),
+    )
+    .await;
+    assert_eq!(entry["track"]["track_id"], t[4]);
+    let play = eventually("the news on air", Duration::from_secs(40), || async {
+        let history = admin.get("/history").await;
+        history
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|play| {
+                play["track_id"] == t[4] && play["started_at_unix_ms"].as_i64() > Some(cleared_at)
+            })
+            .cloned()
+    })
+    .await;
+    let started = play["started_at_unix_ms"].as_i64().unwrap();
+    if (started - hard_at).abs() >= 1_500 {
+        let picks = admin.get("/rotation/picks?limit=30").await;
+        let picks: Vec<Value> = picks
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pick| {
+                let e = &pick["explanation"];
+                json!({"track": pick["track_id"], "planned": pick["planned_at_unix_ms"].as_i64().map(|at| at - hard_at),
+                       "slot": e["slot"], "step": e["step"], "exact": e["exact"], "fill": e["fill"]})
+            })
+            .collect();
+        let history = admin.get("/history").await;
+        let history: Vec<Value> = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|play| json!({"track": play["track_id"], "start": play["started_at_unix_ms"].as_i64().map(|at| at - hard_at), "end": play["end_reason"]}))
+            .collect();
+        panic!(
+            "started {} ms from its exact time\npicks: {}\nhistory: {}",
+            started - hard_at,
+            serde_json::to_string_pretty(&picks).unwrap(),
+            serde_json::to_string(&history).unwrap()
+        );
+    }
+    // The track before fades out over 1.5 s, skipped.
+    eventually("the track before cut", Duration::from_secs(10), || async {
+        let history = admin.get("/history").await;
+        let before = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|other| other["started_at_unix_ms"].as_i64() < Some(started))
+            .cloned()?;
+        (before["end_reason"] == "skipped").then_some(())
+    })
+    .await;
+    let picks = admin.get("/rotation/picks?limit=100").await;
+    let exact = picks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pick| pick["explanation"]["exact"]["at_unix_ms"] == hard_at)
+        .map(|pick| pick["explanation"]["exact"].clone())
+        .unwrap();
+    assert_eq!(exact["met"], "on_time", "{exact}");
+    assert_eq!(exact["faded"], true, "{exact}");
+
+    // Soft: a track queued by hand right before it, which would end after
+    // the window, is taken out.
+    let soft_at = hour_start + soft_s * 1_000;
+    let entry = eventually(
+        "the soft exact slot queued",
+        Duration::from_secs(40),
+        || queued(soft_at),
+    )
+    .await;
+    let queue = admin.get("/queue").await;
+    let position = queue
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|other| other["entry_id"] == entry["entry_id"])
+        .unwrap();
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/queue",
+            json!({"track_ids": [t[0]], "position": position}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let manual = body["entry_ids"][0].as_u64().unwrap();
+    eventually(
+        "the manual track taken out",
+        Duration::from_secs(20),
+        || async {
+            let queue = admin.get("/queue").await;
+            (!queue
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|other| other["entry_id"] == manual))
+            .then_some(())
+        },
+    )
+    .await;
     station.stop().await;
 }

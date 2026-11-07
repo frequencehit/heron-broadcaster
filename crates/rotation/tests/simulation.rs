@@ -79,6 +79,8 @@ fn station() -> Station {
             length_ms: 150_000 + dice.roll(180_000) as u32,
             // Every ninth track plays 3 times out of 10.
             ratio: if id.is_multiple_of(9) { 3 } else { 10 },
+            dayparts: None,
+            daypart_days: None,
         });
         members.entry(category).or_default().push(Member {
             track: id,
@@ -180,6 +182,7 @@ fn station() -> Station {
         method,
         enforce_rules: true,
         linked_to_next: false,
+        exact: None,
         separation: SeparationOverrides::default(),
     };
     let day = Clock {
@@ -217,6 +220,7 @@ fn station() -> Station {
             Slot {
                 enforce_rules: false,
                 linked_to_next: false,
+                exact: None,
                 ..slot(LONG, Method::Random)
             },
             slot(GOLD, Method::Weighted),
@@ -302,6 +306,8 @@ fn station() -> Station {
             counters: HashMap::new(),
             station_ratios: HashMap::new(),
             modules_off: Vec::new(),
+            medley_category: None,
+            medleys: Vec::new(),
         },
         artists,
     }
@@ -673,6 +679,7 @@ fn a_small_library_relaxes_step_by_step_and_logs_it() {
                 method: Method::LeastRecentlyPlayed,
                 enforce_rules: true,
                 linked_to_next: false,
+                exact: None,
                 separation: SeparationOverrides::default(),
             },
             Slot {
@@ -680,6 +687,7 @@ fn a_small_library_relaxes_step_by_step_and_logs_it() {
                 method: Method::Random,
                 enforce_rules: true,
                 linked_to_next: false,
+                exact: None,
                 separation: SeparationOverrides::default(),
             },
         ],
@@ -757,6 +765,7 @@ fn a_linked_slot_always_plays_with_its_track_in_the_same_hour() {
         method: Method::Random,
         enforce_rules: true,
         linked_to_next,
+        exact: None,
         separation: SeparationOverrides::default(),
     };
     parts.clocks = vec![Clock {

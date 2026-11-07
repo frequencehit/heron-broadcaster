@@ -139,17 +139,27 @@ function Tile({ label, value, hint }: Readonly<{ label: string; value: ReactNode
   );
 }
 
+/** The listeners now of a server's part, for one output or all. */
+function serverNow(now: Schemas["ListenersNow"] | undefined, server: number, output: number | undefined): number | null | undefined {
+  if (output === undefined) {
+    return now?.servers.find((s) => s.server_id === server)?.listeners;
+  }
+  const outputNow = now?.outputs.find((o) => o.output_id === output);
+  return outputNow?.servers.find((s) => s.server_id === server)?.listeners;
+}
+
 function Today({ zone, output }: Readonly<{ zone: string | undefined; output: number | undefined }>) {
   const now = useListenersNow();
+  const [server, setServer] = useState<number | undefined>(undefined);
   const today = dayOf(Date.now(), zone);
   const from = dayStart(today, zone);
   const to = dayStart(addDays(today, 1), zone);
   const samples = useQuery({
-    queryKey: ["listeners", "samples", from, output],
+    queryKey: ["listeners", "samples", from, output, server],
     queryFn: () =>
       unwrap(
         api.GET("/api/v1/stations/{station_id}/listeners/samples", {
-          params: { path: here(), query: { from_unix_ms: from, to_unix_ms: to, ...query({ output_id: output }) } },
+          params: { path: here(), query: { from_unix_ms: from, to_unix_ms: to, ...query({ output_id: output, server_id: server }) } },
         }),
       ),
     refetchInterval: 60_000,
@@ -162,13 +172,39 @@ function Today({ zone, output }: Readonly<{ zone: string | undefined; output: nu
       ),
     refetchInterval: 60_000,
   });
+  const parts = output === undefined ? undefined : now.data?.outputs.find((o) => o.output_id === output)?.servers;
+  const servers = (now.data?.servers ?? []).filter((s) => !parts || parts.some((p) => p.server_id === s.server_id));
   const current =
-    output === undefined ? now.data?.total : now.data?.outputs.find((o) => o.output_id === output)?.listeners;
+    server !== undefined
+      ? serverNow(now.data, server, output)
+      : output === undefined
+        ? now.data?.total
+        : now.data?.outputs.find((o) => o.output_id === output)?.listeners;
   const day = totals.data?.[0];
   const unread = now.data?.outputs.filter((o) => o.error && (output === undefined || o.output_id === output)) ?? [];
 
   return (
-    <Card title={t("statistics.today")}>
+    <Card
+      title={t("statistics.today")}
+      actions={
+        servers.length > 1 && (
+          <select
+            className="input"
+            style={{ width: "auto" }}
+            aria-label={t("statistics.server")}
+            value={server ?? ""}
+            onChange={(e) => setServer(e.target.value === "" ? undefined : Number(e.target.value))}
+          >
+            <option value="">{t("statistics.allServers")}</option>
+            {servers.map((s) => (
+              <option key={s.server_id} value={s.server_id}>
+                {s.relay_of == null ? s.name : `${s.name} (${t("statistics.relay")})`}
+              </option>
+            ))}
+          </select>
+        )
+      }
+    >
       <div className="stack">
         {unread.map((o) => (
           <p key={o.output_id} className="warn small" style={{ margin: 0 }}>
@@ -203,6 +239,35 @@ function Today({ zone, output }: Readonly<{ zone: string | undefined; output: nu
               tooltip={minuteTooltip}
             />
           ))}
+        {servers.length > 1 && (
+          <table className="table">
+            <caption className="muted small" style={{ textAlign: "left" }}>
+              {t("statistics.servers")}
+            </caption>
+            <tbody>
+              {servers.map((s) => {
+                const listeners = serverNow(now.data, s.server_id, output);
+                return (
+                  <tr key={s.server_id}>
+                    <td>
+                      {s.name}
+                      {s.relay_of != null && <span className="muted small"> · {t("statistics.relay")}</span>}
+                    </td>
+                    <td className="num">
+                      {listeners == null ? (
+                        <span className="warn small" title={s.error ?? undefined}>
+                          {t("statistics.notRead")}
+                        </span>
+                      ) : (
+                        number(listeners)
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
         {day && day.distinct_listeners == null && <p className="muted small">{t("statistics.noSessionsHelp")}</p>}
       </div>
     </Card>

@@ -221,6 +221,52 @@ mod tests {
             .unwrap();
     }
 
+    /// Users who had the whole width keep it as `full`; the others get the
+    /// normal column.
+    #[tokio::test]
+    async fn full_width_becomes_a_width() {
+        let Ok(admin_url) = std::env::var("HERON_TEST_DATABASE_URL") else {
+            return;
+        };
+        let admin_url = admin_url.trim_end_matches('/').to_owned();
+        let name = format!("heron_width_{}", std::process::id());
+        let admin = sqlx::MySqlPool::connect(&admin_url).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+        let pool = sqlx::MySqlPool::connect(&format!("{admin_url}/{name}"))
+            .await
+            .unwrap();
+        const USER_WIDTH: i64 = 20270702000000;
+        MIGRATOR.run_to(USER_WIDTH - 1, &pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (username, password_hash, full_width)
+             VALUES ('wide', 'x', TRUE), ('narrow', 'x', FALSE)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        MIGRATOR.run(&pool).await.unwrap();
+        let widths: Vec<(String, String)> =
+            sqlx::query_as("SELECT username, CAST(width AS CHAR) FROM users ORDER BY username")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            widths,
+            [
+                ("narrow".to_owned(), "normal".to_owned()),
+                ("wide".to_owned(), "full".to_owned())
+            ]
+        );
+        pool.close().await;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+    }
+
     /// A new database has no images to move.
     #[tokio::test]
     async fn a_new_database_is_migrated_whole() {

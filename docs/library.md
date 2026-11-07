@@ -118,7 +118,7 @@ With the library setting `write_tags` off (*Settings › Library*, admins), the 
 
 - The values show at once everywhere Heron uses a track's tags: the library, rotation and its separation rules, history, now-playing, webhooks and the stream's metadata.
 - The scanner, and the librarian when it writes a file, apply them on top of the tags they read, so they survive a rescan or a file changed on disk. Organizing the library files tracks by them too.
-- A track's page lists its overridden fields, with **Back to the file's tags** (`POST /tracks/tag-overrides/clear`), which drops them and reads the file again.
+- A track's page has **Back to the file's tags** next to *Edit tags* while some of its tags are kept in Heron (`POST /tracks/tag-overrides/clear`): it drops them and reads the file again. There is no warning about it: tags kept in Heron are a normal way to work, not a problem to fix.
 - Turned back on, `write_tags` writes edits into the files again; a field written drops its override, the file has the value now. Edits queued before the setting was turned off fail without touching the files.
 - Imports from the buffer zone and the review screen still write tags into the files they file: `write_tags` is about tags edited on tracks of the library.
 

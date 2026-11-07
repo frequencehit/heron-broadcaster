@@ -17,4 +17,9 @@ describe("filtersOf", () => {
   it("shows the tracks in no category whatever the station", () => {
     expect(filtersOf(new URLSearchParams("category=none"), "", 2)).toEqual({ no_category: true });
   });
+
+  it("filters on the tracks' own daypart separation", () => {
+    expect(filtersOf(new URLSearchParams("dayparts=own"), "", undefined)).toEqual({ own_dayparts: true });
+    expect(filtersOf(new URLSearchParams("dayparts=category"), "", undefined)).toEqual({ own_dayparts: false });
+  });
 });

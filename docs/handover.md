@@ -154,9 +154,9 @@ sequenceDiagram
 
 - **Now**: paused, held, or nothing on air. The active engine holds the mixer at once (`Command::Hold`), so nothing starts while the standby prepares, and sends the queue as it is.
 - **At { position }**: the track on air stops at `position`, `lead_ms` from its current position, rounded to a millisecond (saved queues count in milliseconds; the decoder seeks to a millisecond, so both engines agree on the frame).
-- **Wait**: the FX player is playing, two decks are playing (a transition), or the stop would be less than 1 s before the next transition (the cued track's planned start, or 15 s before the end of the track when nothing is cued yet, since a fallback track may be cued with a transition then). The active engine asks again every 10 ms, within the time limit.
+- **Wait**: the FX player is playing, two decks are playing (a transition), or the stop would be less than 1 s before the next transition (the cued track's planned start, or 15 s before the end of the track when nothing is cued yet, since a fallback track may be cued with a transition then). The active engine asks again every 10 ms, within the time limit. It also waits when an [exact time](audio-engine.md#exact-times) (a waiting entry's start time) falls before the stop plus 1 s: the cut there would change the queue under the standby.
 
-So the cut never falls in a crossfade or under a jingle: there is a single voice to stop and to resume.
+So the cut never falls in a crossfade, under a jingle or across an exact time: there is a single voice to stop and to resume. The start times travel with the queue in `Prepare` (the `queue.json` format), so the new engine cuts at them as the old one would have; an older engine ignores them.
 
 ## Getting ready, and retries
 

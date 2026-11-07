@@ -181,9 +181,13 @@ impl ConfigSync {
             tracing::info!("playout settings applied to the engine");
         }
 
+        // A module turned off is bypassed on air, its settings kept
+        // (docs/modules.md).
+        let modules = crate::modules::on_for(&self.pool, self.station_id).await?;
         if let Some(engine_eq) = engine_eq {
             let eq: EqSettings =
                 settings::load_for(&self.pool, self.station_id, EqSettings::SETTINGS_NAME).await?;
+            let eq = if modules.eq { eq } else { bypassed_eq(eq) };
             if eq != engine_eq {
                 let json = serde_json::to_string(&eq)
                     .map_err(|error| ApiError::Internal(error.to_string()))?;
@@ -209,6 +213,10 @@ impl ConfigSync {
             }
             let agc: AgcSettings =
                 settings::load_for(&self.pool, self.station_id, AgcSettings::SETTINGS_NAME).await?;
+            let agc = AgcSettings {
+                bypass_all: agc.bypass_all || !modules.processing,
+                ..agc
+            };
             if agc != engine_agc {
                 let json = serde_json::to_string(&agc)
                     .map_err(|error| ApiError::Internal(error.to_string()))?;
@@ -218,8 +226,9 @@ impl ConfigSync {
         }
 
         let mut connection = self.pool.acquire().await?;
-        let outputs = outputs::load_config(&mut connection, Some(self.station_id)).await?;
+        let mut outputs = outputs::load_config(&mut connection, Some(self.station_id)).await?;
         drop(connection);
+        outputs::keep_engine_shape(&mut outputs, &engine_outputs);
         if outputs != engine_outputs {
             let json = serde_json::to_string(&outputs)
                 .map_err(|error| ApiError::Internal(error.to_string()))?;
@@ -259,6 +268,14 @@ impl ConfigSync {
         outputs::adopt(&self.pool, self.station_id, outputs).await?;
         Ok(())
     }
+}
+
+/// Both deck EQs bypassed, their gains kept: they glide to flat.
+fn bypassed_eq(eq: EqSettings) -> EqSettings {
+    let mut eq = eq;
+    eq.music.enabled = false;
+    eq.fx.enabled = false;
+    eq
 }
 
 /// Settings an engine may not know yet: empty from engines before them.

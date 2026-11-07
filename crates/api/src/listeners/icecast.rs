@@ -42,12 +42,13 @@ impl From<reqwest::Error> for ReadError {
     }
 }
 
-/// `http://host:port`, where the statistics are read.
-pub fn base_url(host: &str, port: u16) -> String {
+/// `http://host:port` (`https` with TLS), where the statistics are read.
+pub fn base_url(host: &str, port: u16, tls: bool) -> String {
+    let scheme = if tls { "https" } else { "http" };
     if host.contains(':') {
-        format!("http://[{host}]:{port}")
+        format!("{scheme}://[{host}]:{port}")
     } else {
-        format!("http://{host}:{port}")
+        format!("{scheme}://{host}:{port}")
     }
 }
 
@@ -279,7 +280,8 @@ mod tests {
 
     #[test]
     fn base_urls() {
-        assert_eq!(base_url("icecast", 8000), "http://icecast:8000");
-        assert_eq!(base_url("::1", 8000), "http://[::1]:8000");
+        assert_eq!(base_url("icecast", 8000, false), "http://icecast:8000");
+        assert_eq!(base_url("::1", 8000, false), "http://[::1]:8000");
+        assert_eq!(base_url("relay", 443, true), "https://relay:443");
     }
 }

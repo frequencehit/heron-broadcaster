@@ -9,10 +9,11 @@ import { type Schemas, api, done, unwrap } from "../api";
 import { CoverImage, sendImage } from "../components/Cover";
 import { ModuleSwitches } from "../components/Modules";
 import { DaypartSettings } from "../components/Dayparts";
+import { DrawDepthDiagram } from "../components/DrawDepth";
 import { Card, ErrorView, Field, Icon, Loading, NumberInput, PageHead } from "../components/ui";
 import { type PlainKey, number, rich, t } from "../i18n";
 import { type MinuteWindow, WINDOW_FIELDS } from "../lib/rotation";
-import { Link } from "../lib/router";
+import { Link, setSearch, useLocation } from "../lib/router";
 import { useStationCategories } from "./Clocks";
 import { useStations } from "../components/Stations";
 import { here, stationUrl, useStation } from "../lib/station";
@@ -20,21 +21,59 @@ import { DuckPlaceSelect, FadeCurveSelect, useMedleySettings } from "./Medleys";
 import { useAction, useCan } from "../lib/session";
 import { moduleKey, useModule, useStationModules } from "../lib/modules";
 
+/** The settings page's tabs, in order: the `tab` of the URL. */
+export const SETTINGS_TABS = ["station", "programming", "audio", "library", "statistics"] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+const TAB_LABELS: Record<SettingsTab, PlainKey> = {
+  station: "nav.station",
+  programming: "settings.programming",
+  audio: "settings.audio",
+  library: "nav.library",
+  statistics: "nav.statistics",
+};
+
 export function Settings() {
   const medleys = useModule("medleys");
   const statistics = useModule("listener_statistics");
+  const { search } = useLocation();
+  const tabs = SETTINGS_TABS.filter((tab) => tab !== "statistics" || statistics);
+  const asked = search.get("tab") as SettingsTab | null;
+  const tab: SettingsTab = asked && tabs.includes(asked) ? asked : "station";
   return (
     <>
       <PageHead title={t("nav.settings")} description={t("settings.description")} />
-      <QueueCard />
-      <RotationCard />
-      <StationCard />
-      <StationModulesCard />
-      <ProgrammingCard />
-      {medleys && <MedleysCard />}
-      {statistics && <StatisticsCard />}
-      <LibraryCard />
-      <AnalysisCard />
+      <div className="tabs" role="tablist">
+        {tabs.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            onClick={() => setSearch({ tab: name === "station" ? null : name })}
+          >
+            {t(TAB_LABELS[name])}
+          </button>
+        ))}
+      </div>
+      {tab === "station" && (
+        <>
+          <StationCard />
+          <StreamDetailsCard />
+          <StationModulesCard />
+        </>
+      )}
+      {tab === "programming" && (
+        <>
+          <QueueCard />
+          <RotationCard />
+          <ProgrammingCard />
+          {medleys && <MedleysCard />}
+        </>
+      )}
+      {tab === "audio" && <AnalysisCard />}
+      {tab === "library" && <LibraryCard />}
+      {tab === "statistics" && <StatisticsCard />}
     </>
   );
 }
@@ -188,85 +227,154 @@ function RotationCard() {
       canEdit={canEdit}
     >
       {(draft, set) => (
-        <>
-          <div className="form-grid">
-            {WINDOW_FIELDS.map(([key]) => (
-              <Field key={key} label={t(WINDOW_LABELS[key])}>
-                <NumberInput
-                  value={draft.separation[key]}
-                  min={0}
-                  max={10_080}
-                  step={1}
-                  suffix={t("common.min")}
-                  disabled={!canEdit}
-                  onChange={(minutes) => set({ separation: { ...draft.separation, [key]: Math.round(minutes) } })}
-                />
-              </Field>
-            ))}
-          </div>
+        <div className="settings-sections">
+          <fieldset>
+            <legend>{t("settings.separationTitle")}</legend>
+            <p className="muted small">{t("settings.separationHelp")}</p>
+            <div className="form-grid">
+              {WINDOW_FIELDS.map(([key]) => (
+                <Field key={key} label={t(WINDOW_LABELS[key])}>
+                  <NumberInput
+                    value={draft.separation[key]}
+                    min={0}
+                    max={10_080}
+                    step={1}
+                    suffix={t("common.min")}
+                    disabled={!canEdit}
+                    onChange={(minutes) => set({ separation: { ...draft.separation, [key]: Math.round(minutes) } })}
+                  />
+                </Field>
+              ))}
+            </div>
+          </fieldset>
           <DaypartSettings
             count={draft.daypart_count}
             disabled={!canEdit}
             onChange={(daypart_count) => set({ daypart_count })}
           />
-          <div className="form-grid">
-            <Field label={t("settings.fallback")} hint={t("settings.fallbackHint")}>
-              <select
-                className="input"
-                value={draft.fallback_category_id ?? ""}
-                disabled={!canEdit}
-                onChange={(e) => set({ fallback_category_id: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">{t("settings.wholeLibrary")}</option>
-                {categories.data?.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t("settings.playFactor")} hint={t("settings.playFactorHint")}>
-              <NumberInput
-                value={draft.weights.play_factor}
-                min={0.5}
-                max={1}
-                step={0.05}
-                disabled={!canEdit}
-                onChange={(play_factor) => set({ weights: { ...draft.weights, play_factor } })}
-              />
-            </Field>
-            <Field label={t("settings.requestFactor")} hint={t("settings.requestFactorHint")}>
-              <NumberInput
-                value={draft.weights.request_factor}
-                min={1}
-                max={2}
-                step={0.05}
-                disabled={!canEdit}
-                onChange={(request_factor) => set({ weights: { ...draft.weights, request_factor } })}
-              />
-            </Field>
-          </div>
-          <Field label={t("settings.keptOut")} hint={t("settings.keptOutHint")}>
-            <span className="station-checks">
-              {categories.data?.map((category) => (
-                <label key={category.id} className="check">
-                  <input
-                    type="checkbox"
+          <fieldset>
+            <legend>{t("draw.title")}</legend>
+            <p className="muted small">{t("settings.drawHelp")}</p>
+            <div className="draw-columns">
+              <div>
+              <div>
+                <Field label={t("draw.start")}>
+                  <NumberInput
+                    value={draft.draw.start_pct}
+                    min={1}
+                    max={draft.draw.max_pct}
+                    step={1}
+                    suffix="%"
                     disabled={!canEdit}
-                    checked={draft.kept_out_category_ids.includes(category.id)}
-                    onChange={(event) =>
-                      set({
-                        kept_out_category_ids: event.target.checked
-                          ? [...draft.kept_out_category_ids, category.id]
-                          : draft.kept_out_category_ids.filter((id) => id !== category.id),
-                      })
-                    }
-                  />{" "}
-                  {category.name}
-                </label>
-              ))}
-            </span>
-          </Field>
+                    onChange={(pct) => set({ draw: { ...draft.draw, start_pct: Math.round(pct) } })}
+                  />
+                </Field>
+                <Field label={t("draw.max")}>
+                  <NumberInput
+                    value={draft.draw.max_pct}
+                    min={draft.draw.start_pct}
+                    max={100}
+                    step={1}
+                    suffix="%"
+                    disabled={!canEdit}
+                    onChange={(pct) => set({ draw: { ...draft.draw, max_pct: Math.round(pct) } })}
+                  />
+                </Field>
+              </div>
+              <details className="small">
+                <summary>{t("settings.drawMethods")}</summary>
+                <p className="muted">{t("draw.methods")}</p>
+              </details>
+              </div>
+              <DrawDepthDiagram start={draft.draw.start_pct} max={draft.draw.max_pct} />
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>{t("settings.relaxTitle")}</legend>
+            <p className="muted small">{t("settings.relaxHelp")}</p>
+            <div className="form-grid">
+              <Field label={t("settings.fallback")} hint={t("settings.fallbackHint")}>
+                <select
+                  className="input"
+                  value={draft.fallback_category_id ?? ""}
+                  disabled={!canEdit}
+                  onChange={(e) => set({ fallback_category_id: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">{t("settings.wholeLibrary")}</option>
+                  {categories.data?.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t("settings.filler")} hint={t("settings.fillerHint")}>
+                <select
+                  className="input"
+                  value={draft.filler_category_id ?? ""}
+                  disabled={!canEdit}
+                  onChange={(e) => set({ filler_category_id: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">{t("settings.noFiller")}</option>
+                  {categories.data?.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>{t("settings.weightsTitle")}</legend>
+            <p className="muted small">{t("settings.weightsHelp")}</p>
+            <div className="form-grid">
+              <Field label={t("settings.playFactor")} hint={t("settings.playFactorHint")}>
+                <NumberInput
+                  value={draft.weights.play_factor}
+                  min={0.5}
+                  max={1}
+                  step={0.05}
+                  disabled={!canEdit}
+                  onChange={(play_factor) => set({ weights: { ...draft.weights, play_factor } })}
+                />
+              </Field>
+              <Field label={t("settings.requestFactor")} hint={t("settings.requestFactorHint")}>
+                <NumberInput
+                  value={draft.weights.request_factor}
+                  min={1}
+                  max={2}
+                  step={0.05}
+                  disabled={!canEdit}
+                  onChange={(request_factor) => set({ weights: { ...draft.weights, request_factor } })}
+                />
+              </Field>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>{t("settings.libraryTitle")}</legend>
+            <Field label={t("settings.keptOut")} hint={t("settings.keptOutHint")}>
+              <span className="station-checks">
+                {categories.data?.map((category) => (
+                  <label key={category.id} className="check">
+                    <input
+                      type="checkbox"
+                      disabled={!canEdit}
+                      checked={draft.kept_out_category_ids.includes(category.id)}
+                      onChange={(event) =>
+                        set({
+                          kept_out_category_ids: event.target.checked
+                            ? [...draft.kept_out_category_ids, category.id]
+                            : draft.kept_out_category_ids.filter((id) => id !== category.id),
+                        })
+                      }
+                    />{" "}
+                    {category.name}
+                  </label>
+                ))}
+              </span>
+            </Field>
+          </fieldset>
           {others.length > 0 && (
             <fieldset>
               <legend>{t("settings.across")}</legend>
@@ -320,7 +428,7 @@ function RotationCard() {
               </Field>
             </fieldset>
           )}
-        </>
+        </div>
       )}
     </SettingsCard>
   );
@@ -684,6 +792,79 @@ function StationCard() {
             />
           </Field>
           {coverArt && <StationLogo canEdit={isAdmin} />}
+        </>
+      )}
+    </SettingsCard>
+  );
+}
+
+/** What the outputs tell the stream servers about the station; each output can override them. */
+function StreamDetailsCard() {
+  const isAdmin = useCan("admin");
+  const stationId = useStation();
+  const stationName = useStations().find((station) => station.id === stationId)?.name ?? "";
+  const details = useQuery({
+    queryKey: ["settings", "stream-details", stationId],
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/stream-details", { params: { path: here() } })),
+  });
+  const save = useAction(
+    (body: Schemas["StreamDetails"]) =>
+      unwrap(api.PUT("/api/v1/stations/{station_id}/settings/stream-details", { params: { path: here() }, body })),
+    { success: t("outputs.saved"), invalidate: [["settings", "stream-details"], ["outputs"], ["engine"]] },
+  );
+  if (details.isPending) {
+    return <Loading />;
+  }
+  if (details.isError) {
+    return <ErrorView error={details.error} />;
+  }
+  const text = (value: string) => (value.trim() === "" ? null : value);
+  return (
+    <SettingsCard
+      title={t("settings.streamDetails")}
+      description={t("settings.streamDetailsHelp")}
+      value={details.data}
+      save={(value) => save.mutate(value)}
+      saving={save.isPending}
+      canEdit={isAdmin}
+    >
+      {(draft, set) => (
+        <>
+          <div className="form-grid">
+            <Field label={t("outputs.stationName")} hint={draft.name ? undefined : t("settings.streamNameEmpty")}>
+              <input
+                className="input"
+                value={draft.name ?? ""}
+                placeholder={stationName}
+                disabled={!isAdmin}
+                onChange={(e) => set({ name: text(e.target.value) })}
+              />
+            </Field>
+            <Field label={t("outputs.genre")}>
+              <input className="input" value={draft.genre ?? ""} disabled={!isAdmin} onChange={(e) => set({ genre: text(e.target.value) })} />
+            </Field>
+            <Field label={t("outputs.website")}>
+              <input
+                className="input"
+                type="url"
+                value={draft.url ?? ""}
+                disabled={!isAdmin}
+                onChange={(e) => set({ url: text(e.target.value) })}
+              />
+            </Field>
+            <Field label={t("outputs.descriptionField")}>
+              <input
+                className="input"
+                value={draft.description ?? ""}
+                disabled={!isAdmin}
+                onChange={(e) => set({ description: text(e.target.value) })}
+              />
+            </Field>
+          </div>
+          <label className="check" style={{ marginTop: "0.75rem" }}>
+            <input type="checkbox" checked={draft.public ?? false} disabled={!isAdmin} onChange={(e) => set({ public: e.target.checked })} />
+            {t("outputs.public")}
+          </label>
         </>
       )}
     </SettingsCard>

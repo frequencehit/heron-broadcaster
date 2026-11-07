@@ -16,7 +16,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use heron_core::playout::CrossfadeOverrides;
+use heron_core::FadeCurve;
+use heron_core::playout::{CrossfadeMode, CrossfadeOverrides, Fade};
 use heron_core::{PlaySource, TrackOverrides, TrackPlayout};
 use heron_proto::engine as pb;
 use heron_rotation::{Play, Rng};
@@ -212,8 +213,70 @@ impl TrackRow {
             no_metadata: self.no_metadata,
             over_intro: self.over_intro,
             intro_ms: self.intro_ms,
+            start_at_unix_ms: None,
+            cut_fade_ms: 0,
+            continues: false,
         })
     }
+}
+
+/// The queue entries of rotation's picks: an exact slot's track with its
+/// start time, a shortened medley as two spans of its file, the first
+/// linked to the second. Returns the tracks, the indices of those linked to
+/// the one after them, and each pick's first entry.
+fn entries(
+    picks: &[heron_rotation::Pick],
+    tracks: Vec<pb::Track>,
+) -> ApiResult<(Vec<pb::Track>, Vec<u32>, Vec<usize>)> {
+    let json = |overrides: &CrossfadeOverrides| {
+        serde_json::to_string(overrides).map_err(|error| ApiError::Internal(error.to_string()))
+    };
+    let mut queued = Vec::with_capacity(tracks.len());
+    let mut linked = Vec::new();
+    let mut firsts = Vec::with_capacity(picks.len());
+    for (pick, mut track) in picks.iter().zip(tracks) {
+        firsts.push(queued.len());
+        let index = u32::try_from(queued.len()).unwrap_or(u32::MAX);
+        if pick.explanation.linked {
+            linked.push(index);
+        }
+        if let Some(start_at) = pick.start_at_ms {
+            track.start_at_unix_ms = Some(start_at);
+            track.cut_fade_ms = heron_rotation::exact::CUT_FADE_MS;
+        }
+        let Some(cut) = &pick.medley_cut else {
+            queued.push(track);
+            continue;
+        };
+        let fade = Fade {
+            enabled: true,
+            curve: FadeCurve::Linear,
+            time_ms: cut.crossfade_ms,
+            level_pct: 0,
+        };
+        let mut rest = track.clone();
+        track.cue_out_ms = cut.first_to_ms;
+        track.mix_point_ms = None;
+        track.crossfade_overrides_json = json(&CrossfadeOverrides {
+            fade_out: Some(fade),
+            mode: Some(CrossfadeMode::Fixed),
+            fixed_ms: Some(cut.crossfade_ms),
+            crossfade: Some(true),
+            ..CrossfadeOverrides::default()
+        })?;
+        rest.cue_in_ms = cut.second_from_ms;
+        rest.start_at_unix_ms = None;
+        rest.cut_fade_ms = 0;
+        rest.continues = true;
+        rest.crossfade_overrides_json = json(&CrossfadeOverrides {
+            fade_in: Some(fade),
+            ..CrossfadeOverrides::default()
+        })?;
+        linked.push(index);
+        queued.push(track);
+        queued.push(rest);
+    }
+    Ok((queued, linked, firsts))
 }
 
 impl QueueManager {
@@ -329,6 +392,9 @@ impl QueueManager {
         loop {
             let state = engine.borrow_and_update().clone();
             if let Some(state) = state {
+                if let Err(error) = self.trim_before_exact(&state).await {
+                    tracing::warn!(%error, "cannot check the queue against its exact time");
+                }
                 if let Err(error) = self.fill(&state).await {
                     tracing::warn!(%error, "cannot fill the queue");
                 }
@@ -377,9 +443,6 @@ impl QueueManager {
         let mut last = rotation::last_position(&self.pool, self.station_id).await?;
         let mut rng = Rng::new(rotation::seed());
         let mut picks = Vec::new();
-        // Indices of the picks linked to the pick after them (a jingle and
-        // the track of its clock's next slot).
-        let mut linked = Vec::new();
         // Play ratio counters moved by these picks, saved once queued.
         let mut counters = Vec::new();
         'picking: for _ in 0..missing {
@@ -400,13 +463,12 @@ impl QueueManager {
                 let Some(track) = library.tracks.get(&pick.track) else {
                     break 'picking;
                 };
-                history.push(Play::of(track, at));
-                at += i64::from(track.length_ms);
+                // An exact slot's planned start jumps to its time.
+                let start = pick.explanation.at_unix_ms;
+                history.push(Play::of(track, start));
+                at = start + i64::from(pick.length_ms(&library));
                 if pick.position.is_some() {
                     last = pick.position;
-                }
-                if pick.explanation.linked {
-                    linked.push(u32::try_from(picks.len()).unwrap_or(u32::MAX));
                 }
                 picks.push(pick);
             }
@@ -418,7 +480,8 @@ impl QueueManager {
                 tracing::debug!("autofill: no playable track in the library");
             } else {
                 tracing::warn!(
-                    "rotation: restrictions forbid every track for now, \
+                    "rotation: no slot of the clock found a track for now \
+                     (restrictions, rules or an exact time), \
                      the engine's fallback directory takes over"
                 );
             }
@@ -427,8 +490,12 @@ impl QueueManager {
         }
         let ids: Vec<u64> = picks.iter().map(|pick| pick.track).collect();
         let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
+        let (tracks, linked, firsts) = entries(&picks, tracks)?;
         let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
-        for (pick, entry_id) in picks.iter().zip(&entry_ids) {
+        for (pick, index) in picks.iter().zip(firsts) {
+            let Some(entry_id) = entry_ids.get(index) else {
+                break;
+            };
             let entry = (state.engine_started_at_unix_ms, *entry_id);
             rotation::record_pick(&self.pool, self.station_id, pick, Some(entry)).await?;
         }
@@ -443,6 +510,57 @@ impl QueueManager {
             .filter(|pick| pick.explanation.step > 0)
             .count();
         metrics::counter!("heron_api_rotation_relaxed_total").increment(relaxed as u64);
+        Ok(())
+    }
+
+    /// Before a soft exact time, takes out the tracks queued by hand that
+    /// would end after its window, and any track that would start after
+    /// it: they no longer fit. In hard mode the engine cuts them.
+    async fn trim_before_exact(&self, state: &PlayerState) -> ApiResult<()> {
+        let now = rotation::now_ms();
+        let (planned, _) = rotation::planned_starts(state, now);
+        let Some(timed) = planned
+            .iter()
+            .position(|(entry, _)| entry.track.start_at_unix_ms.is_some())
+        else {
+            return Ok(());
+        };
+        let (exact, _) = planned[timed];
+        let Some(cut_at) = exact.track.start_at_unix_ms else {
+            return Ok(());
+        };
+        let mode: Option<String> = sqlx::query_scalar(
+            "SELECT JSON_VALUE(explanation, '$.exact.mode') FROM rotation_picks
+             WHERE station_id = ? AND engine_started_at = ? AND entry_id = ?",
+        )
+        .bind(self.station_id)
+        .bind(state.engine_started_at_unix_ms)
+        .bind(exact.entry_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .flatten();
+        if mode.as_deref() != Some("soft") {
+            return Ok(());
+        }
+        for (entry, start) in &planned[..timed] {
+            let end = start + rotation::planned_length_ms(entry);
+            let by_hand = matches!(entry.track.source, PlaySource::Manual | PlaySource::Request);
+            // The exact slot's own linked jingle goes with it.
+            if entry.linked_to == Some(exact.entry_id) {
+                continue;
+            }
+            if *start >= cut_at || (by_hand && end > cut_at) {
+                match self.engine.remove(entry.entry_id).await {
+                    Ok(()) => tracing::info!(
+                        entry = entry.entry_id,
+                        path = %entry.track.path,
+                        "no longer fits before the exact time: removed from the queue"
+                    ),
+                    Err(ApiError::Invalid(_) | ApiError::NotFound(_)) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
         Ok(())
     }
 
@@ -470,10 +588,16 @@ impl QueueManager {
                         || (playout.cue_in_ms == entry.track.cue_in_ms
                             && playout.cue_out_ms == entry.track.cue_out_ms))
             };
+            // A shortened medley's spans have cue points of their own.
+            let span = |row: &TrackRow| row.medley && row.path == entry.track.path;
             match row {
-                Some(row) if row.plays() && unchanged(row) => {}
+                Some(row) if row.plays() && (unchanged(row) || span(row)) => {}
                 Some(row) if row.plays() => {
-                    let track = row.to_proto(entry.track.source)?;
+                    let mut track = row.to_proto(entry.track.source)?;
+                    if let Some(start_at) = entry.track.start_at_unix_ms {
+                        track.start_at_unix_ms = Some(start_at);
+                        track.cut_fade_ms = heron_rotation::exact::CUT_FADE_MS;
+                    }
                     match self.engine.replace(entry.entry_id, track).await {
                         Ok(()) => tracing::info!(
                             entry = entry.entry_id,
@@ -602,5 +726,64 @@ mod tests {
                 .unplayable()
                 .is_some_and(|reason| reason.contains("disabled on this station"))
         );
+    }
+
+    fn pick(track: u64) -> heron_rotation::Pick {
+        let library = heron_rotation::Library::new(
+            heron_rotation::LibraryParts {
+                tracks: vec![heron_rotation::Track {
+                    id: track,
+                    title_key: None,
+                    album_key: None,
+                    artists: vec![],
+                    categories: vec![],
+                    length_ms: 46_000,
+                    ratio: 10,
+                    dayparts: None,
+                    daypart_days: None,
+                }],
+                ..heron_rotation::LibraryParts::default()
+            },
+            jiff::tz::TimeZone::UTC,
+        );
+        let mut rng = heron_rotation::Rng::new(1);
+        heron_rotation::next(
+            &library,
+            &heron_rotation::History::default(),
+            0,
+            None,
+            &mut rng,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_shortened_medley_is_queued_as_two_linked_spans() {
+        let mut medley = pick(7);
+        medley.medley_cut = Some(heron_rotation::MedleyCut {
+            hooks_left_out: 1,
+            parts_left_out: vec![4, 5],
+            length_ms: 31_000,
+            first_to_ms: 25_000,
+            second_from_ms: 37_500,
+            crossfade_ms: 500,
+        });
+        let mut news = pick(8);
+        news.start_at_ms = Some(3_600_000);
+        let track = row().to_proto(PlaySource::Rotation).unwrap();
+        let (tracks, linked, firsts) =
+            entries(&[medley, news], vec![track.clone(), track]).unwrap();
+        assert_eq!(tracks.len(), 3);
+        assert_eq!((linked, firsts), (vec![0], vec![0, 2]));
+        assert_eq!(tracks[0].cue_out_ms, 25_000);
+        assert!(
+            tracks[0]
+                .crossfade_overrides_json
+                .contains("\"crossfade\":true")
+        );
+        assert_eq!(tracks[1].cue_in_ms, 37_500);
+        assert!(tracks[1].continues && !tracks[0].continues);
+        assert_eq!(tracks[2].start_at_unix_ms, Some(3_600_000));
+        assert_eq!(tracks[2].cut_fade_ms, heron_rotation::exact::CUT_FADE_MS);
     }
 }

@@ -24,7 +24,7 @@ See [M5b](roadmap/m5b-track-details-tags.md). The date a track was added is `tra
 | `tracks` (added) | album_artist, genre, year, track_number, disc_number (tags); musicbrainz_recording_id, musicbrainz_release_id (tags); codec, bitrate_kbps, bitrate_mode (cbr, vbr, lossless), sample_rate, channels; details_version (what the scanner read: older tracks are read again) |
 | `track_analysis` (added) | bpm (measured) |
 | `track_musicbrainz` | track_id, release_id and recording_id (looked up for), album, record_label, catalog_number, isrc, first_release_year, genres (JSON), fetched_at |
-| `track_programming` | track_id, bpm (set by hand, replaces the measured one), mood, sound_code (values of the scales in the `programming` settings), play_ratio (tenths, 1 to 10; NULL is 10: see [Rotation – Play ratio](rotation.md#play-ratio)), updated_at |
+| `track_programming` | track_id, bpm (set by hand, replaces the measured one), mood, sound_code (values of the scales in the `programming` settings), play_ratio (tenths, 1 to 10; NULL is 10: see [Rotation – Play ratio](rotation.md#play-ratio)), dayparts (0 to 10) and daypart_days (0 to 7): the track's own [daypart separation](rotation.md#daypart-separation), replacing its categories' (NULL: theirs), updated_at |
 | `labels` | id, name (unique ignoring case), color |
 | `track_labels` | track_id, label_id, created_at |
 
@@ -96,7 +96,7 @@ See [Several stations](stations.md) ([M13](roadmap/m13-several-stations.md)).
 | Table | Columns |
 |---|---|
 | `category_types` | id, name (unique): Song, Jingle, Ad from the start, and the station's own; no_two_in_a_row (rotation never plays two of its tracks in a row; Jingle's is on), sends_metadata (its tracks' artist and title go to the stream servers; off for Jingle and Ad) |
-| `categories` | id, name, color, type_id (none: no type), fx_player (the FX player's picker opens on it), separation (JSON: the windows it overrides and its `dayparts` and `daypart_days`, the [daypart separation](rotation.md#daypart-separation), off when left out; `NULL` for none) |
+| `categories` | id, name, color, type_id (none: no type), fx_player (the FX player's picker opens on it), separation (JSON: the windows it overrides and its `dayparts` and `daypart_days`, the [daypart separation](rotation.md#daypart-separation), off when left out, and `draw_start_pct` and `draw_max_pct`, its [draw depth](rotation.md#draw-depth), the station's when left out; `NULL` for none) |
 | `track_categories` | track_id, category_id, weight |
 
 ## Artists
@@ -128,7 +128,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 | Table | Columns |
 |---|---|
 | `clocks` | id, name, looping (carries on across hours instead of starting over at each hour) |
-| `clock_slots` | clock_id, position, category_id, selection_method (least_recently_played, random, weighted), enforce_rules, separation (JSON: the windows it overrides; never `dayparts` or `daypart_days`), linked_to_next (plays only with the next slot's track, see [Linked slots](rotation.md#linked-slots)) |
+| `clock_slots` | clock_id, position, category_id, selection_method (least_recently_played, random, weighted), enforce_rules, separation (JSON: the windows it overrides and its `draw_start_pct` and `draw_max_pct`; never `dayparts` or `daypart_days`), linked_to_next (plays only with the next slot's track, see [Linked slots](rotation.md#linked-slots)), exact_time (JSON, null for none: `at_s`, `mode`, `before_s`, `after_s`, `medley_fill`, `cut_live`, see [Exact times](rotation.md#exact-times)) |
 | `schedules` | id, station_id, name (unique for the station), is_default (one per station) — see [Rotation – Scheduling](rotation.md#scheduling) |
 | `schedule_periods` | id, schedule_id (not the default one), starts_at, ends_at (station time, on the hour, the end excluded), every_year (the years are ignored; the range may run over the new year) |
 | `clock_schedule` | schedule_id, day_of_week (ISO: 1 = Monday), hour (station time), clock_id |
@@ -146,7 +146,7 @@ Targets are not foreign keys: restrictions on a deleted category go with it, mer
 
 | Table | Columns |
 |---|---|
-| `settings` | name, JSON value. `two_factor`: the roles that require a second factor ([Two-factor authentication](api.md#two-factor-authentication)); `analysis`: Gap Killer and crossfade point detection ([Import and analysis](analysis.md#settings)); `library`: AcoustID key, layout, covers and their lookup ([Library management](library.md#settings)); `playout`: crossfade and loudness ([Audio engine](audio-engine.md#playout-settings)); `eq`: the music and FX deck EQs ([Audio engine](audio-engine.md#deck-eq)); `agc`: the master AGC chain ([Audio engine](audio-engine.md#master-agc-chain)); `queue`: autofill and how many tracks wait ([API](api.md#queue-manager)); `engine`: whether the API manages the engine's configuration yet ([API](api.md#engine-configuration)); `rotation`: separation windows, the station's dayparts (`daypart_count`: 4 or 6; the separation is each category's, [Rotation – Daypart separation](rotation.md#daypart-separation)), fallback category, categories kept out of the station's library, weight factors; `station`: time zone and public address ([Rotation](rotation.md#scheduling), [API – Public endpoints](api.md#public-endpoints)); `programming`: what counts as a play, eras, mood and sound code scales ([API](api.md#track-details)); `statistics`: minimum session length, retention ([Listener statistics](statistics.md#settings)); `backups`: daily time, days kept, whether a database dump goes with each backup ([Backups](backups.md#settings)); `backup_encryption`: the public key backups are encrypted with, and the earlier ones; `backup_tests`: the last backup test and the last one that passed (neither in backups, both kept by a restore, [Backups – Encryption](backups.md#encryption)) |
+| `settings` | name, JSON value. `two_factor`: the roles that require a second factor ([Two-factor authentication](api.md#two-factor-authentication)); `analysis`: Gap Killer and crossfade point detection ([Import and analysis](analysis.md#settings)); `library`: AcoustID key, layout, covers and their lookup ([Library management](library.md#settings)); `playout`: crossfade and loudness ([Audio engine](audio-engine.md#playout-settings)); `eq`: the music and FX deck EQs ([Audio engine](audio-engine.md#deck-eq)); `agc`: the master AGC chain ([Audio engine](audio-engine.md#master-agc-chain)); `queue`: autofill and how many tracks wait ([API](api.md#queue-manager)); `engine`: whether the API manages the engine's configuration yet ([API](api.md#engine-configuration)); `rotation`: separation windows, the station's dayparts (`daypart_count`: 4 or 6; the separation is each category's, [Rotation – Daypart separation](rotation.md#daypart-separation)), fallback category, categories kept out of the station's library, weight factors, the [draw depth](rotation.md#draw-depth) (`draw`); `station`: time zone and public address ([Rotation](rotation.md#scheduling), [API – Public endpoints](api.md#public-endpoints)); `programming`: what counts as a play, eras, mood and sound code scales ([API](api.md#track-details)); `statistics`: minimum session length, retention ([Listener statistics](statistics.md#settings)); `backups`: daily time, days kept, whether a database dump goes with each backup ([Backups](backups.md#settings)); `backup_encryption`: the public key backups are encrypted with, and the earlier ones; `backup_tests`: the last backup test and the last one that passed (neither in backups, both kept by a restore, [Backups – Encryption](backups.md#encryption)) |
 | `eq_presets` | id, name (unique), gains_db (JSON: ten gains in dB, from 60 Hz up). A fresh install has `Flat` and 17 starting points for styles of music (rock, pop, soft rock, dance, progressive rock and metal, jazz, classical, acoustic, hip-hop, R&B / soul, reggae, country, latin, chill), spoken programmes (`Talk`) and the FX player (`Voice (FX)`). Loading a preset copies its gains into an EQ: changing the preset later does not change the EQ ([Audio engine](audio-engine.md#deck-eq)) |
 | `agc_presets` | id, name (unique), settings (JSON: the blocks of the [AGC chain](audio-engine.md#master-agc-chain), without `bypass_all`). A fresh install has starting points for a gentle, open sound (`Gentle`), pop and hits (`Pop`), a loud and dense format (`Dense`), rock (`Rock`) and spoken programmes (`Talk`). Loading a preset copies its settings into a station's chain: changing the preset later does not change the chain |
 
@@ -157,7 +157,8 @@ See [Encoders and outputs](outputs.md). The engine never reads these tables: the
 | Table | Columns |
 |---|---|
 | `encoder_profiles` | id, name, encoder (mp3, aac, opus, vorbis, external_ffmpeg), bitrate_kbps, sample_rate, channels, options (JSON: VBR/CBR, ffmpeg binary path and arguments, …). A fresh install has `MP3 128k` |
-| `outputs` | id, name, kind (icecast, shoutcast_v1, shoutcast_v2, hls, file, pipe), encoder_profile_id, config (JSON: host, port, mount, credentials, HLS directory and segment settings, …), metadata_enabled, enabled |
+| `stream_servers` | id, station_id, name (unique on the station), kind (icecast), host, port, tls, source_username, source_password, admin_username, admin_password, public_url, relay_of (the master, for a relay), relay_mounts (JSON: the mounts a relay repeats, NULL for all), relay_subtract_one |
+| `outputs` | id, station_id, name, kind (icecast, shoutcast_v1, shoutcast_v2, hls, file, pipe), server_id (the stream server; kept from being deleted while used), encoder_profile_id, config (JSON: the sink's own settings: Icecast's mount, HLS directory and segment settings, …), details (JSON: the station details it overrides), metadata_enabled, enabled |
 
 ## Listener statistics
 
@@ -165,9 +166,9 @@ See [Listener statistics](statistics.md). No IP address is ever stored.
 
 | Table | Columns |
 |---|---|
-| `outputs` (added) | statistics (JSON: the stream server's `admin_username`, `admin_password`; never pushed to the engine) |
-| `listener_samples` | output_id (deleted with the output), sampled_at (the minute), listeners. Kept `retention_days` |
-| `listener_sessions` | id, output_id (deleted with the output), listener_key (BLAKE3 of address and player, keyed with the day's key), user_agent, client_id (the server's ID for the connection), day (station time), started_at, last_seen_at, ended_at (NULL while connected), split (ended at midnight, still connected), duration_s. Kept `retention_days` |
+| `outputs` (added) | statistics: no longer used (the admin credentials are the stream server's), NULL; older backups restore their credentials through it |
+| `listener_samples` | output_id (deleted with the output), server_id (the master or relay read), sampled_at (the minute), listeners. Kept `retention_days` |
+| `listener_sessions` | id, output_id (deleted with the output), server_id, listener_key (BLAKE3 of address and player, keyed with the day's key), user_agent, client_id (the server's ID for the connection), day (station time), started_at, last_seen_at, ended_at (NULL while connected), split (ended at midnight, still connected), duration_s. Kept `retention_days` |
 | `listener_day_keys` | day, key (random, 32 bytes). Deleted once its day can get no more sessions |
 | `listener_totals` | output_id (NULL: the whole station; deleted with the output), day, hour (NULL: the whole day), minutes (measured), peak, average, listening_hours, sessions, session_s (their total length), distinct_listeners (NULL without sessions). Kept |
 
@@ -179,7 +180,7 @@ Statistics settings are in `settings` (`statistics`: `min_session_s`, `retention
 |---|---|
 | `webhooks` | id, name (unique), url, enabled, events (JSON: `track.started`, `track.ended`, `track.skipped`), include_fx, secret (in clear: it signs the deliveries; never sent back), content_type, body_template (NULL: the default JSON body), created_at, updated_at |
 | `webhook_deliveries` | id, webhook_id (deleted with the webhook), event (or `ping`), body (as sent), status (pending, delivered, failed), attempts, next_attempt_at (while pending), last_attempt_at, last_status_code, last_error, last_response (first 1 KiB), created_at, delivered_at. Kept 30 days |
-| `users` | id, username, password_hash (Argon2id), role (viewer, operator, admin), enabled, theme (system, light, dark: the web UI's), language (system or a language tag: the web UI's), full_width (the web UI uses the whole screen), backup_key_checked_at, backup_key_interval_days and backup_key_later_until (the admin's [backup key checks](backups.md#checking-the-key): not in backups, kept by a restore), last_login_at, created_at, updated_at |
+| `users` | id, username, password_hash (Argon2id), role (viewer, operator, admin), enabled, theme (system, light, dark: the web UI's), language (system or a language tag: the web UI's), width (the web UI's: normal, wide for 80 % of the window, full), backup_key_checked_at, backup_key_interval_days and backup_key_later_until (the admin's [backup key checks](backups.md#checking-the-key): not in backups, kept by a restore), last_login_at, created_at, updated_at |
 | `sessions` | token_hash (BLAKE3 of the cookie's token), user_id, created_at, last_seen_at, expires_at (30 days after the last use) |
 | `api_tokens` | id, user_id, name, token_hash, created_at, last_used_at, expires_at, revoked_at |
 | `user_totp` | user_id, secret (20 random bytes, in clear: needed to check codes), last_step (the last 30-second step accepted: a code works once), created_at, last_used_at. One authenticator app per user ([Two-factor authentication](api.md#two-factor-authentication)) |
@@ -217,4 +218,6 @@ webhooks 1──* webhook_deliveries
 users 1──* sessions, api_tokens, user_webauthn, user_recovery_codes
 users 1──1 user_totp
 encoder_profiles 1──* outputs
+stream_servers 1──* outputs
+stream_servers 1──* stream_servers   (relays, through relay_of)
 ```
