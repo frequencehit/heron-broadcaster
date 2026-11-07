@@ -2952,3 +2952,22 @@ ul.held {
   display: grid;
   gap: 0.25rem;
 }
+
+/* A filter bar: each menu's name above it. */
+.filter-bar {
+  align-items: flex-end;
+}
+
+.filter-bar .stacked,
+.filter-bar > label.row.small {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+}
+
+.filter-bar .stacked > span:first-child,
+.filter-bar > label.row.small > span:first-child {
+  color: var(--muted);
+  font-size: 0.8rem;
+}

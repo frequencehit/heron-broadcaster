@@ -205,8 +205,10 @@ function ownDayparts(value: string | null): boolean | undefined {
   return value === "category" ? false : undefined;
 }
 
-/** Filters of the URL beyond search, show and category. */
+/** Filters of the URL beyond search, category, ratio and sort: under *More filters*. */
 const MORE_FILTERS = [
+  "filter",
+  "dayparts",
   "station",
   "labels_all",
   "labels_any",
@@ -238,12 +240,10 @@ export function Library() {
   const canEdit = useCan("operator");
   const coverArt = useModule("cover_art");
   const preview = usePreview();
-  const filter = (search.get("filter") ?? "") as TrackFilter | "";
   const sort = (search.get("sort") ?? "artist") as TrackSort;
   const desc = search.get("desc") === "true";
   const category = search.get("category") ?? "";
   const ratio = search.get("ratio") ?? "";
-  const dayparts = search.get("dayparts") ?? "";
   const page = Math.max(0, Number(search.get("page") ?? 0) || 0);
   const batch = search.get("batch");
   const [text, setText] = useState(search.get("q") ?? "");
@@ -428,7 +428,7 @@ export function Library() {
           </div>
         )}
         <div className="card-head">
-          <div className="row" style={{ flex: 1 }}>
+          <div className="row filter-bar" style={{ flex: 1 }}>
             <label className="row" style={{ flex: "1 1 16rem", flexWrap: "nowrap" }}>
               <Icon name="search" />
               <span className="visually-hidden">{t("library.search")}</span>
@@ -440,23 +440,9 @@ export function Library() {
                 onChange={(event) => setText(event.target.value)}
               />
             </label>
-            <label>
-              <span className="visually-hidden">{t("library.show")}</span>
-              <select
-                className="input"
-                value={filter}
-                onChange={(event) => setSearch({ filter: event.target.value, page: undefined })}
-              >
-                {FILTERS.filter((option) => coverArt || option.value !== "no_cover").map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </option>
-                ))}
-              </select>
-            </label>
             <StationFilter filter={stationFilter} disabled={category === "none"} />
-            <label>
-              <span className="visually-hidden">{t("library.category")}</span>
+            <label className="stacked">
+              <span>{t("library.categories")}</span>
               <select
                 className="input"
                 value={category}
@@ -485,23 +471,9 @@ export function Library() {
                 ))}
               </select>
             </label>
-            <label className="row small">
-              <span className="muted">{t("trackDayparts.column")}</span>
-              <select
-                className="input"
-                value={dayparts}
-                onChange={(event) => setSearch({ dayparts: event.target.value || undefined, page: undefined })}
-              >
-                {DAYPART_CHOICES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span className="row" style={{ flexWrap: "nowrap" }}>
-              <label>
-                <span className="visually-hidden">{t("library.sortBy")}</span>
+            <span className="row" style={{ flexWrap: "nowrap", alignItems: "flex-end" }}>
+              <label className="stacked">
+                <span>{t("library.sortLabel")}</span>
                 <select
                   className="input"
                   value={sort}
@@ -509,7 +481,7 @@ export function Library() {
                 >
                   {SORTS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {t("library.sortOption", { sort: t(option.label) })}
+                      {t(option.label)}
                     </option>
                   ))}
                 </select>
@@ -535,7 +507,14 @@ export function Library() {
             <ColumnsMenu columns={columns} onToggle={toggleColumn} />
           </div>
         </div>
-        {moreOpen && <MoreFilters search={search} labels={labels.data ?? []} programming={programming.data} />}
+        {moreOpen && (
+          <MoreFilters
+            search={search}
+            labels={labels.data ?? []}
+            programming={programming.data}
+            coverArt={coverArt}
+          />
+        )}
         {deletingNow && (
           <div className="card-head">
             <span>{t("library.deleting")}</span>
@@ -823,10 +802,12 @@ function MoreFilters({
   search,
   labels,
   programming,
+  coverArt,
 }: {
   search: URLSearchParams;
   labels: Schemas["Label"][];
   programming: Schemas["ProgrammingSettings"] | undefined;
+  coverArt: boolean;
 }) {
   const value = (name: string) => search.get(name) ?? "";
   const set = (name: string, next: string | undefined) => setSearch({ [name]: next || undefined, page: undefined });
@@ -881,6 +862,26 @@ function MoreFilters({
   return (
     <div className="card-body stack">
       <div className="filters-grid">
+        <label className="field">
+          <span>{t("library.show")}</span>
+          <select className="input" value={value("filter")} onChange={(event) => set("filter", event.target.value)}>
+            {FILTERS.filter((option) => coverArt || option.value !== "no_cover").map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>{t("trackDayparts.column")}</span>
+          <select className="input" value={value("dayparts")} onChange={(event) => set("dayparts", event.target.value)}>
+            {DAYPART_CHOICES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+        </label>
         {stations.length > 1 && (
           <label className="field">
             <span>{t("library.playsOn")}</span>
