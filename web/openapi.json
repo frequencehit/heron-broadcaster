@@ -22091,13 +22091,6 @@
         "type": "object",
         "description": "What to change; what is left out stays as it is.",
         "properties": {
-          "full_width": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Use the whole width of the screen instead of a centred column."
-          },
           "language": {
             "type": [
               "string",
@@ -22109,6 +22102,16 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/Theme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "width": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Width"
               },
               {
                 "type": "null"
@@ -27949,7 +27952,7 @@
           "enabled",
           "theme",
           "language",
-          "full_width",
+          "width",
           "created_at_unix_ms",
           "station_roles",
           "two_factor"
@@ -27961,10 +27964,6 @@
           },
           "enabled": {
             "type": "boolean"
-          },
-          "full_width": {
-            "type": "boolean",
-            "description": "The web UI uses the whole width of the screen instead of a centred\ncolumn."
           },
           "id": {
             "type": "integer",
@@ -28001,6 +28000,9 @@
           },
           "username": {
             "type": "string"
+          },
+          "width": {
+            "$ref": "#/components/schemas/Width"
           }
         }
       },
@@ -28571,6 +28573,15 @@
           }
         },
         "additionalProperties": false
+      },
+      "Width": {
+        "type": "string",
+        "description": "The web UI's width.",
+        "enum": [
+          "normal",
+          "wide",
+          "full"
+        ]
       },
       "Windows": {
         "type": "object",

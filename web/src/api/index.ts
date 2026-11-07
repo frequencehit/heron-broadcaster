@@ -16,6 +16,7 @@ export type LiveMessage = Schemas["LiveMessage"];
 export type User = Schemas["User"];
 export type Role = Schemas["Role"];
 export type Theme = Schemas["Theme"];
+export type Width = Schemas["Width"];
 export type PlayerState = Schemas["PlayerState"];
 export type QueueEntry = Schemas["QueueEntry"];
 export type DeckState = Schemas["DeckState"];

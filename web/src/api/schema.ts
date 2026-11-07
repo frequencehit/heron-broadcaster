@@ -7997,8 +7997,6 @@ export interface components {
         };
         /** @description What to change; what is left out stays as it is. */
         Preferences: {
-            /** @description Use the whole width of the screen instead of a centred column. */
-            full_width?: boolean | null;
             /**
              * @description A language tag (`en`, `fr`…) or `system`. The API does not know which
              *     languages the web UI has: it falls back on the browser's for one it
@@ -8006,6 +8004,7 @@ export interface components {
              */
             language?: string | null;
             theme?: components["schemas"]["Theme"] | null;
+            width?: components["schemas"]["Width"] | null;
         };
         Preparation: {
             /**
@@ -10252,11 +10251,6 @@ export interface components {
             /** Format: int64 */
             created_at_unix_ms: number;
             enabled: boolean;
-            /**
-             * @description The web UI uses the whole width of the screen instead of a centred
-             *     column.
-             */
-            full_width: boolean;
             /** Format: int64 */
             id: number;
             /**
@@ -10277,6 +10271,7 @@ export interface components {
             /** @description Their second factors, and whether their role requires one. */
             two_factor: components["schemas"]["TwoFactorStatus"];
             username: string;
+            width: components["schemas"]["Width"];
         };
         UserPatch: {
             /** @description Disabled users cannot sign in, and their tokens stop working. */
@@ -10469,6 +10464,11 @@ export interface components {
              */
             request_factor: number;
         };
+        /**
+         * @description The web UI's width.
+         * @enum {string}
+         */
+        Width: "normal" | "wide" | "full";
         /** @description Separation windows, in minutes; 0 turns a rule off. */
         Windows: {
             /**
