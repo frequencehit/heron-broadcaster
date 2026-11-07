@@ -4,7 +4,7 @@
 //! operators. Reading is open to every role.
 
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use heron_core::PlaySource;
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,7 @@ use crate::app::AppState;
 use crate::auth::{CurrentUser, Role};
 use crate::engine::{Levels, PlayerState, QueueEntry};
 use crate::error::{ApiError, ApiResult, ErrorBody};
+use crate::matches;
 use crate::stations::Station;
 use crate::sync::SyncStatus;
 
@@ -74,11 +75,18 @@ async fn get_levels(_user: CurrentUser, station: Station) -> ApiResult<Json<Leve
     Ok(Json(station.engine.fetch_levels().await?))
 }
 
-/// Fades out the track on air and starts the next one.
+/// Fades out the track on air and starts the next one. The vote's track
+/// of a match whose vote is open: the vote closes first, with the votes so
+/// far, and the winner starts.
 #[utoipa::path(post, path = "/player/skip", tag = "player",
     responses((status = 204), (status = "4XX", body = ErrorBody), (status = 503, body = ErrorBody)))]
-async fn skip(user: CurrentUser, station: Station) -> ApiResult<StatusCode> {
+async fn skip(
+    user: CurrentUser,
+    State(state): State<AppState>,
+    station: Station,
+) -> ApiResult<StatusCode> {
     user.require(Role::Operator)?;
+    matches::close_before_skip(&state.pool, &state.webhooks, &station, user.id).await?;
     station.engine.skip().await?;
     tracing::info!(user = %user.username, "skip");
     Ok(StatusCode::NO_CONTENT)
@@ -168,13 +176,14 @@ pub struct EnqueueResponse {
 }
 
 /// Queues library tracks. Missing files and tracks with nothing audible are
-/// refused.
+/// refused, and so is a position among a match's tracks (`409`).
 #[utoipa::path(post, path = "/queue", tag = "queue",
     request_body = EnqueueRequest,
     responses((status = 200, body = EnqueueResponse), (status = "4XX", body = ErrorBody),
               (status = 503, body = ErrorBody)))]
 async fn enqueue(
     user: CurrentUser,
+    State(state): State<AppState>,
     station: Station,
     Json(request): Json<EnqueueRequest>,
 ) -> ApiResult<Json<EnqueueResponse>> {
@@ -183,6 +192,13 @@ async fn enqueue(
         return Err(ApiError::BadRequest(
             "queue 1 to 500 tracks at a time".to_owned(),
         ));
+    }
+    if let Some(position) = request.position {
+        let player = station.engine.fetch_state().await?;
+        let lock = matches::lock(&state.pool, station.id(), &player).await?;
+        if lock.is_some_and(|lock| lock.refuses(position, None)) {
+            return Err(matches::between());
+        }
     }
     let tracks = station
         .queue
@@ -197,26 +213,51 @@ async fn enqueue(
 }
 
 /// Empties the queue, cued track included. The track on air plays on (and
-/// autofill, when on, queues new tracks).
+/// autofill, when on, queues new tracks). The tracks of a match waiting or
+/// open stay, and the match goes on.
 #[utoipa::path(delete, path = "/queue", tag = "queue",
     responses((status = 204), (status = "4XX", body = ErrorBody), (status = 503, body = ErrorBody)))]
-async fn clear_queue(user: CurrentUser, station: Station) -> ApiResult<StatusCode> {
+async fn clear_queue(
+    user: CurrentUser,
+    State(state): State<AppState>,
+    station: Station,
+) -> ApiResult<StatusCode> {
     user.require(Role::Operator)?;
-    station.engine.clear().await?;
-    tracing::info!(user = %user.username, "queue cleared");
+    let player = station.engine.fetch_state().await?;
+    let Some(lock) = matches::lock(&state.pool, station.id(), &player).await? else {
+        station.engine.clear().await?;
+        tracing::info!(user = %user.username, "queue cleared");
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    for entry in player.waiting().filter(|entry| !lock.holds(entry.entry_id)) {
+        match station.engine.remove(entry.entry_id).await {
+            // Gone with its linked track, or started meanwhile.
+            Ok(()) | Err(ApiError::NotFound(_) | ApiError::Invalid(_)) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    tracing::info!(user = %user.username, "queue cleared, the match's tracks kept");
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Takes an entry out of the queue. The track on air cannot be removed: skip it.
+/// Takes an entry out of the queue. The track on air cannot be removed: skip
+/// it. A match's track is refused while the match waits or its vote is
+/// open (`409`): cancel the match first.
 #[utoipa::path(delete, path = "/queue/{entry_id}", tag = "queue",
     params(("entry_id" = u64, Path)),
     responses((status = 204), (status = "4XX", body = ErrorBody), (status = 503, body = ErrorBody)))]
 async fn remove_entry(
     user: CurrentUser,
+    State(state): State<AppState>,
     station: Station,
     Path(entry_id): Path<u64>,
 ) -> ApiResult<StatusCode> {
     user.require(Role::Operator)?;
+    let player = station.engine.fetch_state().await?;
+    let lock = matches::lock(&state.pool, station.id(), &player).await?;
+    if lock.is_some_and(|lock| lock.holds(entry_id)) {
+        return Err(matches::locked());
+    }
     station.engine.remove(entry_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -228,17 +269,28 @@ pub struct MoveRequest {
     pub position: u32,
 }
 
-/// Moves a waiting entry.
+/// Moves a waiting entry. A match's track, or a place among them, is
+/// refused while the match waits or its vote is open (`409`).
 #[utoipa::path(put, path = "/queue/{entry_id}/position", tag = "queue",
     params(("entry_id" = u64, Path)), request_body = MoveRequest,
     responses((status = 204), (status = "4XX", body = ErrorBody), (status = 503, body = ErrorBody)))]
 async fn move_entry(
     user: CurrentUser,
+    State(state): State<AppState>,
     station: Station,
     Path(entry_id): Path<u64>,
     Json(request): Json<MoveRequest>,
 ) -> ApiResult<StatusCode> {
     user.require(Role::Operator)?;
+    let player = station.engine.fetch_state().await?;
+    if let Some(lock) = matches::lock(&state.pool, station.id(), &player).await? {
+        if lock.holds(entry_id) {
+            return Err(matches::locked());
+        }
+        if lock.refuses(request.position, Some(entry_id)) {
+            return Err(matches::between());
+        }
+    }
     station
         .engine
         .move_entry(entry_id, request.position)

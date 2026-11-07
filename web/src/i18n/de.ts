@@ -345,6 +345,8 @@ const de = {
   "queue.overIntroHint": "Läuft auf dem FX-Player über dem Intro des nächsten Titels und endet, wo der Gesang einsetzt",
   "queue.linked": "Verknüpft",
   "queue.linkedHint": "Kündigt den nächsten Titel an: Wird dieser Titel entfernt, wird auch dieser Jingle entfernt, und beide werden zusammen verschoben",
+  "queue.match": "Duell",
+  "queue.matchHint": "Gehört zum laufenden Duell: Nur das Duell nimmt ihn heraus, beim Schließen der Abstimmung, oder „Duell abbrechen“",
   "queue.expectedStart": "Voraussichtlicher Start, mit Überblendungen",
   "queue.playNext": "Als Nächstes spielen",
   "queue.playNamedNext": "{name} als Nächstes spielen",

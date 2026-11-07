@@ -782,6 +782,10 @@ pub struct MatchView {
     pub jingle: Option<MatchTrack>,
     /// A, then B.
     pub choices: Vec<MatchChoice>,
+    /// The queue entries of the vote's track and of A and B, for the
+    /// engine started then: locked in the queue while the match waits or
+    /// its vote is open, with the announcement linked to the vote's track.
+    pub entry_ids: Vec<u64>,
     pub votes: u32,
     /// When the vote's track started.
     pub opened_at_unix_ms: Option<i64>,
@@ -812,6 +816,7 @@ impl From<&Row> for MatchView {
                 title: row.jingle_title.clone(),
             }),
             choices: vec![row.choice(MatchSide::A), row.choice(MatchSide::B)],
+            entry_ids: vec![row.vote_entry_id, row.entry_a_id, row.entry_b_id],
             votes: row.total(),
             opened_at_unix_ms: row.opened_ms,
             closes_at_unix_ms: row.closes_ms,
@@ -1123,6 +1128,123 @@ fn on_air<'p>(player: &'p PlayerState, row: &Row) -> Option<&'p crate::engine::D
                 .as_ref()
                 .is_some_and(|entry| entry.entry_id == row.vote_entry_id)
     })
+}
+
+/// The queue entries of the match waiting or open, locked while it is:
+/// only the match takes one out, at the close, or an operator cancelling
+/// it (docs/listener-interaction.md#on-air).
+#[derive(Clone, Debug)]
+pub(crate) struct Lock {
+    /// The vote's track, its announcement, A and B.
+    entries: Vec<u64>,
+    /// The waiting entries in play order (`PlayerState::waiting`), whose
+    /// places the queue's positions count.
+    order: Vec<u64>,
+    /// The vote's track is still waiting: a track can go before the match.
+    vote_waiting: bool,
+}
+
+impl Lock {
+    fn new(found: &Row, player: &PlayerState) -> Self {
+        let vote = found.vote_entry_id;
+        let mut entries = vec![vote, found.entry_a_id, found.entry_b_id];
+        entries.extend(
+            player
+                .waiting()
+                .filter(|entry| entry.linked_to == Some(vote))
+                .map(|entry| entry.entry_id),
+        );
+        let order: Vec<u64> = player.waiting().map(|entry| entry.entry_id).collect();
+        let vote_waiting = order.contains(&vote);
+        Self {
+            entries,
+            order,
+            vote_waiting,
+        }
+    }
+
+    /// The entry is one of the match's.
+    pub(crate) fn holds(&self, entry: u64) -> bool {
+        self.entries.contains(&entry)
+    }
+
+    /// A track put at `position` among the waiting ones (`moving`: the
+    /// entry moved there, counted out first) would go between two of the
+    /// match's entries, or between the vote's track on air and A.
+    pub(crate) fn refuses(&self, position: u32, moving: Option<u64>) -> bool {
+        let places: Vec<usize> = self
+            .order
+            .iter()
+            .filter(|&&id| Some(id) != moving)
+            .enumerate()
+            .filter(|(_, id)| self.holds(**id))
+            .map(|(place, _)| place)
+            .collect();
+        let Some(&last) = places.last() else {
+            return false;
+        };
+        let position = usize::try_from(position).unwrap_or(usize::MAX);
+        let first = places.first().copied().filter(|_| self.vote_waiting);
+        position <= last && first.is_none_or(|first| position > first)
+    }
+}
+
+/// Refused: the entry is one of the match's.
+pub(crate) fn locked() -> ApiError {
+    ApiError::Conflict(
+        "this track belongs to the match in progress: cancel the match first".to_owned(),
+    )
+}
+
+/// Refused: the place is among the match's entries.
+pub(crate) fn between() -> ApiError {
+    ApiError::Conflict(
+        "the match's tracks follow one another: put the track before or after them".to_owned(),
+    )
+}
+
+/// The lock of the station's match waiting or open, for the engine's state
+/// `player`; `None` without one.
+pub(crate) async fn lock(
+    pool: &MySqlPool,
+    station_id: u64,
+    player: &PlayerState,
+) -> ApiResult<Option<Lock>> {
+    let Some(found) = pending(pool, station_id).await? else {
+        return Ok(None);
+    };
+    if player.engine_started_at_unix_ms != found.engine_started_at {
+        return Ok(None);
+    }
+    Ok(Some(Lock::new(&found, player)))
+}
+
+/// Before skipping the track on air: when it is the vote's track of an
+/// open vote, closes the vote with the votes so far, so that the winner
+/// starts.
+pub(crate) async fn close_before_skip(
+    pool: &MySqlPool,
+    webhooks: &Webhooks,
+    station: &StationRuntime,
+    user: u64,
+) -> ApiResult<()> {
+    let Some(found) = pending(pool, station.id()).await? else {
+        return Ok(());
+    };
+    if found.status() != MatchStatus::Open {
+        return Ok(());
+    }
+    let player = station.engine.fetch_state().await?;
+    if on_air(&player, &found).is_none() {
+        return Ok(());
+    }
+    close(pool, webhooks, station, &player, &found, Some(user)).await?;
+    tracing::info!(
+        station = station.id(),
+        r#match = found.id,
+        "match closed early: its vote's track was skipped"
+    );
+    Ok(())
 }
 
 /// Opens, closes or cancels the stations' matches as their time comes, and
@@ -1708,6 +1830,53 @@ pub async fn public_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The waiting entries `order`, the match's being 10 (its announcement),
+    /// 11 (the vote's track), 12 and 13.
+    fn lock(order: &[u64]) -> Lock {
+        Lock {
+            entries: vec![11, 12, 13, 10],
+            order: order.to_vec(),
+            vote_waiting: order.contains(&11),
+        }
+    }
+
+    #[test]
+    fn the_match_entries_are_held() {
+        let lock = lock(&[1, 10, 11, 12, 13, 2]);
+        assert!([10, 11, 12, 13].iter().all(|&entry| lock.holds(entry)));
+        assert!(!lock.holds(1) && !lock.holds(2));
+    }
+
+    #[test]
+    fn nothing_goes_among_the_match_entries() {
+        // Waiting: 1, then the match at places 1 to 4, then 2.
+        let waiting = lock(&[1, 10, 11, 12, 13, 2]);
+        // Queueing a new track: before the announcement or after B only.
+        let refused: Vec<u32> = (0..=6).filter(|&at| waiting.refuses(at, None)).collect();
+        assert_eq!(refused, vec![2, 3, 4]);
+        // Moving 1 after B (its place counted out first): free.
+        assert!(!waiting.refuses(4, Some(1)));
+        assert!(waiting.refuses(3, Some(1)));
+        // Moving 2 to the front or back to the end: free; among them: refused.
+        assert!(!waiting.refuses(0, Some(2)) && !waiting.refuses(1, Some(2)));
+        assert!(waiting.refuses(2, Some(2)));
+    }
+
+    #[test]
+    fn nothing_goes_before_a_while_the_vote_is_on_air() {
+        // The vote's track on air: A is cued, then B, then 2.
+        let on_air = lock(&[12, 13, 2]);
+        let refused: Vec<u32> = (0..=3).filter(|&at| on_air.refuses(at, None)).collect();
+        assert_eq!(refused, vec![0, 1]);
+        assert!(!on_air.refuses(2, Some(2)));
+    }
+
+    #[test]
+    fn nothing_is_refused_once_the_entries_are_gone() {
+        assert!(!lock(&[1, 2]).refuses(0, None));
+        assert!(!lock(&[]).refuses(0, None));
+    }
 
     #[test]
     fn settings_are_checked() {

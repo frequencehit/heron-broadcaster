@@ -29,6 +29,7 @@ import { positionNow, useLive } from "../lib/live";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { jingleStart } from "../lib/intro";
+import { useLockedEntries } from "../lib/match";
 import { type LinkRole, linkRoles, moveEntries } from "../lib/queue";
 import { CategoryChips, type CategoryRef, useTrackCategories } from "./TrackCategories";
 import { Empty, Icon } from "./ui";
@@ -82,6 +83,8 @@ export function startTimes(
   });
 }
 
+const NONE: QueueEntry[] = [];
+
 export function QueueList({ limit }: Readonly<{ limit?: number }>) {
   const waiting = useWaiting();
   const player = useLive((live) => live.player);
@@ -89,6 +92,8 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
   const canEdit = useCan("operator");
   const categoriesOf = useTrackCategories((waiting ?? []).map((entry) => entry.track.track_id));
   const [order, setOrder] = useState<QueueEntry[] | undefined>(waiting);
+  // The match in progress's tracks: only the match takes them out.
+  const locked = useLockedEntries(waiting ?? NONE);
 
   // The live state wins whenever it changes.
   useEffect(() => {
@@ -170,6 +175,7 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
                   : null
               }
               canEdit={canEdit}
+              locked={locked.has(entry.entry_id)}
               onNext={() => {
                 setOrder(moveEntries(entries, index, 0));
                 move.mutate(
@@ -202,6 +208,7 @@ function Item({
   categories,
   jingleAt,
   canEdit,
+  locked,
   onNext,
   onRemove,
 }: Readonly<{
@@ -216,12 +223,14 @@ function Item({
   /** Where the jingle starts in the track it plays over. */
   jingleAt?: number | null;
   canEdit: boolean;
+  /** One of the match in progress's tracks: not moved, played next or removed. */
+  locked: boolean;
   onNext: () => void;
   onRemove: () => void;
 }>) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.entry_id,
-    disabled: !canEdit,
+    disabled: !canEdit || locked,
   });
   const track = entry.track;
   const name = trackName(track);
@@ -231,7 +240,12 @@ function Item({
       className={`queue-item${isDragging ? " dragging" : ""}${link ? ` linked linked-${link}` : ""}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
-      {canEdit && (
+      {canEdit && locked && (
+        <span className="btn ghost small icon handle" title={t("queue.matchHint")} aria-hidden="true">
+          <Icon name="lock" />
+        </span>
+      )}
+      {canEdit && !locked && (
         <button
           type="button"
           className="btn ghost small icon handle"
@@ -250,6 +264,11 @@ function Item({
         </div>
         <div className="row small muted" style={{ gap: "0.4rem" }}>
           {cued && <span className="badge accent">{t("queue.cued")}</span>}
+          {locked && (
+            <span className="badge accent" title={t("queue.matchHint")}>
+              <Icon name="lock" size={12} /> {t("queue.match")}
+            </span>
+          )}
           {link === "jingle" && (
             <span className="badge" title={t("queue.linkedHint")}>
               <Icon name="link" size={12} /> {t("queue.linked")}
@@ -287,7 +306,7 @@ function Item({
           {start !== null ? `≈ ${clockTime(start)}` : ""}
         </span>
       )}
-      {canEdit && (
+      {canEdit && !locked && (
         <div className="row" style={{ flexWrap: "nowrap", gap: "0.25rem" }}>
           {index > 0 && (
             <button

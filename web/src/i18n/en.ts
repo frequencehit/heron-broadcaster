@@ -343,6 +343,8 @@ const en = {
   "queue.overIntroHint": "Plays on the FX player over the next track's intro, ending where the vocals start",
   "queue.linked": "Linked",
   "queue.linkedHint": "Announces the next track: removing that track removes this jingle, and they move together",
+  "queue.match": "Match",
+  "queue.matchHint": "Part of the match in progress: only the match takes it out, at the close of the vote, or Cancel the match",
   "queue.expectedStart": "Expected start, crossfades included",
   "queue.playNext": "Play next",
   "queue.playNamedNext": "Play {name} next",

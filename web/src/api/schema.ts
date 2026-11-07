@@ -2413,7 +2413,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Fades out the track on air and starts the next one. */
+        /**
+         * Fades out the track on air and starts the next one. The vote's track
+         *     of a match whose vote is open: the vote closes first, with the votes so
+         *     far, and the winner starts.
+         */
         post: operations["skip"];
         delete?: never;
         options?: never;
@@ -2595,12 +2599,13 @@ export interface paths {
         put?: never;
         /**
          * Queues library tracks. Missing files and tracks with nothing audible are
-         *     refused.
+         *     refused, and so is a position among a match's tracks (`409`).
          */
         post: operations["enqueue"];
         /**
          * Empties the queue, cued track included. The track on air plays on (and
-         *     autofill, when on, queues new tracks).
+         *     autofill, when on, queues new tracks). The tracks of a match waiting or
+         *     open stay, and the match goes on.
          */
         delete: operations["clear_queue"];
         options?: never;
@@ -2618,7 +2623,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Takes an entry out of the queue. The track on air cannot be removed: skip it. */
+        /**
+         * Takes an entry out of the queue. The track on air cannot be removed: skip
+         *     it. A match's track is refused while the match waits or its vote is
+         *     open (`409`): cancel the match first.
+         */
         delete: operations["remove_entry"];
         options?: never;
         head?: never;
@@ -2633,7 +2642,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Moves a waiting entry. */
+        /**
+         * Moves a waiting entry. A match's track, or a place among them, is
+         *     refused while the match waits or its vote is open (`409`).
+         */
         put: operations["move_entry"];
         post?: never;
         delete?: never;
@@ -4173,7 +4185,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Fades out the track on air and starts the next one. */
+        /**
+         * Fades out the track on air and starts the next one. The vote's track
+         *     of a match whose vote is open: the vote closes first, with the votes so
+         *     far, and the winner starts.
+         */
         post: operations["skip_on_station"];
         delete?: never;
         options?: never;
@@ -4213,12 +4229,13 @@ export interface paths {
         put?: never;
         /**
          * Queues library tracks. Missing files and tracks with nothing audible are
-         *     refused.
+         *     refused, and so is a position among a match's tracks (`409`).
          */
         post: operations["enqueue_on_station"];
         /**
          * Empties the queue, cued track included. The track on air plays on (and
-         *     autofill, when on, queues new tracks).
+         *     autofill, when on, queues new tracks). The tracks of a match waiting or
+         *     open stay, and the match goes on.
          */
         delete: operations["clear_queue_on_station"];
         options?: never;
@@ -4236,7 +4253,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Takes an entry out of the queue. The track on air cannot be removed: skip it. */
+        /**
+         * Takes an entry out of the queue. The track on air cannot be removed: skip
+         *     it. A match's track is refused while the match waits or its vote is
+         *     open (`409`): cancel the match first.
+         */
         delete: operations["remove_entry_on_station"];
         options?: never;
         head?: never;
@@ -4251,7 +4272,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Moves a waiting entry. */
+        /**
+         * Moves a waiting entry. A match's track, or a place among them, is
+         *     refused while the match waits or its vote is open (`409`).
+         */
         put: operations["move_entry_on_station"];
         post?: never;
         delete?: never;
@@ -8945,6 +8969,12 @@ export interface components {
             /** Format: int64 */
             closes_at_unix_ms?: number | null;
             decided_by?: components["schemas"]["MatchDecision"] | null;
+            /**
+             * @description The queue entries of the vote's track and of A and B, for the
+             *     engine started then: locked in the queue while the match waits or
+             *     its vote is open, with the announcement linked to the vote's track.
+             */
+            entry_ids: number[];
             /** Format: int64 */
             id: number;
             jingle?: components["schemas"]["MatchTrack"] | null;

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from "vitest";
-import { along, clock, left, outcome, sides, type MatchView } from "./match";
+import type { QueueEntry } from "../api";
+import { along, clock, left, lockedEntries, outcome, sides, type MatchView } from "./match";
 
 function match(change: Partial<MatchView>): MatchView {
   return {
@@ -15,6 +16,7 @@ function match(change: Partial<MatchView>): MatchView {
       { choice: "a", track_id: 2, artist: "Cassia Bloom", title: "Neon Orchard", votes: 46, percent: 58 },
       { choice: "b", track_id: 3, artist: "Echo Parade", title: "Running Lights", votes: 33, percent: 42 },
     ],
+    entry_ids: [21, 22, 23],
     votes: 79,
     opened_at_unix_ms: 0,
     closes_at_unix_ms: 50_000,
@@ -50,5 +52,30 @@ describe("match", () => {
     expect(outcome(match({ status: "cancelled", winner: null, decided_by: null })).tone).toBe("muted");
     expect(sides(match({ winner: "b" })).winner?.title).toBe("Running Lights");
     expect(sides(match({ winner: null })).winner).toBeNull();
+  });
+});
+
+describe("locked entries", () => {
+  const waiting = (pairs: [number, number | null][]) =>
+    pairs.map(([entry_id, linked_to]) => ({ entry_id, linked_to }) as unknown as QueueEntry);
+
+  it("locks the match's entries and the announcement linked to its vote's track", () => {
+    const queue = waiting([
+      [20, 21],
+      [21, null],
+      [22, null],
+      [23, null],
+      [30, 31],
+      [31, null],
+    ]);
+    expect([...lockedEntries(match({ status: "queued" }), queue)].sort()).toEqual([20, 21, 22, 23]);
+    expect([...lockedEntries(match({ status: "open" }), queue)].sort()).toEqual([20, 21, 22, 23]);
+  });
+
+  it("locks nothing without a match in progress", () => {
+    const queue = waiting([[21, null]]);
+    expect(lockedEntries(null, queue).size).toBe(0);
+    expect(lockedEntries(match({ status: "closed" }), queue).size).toBe(0);
+    expect(lockedEntries(match({ status: "cancelled" }), queue).size).toBe(0);
   });
 });
