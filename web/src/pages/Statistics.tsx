@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { type Schemas, api, query, unwrap } from "../api";
 import { type Bar, BarChart, MinuteChart, type Point } from "../components/ListenerChart";
+import { InfoTip } from "../components/InfoTip";
 import { Card, Empty, ErrorView, Loading, PageHead, Segmented } from "../components/ui";
 import { type PlainKey, locale, number, t } from "../i18n";
 import { duration, shortTime } from "../lib/format";
@@ -180,9 +181,28 @@ export function Statistics() {
           <HoursOfDay zone={zone} filter={filter} />
           <Departures zone={zone} filter={filter} />
           <Players zone={zone} filter={filter} />
+          <HowCounted zone={zone} />
         </div>
       )}
     </>
+  );
+}
+
+/** How the figures are counted, at the bottom of the page. */
+function HowCounted({ zone }: Readonly<{ zone: string | undefined }>) {
+  return (
+    <details className="stats-how">
+      <summary>{t("statistics.howCounted")}</summary>
+      <ul>
+        <li>{t("statistics.howShort")}</li>
+        <li>{t("statistics.howListener")}</li>
+        <li>{t("statistics.howRelays")}</li>
+        <li>{t("statistics.howQuarters", { zone: zone ?? "…" })}</li>
+        <li>{t("statistics.howPrevious")}</li>
+        <li>{t("statistics.tuneTip")}</li>
+        <li>{t("statistics.howPeak")}</li>
+      </ul>
+    </details>
   );
 }
 
@@ -190,13 +210,30 @@ function Tile({
   label,
   value,
   hint,
+  tip,
   sub,
   delta,
-}: Readonly<{ label: string; value: ReactNode; hint?: string | undefined; sub?: ReactNode; delta?: { ratio: number | null; previous: string } | undefined }>) {
+}: Readonly<{
+  label: string;
+  value: ReactNode;
+  hint?: string | undefined;
+  /** What the figure is: one sentence, behind an info button. */
+  tip?: string;
+  sub?: ReactNode;
+  delta?: { ratio: number | null; previous: string } | undefined;
+}>) {
   return (
     <div className="stat" title={hint}>
       <span className="value">{value}</span>
-      <span className="label">{label}</span>
+      <span className="label">
+        {label}
+        {tip && (
+          <>
+            {" "}
+            <InfoTip label={t("statistics.about", { name: label })}>{tip}</InfoTip>
+          </>
+        )}
+      </span>
       {sub && <span className="muted small">{sub}</span>}
       {delta && (
         <span className={`small ${delta.ratio !== null && delta.ratio < 0 ? "warn" : "muted"}`} title={t("statistics.previousValue", { value: delta.previous })}>
@@ -265,20 +302,27 @@ function AudienceCard({ zone, filter }: Readonly<{ zone: string | undefined; fil
             <Tile
               label={t("statistics.cume")}
               value={decimal(current.cume, range === 1 ? 0 : 1)}
-              hint={current.listener_days == null ? undefined : t("statistics.cumeHint", { count: number(current.listener_days) })}
+              tip={t("statistics.cumeTip")}
+              sub={range === 1 || current.listener_days == null ? undefined : t("statistics.cumeHint", { count: number(current.listener_days) })}
               delta={delta((a) => a.cume, (v) => decimal(v))}
             />
-            <Tile label={t("statistics.ttsl")} value={hours(current.ttsl_hours)} hint={t("statistics.ttslHint")} delta={delta((a) => a.ttsl_hours, hours)} />
+            <Tile label={t("statistics.ttsl")} value={`${hours(current.ttsl_hours)} h`} tip={t("statistics.ttslHint")} delta={delta((a) => a.ttsl_hours, hours)} />
             <Tile
               label={t("statistics.atsl")}
               value={seconds(current.atsl_s)}
-              hint={t("statistics.atslHint")}
+              tip={t("statistics.atslHint")}
               sub={current.median_session_s == null ? undefined : t("statistics.median", { value: seconds(current.median_session_s) })}
               delta={delta((a) => a.atsl_s, seconds)}
             />
-            <Tile label={t("statistics.aqh")} value={decimal(current.aqh)} hint={t("statistics.aqhHint")} delta={delta((a) => a.aqh, (v) => decimal(v))} />
-            <Tile label={t("statistics.peak")} value={count(current.peak)} sub={peakAt(current.peak_at_unix_ms, zone)} delta={delta((a) => a.peak, count)} />
-            <Tile label={t("statistics.sessions")} value={count(current.sessions)} delta={delta((a) => a.sessions, count)} />
+            <Tile label={t("statistics.aqh")} value={decimal(current.aqh)} tip={t("statistics.aqhHint")} delta={delta((a) => a.aqh, (v) => decimal(v))} />
+            <Tile
+              label={t("statistics.peakAudience")}
+              value={count(current.peak)}
+              tip={t("statistics.peakTip")}
+              sub={peakAt(current.peak_at_unix_ms, zone)}
+              delta={delta((a) => a.peak, count)}
+            />
+            <Tile label={t("statistics.sessions")} value={count(current.sessions)} tip={t("statistics.sessionsTip")} delta={delta((a) => a.sessions, count)} />
           </div>
           {current.sessions == null ? (
             <p className="muted small" style={{ margin: 0 }}>
@@ -289,7 +333,14 @@ function AudienceCard({ zone, filter }: Readonly<{ zone: string | undefined; fil
               <p className="muted small" style={{ margin: 0 }}>
                 {t("statistics.audienceHelp")}
               </p>
-              {current.sessions > 0 && <BarChart bars={lengthBars} label={t("statistics.sessionLengths")} />}
+              {current.sessions > 0 && (
+                <>
+                  <h3 className="small" style={{ margin: 0 }}>
+                    {t("statistics.sessionLengths")} <InfoTip label={t("statistics.about", { name: t("statistics.sessionLengths") })}>{t("statistics.lengthsTip")}</InfoTip>
+                  </h3>
+                  <BarChart bars={lengthBars} label={t("statistics.sessionLengths")} />
+                </>
+              )}
             </>
           )}
         </div>
@@ -564,6 +615,7 @@ function HoursOfDay({ zone, filter }: Readonly<{ zone: string | undefined; filte
         ) : (
           <div className="stack">
             {tunes && (
+              <div className="row">
               <Segmented
                 label={t("statistics.measure")}
                 value={measure}
@@ -574,6 +626,8 @@ function HoursOfDay({ zone, filter }: Readonly<{ zone: string | undefined; filte
                   { value: "tune_out", label: t("statistics.tuneOut") },
                 ]}
               />
+              <InfoTip label={t("statistics.about", { name: `${t("statistics.tuneIn")} / ${t("statistics.tuneOut")}` })}>{t("statistics.tuneTip")}</InfoTip>
+              </div>
             )}
             <BarChart bars={bars} label={t("statistics.hoursOfDayChart")} />
             <p className="muted small" style={{ margin: 0 }}>
