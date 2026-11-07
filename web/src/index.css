@@ -3220,3 +3220,149 @@ ul.held {
     align-items: stretch;
   }
 }
+
+/* The match: the two tracks one against the other, the vote's track. */
+.match-duel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.match-duel-cell {
+  display: contents;
+}
+
+.match-versus {
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-align: center;
+}
+
+.match-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.match-choice.leading {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.match-choice-title {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.match-percent {
+  font-size: 2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 20%, transparent);
+  overflow: hidden;
+}
+
+.match-bar span {
+  display: block;
+  height: 100%;
+  background: #3266d6;
+}
+
+.match-bar.side-b span {
+  background: #b5559a;
+}
+
+.match-clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.match-clock.hurry strong {
+  animation: match-hurry 1s steps(1, end) infinite;
+}
+
+@keyframes match-hurry {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-clock.hurry strong {
+    animation: none;
+    outline: 2px solid var(--bad);
+    outline-offset: 2px;
+  }
+}
+
+.match-timeline {
+  margin: 0.5rem 0 1rem;
+}
+
+.match-timeline-bar {
+  position: relative;
+  height: 14px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  overflow: hidden;
+}
+
+.match-timeline-bar .played {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, #3266d6 35%, transparent);
+}
+
+.match-timeline-bar .after {
+  position: absolute;
+  inset: 0 0 0 auto;
+  background: repeating-linear-gradient(45deg, var(--border) 0 6px, transparent 6px 12px);
+}
+
+.match-timeline-bar .close {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--bad);
+  z-index: 1;
+}
+
+.match-timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.match-preview-choice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.match-duel.compact {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  .match-duel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

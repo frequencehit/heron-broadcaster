@@ -443,6 +443,21 @@ function Notifications({
               {t("top30.placeholders", { artist: "{artist}", title: "{title}", top3: "{top3}", rank: "{rank}" })}
             </p>
           )}
+          {show.module === "match" && (
+            <p className="muted small">
+              {t("match.placeholders", {
+                title1: "{title1}",
+                artist1: "{artist1}",
+                title2: "{title2}",
+                artist2: "{artist2}",
+                close: "{close}",
+                winner: "{winner}",
+                loser: "{loser}",
+                percent: "{percent}",
+                votes: "{votes}",
+              })}
+            </p>
+          )}
           {show.module === "dedications" && (
             <p className="muted small">
               {t("dedications.placeholders", {
@@ -657,6 +672,7 @@ export function WidgetPreview({
   }
   const likes = module === "likes";
   const dedications = module === "dedications";
+  const duel = module === "match";
   const when = next ? dateTime(next) : "…";
   const values = next ? { day: fullDate(next), hour: shortTime(next) } : { day: "…", hour: "" };
   return (
@@ -664,7 +680,13 @@ export function WidgetPreview({
       <div className="show-widget-head" style={{ background: open ? color : "var(--muted)" }}>
         <strong>{title}</strong>
         <div className="small">
-          {!open ? t("shows.closedTitle") : likes ? t("likes.widgetSub") : t("shows.until", { time: "18:00" })}
+          {!open
+            ? t("shows.closedTitle")
+            : likes
+              ? t("likes.widgetSub")
+              : duel
+                ? t("match.preview.sub")
+                : t("shows.until", { time: "18:00" })}
         </div>
       </div>
       <div className="show-widget-body">
@@ -679,6 +701,30 @@ export function WidgetPreview({
                 <Icon name="dislike" /> {t("likes.dislike")}
               </span>
             </div>
+          </div>
+        ) : open && duel ? (
+          <div className="stack" style={{ gap: 8, textAlign: "left" }}>
+            {[
+              { title: "Neon Orchard", artist: "Cassia Bloom", percent: 58 },
+              { title: "Running Lights", artist: "Echo Parade", percent: 42 },
+            ].map((choice, index) => (
+              <div key={choice.title} className="stack" style={{ gap: 8 }}>
+                {index === 1 && <span className="match-versus small">{t("match.versus")}</span>}
+                <div
+                  className="match-preview-choice"
+                  style={{ background: `linear-gradient(90deg, ${color}26 ${choice.percent}%, transparent ${choice.percent}%)` }}
+                >
+                  <span>
+                    <strong>{choice.title}</strong>
+                    <span className="muted small"> {choice.artist}</span>
+                  </span>
+                  <strong>{choice.percent} %</strong>
+                </div>
+              </div>
+            ))}
+            <span className="muted small" style={{ textAlign: "center" }}>
+              {t("match.votes", { count: 79 })}
+            </span>
           </div>
         ) : open && dedications ? (
           <div className="stack" style={{ gap: 8, textAlign: "left" }}>

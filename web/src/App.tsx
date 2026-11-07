@@ -46,6 +46,7 @@ import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
 import { LikesWeekCard } from "./components/Likes";
 import { DedicationsPage } from "./components/Dedications";
+import { MatchPage } from "./components/Match";
 import { Top30Page } from "./components/Top30";
 import { ShowPage } from "./pages/Show";
 import { Stations } from "./pages/Stations";
@@ -125,7 +126,7 @@ function pageAt(pathname: string): ReactNode {
   }
   const show = match("/shows/:module", pathname);
   if (show?.module === "match") {
-    return <ShowPage module="match" />;
+    return <MatchPage />;
   }
   if (show?.module === "top30") {
     return <Top30Page />;
