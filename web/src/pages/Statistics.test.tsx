@@ -4,7 +4,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Schemas } from "../api";
-import { t } from "../i18n";
+import { type PlainKey, t } from "../i18n";
 import { chooseStation } from "../lib/station";
 import { answer, renderApp, sent } from "../test/render";
 import { Statistics } from "./Statistics";
@@ -103,8 +103,7 @@ describe("Statistics", () => {
 
   it("shows the audience figures against the previous period", async () => {
     show("");
-    expect(await screen.findByText(t("statistics.cume"))).toBeTruthy();
-    expect(screen.getByText(t("statistics.aqh"))).toBeTruthy();
+    expect(await screen.findByRole("button", { name: t("statistics.about", { name: t("statistics.cume") }) })).toBeTruthy();
     // 10 sessions against 8; a cume of 6 against 8.
     expect(screen.getByText(t("statistics.vsPrevious", { change: "+25%" }))).toBeTruthy();
     expect(screen.getByText(t("statistics.vsPrevious", { change: "-25%" }))).toBeTruthy();
@@ -113,6 +112,35 @@ describe("Statistics", () => {
     // Tune-in and tune-out on the hours of the day.
     fireEvent.click(screen.getByRole("button", { name: t("statistics.tuneIn") }));
     expect(await screen.findByText(t("statistics.tuneHelp"))).toBeTruthy();
+  });
+
+  it("explains each figure, by its plain name first", async () => {
+    show("");
+    const tips: [PlainKey, PlainKey][] = [
+      ["statistics.cume", "statistics.cumeTip"],
+      ["statistics.ttsl", "statistics.ttslHint"],
+      ["statistics.atsl", "statistics.atslHint"],
+      ["statistics.aqh", "statistics.aqhHint"],
+      ["statistics.peakAudience", "statistics.peakTip"],
+      ["statistics.sessions", "statistics.sessionsTip"],
+      ["statistics.sessionLengths", "statistics.lengthsTip"],
+    ];
+    for (const [label, tip] of tips) {
+      // Not an acronym alone: a plain name, the acronym after it.
+      expect(t(label)).toMatch(/^[^(]{6,}/);
+      const button = await screen.findByRole("button", { name: t("statistics.about", { name: t(label) }), description: t(tip) });
+      // A tap opens it too, for phones.
+      fireEvent.click(button);
+      expect(button.getAttribute("aria-expanded")).toBe("true");
+      fireEvent.keyDown(button, { key: "Escape" });
+      expect(button.getAttribute("aria-expanded")).toBe("false");
+    }
+    expect(screen.getByRole("button", { description: t("statistics.tuneTip") })).toBeTruthy();
+    // How the figures are counted, at the bottom.
+    const how = screen.getByText(t("statistics.howCounted"));
+    expect(how.closest("details")).toBeTruthy();
+    expect(screen.getByText(t("statistics.howShort"))).toBeTruthy();
+    expect(screen.getByText(t("statistics.howQuarters", { zone: "UTC" }))).toBeTruthy();
   });
 
   it("says why the figures from sessions are missing", async () => {
