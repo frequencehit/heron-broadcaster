@@ -949,19 +949,29 @@ const HOUR_MS: i64 = 3_600_000;
 
 /// The next exact time from `first` in this run of `clock` (the slots whose
 /// time has passed are added to `missed`), else the next hour's first slot.
+/// The slots before `first` played in this run already: a clock that does
+/// not loop does not go back to them, and the slot just played (`played`)
+/// is never due again.
+#[allow(clippy::too_many_arguments)]
 fn upcoming<'c>(
     library: &'c Library,
     clock: &'c Clock,
     first: usize,
+    played: Option<usize>,
     hour_start: i64,
     at_ms: i64,
     previous_start: Option<i64>,
     missed: &mut Vec<usize>,
 ) -> Option<Upcoming<'c>> {
     let count = clock.slots.len();
-    for offset in 0..count {
+    let run = if clock.looping {
+        count
+    } else {
+        count.saturating_sub(first)
+    };
+    for offset in 0..run {
         let index = (first + offset) % count;
-        if clock.follows_linked(index) {
+        if clock.follows_linked(index) || played == Some(index) {
             continue;
         }
         let Some(exact) = clock.exact(index) else {
@@ -1286,15 +1296,17 @@ fn pick(
         });
     };
     let count = clock.slots.len();
-    let first = match last {
+    // The slot played last in this run of the clock, if any.
+    let played = match last {
         Some(last)
             if last.clock_id == clock.id
                 && (clock.looping || last.hour_start_unix_ms == hour_start) =>
         {
-            (last.slot as usize + 1) % count
+            Some(last.slot as usize % count)
         }
-        _ => 0,
+        _ => None,
     };
+    let first = played.map_or(0, |slot| (slot + 1) % count);
     let mut skipped = Vec::new();
     let skip = |skipped: &mut Vec<SkippedSlot>, clock: &Clock, index: usize, reason| {
         skipped.push(SkippedSlot {
@@ -1313,6 +1325,7 @@ fn pick(
         library,
         clock,
         first,
+        played,
         hour_start,
         at_ms,
         previous_start,
