@@ -82,6 +82,12 @@ pub enum WebhookEvent {
     ShowStarted,
     #[serde(rename = "show.ended")]
     ShowEnded,
+    /// The Top 30's chart, when its week closes.
+    #[serde(rename = "top.published")]
+    TopPublished,
+    /// A rank of the Top 30, as it starts playing.
+    #[serde(rename = "top.rank")]
+    TopRank,
 }
 
 impl WebhookEvent {
@@ -95,6 +101,8 @@ impl WebhookEvent {
             Self::ShowUpcoming => "show.upcoming",
             Self::ShowStarted => "show.started",
             Self::ShowEnded => "show.ended",
+            Self::TopPublished => "top.published",
+            Self::TopRank => "top.rank",
         }
     }
 
@@ -102,7 +110,11 @@ impl WebhookEvent {
     pub fn is_show(self) -> bool {
         matches!(
             self,
-            Self::ShowUpcoming | Self::ShowStarted | Self::ShowEnded
+            Self::ShowUpcoming
+                | Self::ShowStarted
+                | Self::ShowEnded
+                | Self::TopPublished
+                | Self::TopRank
         )
     }
 

@@ -357,11 +357,19 @@ impl QueueManager {
             .filter(|entry| entry.track.source != PlaySource::Fallback)
             .count();
         let missing = (settings.min_queued as usize).saturating_sub(waiting);
-        if !settings.autofill || missing == 0 || self.idle() {
+        if !settings.autofill || missing == 0 {
+            return Ok(());
+        }
+        let now = rotation::now_ms();
+        // A show on air (the Top 30) queues its programme in its hours.
+        let (_, planned_end) = rotation::planned_starts(state, now);
+        if self.fill_show(planned_end, missing).await? {
+            return Ok(());
+        }
+        if self.idle() {
             return Ok(());
         }
         let mut library = rotation::load_library(&self.pool, self.station_id).await?;
-        let now = rotation::now_ms();
         let history = rotation::load_history(&self.pool, self.station_id, &library, now).await?;
         let history = match self.stations.upgrade() {
             Some(stations) => {
@@ -444,6 +452,56 @@ impl QueueManager {
             .count();
         metrics::counter!("heron_api_rotation_relaxed_total").increment(relaxed as u64);
         Ok(())
+    }
+
+    /// Queues what the Top 30's show has to play for a track planned at
+    /// `at` (`docs/listener-interaction.md#top-30`): its programme's next
+    /// items, each jingle linked to its track. False when the show has
+    /// nothing to play: rotation picks.
+    async fn fill_show(&self, at: i64, missing: usize) -> ApiResult<bool> {
+        let Some(due) = crate::top30::due(&self.pool, self.station_id, at, missing).await? else {
+            return Ok(false);
+        };
+        let ids: Vec<u64> = due.items.iter().map(|item| item.track_id).collect();
+        let rows = self.rows(&ids).await?;
+        let plays = |id: u64| rows.iter().any(|row| row.id == id && row.plays());
+        // What can no longer play is passed over, a track with its jingle.
+        let mut items: Vec<&crate::top30::Item> = Vec::new();
+        for item in &due.items {
+            if plays(item.track_id) {
+                items.push(item);
+            } else if item.kind != crate::top30::ItemKind::Jingle
+                && items
+                    .last()
+                    .is_some_and(|last| last.kind == crate::top30::ItemKind::Jingle)
+            {
+                items.pop();
+            }
+        }
+        if !items.is_empty() {
+            let ids: Vec<u64> = items.iter().map(|item| item.track_id).collect();
+            let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
+            let linked = items
+                .windows(2)
+                .enumerate()
+                .filter(|(_, pair)| {
+                    pair[0].kind == crate::top30::ItemKind::Jingle
+                        && pair[1].kind != crate::top30::ItemKind::Jingle
+                })
+                .map(|(index, _)| u32::try_from(index).unwrap_or(u32::MAX))
+                .collect();
+            self.engine.enqueue(tracks, None, linked).await?;
+            tracing::info!(tracks = ids.len(), "top 30: queued the show's next tracks");
+        }
+        crate::top30::queued(
+            &self.pool,
+            self.station_id,
+            due.opens_ms,
+            due.from,
+            due.next,
+        )
+        .await?;
+        Ok(true)
     }
 
     /// Updates queued tracks whose file moved, and takes out those whose

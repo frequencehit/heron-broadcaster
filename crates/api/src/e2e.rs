@@ -9942,3 +9942,304 @@ async fn listeners_like_the_track_playing_only() {
     assert_eq!(total["total"], json!({"likes": 2, "dislikes": 2}));
     station.stop().await;
 }
+
+#[tokio::test]
+async fn the_top30_is_frozen_then_played_with_its_ranks_hidden() {
+    use crate::top30::{ChartWeek, Top30Settings};
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+
+    // The engine plays nothing: the plays are ours.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": false, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+
+    // Off by default: nothing answers, nothing is queued.
+    let (status, body) = viewer.request(Method::GET, "/top30/chart", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "module_off");
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"top30": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Music, and a new release category.
+    let mut categories = Vec::new();
+    for (name, members) in [("Music", vec![t[0], t[1], t[2], t[4]]), ("New", vec![t[3]])] {
+        let (status, category) = admin
+            .send(Method::POST, "/categories", json!({"name": name}))
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (music, new) = (categories[0], categories[1]);
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/top30/settings",
+            json!({"min_votes": 2, "size": 3, "category_ids": [music],
+                   "new_release_category_id": new}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/top30/settings",
+            json!({"category_ids": [9999]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = viewer.send(Method::PUT, "/top30/settings", json!({})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Votes on plays of the last closed week and of the week before.
+    let settings = Top30Settings {
+        min_votes: 2,
+        size: 3,
+        ..Top30Settings::default()
+    };
+    let station_settings: crate::settings::StationSettings =
+        crate::settings::load_for(pool, 1, "station").await.unwrap();
+    let tz = station_settings.time_zone();
+    let now = jiff::Timestamp::now();
+    let closed = ChartWeek::latest_closed(now, &settings, &tz).unwrap();
+    let before = closed.previous(&settings, &tz).unwrap();
+    let voted = |track: u64, week: ChartWeek, likes: u32, dislikes: u32| async move {
+        let started = week.from.as_millisecond() as f64 / 1_000.0 + 3_600.0;
+        let play = sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, title, started_at, ended_at, deck, source)
+             VALUES (1, ?, 'x', FROM_UNIXTIME(?), FROM_UNIXTIME(?), 'a', 'rotation')",
+        )
+        .bind(track)
+        .bind(started)
+        .bind(started + 3.0)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        sqlx::query(
+            "INSERT INTO play_votes (play_id, station_id, track_id, started_at, likes, dislikes)
+             VALUES (?, 1, ?, FROM_UNIXTIME(?), ?, ?)",
+        )
+        .bind(play)
+        .bind(track)
+        .bind(started)
+        .bind(likes)
+        .bind(dislikes)
+        .execute(pool)
+        .await
+        .unwrap();
+    };
+    voted(t[1], before, 9, 1).await;
+    voted(t[0], before, 8, 2).await;
+    voted(t[0], closed, 9, 1).await;
+    voted(t[1], closed, 8, 2).await;
+    voted(t[4], closed, 3, 1).await;
+    voted(t[2], closed, 5, 5).await;
+    // One vote: not ranked; and the new release category's only track.
+    voted(t[3], closed, 1, 0).await;
+
+    // The week before, frozen as it is read.
+    let chart = viewer
+        .get(&format!("/top30/chart?week={}", before.key()))
+        .await;
+    assert_eq!(chart["frozen"], true);
+    let ranks = |chart: &Value| -> Vec<(u64, String)> {
+        chart["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| {
+                (
+                    entry["track_id"].as_u64().unwrap(),
+                    entry["movement"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        ranks(&chart),
+        [(t[1], "new".to_owned()), (t[0], "new".to_owned())]
+    );
+    // The closed week: 3 tracks, with their movements.
+    let path = format!("/top30/chart?week={}", closed.key());
+    let chart = viewer.get(&path).await;
+    assert_eq!(chart["frozen"], true);
+    assert_eq!(chart["locked"], false);
+    assert_eq!(chart["votes"], 34);
+    assert_eq!(
+        ranks(&chart),
+        [
+            (t[0], "up".to_owned()),
+            (t[1], "down".to_owned()),
+            (t[4], "new".to_owned())
+        ]
+    );
+    assert_eq!(chart["entries"][0]["weeks"], 2);
+    assert_eq!(chart["entries"][0]["previous_rank"], 2);
+    assert_eq!(chart["new_release"]["track_id"], t[3]);
+    assert_eq!(chart["new_release"]["proposed"], true);
+    // This week's chart, live.
+    let live = viewer.get("/top30/chart").await;
+    assert_eq!(live["frozen"], false);
+    assert_eq!(live["entries"], json!([]));
+    // A week to come is not there yet; a week is a Monday.
+    let (status, _) = viewer
+        .request(Method::GET, "/top30/chart?week=2100-01-04", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = viewer
+        .request(Method::GET, "/top30/chart?week=2026-11-03", None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        viewer.get("/top30/charts").await.as_array().unwrap().len(),
+        2
+    );
+
+    // Taken out before the show: the next ones move up.
+    let removal = format!("/top30/charts/{}/removals/{}", closed.key(), t[1]);
+    let (status, chart) = admin.request(Method::POST, &removal, None).await;
+    assert_eq!(status, StatusCode::OK, "{chart}");
+    assert_eq!(
+        ranks(&chart).iter().map(|r| r.0).collect::<Vec<_>>(),
+        [t[0], t[4], t[2]]
+    );
+    assert_eq!(chart["removed"][0]["track_id"], t[1]);
+    assert_eq!(chart["removed"][0]["removed_by"], "admin");
+    let (status, chart) = admin.request(Method::DELETE, &removal, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        ranks(&chart).iter().map(|r| r.0).collect::<Vec<_>>(),
+        [t[0], t[1], t[4]]
+    );
+    // The new release, chosen by hand among its category's tracks.
+    let choose = format!("/top30/charts/{}/new-release", closed.key());
+    let (status, _) = admin
+        .send(Method::PUT, &choose, json!({"track_id": t[0]}))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, chart) = admin
+        .send(Method::PUT, &choose, json!({"track_id": t[3]}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(chart["new_release"]["proposed"], false);
+
+    // The show's hours: this hour, every day.
+    let hour = now.to_zoned(tz.clone()).hour();
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/shows/top30",
+            json!({"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": hour,
+                              "end_hour": hour + 1}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let plan = viewer.get("/top30/show").await;
+    assert_eq!(plan["built"], false);
+    assert_eq!(plan["week"], closed.key());
+
+    // The queue takes it in order: from number 3 to number 1, then the new
+    // release; then rotation.
+    let at = crate::rotation::now_ms();
+    let due = crate::top30::due(pool, 1, at, 2).await.unwrap().unwrap();
+    let ids = |due: &crate::top30::Due| -> Vec<(Option<u32>, u64)> {
+        due.items
+            .iter()
+            .map(|item| (item.rank, item.track_id))
+            .collect()
+    };
+    assert_eq!(ids(&due), [(Some(3), t[4]), (Some(2), t[1])]);
+    crate::top30::queued(pool, 1, due.opens_ms, due.from, due.next)
+        .await
+        .unwrap();
+    let due = crate::top30::due(pool, 1, at, 3).await.unwrap().unwrap();
+    assert_eq!(ids(&due), [(Some(1), t[0]), (None, t[3])]);
+    assert_eq!(due.items[1].kind, crate::top30::ItemKind::NewRelease);
+    crate::top30::queued(pool, 1, due.opens_ms, due.from, due.next)
+        .await
+        .unwrap();
+    assert!(crate::top30::due(pool, 1, at, 3).await.unwrap().is_none());
+    let plan = viewer.get("/top30/show").await;
+    assert_eq!(plan["built"], true);
+    assert_eq!(plan["items"][3]["queued"], true);
+    // Built from the chart: it does not change any more.
+    let (status, _) = admin.request(Method::POST, &removal, None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // On the website: number 3 on air, the ranks to come hidden. What the
+    // engine played when it started does not count.
+    sqlx::query("DELETE FROM play_history WHERE station_id = 1 AND started_at >= FROM_UNIXTIME(?)")
+        .bind(due.opens_ms as f64 / 1_000.0)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO play_history (station_id, track_id, title, started_at, deck, source)
+         VALUES (1, ?, 'x', NOW(6), 'a', 'rotation')",
+    )
+    .bind(t[4])
+    .execute(pool)
+    .await
+    .unwrap();
+    let mut gateway = station.client();
+    gateway.bearer = Some(GATEWAY_TOKEN.to_owned());
+    let state = gateway.get("/gateway/state").await;
+    let shows = state["stations"][0]["shows"].as_array().unwrap();
+    let top = shows.iter().find(|show| show["module"] == "top30").unwrap();
+    let public = &top["state"];
+    assert_eq!(public["live"], true, "{public}");
+    assert_eq!(public["on_air_rank"], 3);
+    let entries = public["chart"]["entries"].as_array().unwrap();
+    assert_eq!(entries[2]["title"], "Track 5");
+    assert_eq!(entries[2]["on_air"], true);
+    for hidden in &entries[..2] {
+        assert_eq!(hidden["hidden"], true);
+        assert!(hidden.get("title").is_none(), "{hidden}");
+    }
+    assert_eq!(public["new_release"], json!({"hidden": true}));
+
+    // Turned off for the station: nothing more is queued or answered.
+    let (status, _) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({"top30": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = viewer.request(Method::GET, "/top30/show", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(crate::top30::due(pool, 1, at, 3).await.unwrap().is_none());
+    station.stop().await;
+}
