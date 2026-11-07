@@ -14,7 +14,7 @@ Not every station wants every feature. Parts of Heron are **modules** that can b
 | **Equalizer** | `eq` | yes | The [deck EQ](audio-engine.md#deck-eq) of the decks and the FX player, and its presets |
 | **Processing** | `processing` | yes | The [master AGC chain](audio-engine.md#master-agc-chain) and its presets |
 | **Trash** | `trash` | yes | The [trash](library.md#deleting-tracks-and-the-trash) of deleted tracks: the Trash page, restoring and emptying it. Installation only |
-| **To organize** | `review` | yes | The *To organize* page: identifications to check after an import, covers to check, organizing the library and undoing batches of file changes. Installation only |
+| **To do** | `review` | yes | The *To do* page: identifications to check after an import, the songs missing an intro, a hook or a cover, covers to check, organizing the library and undoing batches of file changes. Installation only |
 | **Artists** | `artists` | yes | The Artists page: names, merges, similar artists and their suggestions. Installation only |
 | **Labels** | `labels` | yes | [Labels](data-model.md#track-details-and-labels) on tracks: their page, filters, column and actions. Installation only |
 
@@ -25,7 +25,7 @@ The shows to come (Dedications, Match, Top 30) and Likes will be modules too: th
 - **The installation** (admins, *Administration › Modules*): a module turned off here is off for every station.
 - **A station** (its admins, *Settings › Station › Modules*): a module on for the installation can be turned off for that station only.
 
-Trash, To organize, Artists and Labels are about the library, which the stations share: they are turned on and off for the installation only. A station's switch for them is ignored, and a station's modules page does not show them.
+Trash, To do, Artists and Labels are about the library, which the stations share: they are turned on and off for the installation only. A station's switch for them is ignored, and a station's modules page does not show them.
 
 A module is on for a station when it is on at both levels. Nothing is stored until a module is changed: what is not stored is on (the shows will be off). The installation's switches are the `modules` settings, a station's are its `station_modules` settings; [backups](backups.md) keep both, and a restore brings them back with the rest.
 
@@ -55,7 +55,7 @@ Off for the installation, the library modules:
 | Module | Off for the installation |
 |---|---|
 | **Trash** | `/library/trash/…` answers `404`: the trash is not shown, restored or emptied. Deleting tracks still moves them to the trash, and it is still emptied after its retention (*Settings › Library*): turning the module off does not make deletions final at once, and the trash does not grow forever. A request to empty it queued before fails |
-| **To organize** | `/library/review`, `/tracks/{id}/review/…`, `/library/organize/…` and `/library/batches/…` answer `404`, and a review or an organize queued before fails. Imports still identify the tracks: those with an unsure match wait, as before, and are there once the module is on. The library keeps its journal. The covers to check are the cover art module's: their routes still answer while it is on, but their place on the page is hidden |
+| **To do** | `/library/todo`, `/library/review`, `/tracks/{id}/review/…`, `/library/organize/…` and `/library/batches/…` answer `404`, and a review or an organize queued before fails. Imports still identify the tracks: those with an unsure match wait, as before, and are there once the module is on. The library keeps its journal. `GET /tracks` still filters the songs missing an intro, a hook or a cover. The covers to check are the cover art module's: their routes still answer while it is on, but their place on the page is hidden |
 | **Artists** | `/artists/{id}/…`, `/artist-names/…` and `/artist-suggestions/…` answer `404`, and the MusicBrainz relationships are not looked up (a lookup queued before fails). `GET /artists`, the search of the artist pickers (restrictions, filters), still answers. What is set is still applied: merged artists stay merged, and rotation still keeps similar artists apart |
 | **Labels** | `/labels/…` and `/tracks/labels` answer `404`. Labels are hidden everywhere: their page, the track list's column, filters and *Labels* action, the import buffer's, a track's labels, *Fill from a label* on the Categories page, and the label of a medley's recipe. Nothing in rotation uses labels, so nothing on air changes; a medley whose recipe has a label still draws its songs from it when it is rendered. The tracks keep their labels, and the API still gives them (`labels` of a track) and filters on them (`labels_any`, `labels_all`, `labels_none` of `GET /tracks`); a migration from another program still creates its labels |
 
