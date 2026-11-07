@@ -159,7 +159,7 @@ The votes are in the database dump of the [backups](backups.md), with the histor
 
 - **On air**: the likes and dislikes of the track playing, as they come.
 - **The track's page**: for the station shown, this week, 30 days and always (share and votes), and its latest plays with their votes. Hovering a play in the plays grid gives its votes.
-- **The track list**: a *Liked* column (share and votes over 7, 30 or 365 days, on the station whose plays it counts), its sort, and filters on the share and the number of votes (*under 40 %, at least 20 votes*: the tracks to rest, or whose [ratio](rotation.md#play-ratio) to lower).
+- **The track list**: a *Liked* column (share and votes over 7, 30 or 365 days, on the station listed), its sort, and filters on the share and the number of votes (*under 40 %, at least 20 votes*: the tracks to rest, or whose [ratio](rotation.md#play-ratio) to lower).
 - **Shows › Likes** and the **Statistics** page: the most liked and least liked tracks of the week.
 
 ### Notifications

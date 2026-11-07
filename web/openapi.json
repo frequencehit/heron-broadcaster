@@ -12830,7 +12830,7 @@
           {
             "name": "likes_days",
             "in": "query",
-            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, every station's when left\nout.",
+            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, else of `on_station_id`,\nevery station's when neither is given.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -26931,7 +26931,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, every station's when left\nout.",
+            "description": "The period of the likes, in days ending now: 1 to 3650, 30 by\ndefault. On the station of `station_id`, else of `on_station_id`,\nevery station's when neither is given.",
             "minimum": 0
           },
           "limit": {

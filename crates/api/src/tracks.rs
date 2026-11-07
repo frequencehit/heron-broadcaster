@@ -147,8 +147,8 @@ pub struct TrackQuery {
     /// tracks).
     pub ratio_max: Option<u8>,
     /// The period of the likes, in days ending now: 1 to 3650, 30 by
-    /// default. On the station of `station_id`, every station's when left
-    /// out.
+    /// default. On the station of `station_id`, else of `on_station_id`,
+    /// every station's when neither is given.
     pub likes_days: Option<u32>,
     /// Tracks with at least this share of likes, in percent (0 to 100);
     /// tracks without votes are left out.
@@ -407,13 +407,13 @@ impl ListContext {
         query.push_bind(min_play_s);
         query.push(" SECOND)) GROUP BY track_id) h ON h.track_id = t.id");
         // Listeners' likes over the period, on the station whose plays it
-        // counts.
+        // counts, else the station it lists.
         query.push(
             " LEFT JOIN (SELECT track_id, SUM(likes) AS likes, SUM(dislikes) AS dislikes
                          FROM play_votes WHERE started_at >= NOW(6) - INTERVAL ",
         );
         query.push_bind(self.likes_days).push(" DAY");
-        if let Some(station_id) = self.station_id {
+        if let Some(station_id) = self.station_id.or(self.on_station_id) {
             query.push(" AND station_id = ").push_bind(station_id);
         }
         query.push(" GROUP BY track_id) v ON v.track_id = t.id");

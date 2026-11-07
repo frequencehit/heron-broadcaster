@@ -236,7 +236,7 @@ Listeners' [likes](listener-interaction.md#likes) on the tracks played, per stat
 - `GET /stations/{id}/likes/week`: the most liked and least liked tracks of the week so far, from Monday 00:00 in the station's time zone: `from_unix_ms`, `min_votes` (10), and `most_liked`, `least_liked`, 10 each (`track_id`, `artist`, `title`, `likes`, `dislikes`, `share` from 0 to 1, `plays`: its plays with votes), among the tracks with at least `min_votes` votes. Ties go to the track with the most votes.
 - `GET /stations/{id}/likes/tracks/{track_id}`: a track's votes on the station: `week`, `days_30` and `total` (each `likes`, `dislikes`), `min_votes`, and `plays`, its latest 20 plays with votes (`play_id`, `started_at_unix_ms`, `likes`, `dislikes`).
 
-On the track list, `GET /tracks` gives each track's `likes` and `dislikes` over `likes_days` days (1 to 3650, 30 by default), on the station of `station_id` (every station's when left out), and takes:
+On the track list, `GET /tracks` gives each track's `likes` and `dislikes` over `likes_days` days (1 to 3650, 30 by default), on the station of `station_id`, else of `on_station_id` (every station's when neither is given), and takes:
 
 - `sort=liked`: by share of likes, lowest first (`desc=true`: highest first); tracks below 10 votes come after those ranked, those without votes last;
 - `liked_min`, `liked_max`: the share of likes in percent, 0 to 100 (tracks without votes are left out);

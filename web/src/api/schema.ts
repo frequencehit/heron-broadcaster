@@ -9939,8 +9939,8 @@ export interface components {
             /**
              * Format: int32
              * @description The period of the likes, in days ending now: 1 to 3650, 30 by
-             *     default. On the station of `station_id`, every station's when left
-             *     out.
+             *     default. On the station of `station_id`, else of `on_station_id`,
+             *     every station's when neither is given.
              */
             likes_days?: number | null;
             /**
@@ -19816,8 +19816,8 @@ export interface operations {
                 ratio_max?: number;
                 /**
                  * @description The period of the likes, in days ending now: 1 to 3650, 30 by
-                 *     default. On the station of `station_id`, every station's when left
-                 *     out.
+                 *     default. On the station of `station_id`, else of `on_station_id`,
+                 *     every station's when neither is given.
                  */
                 likes_days?: number;
                 /**
