@@ -1644,6 +1644,7 @@ const fr = {
   "settings.removeKey": "Retirer",
   "settings.analysisSaved": "Enregistré : chaque piste est analysée à nouveau, en arrière-plan",
   "settings.analysis": "Analyse",
+  "settings.audio": "Audio",
   "settings.analysisHelp": "Les points d'entrée, de sortie et de fondu sont trouvés à l'import des pistes. Les modifier analyse à nouveau toute la bibliothèque (en arrière-plan, la station continue de diffuser).",
   "settings.startThreshold": "Seuil de début",
   "settings.startThresholdHint": "Sous le niveau de la piste, coupé au début",

@@ -1637,6 +1637,7 @@ const de = {
   "settings.removeKey": "Entfernen",
   "settings.analysisSaved": "Gespeichert: Jeder Titel wird im Hintergrund neu analysiert",
   "settings.analysis": "Analyse",
+  "settings.audio": "Audio",
   "settings.analysisHelp": "Cue-Punkte und Überblendpunkte werden beim Import der Titel ermittelt. Eine Änderung hier analysiert die ganze Bibliothek neu (im Hintergrund, der Sender spielt weiter).",
   "settings.startThreshold": "Startschwelle",
   "settings.startThresholdHint": "Unter der Lautheit des Titels, am Anfang abgeschnitten",

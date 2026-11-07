@@ -464,7 +464,7 @@ export function ProgrammingDialog({ open, onClose, selection, files, tracks }: T
         )}
         <p className="muted small" style={{ margin: 0 }}>
           {rich("selection.programmingHelp", {
-            link: <Link to="/settings">{t("selection.settingsLink")}</Link>,
+            link: <Link to="/settings?tab=programming">{t("selection.settingsLink")}</Link>,
             measured: <em>{t("selection.measured")}</em>,
           })}
         </p>
