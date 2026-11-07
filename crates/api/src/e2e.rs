@@ -7251,6 +7251,11 @@ async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
     for output in shown["/outputs"].as_array_mut().unwrap() {
         output.as_object_mut().unwrap().remove("status");
     }
+    // A webhook's last delivery is what the station sent while the test
+    // ran (a track started), not what was set.
+    for webhook in shown["/webhooks"].as_array_mut().unwrap() {
+        webhook.as_object_mut().unwrap().remove("last_delivery");
+    }
     // An artist is found again by name, under the ID the scan gave it.
     for restriction in shown["/restrictions"].as_array_mut().unwrap() {
         if restriction["target"]["kind"] == "artist" {
