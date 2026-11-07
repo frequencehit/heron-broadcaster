@@ -25,6 +25,12 @@ describe("startTimes", () => {
     expect(startTimes([entry(1, 30_000), entry(2, 37_000, 50_000)], 0, null)).toEqual([0, 30_000]);
   });
 
+  it("starts each track where the one before hands over to it", () => {
+    vi.useFakeTimers({ now: 0 });
+    const crossfaded = { ...entry(1, 60_000), next_start_ms: 54_000 } as QueueEntry;
+    expect(startTimes([crossfaded, entry(2, 30_000), entry(3, 10_000)], 0, null)).toEqual([0, 54_000, 84_000]);
+  });
+
   it("starts an exact time at its time when the first start is unknown", () => {
     vi.useFakeTimers({ now: 0 });
     expect(startTimes([entry(1, 30_000), entry(2, 37_000, 50_000), entry(3, 1_000)], null, null)).toEqual([

@@ -5,6 +5,7 @@
 
 import type { ClockSlot, Method, Rule, Schemas, SeparationOverrides, Target, Windows } from "../api";
 import { type PlainKey, locale, number, t } from "../i18n";
+import { clockTime } from "./format";
 
 /** Monday (`1`) to Sunday (`7`). */
 export const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -260,6 +261,30 @@ export function describeMet(log: Schemas["ExactLog"]): string {
     met = t("exact.outside", { met });
   }
   return log.faded ? t("exact.faded", { met }) : met;
+}
+
+/**
+ * How a pick looked ahead before an exact time: `8 endings simulated, the
+ * best ends at 09:59:56: no filling`.
+ */
+export function describeLookahead(log: Schemas["LookaheadLog"]): string {
+  if (log.offset_ms === null || log.offset_ms === undefined) {
+    return t("exact.lookaheadNone", { count: log.draws });
+  }
+  const result = [
+    log.filling_ms > 0
+      ? t("exact.lookaheadFilled", { seconds: Math.round(log.filling_ms / 1000) })
+      : t("exact.lookaheadNoFilling"),
+    log.faded && t("exact.lookaheadFaded"),
+    log.relaxed_steps > 0 && t("exact.lookaheadRelaxed", { count: log.relaxed_steps }),
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return t("exact.lookahead", {
+    count: log.draws,
+    time: clockTime(log.exact_at_unix_ms + log.offset_ms),
+    result,
+  });
 }
 
 /** A gap filled before an exact time: `medley 7, 1 hook left out`, `a filler`. */

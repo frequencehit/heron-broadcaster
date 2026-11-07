@@ -51,7 +51,15 @@ export function useWaiting(): QueueEntry[] | undefined {
 }
 
 /**
- * When each waiting track should start (Unix ms), without crossfades. A
+ * How long from an entry's start to the next one's: where the engine
+ * starts the next track (its transition), else the entry's length.
+ */
+export function nextStartMs(entry: QueueEntry): number {
+  return entry.next_start_ms ?? Math.max(0, entry.track.cue_out_ms - entry.track.cue_in_ms);
+}
+
+/**
+ * When each waiting track should start (Unix ms), crossfades included. A
  * jingle over an intro takes no time of its own.
  */
 export function startTimes(
@@ -68,7 +76,7 @@ export function startTimes(
     }
     const start = at;
     if (at !== null && entry.entry_id !== overIntro) {
-      at += Math.max(0, entry.track.cue_out_ms - entry.track.cue_in_ms);
+      at += nextStartMs(entry);
     }
     return start;
   });
@@ -116,13 +124,11 @@ export function QueueList({ limit }: Readonly<{ limit?: number }>) {
     return <Empty>{t("queue.empty")}</Empty>;
   }
 
-  // The on-air deck's remaining time gives the first start.
+  // The on-air deck's time up to its transition gives the first start.
   const onAir = player.decks.find((deck) => deck.on_air && deck.deck !== "fx");
   const position = onAir ? positionNow(positions, onAir.deck, player.paused) : null;
   const firstStart =
-    onAir?.entry && position
-      ? Date.now() + Math.max(0, onAir.entry.track.cue_out_ms - position.position_ms)
-      : null;
+    onAir?.entry && position ? Date.now() + Math.max(0, nextStartMs(onAir.entry) - position.position_ms) : null;
   const starts = startTimes(entries, firstStart, player.cued_jingle?.entry_id ?? null);
   const shown = limit ? entries.slice(0, limit) : entries;
   const links = linkRoles(entries);

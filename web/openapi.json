@@ -18129,6 +18129,17 @@
             "type": "boolean",
             "description": "The slot is linked to the next one: the next pick is that slot's\ntrack, picked with this one."
           },
+          "lookahead": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LookaheadLog",
+                "description": "Picked looking ahead before an exact time: the endings simulated\nand how the best one meets it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "method": {
             "$ref": "#/components/schemas/Method",
             "description": "Applied: least recently played at step 10."
@@ -20374,6 +20385,59 @@
         },
         "additionalProperties": false
       },
+      "LookaheadLog": {
+        "type": "object",
+        "description": "How a pick looked ahead, in the rotation log.",
+        "required": [
+          "exact_at_unix_ms",
+          "draws",
+          "faded",
+          "in_window",
+          "filling_ms",
+          "relaxed_steps"
+        ],
+        "properties": {
+          "draws": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Endings simulated.",
+            "minimum": 0
+          },
+          "exact_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The exact time looked ahead to (Unix ms)."
+          },
+          "faded": {
+            "type": "boolean",
+            "description": "The best ending fades out the track before the exact slot: it ends\nafter the cut (the end of the window, the exact time in hard mode).\nFading nothing comes first: every ending simulated did."
+          },
+          "filling_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Time filled before the exact slot (medley or filler track).",
+            "minimum": 0
+          },
+          "in_window": {
+            "type": "boolean",
+            "description": "The best ending: the tracks before the exact slot end inside its\nwindow (at the exact time in hard mode)."
+          },
+          "offset_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where they end, from the exact time; negative when early. Missing\nwhen no ending reached the exact slot."
+          },
+          "relaxed_steps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Relaxation steps of its picks, added up.",
+            "minimum": 0
+          }
+        }
+      },
       "LoudnessSettings": {
         "type": "object",
         "description": "Loudness normalization from the analyzed integrated loudness (EBU R128).",
@@ -22534,6 +22598,15 @@
             ],
             "format": "int64",
             "description": "A jingle of a clock slot linked to the next one: the entry of the\ntrack it announces, right after it. Removing that track removes the\njingle, and moving either moves both.",
+            "minimum": 0
+          },
+          "next_start_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Where the next track starts, in ms from this entry's cue-in: the\nengine's transition into the entry after it. Missing from engines\nbefore it, and for the jingle over the cued track's intro: at its\nend.",
             "minimum": 0
           },
           "track": {
@@ -27954,7 +28027,7 @@
           "planned_start_unix_ms": {
             "type": "integer",
             "format": "int64",
-            "description": "When it should start, without crossfades, as the Queue page shows it.",
+            "description": "When it should start, crossfades included, as the Queue page shows it.",
             "minimum": 0
           },
           "position": {

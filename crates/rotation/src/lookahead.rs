@@ -35,8 +35,7 @@ pub struct LookaheadLog {
     pub draws: u32,
     /// The best ending fades out the track before the exact slot: it ends
     /// after the cut (the end of the window, the exact time in hard mode).
-    /// Every ending simulated did.
-    #[serde(default)]
+    /// Fading nothing comes first: every ending simulated did.
     pub faded: bool,
     /// The best ending: the tracks before the exact slot end inside its
     /// window (at the exact time in hard mode).
