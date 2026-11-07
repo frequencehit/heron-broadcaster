@@ -22,7 +22,7 @@ import { ago, clockTime, dateTime } from "../lib/format";
 import { DaypartBadge, daypartNote } from "../components/Dayparts";
 import { describeDrawLog } from "../components/DrawDepth";
 import { daypartsList } from "../lib/dayparts";
-import { describeFill, describeMet, describeWindows, methodLabel, stepLabel } from "../lib/rotation";
+import { describeFill, describeLookahead, describeMet, describeWindows, methodLabel, stepLabel } from "../lib/rotation";
 import { ratioLabel } from "../lib/ratio";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
@@ -172,6 +172,11 @@ function Where({ explanation }: { explanation: Explanation }) {
   }
   return (
     <span>
+      {explanation.lookahead && (
+        <div className={explanation.lookahead.faded ? "small warn" : "muted small"}>
+          {describeLookahead(explanation.lookahead)}
+        </div>
+      )}
       {explanation.exact && (
         <div className={explanation.exact.in_window ? "small" : "small warn"}>
           {t("exact.exactSlot", {

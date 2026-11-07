@@ -1564,6 +1564,7 @@ mod tests {
                 continues: false,
             },
             linked_to: None,
+            next_start_ms: None,
         }
     }
 
@@ -1905,6 +1906,7 @@ mod delivery_tests {
                     continues: false,
                 },
                 linked_to: None,
+                next_start_ms: None,
             },
             at_unix_ms: unix_ms(SystemTime::now()),
             resumed: false,

@@ -13,6 +13,7 @@ use std::time::SystemTime;
 
 use axum::Json;
 use axum::extract::{Query, State};
+use heron_core::{PlayoutSettings, TrackPlayout, next_start_ms};
 use heron_rotation::names::{normalize, title_key};
 use heron_rotation::{
     Category, Clock, ExactTime, Explanation, History, Library, LibraryParts, Medley, MedleyCut,
@@ -74,21 +75,26 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     } else {
         medley_category.into_iter().collect()
     };
-    // ID, title, album, playable length, default play ratio, own daypart
-    // separation and same daypart on the following days.
+    // ID, title, album, cue points, mix point, crossfade overrides, default
+    // play ratio, own daypart separation and same daypart on the following
+    // days.
     type Row = (
         u64,
         Option<String>,
         Option<String>,
-        i64,
+        u32,
+        u32,
+        Option<u32>,
+        Option<String>,
         u64,
         Option<u8>,
         Option<u8>,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT t.id, t.title, t.album,
-                CAST(COALESCE(o.cue_out_ms, a.cue_out_ms) AS SIGNED)
-                  - CAST(COALESCE(o.cue_in_ms, a.cue_in_ms) AS SIGNED),
+                CAST(COALESCE(o.cue_in_ms, a.cue_in_ms) AS UNSIGNED),
+                CAST(COALESCE(o.cue_out_ms, a.cue_out_ms) AS UNSIGNED),
+                a.fade_out_start_ms, CAST(o.crossfade AS CHAR),
                 CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED), p.dayparts, p.daypart_days
          FROM tracks t
          JOIN track_analysis a ON a.track_id = t.id
@@ -103,6 +109,9 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     .bind(medleys)
     .fetch_all(pool)
     .await?;
+    // Where the next track starts, as the engine plans it.
+    let playout: PlayoutSettings =
+        settings::load_for(pool, station_id, PlayoutSettings::SETTINGS_NAME).await?;
     let mut artists: HashMap<u64, Vec<u64>> = HashMap::new();
     let links: Vec<(u64, u64)> =
         sqlx::query_as("SELECT track_id, artist_id FROM track_artists ORDER BY track_id, position")
@@ -114,16 +123,42 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     let tracks = rows
         .into_iter()
         .map(
-            |(id, title, album, length_ms, ratio, dayparts, daypart_days)| Track {
+            |(
                 id,
-                title_key: title_key(title.as_deref()),
-                album_key: title_key(album.as_deref()),
-                artists: artists.remove(&id).unwrap_or_default(),
-                categories: Vec::new(),
-                length_ms: u32::try_from(length_ms).unwrap_or(0),
-                ratio: u8::try_from(ratio).unwrap_or(heron_rotation::ratio::FULL),
+                title,
+                album,
+                cue_in,
+                cue_out,
+                mix_point,
+                crossfade,
+                ratio,
                 dayparts,
                 daypart_days,
+            )| {
+                let length_ms = cue_out.saturating_sub(cue_in);
+                // Invalid crossfade overrides count as none, as on air.
+                let track = TrackPlayout {
+                    cue_in_ms: cue_in,
+                    mix_point_ms: mix_point,
+                    crossfade: crossfade
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
+                    ..TrackPlayout::unanalyzed(cue_out)
+                };
+                let next = next_start_ms(&track, None, &playout.crossfade);
+                Track {
+                    id,
+                    title_key: title_key(title.as_deref()),
+                    album_key: title_key(album.as_deref()),
+                    artists: artists.remove(&id).unwrap_or_default(),
+                    categories: Vec::new(),
+                    length_ms,
+                    mix_ms: (next < length_ms).then_some(next),
+                    ratio: u8::try_from(ratio).unwrap_or(heron_rotation::ratio::FULL),
+                    dayparts,
+                    daypart_days,
+                }
             },
         )
         .collect();
@@ -612,14 +647,27 @@ pub fn planned_length_ms(entry: &QueueEntry) -> i64 {
     }
 }
 
+/// How long from an entry's start to the next one's: the engine's
+/// transition into it, else the entry's length.
+pub fn planned_next_ms(entry: &QueueEntry) -> i64 {
+    entry
+        .next_start_ms
+        .map_or_else(|| planned_length_ms(entry), i64::from)
+}
+
 /// When each waiting track should start, and when a track added after
-/// them would: what the decks still have to play, then the queue in order.
+/// them would: what the decks still have to play up to where the next
+/// track starts, then the queue in order, each up to its transition.
 pub fn planned_starts(state: &PlayerState, now_ms: i64) -> (Vec<(&QueueEntry, i64)>, i64) {
     let remaining = state
         .decks
         .iter()
-        .filter(|deck| deck.deck != DeckName::Fx && deck.entry.is_some())
-        .map(|deck| i64::try_from(deck.length_ms.saturating_sub(deck.position_ms)).unwrap_or(0))
+        .filter(|deck| deck.deck != DeckName::Fx)
+        .filter_map(|deck| {
+            let entry = deck.entry.as_ref()?;
+            let until = entry.next_start_ms.map_or(deck.length_ms, u64::from);
+            Some(i64::try_from(until.saturating_sub(deck.position_ms)).unwrap_or(0))
+        })
         .max()
         .unwrap_or(0);
     let mut at = now_ms + remaining;
@@ -632,7 +680,7 @@ pub fn planned_starts(state: &PlayerState, now_ms: i64) -> (Vec<(&QueueEntry, i6
         planned.push((entry, at));
         // A jingle over the cued track's intro takes no time of its own.
         if state.cued_jingle.as_deref() != Some(entry) {
-            at += planned_length_ms(entry);
+            at += planned_next_ms(entry);
         }
     }
     (planned, at)

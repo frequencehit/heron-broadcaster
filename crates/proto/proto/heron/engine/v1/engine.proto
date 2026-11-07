@@ -99,6 +99,11 @@ message QueueEntry {
   // the next one): removing that entry removes this one, moving either
   // moves both, and nothing goes between them.
   optional uint64 linked_to = 3;
+  // In the state: where the next track starts, in ms from this entry's
+  // cue-in (the transition into the entry after it, or into a full-length
+  // track for the last one). Set for the track on air, the cued one and
+  // the queue.
+  optional uint32 next_start_ms = 4;
 }
 
 message EnqueueRequest {

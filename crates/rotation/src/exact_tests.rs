@@ -30,6 +30,7 @@ fn track(id: TrackId, length_ms: i64) -> Track {
         artists: vec![100 + id],
         categories: vec![],
         length_ms: u32::try_from(length_ms).unwrap(),
+        mix_ms: None,
         ratio: 10,
         dayparts: None,
         daypart_days: None,
@@ -455,7 +456,9 @@ fn simulations_meet_the_exact_times_and_audit_them() {
         .iter()
         .filter(|pick| pick.track_id == 50)
         .collect();
-    assert_eq!(news.len(), 6);
+    // One every hour; the one of 6:00 too when it starts early in its
+    // window, before the simulation ends.
+    assert!((6..=7).contains(&news.len()), "{}", news.len());
     for pick in &news {
         let into_hour = pick.start_unix_ms.rem_euclid(HOUR);
         assert!(
@@ -560,4 +563,46 @@ fn after_its_exact_slot_a_looping_clock_does_not_run_it_again_this_hour() {
         1,
     );
     assert_ne!(next.track, 50);
+}
+
+#[test]
+fn a_hard_exact_time_draws_wider_before_cutting_a_track() {
+    // The three songs played longest ago would cross the exact time; the
+    // others end before it.
+    let mut lengths = vec![300 * SEC; 3];
+    lengths.extend([60 * SEC; 7]);
+    let mut library = library(
+        vec![
+            with_exact(NEWS, exact(0, ExactMode::Hard)),
+            slot(SONGS),
+            Slot {
+                method: Method::LeastRecentlyPlayed,
+                ..slot(SONGS)
+            },
+        ],
+        &lengths,
+    );
+    if let Some(songs) = library.categories.get_mut(&SONGS) {
+        songs.separation.draw_start_pct = Some(30);
+        songs.separation.draw_max_pct = Some(100);
+    }
+    let history = History::new(
+        Vec::new(),
+        (1..=10)
+            .map(|id| (id, if id <= 3 { -20 * HOUR } else { -10 * HOUR }))
+            .collect(),
+    );
+    for seed in 0..10 {
+        let pick = crate::select::outcome(
+            &library,
+            &history,
+            58 * MIN + 30 * SEC,
+            Some(&at(1, 0)),
+            &mut Rng::new(seed),
+            false,
+        )
+        .pick
+        .unwrap();
+        assert!(pick.track > 3, "{}", pick.track);
+    }
 }
