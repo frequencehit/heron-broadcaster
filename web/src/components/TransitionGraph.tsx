@@ -2,14 +2,16 @@
 
 // The gains of two tracks around their transition, as the engine plans it.
 
+import { useEffect, useRef, useState } from "react";
 import type { TransitionPreview } from "../api";
 import { incomingGain, outgoingGain } from "../lib/fade";
 import { t } from "../i18n";
 import { duration } from "../lib/format";
 import type { WaveformData } from "./Waveform";
 
-const W = 720;
-const H = 200;
+/** The drawing's size when it scales with its width. */
+const DEFAULT_W = 720;
+const DEFAULT_H = 200;
 const PAD = { top: 12, right: 12, bottom: 26, left: 40 };
 const STEPS = 240;
 
@@ -38,13 +40,30 @@ export function TransitionGraph({
   outgoingWave,
   incomingWave,
   playhead,
+  height,
 }: {
   preview: TransitionPreview;
   outgoingWave?: WaveformData | null;
   incomingWave?: WaveformData | null;
   /** Where the preview player is, on the outgoing track's timeline. */
   playhead?: number | null;
+  /** A fixed height in pixels, its width the container's: else it scales with its width. */
+  height?: number;
 }) {
+  const figure = useRef<HTMLElement>(null);
+  const [measured, setMeasured] = useState<number | null>(null);
+  useEffect(() => {
+    const element = figure.current;
+    if (height === undefined || !element || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    setMeasured(element.clientWidth || null);
+    const observer = new ResizeObserver(() => setMeasured(element.clientWidth || null));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [height]);
+  const W = height !== undefined && measured ? measured : DEFAULT_W;
+  const H = height ?? DEFAULT_H;
   const out = preview.outgoing;
   const into = preview.incoming;
   const { from, to } = transitionWindow(preview);
@@ -87,10 +106,11 @@ export function TransitionGraph({
   );
 
   return (
-    <figure style={{ margin: 0 }}>
+    <figure ref={figure} style={{ margin: 0 }}>
       <svg
         className="graph"
         viewBox={`0 0 ${W} ${H}`}
+        style={height !== undefined ? { height } : undefined}
         role="img"
         aria-label={t("transition.graphLabel", { time: duration(out.cue_out_ms - preview.next_start_ms, true) })}
       >
