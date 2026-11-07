@@ -2994,3 +2994,23 @@ ul.held {
 .settings-sections fieldset > .form-grid + .field {
   margin-top: 1rem;
 }
+
+/* The division of the day and the example's separation, side by side; the
+   two divisions on one line. */
+.daypart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem 2rem;
+}
+
+.daypart-controls .segmented {
+  align-self: flex-start;
+}
+
+.daypart-controls .field:first-child .segmented {
+  flex-wrap: nowrap;
+}
+
+.daypart-controls + .daypart-example {
+  margin-top: 0.75rem;
+}
