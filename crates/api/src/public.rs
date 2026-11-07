@@ -73,7 +73,7 @@ pub struct UpcomingTrack {
     pub cover_url: Option<String>,
     /// From the cue-in to the cue-out.
     pub duration_ms: u64,
-    /// When it should start, without crossfades, as the Queue page shows it.
+    /// When it should start, crossfades included, as the Queue page shows it.
     pub planned_start_unix_ms: u64,
 }
 
@@ -372,6 +372,7 @@ mod tests {
                 continues: false,
             },
             linked_to: None,
+            next_start_ms: None,
         }
     }
 

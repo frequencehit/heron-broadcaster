@@ -12,6 +12,7 @@ use crate::draw::{self, DrawDepth, DrawLog};
 use crate::exact::{
     self, ExactLog, ExactMode, ExactTime, FillKind, FillLog, Fit, FitMode, MedleyCut, Window,
 };
+use crate::lookahead::{self, LookaheadLog};
 use crate::ratio::{self, HeldByRatio};
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{AcrossWindows, FALLBACK_STEP, LAST_STEP, Windows, describe_step};
@@ -43,6 +44,15 @@ impl Pick {
     pub fn length_ms(&self, library: &Library) -> u32 {
         self.medley_cut.as_ref().map_or_else(
             || library.tracks.get(&self.track).map_or(0, |t| t.length_ms),
+            |cut| cut.length_ms,
+        )
+    }
+
+    /// How long from its start to the next track's: its track's mix point
+    /// ([`Track::next_ms`]), or its medley cut's length.
+    pub fn next_ms(&self, library: &Library) -> u32 {
+        self.medley_cut.as_ref().map_or_else(
+            || library.tracks.get(&self.track).map_or(0, Track::next_ms),
             |cut| cut.length_ms,
         )
     }
@@ -144,6 +154,10 @@ pub struct Explanation {
     /// filler track.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fill: Option<FillLog>,
+    /// Picked looking ahead before an exact time: the endings simulated
+    /// and how the best one meets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lookahead: Option<LookaheadLog>,
 }
 
 /// A track another station's play or planned track held back.
@@ -696,12 +710,25 @@ fn fill(
         let mut picked = None;
         let mut tried = None;
         let mut too_long = false;
-        for (pct, size) in sizes {
+        // A track that would be cut (hard mode) only when no draw, however
+        // wide, has one that is not.
+        let passes: &[bool] = if fit.is_some_and(Fit::cuts) {
+            &[false, true]
+        } else {
+            &[true]
+        };
+        for (&late_ok, (pct, size)) in passes
+            .iter()
+            .flat_map(|late_ok| sizes.iter().map(move |size| (late_ok, *size)))
+        {
+            if picked.is_some() {
+                break;
+            }
             // A wider depth with no more tracks has nothing new.
-            if tried == Some(size) {
+            if tried == Some((late_ok, size)) {
                 continue;
             }
-            tried = Some(size);
+            tried = Some((late_ok, size));
             let mut candidates: Vec<_> = passing
                 .iter()
                 .filter(|(index, track, _)| {
@@ -714,7 +741,7 @@ fn fill(
             // draw to the others, then to a wider draw and the next step.
             while !candidates.is_empty() {
                 let fitted: Vec<exact::Fitted<'_>> = match fit {
-                    Some(fit) => fit.keep(&candidates, at_ms),
+                    Some(fit) => fit.keep(&candidates, at_ms, late_ok),
                     None => candidates.iter().map(|(t, w)| (*t, *w, None)).collect(),
                 };
                 if fitted.is_empty() {
@@ -738,9 +765,6 @@ fn fill(
                     counter,
                 });
                 candidates.retain(|(other, _)| other.id != track.id);
-            }
-            if picked.is_some() {
-                break;
             }
         }
         let Some((track, weight, counter, among, pct, size, cut)) = picked else {
@@ -811,6 +835,7 @@ fn fill(
             linked: false,
             exact: None,
             fill: None,
+            lookahead: None,
         };
         return Ok((track.id, explanation, cut));
     }
@@ -882,8 +907,39 @@ pub fn next_outcome(
     last: Option<&Position>,
     rng: &mut Rng,
 ) -> Outcome {
+    outcome(library, history, at_ms, last, rng, true)
+}
+
+/// [`next_outcome`], looking ahead before an exact time or not: within
+/// [`lookahead::REACH_MS`] of it, or [`lookahead::REACH_SLOTS`] slots.
+pub(crate) fn outcome(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+    rng: &mut Rng,
+    look_ahead: bool,
+) -> Outcome {
     let mut held_by_ratio = Vec::new();
-    let pick = pick(library, history, at_ms, last, &mut held_by_ratio, rng).map(|mut pick| {
+    let ahead = next_exact(library, history, at_ms, last)
+        .filter(|_| look_ahead)
+        .filter(|ahead| {
+            ahead.window.at_ms - at_ms <= lookahead::REACH_MS
+                || ahead.slots_before <= lookahead::REACH_SLOTS
+        });
+    let pick = match ahead {
+        Some(ahead) => lookahead::best(
+            library,
+            history,
+            at_ms,
+            last,
+            ahead.window,
+            &mut held_by_ratio,
+            rng,
+        ),
+        None => pick(library, history, at_ms, last, &mut held_by_ratio, rng),
+    }
+    .map(|mut pick| {
         pick.explanation.held_by_ratio = held_by_ratio.clone();
         pick
     });
@@ -891,6 +947,66 @@ pub fn next_outcome(
         pick,
         held_by_ratio,
     }
+}
+
+/// The next exact time ahead of a pick, for [`lookahead`].
+pub(crate) struct Ahead {
+    pub window: Window,
+    /// Slots before it in this run of the clock, from the next one.
+    pub slots_before: usize,
+}
+
+/// The next exact time not due yet for a pick at `at_ms`, as [`pick`]
+/// finds it.
+fn next_exact(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+) -> Option<Ahead> {
+    let hour_start = hour_start_of(library, at_ms);
+    let clock = library.clock_at(&library.local(at_ms))?;
+    let (played, first) = run(clock, hour_start, last);
+    let previous_start = history.previous(at_ms).map(|play| play.start_ms);
+    let upcoming = upcoming(
+        library,
+        clock,
+        first,
+        played,
+        hour_start,
+        at_ms,
+        previous_start,
+        &mut Vec::new(),
+    )?;
+    if upcoming.status != Status::Ahead {
+        return None;
+    }
+    let count = clock.slots.len();
+    let rest = if clock.looping {
+        count
+    } else {
+        count.saturating_sub(first)
+    };
+    Some(Ahead {
+        window: upcoming.window,
+        slots_before: upcoming.offset.unwrap_or(rest),
+    })
+}
+
+/// The slot played last in this run of `clock`, if any, and the first
+/// slot to try.
+fn run(clock: &Clock, hour_start: i64, last: Option<&Position>) -> (Option<usize>, usize) {
+    let count = clock.slots.len();
+    let played = match last {
+        Some(last)
+            if last.clock_id == clock.id
+                && (clock.looping || last.hour_start_unix_ms == hour_start) =>
+        {
+            Some(last.slot as usize % count)
+        }
+        _ => None,
+    };
+    (played, played.map_or(0, |slot| (slot + 1) % count))
 }
 
 /// Start of the station hour of `at_ms` (Unix ms).
@@ -1126,7 +1242,7 @@ impl Picker<'_, '_> {
         // The next slot's track, right after this one: in this run of the
         // clock, or neither plays.
         let next = (index + 1) % count;
-        let next_at = at_ms + i64::from(pick.length_ms(library));
+        let next_at = at_ms + i64::from(pick.next_ms(library));
         let same_run = library
             .clock_at(&library.local(next_at))
             .is_some_and(|other| other.id == clock.id)
@@ -1252,7 +1368,7 @@ impl Picker<'_, '_> {
     }
 }
 
-fn pick(
+pub(crate) fn pick(
     library: &Library,
     history: &History,
     at_ms: i64,
@@ -1296,17 +1412,7 @@ fn pick(
         });
     };
     let count = clock.slots.len();
-    // The slot played last in this run of the clock, if any.
-    let played = match last {
-        Some(last)
-            if last.clock_id == clock.id
-                && (clock.looping || last.hour_start_unix_ms == hour_start) =>
-        {
-            Some(last.slot as usize % count)
-        }
-        _ => None,
-    };
-    let first = played.map_or(0, |slot| (slot + 1) % count);
+    let (played, first) = run(clock, hour_start, last);
     let mut skipped = Vec::new();
     let skip = |skipped: &mut Vec<SkippedSlot>, clock: &Clock, index: usize, reason| {
         skipped.push(SkippedSlot {
@@ -1368,7 +1474,19 @@ fn pick(
         while k < count {
             let index = (first + k) % count;
             k += 1;
-            if missed.contains(&index) {
+            // A clock starting over within the hour reaches its exact
+            // slots again: their time has passed.
+            let passed = || {
+                !clock.looping
+                    && first + k > count
+                    && clock.exact(index).is_some_and(|exact| {
+                        exact
+                            .window(hour_start + i64::from(exact.at_s) * 1_000)
+                            .cut_ms
+                            < at_ms
+                    })
+            };
+            if missed.contains(&index) || passed() {
                 skip(&mut skipped, clock, index, SkipReason::ExactTimePassed);
                 if clock.linked(index) {
                     skip(
@@ -1453,6 +1571,7 @@ mod tests {
             artists: vec![100 + id],
             categories: vec![],
             length_ms: 240_000,
+            mix_ms: None,
             ratio: 10,
             dayparts: None,
             daypart_days: None,
