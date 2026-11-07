@@ -118,8 +118,9 @@ With the library setting `write_tags` off (*Settings › Library*, admins), the 
 
 - The values show at once everywhere Heron uses a track's tags: the library, rotation and its separation rules, history, now-playing, webhooks and the stream's metadata.
 - The scanner, and the librarian when it writes a file, apply them on top of the tags they read, so they survive a rescan or a file changed on disk. Organizing the library files tracks by them too.
-- A track's page has **Back to the file's tags** next to *Edit tags* while some of its tags are kept in Heron (`POST /tracks/tag-overrides/clear`): it drops them and reads the file again. There is no warning about it: tags kept in Heron are a normal way to work, not a problem to fix.
-- Turned back on, `write_tags` writes edits into the files again; a field written drops its override, the file has the value now. Edits queued before the setting was turned off fail without touching the files.
+- A track's page does not warn about them: tags kept in Heron are a normal way to work, not a problem to fix.
+- **Writing them into the files:** *Settings › Library* (admins) has **Write the tags kept in Heron into the files** while some tracks have some, with their number (`POST /api/v1/library/tag-overrides/write`). After a confirmation, the librarian writes each track's kept tags into its file as an `edit` batch, as the tag editor does: in place, the file not moved and not analyzed again, a file changed since the last scan skipped until the scanner has read it. It works whatever `write_tags` says: it is asked for once, on purpose. The tags stay kept in Heron afterwards, so the files and Heron agree, and later edits are kept in Heron as before. Follow it, and undo it, on *To organize*, with the other batches.
+- Turned back on, `write_tags` writes edits into the files again; a field written by the tag editor drops its override, the file has the value now. Edits queued before the setting was turned off fail without touching the files.
 - Imports from the buffer zone and the review screen still write tags into the files they file: `write_tags` is about tags edited on tracks of the library.
 
 ### Undoing byte for byte

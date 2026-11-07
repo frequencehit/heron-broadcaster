@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Charts of the statistics page: listeners minute by minute (a line, broken
-// where minutes are missing) and totals per period (bars). One series each,
-// so no legend: the card's title names it. A tooltip follows the pointer;
-// the tables next to them hold the same figures. The geometry is in
-// lib/chart.ts.
+// where minutes are missing) and totals per period (bars), one series each,
+// so no legend: the card's title names it; and, to compare stations, lines
+// one per station with a legend. A tooltip follows the pointer; the tables
+// next to them hold the same figures. The geometry is in lib/chart.ts.
 
 import { type PointerEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { number } from "../i18n";
@@ -183,5 +183,112 @@ export function BarChart({ bars, label }: Readonly<{ bars: Bar[]; label: string 
         </Tooltip>
       )}
     </div>
+  );
+}
+
+export interface Series {
+  key: string;
+  label: string;
+  /** A CSS color. */
+  color: string;
+  points: Point[];
+}
+
+/**
+ * Several lines over the same axis, one color each, with a legend: `at` is a
+ * time (Unix ms) or an index (days, hours); lines break where a point is
+ * missing (`step` apart). The tooltip gives every line's value at the point.
+ */
+export function LinesChart({
+  series,
+  from,
+  to,
+  step,
+  ticks,
+  label,
+  tickLabel,
+  tooltip,
+}: Readonly<{
+  series: Series[];
+  from: number;
+  to: number;
+  /** How far apart two points of an unbroken line are. */
+  step: number;
+  ticks: number[];
+  label: string;
+  tickLabel: (at: number) => string;
+  tooltip: (at: number, values: { series: Series; value: number | undefined }[]) => ReactNode;
+}>) {
+  const { ref, width } = useWidth();
+  const [hover, setHover] = useState<number | null>(null);
+  const all = series.flatMap((s) => s.points);
+  const { top, ticks: yTicks } = niceScale(Math.max(0, ...all.map((p) => p.value)));
+  const span = Math.max(to - from, 1);
+  const x = (at: number) => PAD.left + ((at - from) / span) * (width - PAD.left - PAD.right);
+  const y = (value: number) => PAD.top + (1 - value / top) * (HEIGHT - PAD.top - PAD.bottom);
+
+  const move = (event: PointerEvent<SVGSVGElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    const at = from + ((event.clientX - box.left - PAD.left) / (width - PAD.left - PAD.right)) * span;
+    setHover(nearest(all, at, Math.max(step * 5, span / 50))?.at ?? null);
+  };
+
+  return (
+    <div className="stack" style={{ gap: "0.4rem" }}>
+      <div className="chart" ref={ref}>
+        <svg width={width} height={HEIGHT} role="img" aria-label={label} onPointerMove={move} onPointerLeave={() => setHover(null)}>
+          <YAxis ticks={yTicks} y={y} width={width} />
+          <g className="chart-axis">
+            {ticks.map((at) => (
+              <text key={at} x={x(at)} y={HEIGHT - 6} textAnchor="middle">
+                {tickLabel(at)}
+              </text>
+            ))}
+          </g>
+          {series.map((s) =>
+            splitAtGaps(s.points, step).map((segment) => (
+              <g key={`${s.key}-${segment[0]?.at}`}>
+                <path d={linePath(segment, x, y)} className="chart-line" style={{ stroke: s.color }} />
+                {segment.length === 1 && segment[0] && (
+                  <circle cx={x(segment[0].at)} cy={y(segment[0].value)} r={2.5} className="chart-dot" style={{ fill: s.color }} />
+                )}
+              </g>
+            )),
+          )}
+          {hover !== null && (
+            <g>
+              <line x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={HEIGHT - PAD.bottom} className="chart-cross" />
+              {series.map((s) => {
+                const point = s.points.find((p) => p.at === hover);
+                return point ? <circle key={s.key} cx={x(hover)} cy={y(point.value)} r={4} className="chart-dot" style={{ fill: s.color }} /> : null;
+              })}
+            </g>
+          )}
+        </svg>
+        {hover !== null && (
+          <Tooltip x={x(hover)} width={width}>
+            {tooltip(
+              hover,
+              series.map((s) => ({ series: s, value: s.points.find((p) => p.at === hover)?.value })),
+            )}
+          </Tooltip>
+        )}
+      </div>
+      <Legend series={series} />
+    </div>
+  );
+}
+
+/** The stations of a chart and their colors. */
+export function Legend({ series }: Readonly<{ series: Pick<Series, "key" | "label" | "color">[] }>) {
+  return (
+    <ul className="chart-legend">
+      {series.map((s) => (
+        <li key={s.key}>
+          <span className="chart-swatch" style={{ background: s.color }} aria-hidden="true" />
+          {s.label}
+        </li>
+      ))}
+    </ul>
   );
 }
