@@ -44,6 +44,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **A track's page** is in tabs: *Sound*, *Programming*, *Details* and *Plays*.
 - **Clocks save themselves** a moment after each change: no *Save* button to forget. The page says *Saving…*, *Saved* or why a change was not saved; a new clock is still created with its button.
 - **To organize is now To do**, in all four languages, at `/to-do`: the old address leads there. Its *Identifications* tab is *To identify*, and the covers to check are at the top of *Missing covers*.
+- **A track's page:** the playhead's time and level sit under the waveform, on the right; *Try a transition* draws its graph at the waveform's height whatever the page's width.
 
 ### Fixed
 
@@ -51,6 +52,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - Backups have their database dump again after MariaDB moves to a new version: the Compose file has MariaDB upgrade its own tables when it starts (`MARIADB_AUTO_UPGRADE`). `mariadb-dump` failed on them before (*Column count of mysql.proc is wrong*).
 - The queue starts a track with an [exact time](docs/rotation.md#exact-times) at that time at the latest, on a colored background, instead of an estimate counted from the tracks before it, and the tracks after it follow from that time.
 - **Autofill stopped after an exact time** until the hour changed, when the exact slot was the clock's first slot: rotation went back to it, found it due again and, unable to play it twice, picked nothing. A clock that does not loop now goes on with the slots after the one just played, and the slot just played is never due again in the same hour. The log also says rotation found nothing to queue instead of blaming restrictions.
+- A user with the whole width in an older backup (`full_width`, written as `1`) gets the *100 %* width back on restore, not the normal one.
 
 ## 0.3.0 – 2026-11-05
 
