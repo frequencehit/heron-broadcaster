@@ -368,6 +368,8 @@ mod tests {
                 no_metadata,
                 over_intro: false,
                 intro_ms: None,
+                start_at_unix_ms: None,
+                continues: false,
             },
             linked_to: None,
         }

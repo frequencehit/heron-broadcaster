@@ -143,6 +143,10 @@ pub struct TrackQuery {
     /// Tracks whose play ratio, in tenths, is at most this (0: the disabled
     /// tracks).
     pub ratio_max: Option<u8>,
+    /// `true`: the tracks with their own daypart separation or same
+    /// daypart on the following days; `false`: those that follow their
+    /// categories'.
+    pub own_dayparts: Option<bool>,
     #[param(inline)]
     pub sort: Option<TrackSort>,
     /// Reverses the order of `sort`.
@@ -220,6 +224,12 @@ pub struct TrackSummary {
     /// times rotation picks it. Kept while the track is disabled.
     #[sqlx(try_from = "u64")]
     pub play_ratio: u8,
+    /// Its own daypart separation, 0 to 10, in place of its categories'
+    /// (0: off for it); none: its category's.
+    pub dayparts: Option<u8>,
+    /// Its own same daypart on the following days, 0 to 7; none: its
+    /// category's.
+    pub daypart_days: Option<u8>,
     /// Who disabled it everywhere (a username; none for a user since
     /// deleted), while it is disabled.
     pub disabled_by: Option<String>,
@@ -319,6 +329,7 @@ impl ListContext {
             " AS era, CAST(COALESCE(p.bpm, a.bpm) AS DOUBLE) AS bpm, p.mood, p.sound_code,
               CAST(l.min_db AS DOUBLE) AS level_min_db, CAST(l.max_db AS DOUBLE) AS level_max_db,
               CAST(COALESCE(p.play_ratio, 10) AS UNSIGNED) AS play_ratio,
+              p.dayparts, p.daypart_days,
               IF(t.enabled, NULL, (SELECT username FROM users WHERE id = t.disabled_by))
                 AS disabled_by,
               IF(t.enabled, NULL, CAST(UNIX_TIMESTAMP(t.disabled_at) * 1000 AS SIGNED))
@@ -558,6 +569,13 @@ impl ListContext {
             query
                 .push(format!(" AND {} <= ", self.effective_ratio()))
                 .push_bind(ratio);
+        }
+        if let Some(own) = params.own_dayparts {
+            query.push(if own {
+                " AND (p.dayparts IS NOT NULL OR p.daypart_days IS NOT NULL)"
+            } else {
+                " AND p.dayparts IS NULL AND p.daypart_days IS NULL"
+            });
         }
         Ok(())
     }

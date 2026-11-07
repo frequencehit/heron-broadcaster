@@ -7,6 +7,7 @@
 import { CoverCard } from "../components/Cover";
 import { PlaysByStation, useStations } from "../components/Stations";
 import { DisableDialog, EnableDialog, RatioCounter, RatioScale, WeightOrRatio } from "../components/Ratio";
+import { TrackDaypartsCard } from "../components/TrackDayparts";
 import { RATIOS, disabledText, effectiveRatio, nextText, ratioLabel, ratioSummary } from "../lib/ratio";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -426,6 +427,24 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
                   <Icon name="edit" /> {t("track.editTags")}
                 </button>
               )}
+              {track.tag_overrides.length > 0 && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={fileTags.isPending}
+                  onClick={() => fileTags.mutate(undefined)}
+                  title={t("track.fileTagsHelp", {
+                    fields: track.tag_overrides
+                      .map((field) => {
+                        const known = TAG_FIELDS.find((tag) => tag.field === field);
+                        return known ? t(known.label) : field;
+                      })
+                      .join(", "),
+                  })}
+                >
+                  {t("track.fileTags")}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn"
@@ -469,28 +488,6 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
       {!track.enabled && (
         <Banner kind="warn">
           {t("track.disabled")} {disabledText(track.disabled_by, track.disabled_at_unix_ms)}
-        </Banner>
-      )}
-      {track.tag_overrides.length > 0 && (
-        <Banner kind="warn">
-          {t("track.tagOverrides", {
-            fields: track.tag_overrides
-              .map((field) => {
-                const known = TAG_FIELDS.find((tag) => tag.field === field);
-                return known ? t(known.label) : field;
-              })
-              .join(", "),
-          })}{" "}
-          {canEdit && (
-            <button
-              type="button"
-              className="btn small"
-              disabled={fileTags.isPending}
-              onClick={() => fileTags.mutate(undefined)}
-            >
-              {t("track.fileTags")}
-            </button>
-          )}
         </Banner>
       )}
       {track.identification?.status === "needs_review" && (
@@ -688,6 +685,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
         <div className="stack">
           <CoverCard track={track} />
           <RatioCard track={track} canEdit={canEdit} />
+          <TrackDaypartsCard track={track} canEdit={canEdit} />
           <ProgrammingCard track={track} canEdit={canEdit} />
           <CategoriesCard track={track} canEdit={canEdit} />
           <DetailsCard track={track} />

@@ -2298,6 +2298,42 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
         )
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // The draw depth: 1 to 100 %, the start not above the maximum.
+    for draw in [
+        json!({"start_pct": 60, "max_pct": 40}),
+        json!({"start_pct": 0}),
+        json!({"max_pct": 101}),
+    ] {
+        let (status, _) = admin
+            .send(Method::PUT, "/settings/rotation", json!({"draw": draw}))
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{draw}");
+    }
+    let (status, rotation) = admin
+        .send(
+            Method::PUT,
+            "/settings/rotation",
+            json!({"draw": {"start_pct": 30, "max_pct": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rotation["draw"], json!({"start_pct": 30, "max_pct": 60}));
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/rotation", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        admin.get("/settings/rotation").await["draw"],
+        json!({"start_pct": 20, "max_pct": 50})
+    );
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Too deep", "separation": {"draw_start_pct": 70, "draw_max_pct": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Two categories, a clock calling them in turn, all week.
     let mut categories = Vec::new();
@@ -2306,11 +2342,12 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             .send(
                 Method::POST,
                 "/categories",
-                json!({"name": name, "separation": {"track_min": 1}}),
+                json!({"name": name, "separation": {"track_min": 1, "draw_max_pct": 80}}),
             )
             .await;
         assert_eq!(status, StatusCode::CREATED, "{category}");
         assert_eq!(category["separation"]["track_min"], 1);
+        assert_eq!(category["separation"]["draw_max_pct"], 80);
         for track in members {
             let (status, _) = admin
                 .send(
@@ -2338,13 +2375,14 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             json!({"name": "Hour", "slots": [
                 {"category_id": categories[0], "method": "random"},
                 {"category_id": categories[1], "method": "weighted",
-                 "separation": {"artist_min": 0}},
+                 "separation": {"artist_min": 0, "draw_start_pct": 40}},
             ]}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{clock}");
     let clock_id = clock["id"].as_u64().unwrap();
     assert_eq!(clock["slots"][1]["separation"]["artist_min"], 0);
+    assert_eq!(clock["slots"][1]["separation"]["draw_start_pct"], 40);
     assert_eq!(clock["looping"], false);
     let week: Vec<Value> = (1..=7)
         .flat_map(|day| {
@@ -2458,6 +2496,14 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             let explanation = &p["explanation"];
             assert_eq!(explanation["clock_id"], clock_id, "{p}");
             assert_ne!(p["track_id"], banned, "{p}");
+            // The random slot has no draw; the weighted one starts at its
+            // own 40 %, up to its category's 80 %.
+            if explanation["slot"] == 0 {
+                assert!(explanation["draw"].is_null(), "{p}");
+            } else if explanation["step"].as_u64().unwrap() < 11 {
+                assert_eq!(explanation["draw"]["start_pct"], 40, "{p}");
+                assert_eq!(explanation["draw"]["max_pct"], 80, "{p}");
+            }
             (
                 explanation["slot"].as_u64().unwrap(),
                 explanation["slot_category_id"].as_u64().unwrap(),
@@ -7424,6 +7470,11 @@ async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
     for output in shown["/outputs"].as_array_mut().unwrap() {
         output.as_object_mut().unwrap().remove("status");
     }
+    // A webhook's last delivery is what the station sent while the test
+    // ran (a track started), not what was set.
+    for webhook in shown["/webhooks"].as_array_mut().unwrap() {
+        webhook.as_object_mut().unwrap().remove("last_delivery");
+    }
     // An artist is found again by name, under the ID the scan gave it.
     for restriction in shown["/restrictions"].as_array_mut().unwrap() {
         if restriction["target"]["kind"] == "artist" {
@@ -7549,7 +7600,8 @@ async fn a_backup_restores_onto_an_empty_database() {
         .send(
             Method::POST,
             "/tracks/programming",
-            json!({"selection": {"track_ids": [t[2]]}, "bpm": 128.0, "play_ratio": 4}),
+            json!({"selection": {"track_ids": [t[2]]}, "bpm": 128.0, "play_ratio": 4,
+                   "dayparts": 0, "daypart_days": 2}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -7696,6 +7748,8 @@ async fn a_backup_restores_onto_an_empty_database() {
     .unwrap();
     let configured = configuration(&admin, &t).await;
     assert_eq!(configured[&format!("/tracks/{}", t[2])]["play_ratio"], 4);
+    assert_eq!(configured[&format!("/tracks/{}", t[2])]["dayparts"], 0);
+    assert_eq!(configured[&format!("/tracks/{}", t[2])]["daypart_days"], 2);
 
     // Backed up, then restored onto another Heron's empty database with
     // the same library.
@@ -7729,7 +7783,10 @@ async fn a_backup_restores_onto_an_empty_database() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|row| row["track"] == "Artist 3/Track 3.wav" && row["play_ratio"] == 4),
+            .any(|row| row["track"] == "Artist 3/Track 3.wav"
+                && row["play_ratio"] == 4
+                && row["dayparts"] == 0
+                && row["daypart_days"] == 2),
         "{}",
         file["tables"]["track_programming"]
     );
@@ -7761,6 +7818,12 @@ async fn a_backup_restores_onto_an_empty_database() {
         .unwrap()
         .remove("track_station_ratios");
     older.as_object_mut().unwrap().remove("disabled_by");
+    // Nor tracks' own daypart separation.
+    for row in older["tables"]["track_programming"].as_array_mut().unwrap() {
+        let row = row.as_object_mut().unwrap();
+        row.remove("dayparts");
+        row.remove("daypart_days");
+    }
     station.stop().await;
     // A track the new library does not have.
     file["tables"]["track_categories"]
@@ -7868,8 +7931,9 @@ async fn a_backup_restores_onto_an_empty_database() {
     );
     assert!(different.is_empty(), "{}", different.join("\n"));
 
-    // A file from before the ratios per station restores: every track on
-    // its default ratio, disabled tracks with no one recorded.
+    // A file from before the ratios per station and the tracks' own
+    // daypart separation restores: every track on its default ratio and
+    // its categories' dayparts, disabled tracks with no one recorded.
     let (status, body) = admin.send(Method::POST, "/backups/restore", older).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let admin = other.signed_in("admin").await;
@@ -7877,6 +7941,10 @@ async fn a_backup_restores_onto_an_empty_database() {
     let detail = admin.get(&format!("/tracks/{}", o[3])).await;
     assert_eq!(detail["enabled"], false);
     assert_eq!(detail["disabled_by"], Value::Null);
+    let detail = admin.get(&format!("/tracks/{}", o[2])).await;
+    assert_eq!(detail["play_ratio"], 4, "{detail}");
+    assert_eq!(detail["dayparts"], Value::Null, "{detail}");
+    assert_eq!(detail["daypart_days"], Value::Null, "{detail}");
     for id in [o[0], o[1]] {
         let detail = admin.get(&format!("/tracks/{id}")).await;
         assert!(
@@ -8561,6 +8629,144 @@ async fn the_same_daypart_on_the_following_days_is_set_per_category() {
     );
     assert_eq!(blocked["daypart"], 0, "{first}");
     assert_eq!(first["step"], 4, "{first}");
+    station.stop().await;
+}
+
+/// A track's own daypart separation: shared by the stations, set on a
+/// selection (0 to 10, and 0 to 7 days), back to its categories' with
+/// `null`, filtered on; it replaces its category's in rotation, and the
+/// log says whose value applied.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_track_s_own_daypart_separation_replaces_its_category_s() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let t = station.tracks.clone();
+    let set = |body: Value| {
+        let admin = &admin;
+        async move { admin.send(Method::POST, "/tracks/programming", body).await }
+    };
+    for body in [
+        json!({"selection": {"track_ids": [t[0]]}, "dayparts": 11}),
+        json!({"selection": {"track_ids": [t[0]]}, "daypart_days": 8}),
+    ] {
+        let (status, answer) = set(body).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{answer}");
+    }
+    // A viewer cannot set it.
+    let viewer = station.signed_in("viewer").await;
+    let (status, _) = viewer
+        .send(
+            Method::POST,
+            "/tracks/programming",
+            json!({"selection": {"track_ids": [t[0]]}, "dayparts": 1}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let own = |own: bool| {
+        let admin = &admin;
+        async move {
+            admin.get(&format!("/tracks?own_dayparts={own}")).await["total"]
+                .as_u64()
+                .unwrap()
+        }
+    };
+    let all = t.len() as u64;
+    assert_eq!((own(true).await, own(false).await), (0, all));
+    let (status, answer) = set(json!({"selection": {"track_ids": [t[0]]},
+                                      "dayparts": 0, "daypart_days": 2}))
+    .await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    let detail = admin.get(&format!("/tracks/{}", t[0])).await;
+    assert_eq!(
+        (&detail["dayparts"], &detail["daypart_days"]),
+        (&json!(0), &json!(2))
+    );
+    assert_eq!((own(true).await, own(false).await), (1, all - 1));
+    // Other programming details leave it as it is; `null` goes back to the
+    // categories', one value at a time.
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "bpm": 120.0})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "dayparts": null})).await;
+    assert_eq!(status, StatusCode::OK);
+    let listed = admin.get("/tracks?own_dayparts=true").await;
+    assert_eq!(listed["items"][0]["dayparts"], Value::Null, "{listed}");
+    assert_eq!(listed["items"][0]["daypart_days"], 2, "{listed}");
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "daypart_days": null})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(own(true).await, 0);
+
+    // A category keeping its tracks out of the 3 dayparts after a play;
+    // the first track's own 0 replaces it.
+    let mut rotation = admin.get("/settings/rotation").await;
+    for window in ["album_min", "artist_min", "title_min", "track_min"] {
+        rotation["separation"][window] = json!(0);
+    }
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, power) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Power", "separation": {"dayparts": 3}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{power}");
+    let id = power["id"].as_u64().unwrap();
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Hour", "slots": [{"category_id": id, "method": "random"}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    for track in &t {
+        let (status, _) = admin
+            .send(
+                Method::PUT,
+                &format!("/tracks/{track}/categories"),
+                json!([{"category_id": id}]),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = set(json!({"selection": {"track_ids": [t[0]]}, "dayparts": 0})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, report) = admin
+        .send(
+            Method::POST,
+            "/rotation/simulate",
+            json!({"hours": 12, "seed": 4, "clock_id": clock["id"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let simulation = &report["simulation"];
+    assert!(
+        simulation["violations"].as_array().unwrap().is_empty(),
+        "{}",
+        simulation["violations"]
+    );
+    let picks = simulation["picks"].as_array().unwrap();
+    let mut own_picks = 0;
+    for pick in picks {
+        let daypart = &pick["explanation"]["daypart"];
+        if pick["track_id"] == t[0] {
+            own_picks += 1;
+            assert_eq!(daypart["separation"], 0, "{pick}");
+            assert_eq!(daypart["separation_from"], "track", "{pick}");
+        } else {
+            assert_eq!(daypart["separation"], 3, "{pick}");
+            assert_eq!(daypart["separation_from"], "category", "{pick}");
+        }
+        assert_eq!(daypart["days_from"], "category", "{pick}");
+    }
+    // Free of the category's rule, it plays in every daypart; held back
+    // by it, the others are relaxed.
+    assert!(own_picks > 0, "{picks:?}");
     station.stop().await;
 }
 
@@ -9690,4 +9896,228 @@ async fn modules_are_turned_off_and_on_again() {
 
 fn rotation_now() -> i64 {
     crate::rotation::now_ms()
+}
+
+/// A clock slot at an exact time: hard, the track on air is cut and the
+/// slot starts then; soft, a track queued by hand that would end after the
+/// window is taken out.
+#[tokio::test(flavor = "multi_thread")]
+async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let t = &station.tracks;
+    let mut categories = Vec::new();
+    // Songs repeat at once: they also fill the gaps before exact times.
+    let free = json!({"track_min": 0, "title_min": 0, "artist_min": 0, "album_min": 0});
+    for (name, members) in [("News", &t[4..]), ("Songs", &t[..4])] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "separation": free}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (news, songs) = (categories[0], categories[1]);
+    let mut rotation = admin.get("/settings/rotation").await;
+    rotation["filler_category_id"] = json!(songs);
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // Exact times follow one another, and fit in the hour.
+    for exact in [json!({"at_s": 3_600}), json!({"at_s": 10, "after_s": 301})] {
+        let (status, body) = admin
+            .send(
+                Method::POST,
+                "/clocks",
+                json!({"name": "Bad", "slots": [{"category_id": news, "exact": exact}]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    }
+    // Keep a minute and a half from the end of the hour.
+    while rotation_now().rem_euclid(3_600_000) > 3_500_000 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let hour_start = rotation_now() - rotation_now().rem_euclid(3_600_000);
+    let hard_s = (rotation_now() - hour_start) / 1_000 + 20;
+    let soft_s = hard_s + 40;
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Exact", "slots": [
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": hard_s, "mode": "hard"}},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": soft_s, "mode": "soft", "before_s": 0, "after_s": 0}},
+                {"category_id": songs, "enforce_rules": false},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    assert_eq!(clock["slots"][1]["exact"]["mode"], "hard");
+    assert_eq!(clock["slots"][3]["exact"]["before_s"], 0);
+    let clock_id = clock["id"].as_u64().unwrap();
+    let week: Vec<Value> = (1..=7)
+        .flat_map(|day| {
+            (0..24).map(move |hour| json!({"day_of_week": day, "hour": hour, "clock_id": clock_id}))
+        })
+        .collect();
+    let (status, _) = admin.send(Method::PUT, "/schedule", json!(week)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    // Autofill played the whole library before the clock: those plays,
+    // the news among them, do not count.
+    let cleared_at = rotation_now();
+
+    // Hard: queued with its start time, started then, the track before cut.
+    let hard_at = hour_start + hard_s * 1_000;
+    let queued = |at: i64| {
+        let admin = &admin;
+        async move {
+            let queue = admin.get("/queue").await;
+            queue
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["track"]["start_at_unix_ms"] == at)
+                .cloned()
+        }
+    };
+    let entry = eventually(
+        "the hard exact slot queued",
+        Duration::from_secs(30),
+        || queued(hard_at),
+    )
+    .await;
+    assert_eq!(entry["track"]["track_id"], t[4]);
+    let play = eventually("the news on air", Duration::from_secs(40), || async {
+        let history = admin.get("/history").await;
+        history
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|play| {
+                play["track_id"] == t[4] && play["started_at_unix_ms"].as_i64() > Some(cleared_at)
+            })
+            .cloned()
+    })
+    .await;
+    let started = play["started_at_unix_ms"].as_i64().unwrap();
+    if (started - hard_at).abs() >= 1_500 {
+        let picks = admin.get("/rotation/picks?limit=30").await;
+        let picks: Vec<Value> = picks
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pick| {
+                let e = &pick["explanation"];
+                json!({"track": pick["track_id"], "planned": pick["planned_at_unix_ms"].as_i64().map(|at| at - hard_at),
+                       "slot": e["slot"], "step": e["step"], "exact": e["exact"], "fill": e["fill"]})
+            })
+            .collect();
+        let history = admin.get("/history").await;
+        let history: Vec<Value> = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|play| json!({"track": play["track_id"], "start": play["started_at_unix_ms"].as_i64().map(|at| at - hard_at), "end": play["end_reason"]}))
+            .collect();
+        panic!(
+            "started {} ms from its exact time\npicks: {}\nhistory: {}",
+            started - hard_at,
+            serde_json::to_string_pretty(&picks).unwrap(),
+            serde_json::to_string(&history).unwrap()
+        );
+    }
+    // The track before fades out over 1.5 s, skipped.
+    eventually("the track before cut", Duration::from_secs(10), || async {
+        let history = admin.get("/history").await;
+        let before = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|other| other["started_at_unix_ms"].as_i64() < Some(started))
+            .cloned()?;
+        (before["end_reason"] == "skipped").then_some(())
+    })
+    .await;
+    let picks = admin.get("/rotation/picks?limit=100").await;
+    let exact = picks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pick| pick["explanation"]["exact"]["at_unix_ms"] == hard_at)
+        .map(|pick| pick["explanation"]["exact"].clone())
+        .unwrap();
+    assert_eq!(exact["met"], "on_time", "{exact}");
+    assert_eq!(exact["faded"], true, "{exact}");
+
+    // Soft: a track queued by hand right before it, which would end after
+    // the window, is taken out.
+    let soft_at = hour_start + soft_s * 1_000;
+    let entry = eventually(
+        "the soft exact slot queued",
+        Duration::from_secs(40),
+        || queued(soft_at),
+    )
+    .await;
+    let queue = admin.get("/queue").await;
+    let position = queue
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|other| other["entry_id"] == entry["entry_id"])
+        .unwrap();
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/queue",
+            json!({"track_ids": [t[0]], "position": position}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let manual = body["entry_ids"][0].as_u64().unwrap();
+    eventually(
+        "the manual track taken out",
+        Duration::from_secs(20),
+        || async {
+            let queue = admin.get("/queue").await;
+            (!queue
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|other| other["entry_id"] == manual))
+            .then_some(())
+        },
+    )
+    .await;
+    station.stop().await;
 }

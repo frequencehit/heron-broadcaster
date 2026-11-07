@@ -16,7 +16,7 @@ use tonic::{Request, Response, Status};
 
 use crate::engine::{Engine, EngineError};
 use crate::mixer::{Deck, EndReason, MeterStatus};
-use crate::player::{PlayerError, PlayerEvent, QueueEntry, TrackRequest};
+use crate::player::{PlayerError, PlayerEvent, QueueEntry, StartAt, TrackRequest};
 
 pub struct EngineService {
     engine: Arc<Engine>,
@@ -364,6 +364,11 @@ pub fn track_from_proto(track: pb::Track) -> Result<TrackRequest, Status> {
         no_metadata: track.no_metadata,
         over_intro: track.over_intro,
         intro_ms: track.intro_ms,
+        start_at: track.start_at_unix_ms.map(|unix_ms| StartAt {
+            unix_ms,
+            fade_ms: track.cut_fade_ms,
+        }),
+        continues: track.continues,
     })
 }
 
@@ -390,6 +395,9 @@ fn track_to_proto(track: TrackRequest) -> pb::Track {
         no_metadata: track.no_metadata,
         over_intro: track.over_intro,
         intro_ms: track.intro_ms,
+        start_at_unix_ms: track.start_at.map(|start| start.unix_ms),
+        cut_fade_ms: track.start_at.map_or(0, |start| start.fade_ms),
+        continues: track.continues,
     }
 }
 
@@ -579,6 +587,9 @@ mod tests {
             no_metadata: false,
             over_intro: false,
             intro_ms: None,
+            start_at_unix_ms: None,
+            cut_fade_ms: 0,
+            continues: false,
         };
         let back = track_to_proto(track_from_proto(original.clone()).unwrap());
         assert_eq!(back, original);

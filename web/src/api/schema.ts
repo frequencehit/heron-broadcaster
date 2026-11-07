@@ -4058,8 +4058,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Sets the mood, sound code, tempo or play ratio of every selected track.
-         *     Operators and admins.
+         * Sets the mood, sound code, tempo, play ratio or own daypart separation
+         *     of every selected track. Operators and admins.
          */
         post: operations["apply_programming"];
         delete?: never;
@@ -5455,6 +5455,7 @@ export interface components {
             category_id: number;
             /** @description Off, the slot skips the separation rules (restrictions still apply). */
             enforce_rules?: boolean;
+            exact?: components["schemas"]["ExactTime"] | null;
             /**
              * @description Plays only if the next slot's track plays right after it (a jingle
              *     announcing it); the next slot of the last one is the first. A
@@ -5615,7 +5616,9 @@ export interface components {
          */
         CrossfadeOverrides: {
             /**
-             * @description `false` plays the transition out of this track back to back, without overlap.
+             * @description `false` plays the transition out of this track back to back, without
+             *     overlap; `true` crossfades it at its own point whatever the two
+             *     tracks' lengths (the first span of a shortened medley).
              * @default null
              */
             crossfade: boolean | null;
@@ -5687,6 +5690,12 @@ export interface components {
             /** @description `SELECT VERSION()`, e.g. `12.3.1-MariaDB`. */
             version?: string | null;
         };
+        /**
+         * @description Where a daypart value comes from: the slot's category, or the track's
+         *     own, which replaces it.
+         * @enum {string}
+         */
+        DaypartFrom: "category" | "track";
         /** @description The dayparts at a pick, for the rotation log. */
         DaypartLog: {
             /**
@@ -5701,11 +5710,14 @@ export interface components {
             daypart: number;
             /**
              * Format: int32
-             * @description The days the same daypart is kept out on after a play, from the
-             *     slot's category, before relaxation; `windows.daypart_days` is the
-             *     one applied. Missing in picks logged before it.
+             * @description The days the same daypart is kept out on after a play, before
+             *     relaxation: the track's own, else the slot's category's
+             *     (`days_from`); `windows.daypart_days` is the one applied. Missing
+             *     in picks logged before it.
              */
             days?: number;
+            /** @description Whose `days` they are. */
+            days_from?: components["schemas"]["DaypartFrom"];
             /**
              * Format: int32
              * @description The daypart the picked track last played in, from 0; missing if
@@ -5714,10 +5726,16 @@ export interface components {
             last_daypart?: number | null;
             /**
              * Format: int32
-             * @description The daypart separation of the slot's category, before relaxation;
+             * @description The daypart separation of the picked track, before relaxation: its
+             *     own, else the slot's category's (`separation_from`);
              *     `windows.dayparts` is the one applied.
              */
             separation: number;
+            /**
+             * @description Whose `separation` it is. Missing in picks logged before tracks had
+             *     their own: the category's.
+             */
+            separation_from?: components["schemas"]["DaypartFrom"];
         };
         /** @description One deck EQ. Flat and bypassed by default. */
         DeckEq: {
@@ -5853,6 +5871,49 @@ export interface components {
              * @description Files removed from the buffer zone.
              */
             discarded: number;
+        };
+        /**
+         * @description A draw depth: where it starts and how far it widens, in percent of the
+         *     tracks the restrictions allow.
+         */
+        DrawDepth: {
+            /**
+             * Format: int32
+             * @description 1 to 100, not below the start.
+             * @default 50
+             */
+            max_pct: number;
+            /**
+             * Format: int32
+             * @description 1 to 100.
+             * @default 20
+             */
+            start_pct: number;
+        };
+        /** @description The draw a pick was made in. */
+        DrawLog: {
+            /**
+             * @description Of them, held back by each rule at the pick's step (the first rule
+             *     that applies counts).
+             */
+            blocked: components["schemas"]["Blocked"];
+            /** Format: int32 */
+            max_pct: number;
+            /**
+             * Format: int32
+             * @description The depth the pick was drawn at, in percent.
+             */
+            pct: number;
+            /**
+             * Format: int32
+             * @description The depth the slot starts at and its maximum.
+             */
+            start_pct: number;
+            /**
+             * Format: int32
+             * @description Tracks in the draw at that depth.
+             */
+            tracks: number;
         };
         /** @description The dual-band processor. */
         DualBandSettings: {
@@ -6068,6 +6129,69 @@ export interface components {
             /** @description For people. */
             message: string;
         };
+        /** @description An exact slot's pick: its exact time, and how rotation met it. */
+        ExactLog: {
+            /** Format: int32 */
+            after_s: number;
+            /**
+             * Format: int64
+             * @description The exact time (Unix ms).
+             */
+            at_unix_ms: number;
+            /**
+             * Format: int32
+             * @description The soft window, in seconds; 0 in hard mode.
+             */
+            before_s: number;
+            /**
+             * Format: int64
+             * @description When the engine fades out what still plays and starts the slot: the
+             *     exact time (hard) or the end of the window (soft).
+             */
+            cut_at_unix_ms: number;
+            /** @description What plays before it is faded out at `cut_at_unix_ms`. */
+            faded: boolean;
+            /** @description The planned start is inside the window (the exact time in hard mode). */
+            in_window: boolean;
+            met: components["schemas"]["Met"];
+            mode: components["schemas"]["ExactMode"];
+            /**
+             * Format: int64
+             * @description Planned start minus the exact time; negative when early.
+             */
+            offset_ms: number;
+        };
+        /** @enum {string} */
+        ExactMode: "hard" | "soft";
+        /** @description A clock slot's exact time. */
+        ExactTime: {
+            /**
+             * Format: int32
+             * @description Soft: how late it may start; a track ending later is faded out then.
+             */
+            after_s?: number;
+            /**
+             * Format: int32
+             * @description Seconds into the station hour, 0 to 3599.
+             */
+            at_s: number;
+            /**
+             * Format: int32
+             * @description Soft: how early the slot may start, in seconds (0 to 300).
+             */
+            before_s?: number;
+            /**
+             * @description The exact time cuts a live DJ (ad breaks). Stored for M11: there is
+             *     no live DJ yet.
+             */
+            cut_live?: boolean;
+            /**
+             * @description Soft: a gap before the window is filled with a station medley,
+             *     shortened from its end when too long.
+             */
+            medley_fill?: boolean;
+            mode?: components["schemas"]["ExactMode"];
+        };
         /** @description Why a track was picked: the rotation log. */
         Explanation: {
             /** @description Windows across stations applied at this step. */
@@ -6098,7 +6222,10 @@ export interface components {
              */
             counter?: number | null;
             daypart?: components["schemas"]["DaypartLog"] | null;
+            draw?: components["schemas"]["DrawLog"] | null;
             enforce_rules: boolean;
+            exact?: components["schemas"]["ExactLog"] | null;
+            fill?: components["schemas"]["FillLog"] | null;
             /**
              * @description Tracks offered before this one and held back by their play ratio,
              *     in the order they were offered.
@@ -6196,6 +6323,39 @@ export interface components {
         };
         FileSelection: {
             file_ids: number[];
+        };
+        /** @enum {string} */
+        FillKind: "medley" | "filler";
+        /** @description A pick filling the gap before an exact time, in the rotation log. */
+        FillLog: {
+            /**
+             * Format: int64
+             * @description The exact time (Unix ms).
+             */
+            exact_at_unix_ms: number;
+            /**
+             * Format: int32
+             * @description Hooks left out of the medley (0: whole).
+             */
+            hooks_left_out?: number;
+            kind: components["schemas"]["FillKind"];
+            /**
+             * Format: int32
+             * @description How long it plays.
+             */
+            length_ms: number;
+            /**
+             * Format: int64
+             * @description The medley's ID.
+             */
+            medley_id?: number | null;
+            /** @description The parts left out, by their position in the medley from 0. */
+            parts_left_out?: number[];
+            /**
+             * Format: int32
+             * @description The exact slot it fills the gap before (index in its clock).
+             */
+            slot: number;
         };
         /** @enum {string} */
         FinalMode: "limiter" | "clipper";
@@ -7283,6 +7443,11 @@ export interface components {
             artist_id: number;
         };
         /**
+         * @description How an exact time was met, in the rotation log.
+         * @enum {string}
+         */
+        Met: "on_time" | "early" | "late";
+        /**
          * @description How a clock slot picks among the tracks its category allows.
          * @enum {string}
          */
@@ -7877,6 +8042,19 @@ export interface components {
              * @description The tempo, replacing the measured one; `null` goes back to it.
              */
             bpm?: number | null;
+            /**
+             * Format: int32
+             * @description Their own same daypart on the following days, 0 to 7; `null` goes
+             *     back to their categories'.
+             */
+            daypart_days?: number | null;
+            /**
+             * Format: int32
+             * @description Their own daypart separation, 0 to 10 (0: off for them), in place
+             *     of their categories', on every station; `null` goes back to their
+             *     categories'. Missing: kept.
+             */
+            dayparts?: number | null;
             /** @description A value of the mood scale, or `null` to clear it. Missing: kept. */
             mood?: string | null;
             /**
@@ -8027,6 +8205,11 @@ export interface components {
             album?: string | null;
             artist?: string | null;
             /**
+             * @description The rest of the entry before it (the second part of a shortened
+             *     medley): not a new play.
+             */
+            continues: boolean;
+            /**
              * Format: int32
              * @description Cue points the engine plays between, overrides applied.
              */
@@ -8050,6 +8233,12 @@ export interface components {
             /** @description Relative to the library root. */
             path: string;
             source: components["schemas"]["PlaySource"];
+            /**
+             * Format: int64
+             * @description An exact time (Unix ms): if it still waits then, the engine fades
+             *     out what plays and starts it, dropping the entries before it.
+             */
+            start_at_unix_ms?: number | null;
             title?: string | null;
             /**
              * Format: int64
@@ -8369,8 +8558,19 @@ export interface components {
              * @default 4
              */
             daypart_count: number;
+            /**
+             * @description The draw depth of the categories and slots that set none of their
+             *     own, and of hours without a clock.
+             * @default {
+             *       "max_pct": 50,
+             *       "start_pct": 20
+             *     }
+             */
+            draw: components["schemas"]["DrawDepth"];
             /** @default null */
             fallback_category_id: components["schemas"]["u64"] | null;
+            /** @default null */
+            filler_category_id: components["schemas"]["u64"] | null;
             /**
              * @description Categories whose tracks are kept out of the station's library (hours
              *     without a clock, the fallback without a category), even when another
@@ -8599,6 +8799,16 @@ export interface components {
              *     clock slot's.
              */
             dayparts?: number | null;
+            /**
+             * Format: int32
+             * @description The draw depth's maximum, in percent, 1 to 100.
+             */
+            draw_max_pct?: number | null;
+            /**
+             * Format: int32
+             * @description The draw depth's start, in percent, 1 to 100.
+             */
+            draw_start_pct?: number | null;
             /** Format: int32 */
             title_min?: number | null;
             /** Format: int32 */
@@ -8761,7 +8971,7 @@ export interface components {
          * @description Why a slot was passed over.
          * @enum {string}
          */
-        SkipReason: "nothing_allowed" | "same_type_in_a_row" | "module_off" | "linked_track_after_hour" | "linked_track_not_found";
+        SkipReason: "nothing_allowed" | "same_type_in_a_row" | "module_off" | "linked_track_after_hour" | "linked_track_not_found" | "exact_time_due" | "no_longer_fits" | "exact_time_passed";
         SkippedFile: {
             path: string;
             reason: string;
@@ -9776,6 +9986,12 @@ export interface components {
              *     `rotation` settings), what rotation can play there.
              */
             on_station_id?: number | null;
+            /**
+             * @description `true`: the tracks with their own daypart separation or same
+             *     daypart on the following days; `false`: those that follow their
+             *     categories'.
+             */
+            own_dayparts?: boolean | null;
             /** @description Words found in the title, artist, album, album artist, genre or path. */
             q?: string | null;
             /**
@@ -9845,6 +10061,18 @@ export interface components {
             cue_in_ms?: number | null;
             /** Format: int64 */
             cue_out_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Its own same daypart on the following days, 0 to 7; none: its
+             *     category's.
+             */
+            daypart_days?: number | null;
+            /**
+             * Format: int32
+             * @description Its own daypart separation, 0 to 10, in place of its categories'
+             *     (0: off for it); none: its category's.
+             */
+            dayparts?: number | null;
             /** Format: int64 */
             disabled_at_unix_ms?: number | null;
             /**
@@ -10135,6 +10363,24 @@ export interface components {
             kind: "daypart_days";
             /** Format: int32 */
             pick: number;
+        } | {
+            /** @enum {string} */
+            kind: "draw";
+            /** Format: int32 */
+            pick: number;
+            /** Format: int32 */
+            rank: number;
+            /** Format: int32 */
+            tracks: number;
+        } | {
+            /** Format: int64 */
+            at_unix_ms?: number | null;
+            /** @enum {string} */
+            kind: "exact_time";
+            /** Format: int32 */
+            pick: number;
+            /** Format: int64 */
+            start_unix_ms: number;
         };
         Waveform: {
             /**
@@ -19600,6 +19846,12 @@ export interface operations {
                  *     tracks).
                  */
                 ratio_max?: number;
+                /**
+                 * @description `true`: the tracks with their own daypart separation or same
+                 *     daypart on the following days; `false`: those that follow their
+                 *     categories'.
+                 */
+                own_dayparts?: boolean;
                 sort?: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio";
                 /** @description Reverses the order of `sort`. */
                 desc?: boolean;

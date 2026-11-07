@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use heron_rotation::{Method, SeparationOverrides};
+use heron_rotation::{ExactTime, Method, SeparationOverrides};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
@@ -54,6 +54,10 @@ pub struct ClockSlot {
     /// linked slot cannot be followed by another linked slot.
     #[serde(default)]
     pub linked_to_next: bool,
+    /// Starts at a time of the hour, hard or soft
+    /// (`docs/rotation.md#exact-times`); none by default.
+    #[serde(default)]
+    pub exact: Option<ExactTime>,
 }
 
 fn yes() -> bool {
@@ -95,8 +99,38 @@ impl ClockInput {
             )));
         }
         check_links(&self.slots)?;
+        check_exact(&self.slots)?;
         Ok(name.to_owned())
     }
+}
+
+/// Refuses exact times out of range, out of order (they follow one another
+/// in the clock's order), or on both slots of a linked pair.
+fn check_exact(slots: &[ClockSlot]) -> ApiResult<()> {
+    let mut previous: Option<u32> = None;
+    for (index, slot) in slots.iter().enumerate() {
+        let Some(exact) = &slot.exact else {
+            continue;
+        };
+        exact
+            .check()
+            .map_err(|error| ApiError::Invalid(format!("slot {}: {error}", index + 1)))?;
+        if previous.is_some_and(|at_s| exact.at_s <= at_s) {
+            return Err(ApiError::Invalid(format!(
+                "slot {}: exact times follow one another in the clock's order",
+                index + 1
+            )));
+        }
+        previous = Some(exact.at_s);
+        let next = &slots[(index + 1) % slots.len()];
+        if slots.len() > 1 && slot.linked_to_next && next.exact.is_some() {
+            return Err(ApiError::Invalid(format!(
+                "slot {} is linked to the next slot: only one of the two has an exact time",
+                index + 1
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Refuses chains: a slot linked to the next one followed by another
@@ -125,9 +159,10 @@ async fn clocks(state: &AppState, station: &Station, id: Option<u64>) -> ApiResu
     .bind(id)
     .fetch_all(&state.pool)
     .await?;
-    let slots: Vec<(u64, u64, String, bool, Option<String>, bool)> = sqlx::query_as(
+    type SlotRow = (u64, u64, String, bool, Option<String>, bool, Option<String>);
+    let slots: Vec<SlotRow> = sqlx::query_as(
         "SELECT s.clock_id, s.category_id, CAST(s.selection_method AS CHAR), s.enforce_rules,
-                CAST(s.separation AS CHAR), s.linked_to_next
+                CAST(s.separation AS CHAR), s.linked_to_next, CAST(s.exact_time AS CHAR)
          FROM clock_slots s JOIN clocks c ON c.id = s.clock_id
          WHERE c.station_id = ? AND (? IS NULL OR s.clock_id = ?)
          ORDER BY s.clock_id, s.position",
@@ -138,13 +173,14 @@ async fn clocks(state: &AppState, station: &Station, id: Option<u64>) -> ApiResu
     .fetch_all(&state.pool)
     .await?;
     let mut by_clock: HashMap<u64, Vec<ClockSlot>> = HashMap::new();
-    for (clock, category_id, method, enforce_rules, separation, linked_to_next) in slots {
+    for (clock, category_id, method, enforce_rules, separation, linked_to_next, exact) in slots {
         by_clock.entry(clock).or_default().push(ClockSlot {
             category_id,
             method: Method::parse(&method).unwrap_or_default(),
             enforce_rules,
             separation: overrides(separation.as_deref()),
             linked_to_next,
+            exact: rotation::exact_time(exact.as_deref()),
         });
     }
     Ok(rows
@@ -218,11 +254,17 @@ async fn write_slots(
             ));
         }
         let separation = separation_json(&slot.separation)?;
+        let exact = slot
+            .exact
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
         sqlx::query(
             "INSERT INTO clock_slots
                  (clock_id, position, category_id, selection_method, enforce_rules, separation,
-                  linked_to_next)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  linked_to_next, exact_time)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(clock)
         .bind(u32::try_from(position).unwrap_or(u32::MAX))
@@ -231,6 +273,7 @@ async fn write_slots(
         .bind(slot.enforce_rules)
         .bind(separation)
         .bind(slot.linked_to_next)
+        .bind(exact)
         .execute(&mut *tx)
         .await
         .map_err(|error| {
@@ -395,6 +438,7 @@ async fn preview_clock(
         )));
     }
     check_links(&request.slots)?;
+    check_exact(&request.slots)?;
     let library = rotation::load_library(&state.pool, station.id()).await?;
     let clock = heron_rotation::Clock {
         id: 0,
@@ -408,6 +452,7 @@ async fn preview_clock(
                 enforce_rules: slot.enforce_rules,
                 separation: slot.separation,
                 linked_to_next: slot.linked_to_next,
+                exact: slot.exact,
             })
             .collect(),
         looping: request.looping,
@@ -422,7 +467,13 @@ async fn preview_clock(
     const HOUR_MS: u64 = 3_600_000;
     let mut at = 0_u64;
     let mut slots = Vec::with_capacity(clock.slots.len());
-    for slot in &clock.slots {
+    for (index, slot) in clock.slots.iter().enumerate() {
+        // A slot with an exact time (or the pair starting at it) starts then.
+        if !clock.follows_linked(index)
+            && let Some(exact) = clock.exact(index)
+        {
+            at = u64::from(exact.at_s) * 1_000;
+        }
         let category = library.categories.get(&slot.category);
         let lengths: Vec<u64> = category
             .into_iter()
@@ -515,6 +566,7 @@ mod tests {
             enforce_rules: true,
             separation: SeparationOverrides::default(),
             linked_to_next,
+            exact: None,
         };
         assert!(check_links(&[slot(true), slot(false)]).is_ok());
         assert!(check_links(&[slot(false), slot(true)]).is_ok());
@@ -524,5 +576,33 @@ mod tests {
         // One slot is its own next slot.
         assert!(check_links(&[slot(true)]).is_err());
         assert!(check_links(&[]).is_ok());
+    }
+
+    #[test]
+    fn exact_times_follow_one_another_and_not_on_both_of_a_pair() {
+        let slot = |at_s: Option<u32>, linked_to_next| ClockSlot {
+            category_id: 1,
+            method: Method::Random,
+            enforce_rules: true,
+            separation: SeparationOverrides::default(),
+            linked_to_next,
+            exact: at_s
+                .map(|at_s| serde_json::from_value(serde_json::json!({"at_s": at_s})).unwrap()),
+        };
+        assert!(
+            check_exact(&[
+                slot(Some(0), false),
+                slot(None, false),
+                slot(Some(1_800), false)
+            ])
+            .is_ok()
+        );
+        assert!(check_exact(&[slot(Some(1_800), false), slot(Some(0), false)]).is_err());
+        assert!(check_exact(&[slot(Some(3_600), false)]).is_err());
+        // A linked jingle before an exact slot: one exact time for the pair.
+        assert!(check_exact(&[slot(None, true), slot(Some(0), false)]).is_ok());
+        assert!(check_exact(&[slot(Some(0), true), slot(Some(10), false)]).is_err());
+        let slot: ClockSlot = serde_json::from_str(r#"{"category_id": 3}"#).unwrap();
+        assert!(slot.exact.is_none());
     }
 }
