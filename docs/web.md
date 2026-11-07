@@ -21,7 +21,7 @@
 | **Restrictions** | Dayparting, date ranges and sequences on tracks, artists and categories, on every station or some; turn them on and off | operator |
 | **Rotation log** | Each track rotation picked: its daypart, clock and slot (and the slots passed over, with why: a linked jingle skipped because of its track), rules held or relaxed (with where the track last played and what daypart separation held back or allowed), the draw depth it was drawn at (`30 %, 30 tracks, 4 held back by the artist`), how an [exact time](rotation.md#exact-times) was met (`:00:00 hard · on time, the track before faded`, `early by 12 s`) and what filled the gap before it (a medley, with the hooks left out, or a filler track), the endings simulated before a pick near an exact time and how the best one ends (`8 endings simulated, the best ends at 59:56, no filling`, or that even the best one fades the track before out), the tracks held back by their play ratio with their counter, the picked track's ratio on the station and its counter, and the details (windows, tracks held back, candidates); a simulation of the next day or week, checked rule by rule; reset every play ratio counter of the station to 10, after a confirmation | operator (simulations, reset) |
 | **Migrate** | Bring in another software's export: categories and problems named in Heron, conflicts settled, applied as one import; past imports, with undo ([Importing from another software](import.md)) | admin |
-| **To organize** | Identifications waiting for review (apply a candidate release, or keep the file's tags); covers to check (pick one of an album's candidates, or none); organize the library after a dry run; every batch of file changes (tag edits included), with undo | operator (review), admin (organize, undo) |
+| **To do** | What is left to do on the library, in tabs with their count (see [To do](#to-do)): *To identify* (identifications waiting for review: apply a candidate release, or keep the file's tags), *Missing intros*, *Missing hooks* and *Missing covers* (the songs without one; covers to check first: pick one of an album's candidates, or none), *Organize* (organize the library after a dry run) and *Changes* (every batch of file changes, tag edits included, with undo) | operator (review), admin (organize, undo) |
 | **Crossfade & loudness** | Station crossfade, loudness and silence watchdog settings, with a live preview of the transition between two tracks (the one on air and the next by default) as you change them, which can be listened to | admin |
 | **Deck EQ** | The music EQ (Decks A and B) and the FX EQ: ten vertical sliders each (±12 dB, double-click for 0 dB, arrows to move by 0.5 dB) with a number above each to type a gain to the tenth of a decibel, enable / bypass, the response curve drawn as the sliders move; presets: load into either EQ, save either EQ as a new preset, update a preset from the music EQ, rename, delete. Changes are heard as the sliders move, and other open pages follow them | operator |
 | **Processing** | The station's [AGC chain](audio-engine.md#master-agc-chain): bypass all, and one panel per block in the chain's order (gated AGC, stereo expander, bass EQ, 5-band, dual-band, final stage), each with its switch, a line saying what it does, and its settings as sliders with a number input; the bands of a processor side by side, with their mode and the links between them. Live meters: the chain's input and output, the AGC's gain, each band's gain reduction and the final stage's. Presets: load, save the chain as a new preset, update a preset from the chain, rename, delete. Changes are heard as the controls move, and other open pages follow them | operator |
@@ -31,7 +31,7 @@
 | **Webhooks** | Webhooks on track changes: address, events, FX or not, the default JSON body or a template; the secret, shown once (and a new one); a test ping; each webhook's deliveries, with their status, attempts, what was sent and answered, and send again | admin |
 | **Stations** | The stations: add one with the address of its engine, rename, change its code, its engine or its position, enable or disable, delete ([Several stations](stations.md)) | admin |
 | **Users** | Users and roles, passwords, enable or disable; with several stations, a shared role and a role on each station; whether each user has a second factor (on, with the app and how many passkeys; *to set up* when their role requires it and they have none; off), and which roles require one ([Two-factor authentication](#two-factor-authentication)) | admin |
-| **Modules** | Under *Administration*: each [module](modules.md) (medleys, cover art, listener statistics, webhooks, restrictions, equalizer, processing, trash, to organize, artists, labels), what it does and what turning it off stops, with its switch for the whole installation | admin |
+| **Modules** | Under *Administration*: each [module](modules.md) (medleys, cover art, listener statistics, webhooks, restrictions, equalizer, processing, trash, to do, artists, labels), what it does and what turning it off stops, with its switch for the whole installation | admin |
 | **Backups** | The backups, newest first (kind, time, the size of its two files, a failed dump), *Back up now*, download either file, restore a backup or an uploaded configuration file (with what it will replace, then its report; the key for an encrypted one), delete; the `backups` settings; encryption: encrypt backups (the key shown once, then typed back, or the admin's own public key), check the key, change it, turn encryption off, which backups need an earlier key, the public key each key typed must match ([Backups – Encryption](backups.md#encryption)); *Test* on a backup, the last test, damaged backups ([Testing backups](backups.md#testing-backups)) | admin |
 | **Account** | Theme, language, width, the whole queue on On air, password, API tokens, [two-factor authentication](#two-factor-authentication) (the authenticator app, passkeys, recovery codes) | |
 | **About** | The build (version, commit, each service's version and whether it answers, web UI and API from the same build or not, links); for admins also the runtime (uptime, operating system, container, time zone and clock, CPU and memory), the dependencies (database, FFmpeg and stream servers versions) and the active configuration, read-only, with secrets only as *set* or *not set*; *Copy diagnostics* puts it all in the clipboard for a bug report. Linked at the bottom of the navigation | admin (all but the build) |
@@ -45,20 +45,20 @@ A [module](modules.md) turned off for the station shown disappears: its entries 
 | Module | Hidden when it is off |
 |---|---|
 | Medleys | The Medleys page, the medley settings |
-| Cover art | Covers everywhere (On air, Queue, History, the track list with its column, *No cover* filter and *Find covers*, the track's page), the covers to check on *To organize*, the Cover Art Archive lookup in the library settings, the station logo |
+| Cover art | Covers everywhere (On air, Queue, History, the track list with its column, *No cover* filter and *Find covers*, the track's page), the *Missing covers* tab of *To do*, the Cover Art Archive lookup in the library settings, the station logo |
 | Listener statistics | The Statistics page, the listeners of the status bar, On air and the Outputs page (with the stream servers' admin credentials and relays), the statistics settings |
 | Webhooks | The Webhooks page |
 | Restrictions | The Restrictions page, the restrictions link and *Restrict* button of an artist |
 | Equalizer | The EQ page, the *EQ* badge of the decks On air |
 | Processing | The Processing page |
 | Trash | The Trash page, its links from the track list and a track's page |
-| To organize | The To organize page, a track's *needs review* banner, the link from the tags dialog |
+| To do | The To do page, a track's *needs review* banner, the link from the tags dialog |
 | Artists | The Artists page, the links to it from the Restrictions page |
 | Labels | The Labels page, the track list's labels column, filters and *Labels* action, the same in the import buffer, a track's labels, *Fill from a label* on the Categories page, the label of a medley's recipe |
 
 An address of a page that is off (a bookmark, a link) shows *This module is turned off* instead, with a link to where an admin turns it on.
 
-**Administration › Modules** (admins) turns a module on or off for the installation; **Settings › Station › Modules** (admins of the station) for the station shown. A module off for the installation shows there as off, and cannot be turned on for one station. The library modules (trash, to organize, artists, labels) are only on the installation's page.
+**Administration › Modules** (admins) turns a module on or off for the installation; **Settings › Station › Modules** (admins of the station) for the station shown. A module off for the installation shows there as off, and cannot be turned on for one station. The library modules (trash, to do, artists, labels) are only on the installation's page.
 
 ## Several stations
 
@@ -119,6 +119,18 @@ Points dragged on the waveform become the track's overrides once saved. *Next st
 
 **Try a transition** under the waveform plays this track into another, or another into this one: pick the other track and its side (*before* or *after*), then listen. It uses the station's crossfade and loudness settings and this track's points as they are on the page, saved or not, so a point can be moved and heard again before saving; the station hears nothing. The *Intro ends* flag (where the vocals start, for [jingles over the intro](audio-engine.md#jingles-over-the-intro)) is dragged the same way, or typed in the *Playout* card, and saved with it; emptying the field removes it. The **hook** (the song's most recognizable part, used for medleys) is set the same way: *Hook in* and *Hook out* flags, or the card's *Hook* fields, both empty for none. **Loop the hook** plays from hook in to hook out over and over, with the points being edited, until **Stop**. Queued entries of the track follow within seconds.
 
+## To do
+
+*To do* (`/to-do`; the former address `/to-organize` leads there) gathers what is left to do on the library, a tab each, with its count in the tab:
+
+- **To identify:** the identifications waiting for review, as after an import. Its count is also the menu's.
+- **Missing intros:** the songs with no intro point (where the vocals start, for [jingles over the intro](audio-engine.md#jingles-over-the-intro)).
+- **Missing hooks:** the songs with no hook.
+- **Missing covers:** with the cover art module, the albums whose Cover Art Archive search was unsure (*covers to check*), then the songs with no cover.
+- **Organize** and **Changes:** organizing the library after a dry run, and every batch of file changes with undo.
+
+A **song** here is an enabled track whose file is there, in at least one category of the Song type (the one that exists from the start, whatever its name now): jingles, ads, liners and the tracks in no category are left out. The lists are library-wide, a page of 50 at a time, sorted by artist or title (and reversed). Each track links to its page: the *Sound* tab, where the intro and the hook are set, or *Details* for its cover. Nothing is edited on *To do* itself.
+
 ## Cover art
 
 Covers show wherever a track does: the track list (a thumbnail column), the track's page, On air, the queue and the history. A track without one shows a neutral placeholder. See [Library management – Cover art](library.md#cover-art).
@@ -129,7 +141,7 @@ On a track's page, the cover is shown with where it comes from (*set by hand*, *
 - **Search the Cover Art Archive:** the results show with their cover, release, date and country; pick one;
 - **Remove** it: the next source is looked for in the file and its folder.
 
-In the track list, the filter *No cover* lists the tracks without one, and *Find covers* (in the **…** menu) looks the selection's albums up on the Cover Art Archive. An unsure search waits on *To organize*, under *Covers to check*: each album with its candidates, to pick one or refuse them all.
+In the track list, the filter *No cover* lists the tracks without one, and *Find covers* (in the **…** menu) looks the selection's albums up on the Cover Art Archive. An unsure search waits on *To do*, at the top of *Missing covers*: each album with its candidates, to pick one or refuse them all.
 
 ## Plays by day and hour
 

@@ -1436,6 +1436,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/todo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many tracks to identify, and active songs missing an intro, a hook
+         *     or a cover: the counts of the *To do* page, whose lists are
+         *     `GET /library/review` and `GET /tracks?active_songs=true&filter=…`.
+         */
+        get: operations["todo_counts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/trash": {
         parameters: {
             query?: never;
@@ -9720,6 +9741,29 @@ export interface components {
          * @enum {string}
          */
         Theme: "system" | "light" | "dark";
+        /** @description What there is to do on the library: the counts of the *To do* page. */
+        TodoCounts: {
+            /**
+             * Format: int64
+             * @description Active songs with no cover; `null` while cover art is turned off.
+             */
+            no_cover?: number | null;
+            /**
+             * Format: int64
+             * @description Active songs with no hook.
+             */
+            no_hook: number;
+            /**
+             * Format: int64
+             * @description Active songs (`GET /tracks?active_songs=true`) with no intro point.
+             */
+            no_intro: number;
+            /**
+             * Format: int64
+             * @description Tracks waiting for review (`GET /library/review`'s `total`).
+             */
+            to_identify: number;
+        };
         /** @description An authenticator app to set up. */
         TotpSetup: {
             /** @description The QR code, as an SVG image. */
@@ -9868,7 +9912,7 @@ export interface components {
             year_tag?: number | null;
         };
         /** @enum {string} */
-        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
+        TrackFilter: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover" | "no_intro" | "no_hook";
         TrackIdentification: {
             /** @description Why the track needs review. */
             reason?: string | null;
@@ -10023,6 +10067,12 @@ export interface components {
          *     for the actions on a selection. Lists of IDs are comma-separated.
          */
         TrackQuery: {
+            /**
+             * @description Only the enabled songs whose file is there: tracks in at least one
+             *     category of the Song type (the one that exists from the start,
+             *     whatever its name), not disabled, not missing. What *To do* lists.
+             */
+            active_songs?: boolean | null;
             /**
              * Format: int32
              * @description Tracks added in the last this many days.
@@ -13604,6 +13654,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryTask"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    todo_counts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoCounts"];
                 };
             };
             "4XX": {
@@ -19925,7 +20002,13 @@ export interface operations {
                 category_id?: number;
                 /** @description Tracks in no category. */
                 no_category?: boolean;
-                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover";
+                /**
+                 * @description Only the enabled songs whose file is there: tracks in at least one
+                 *     category of the Song type (the one that exists from the start,
+                 *     whatever its name), not disabled, not missing. What *To do* lists.
+                 */
+                active_songs?: boolean;
+                filter?: "playable" | "missing" | "unanalyzed" | "silent" | "disabled" | "needs_review" | "no_cover" | "no_intro" | "no_hook";
                 /** @description Tracks with every one of these labels (IDs, comma-separated). */
                 labels_all?: string;
                 /** @description Tracks with at least one of these labels. */
