@@ -45,6 +45,7 @@ mod restrictions;
 mod rotation;
 mod schedules;
 mod selection;
+mod servers;
 mod settings;
 mod shows;
 mod staging;
@@ -961,6 +962,224 @@ mod tests {
         assert_eq!(settings[0].separation.artist_min, 45);
         assert_eq!(settings[1].daypart_count, 6);
         assert_eq!(settings[2].separation.track_min, 60);
+
+        pool.close().await;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+    }
+    /// Outputs created the old way, each with its server's settings, are
+    /// grouped into stream servers; the details they send most become the
+    /// station's, the others each output's overrides; the engine gets the
+    /// same settings as before.
+    #[tokio::test]
+    async fn outputs_are_grouped_into_stream_servers() {
+        const SERVERS: i64 = 20270301000000;
+        let Ok(admin_url) = std::env::var("HERON_TEST_DATABASE_URL") else {
+            return;
+        };
+        let admin_url = admin_url.trim_end_matches('/').to_owned();
+        let name = format!("heron_stream_servers_{}", std::process::id());
+        let admin = sqlx::MySqlPool::connect(&admin_url).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+        let pool = sqlx::MySqlPool::connect(&format!("{admin_url}/{name}"))
+            .await
+            .unwrap();
+        MIGRATOR.run_to(SERVERS - 1, &pool).await.unwrap();
+        sqlx::raw_sql(
+            r#"INSERT INTO stations (id, name, code, enabled, position)
+                 VALUES (2, 'Two', 'two', TRUE, 1);
+             INSERT INTO outputs (id, station_id, name, kind, encoder_profile_id, config, statistics, enabled)
+             SELECT 1, 1, 'MP3', 'icecast', MIN(id),
+                    '{"host": "icecast", "mount": "/mp3", "password": "hackme", "name": "Station", "genre": "Pop"}',
+                    '{"admin_password": "adm1n"}', TRUE FROM encoder_profiles
+             UNION ALL SELECT 2, 1, 'AAC', 'icecast', MIN(id),
+                    '{"host": "icecast", "port": 8000, "username": "source", "mount": "/aac", "password": "hackme",
+                      "name": "Station HD", "genre": "Pop", "public": false, "public_url": "https://stream.example.org"}',
+                    '{"admin_username": "admin", "admin_password": "adm1n"}', TRUE FROM encoder_profiles
+             UNION ALL SELECT 3, 1, 'Backup', 'icecast', MIN(id),
+                    '{"host": "icecast", "mount": "/backup", "password": "other", "name": "Station", "public": true}',
+                    NULL, FALSE FROM encoder_profiles
+             UNION ALL SELECT 4, 2, 'Two', 'icecast', MIN(id),
+                    '{"host": "icecast", "mount": "/two", "password": "hackme", "name": ""}',
+                    NULL, TRUE FROM encoder_profiles
+             UNION ALL SELECT 5, 2, 'HLS', 'hls', MIN(id), '{"directory": "/hls"}', NULL, TRUE
+                    FROM encoder_profiles;
+             INSERT INTO listener_samples (output_id, sampled_at, listeners, sessions)
+                 VALUES (1, '2026-10-20 10:00:00', 3, TRUE);
+             INSERT INTO listener_sessions (output_id, listener_key, user_agent, client_id, day,
+                                            started_at, last_seen_at)
+                 VALUES (1, REPEAT('k', 32), 'VLC', 1, '2026-10-20', NOW(), NOW());"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // What the engine had.
+        let mut connection = pool.acquire().await.unwrap();
+        let before: Vec<heron_core::OutputConfig> = sqlx::query_as::<_, (u64, String)>(
+            "SELECT id, CAST(config AS CHAR) FROM outputs ORDER BY id",
+        )
+        .fetch_all(&mut *connection)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(id, config)| heron_core::OutputConfig {
+            id,
+            name: String::new(),
+            kind: heron_core::OutputKind::Icecast,
+            encoder_profile_id: 0,
+            config: serde_json::from_str(&config).unwrap(),
+            metadata_enabled: true,
+            enabled: true,
+        })
+        .collect();
+        drop(connection);
+        MIGRATOR.run(&pool).await.unwrap();
+
+        type ServerRow = (
+            u64,
+            u64,
+            String,
+            String,
+            u16,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        );
+        let servers: Vec<ServerRow> = sqlx::query_as(
+            "SELECT id, station_id, name, host, port, source_username, source_password,
+                    admin_password, public_url
+             FROM stream_servers ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let names: Vec<(u64, &str, Option<&str>, Option<&str>)> = servers
+            .iter()
+            .map(|s| (s.1, s.2.as_str(), s.6.as_deref(), s.7.as_deref()))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                (1, "icecast:8000", Some("hackme"), Some("adm1n")),
+                (1, "icecast:8000 (2)", Some("other"), None),
+                (2, "icecast:8000", Some("hackme"), None),
+            ]
+        );
+        // The first output's public address.
+        assert_eq!(servers[0].8, None);
+        assert_eq!(servers[0].5.as_deref(), Some("source"));
+
+        type OutputRow = (u64, Option<u64>, String, Option<String>, Option<String>);
+        let outputs: Vec<OutputRow> = sqlx::query_as(
+            "SELECT id, server_id, CAST(config AS CHAR), CAST(details AS CHAR),
+                        CAST(statistics AS CHAR)
+                 FROM outputs ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let json = |text: &Option<String>| {
+            text.as_deref()
+                .map(|text| serde_json::from_str::<serde_json::Value>(text).unwrap())
+        };
+        let shown: Vec<_> = outputs
+            .iter()
+            .map(|o| {
+                (
+                    o.0,
+                    o.1,
+                    serde_json::from_str::<serde_json::Value>(&o.2).unwrap(),
+                    json(&o.3),
+                    o.4.clone(),
+                )
+            })
+            .collect();
+        use serde_json::json as j;
+        assert_eq!(
+            shown,
+            [
+                (1, Some(servers[0].0), j!({"mount": "/mp3"}), None, None),
+                (
+                    2,
+                    Some(servers[0].0),
+                    j!({"mount": "/aac"}),
+                    Some(j!({"name": "Station HD"})),
+                    None
+                ),
+                (
+                    3,
+                    Some(servers[1].0),
+                    j!({"mount": "/backup"}),
+                    Some(j!({"genre": "", "public": true})),
+                    None
+                ),
+                (4, Some(servers[2].0), j!({"mount": "/two"}), None, None),
+                (5, None, j!({"directory": "/hls"}), None, None),
+            ]
+        );
+        let details: Vec<(u64, String)> = sqlx::query_as(
+            "SELECT station_id, CAST(value AS CHAR) FROM station_settings
+             WHERE name = 'stream_details' ORDER BY station_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let details: Vec<(u64, crate::servers::StreamDetails)> = details
+            .iter()
+            .map(|(station, value)| (*station, serde_json::from_str(value).unwrap()))
+            .collect();
+        assert_eq!(details[0].1.name.as_deref(), Some("Station"));
+        assert_eq!(details[0].1.genre.as_deref(), Some("Pop"));
+        assert!(!details[0].1.public);
+        assert_eq!(details[1].1, crate::servers::StreamDetails::default());
+
+        // The samples and sessions so far were read from the output's server.
+        let read: (u64, u64) = sqlx::query_as(
+            "SELECT (SELECT server_id FROM listener_samples), (SELECT server_id FROM listener_sessions)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(read, (servers[0].0, servers[0].0));
+
+        // Nothing changes on air: the same settings for each output.
+        let mut connection = pool.acquire().await.unwrap();
+        let after = outputs::load_config(&mut connection, None).await.unwrap();
+        drop(connection);
+        let mut kept = after.clone();
+        let engine = heron_core::OutputsConfig {
+            encoder_profiles: Vec::new(),
+            outputs: before
+                .into_iter()
+                .zip(&after.outputs)
+                .map(|(mut old, new)| {
+                    old.name.clone_from(&new.name);
+                    old.kind = new.kind;
+                    old.encoder_profile_id = new.encoder_profile_id;
+                    old.metadata_enabled = new.metadata_enabled;
+                    old.enabled = new.enabled;
+                    old
+                })
+                .collect(),
+        };
+        outputs::keep_engine_shape(&mut kept, &engine);
+        assert_eq!(kept.outputs, engine.outputs);
+        // Run again (as a restore does): nothing changes.
+        sqlx::raw_sql(outputs::GROUP_INTO_SERVERS)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM stream_servers")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 3);
 
         pool.close().await;
         sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE `{name}`")))

@@ -39,6 +39,35 @@
         }
       }
     },
+    "/api/v1/about/stopped": {
+      "delete": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Takes the workers that have stopped reporting off the list: the\ncontainers of earlier runs, each with its own instance name. One that\nruns again reports again and comes back. Admins.",
+        "operationId": "clear_stopped",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoppedCleared"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agc-presets": {
       "get": {
         "tags": [
@@ -1009,7 +1038,7 @@
         "tags": [
           "auth"
         ],
-        "summary": "Saves your preferences: the web UI's theme, language and width.",
+        "summary": "Saves your preferences: the web UI's theme, language, width and whether\nthe On air page shows the whole queue.",
         "operationId": "set_preferences",
         "requestBody": {
           "content": {
@@ -2688,236 +2717,6 @@
         }
       }
     },
-    "/api/v1/dedications": {
-      "get": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "The requests of the opening range on now, else of the last one, the\nlatest first; the waiting ones with what the rules say about them.",
-        "operationId": "list_dedications",
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "description": "Only the requests of this status.",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/DedicationStatus"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "1 to 200, 100 by default.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DedicationList"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/dedications/settings": {
-      "get": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "The station's dedication settings.",
-        "operationId": "get_dedication_settings",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DedicationSettings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "Replaces the station's dedication settings. The categories must be the\nstation's (`422`). Operators.",
-        "operationId": "put_dedication_settings",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DedicationSettings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DedicationSettings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/dedications/{id}/accept": {
-      "post": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "Queues the request's track (source `request`) at the place asked and\nanswers the request. `409` for a request not waiting, or a track that\na restriction forbids then or that cannot play. Operators.",
-        "operationId": "accept_dedication",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "The request's ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AcceptDedication"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Dedication"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/dedications/{id}/refuse": {
-      "post": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "Refuses a waiting request, with a reason or none. `409` for a request\nnot waiting. Operators.",
-        "operationId": "refuse_dedication",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "The request's ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefuseDedication"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Dedication"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/encoder-profiles": {
       "get": {
         "tags": [
@@ -3298,166 +3097,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GatewayState"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {}
-        ]
-      }
-    },
-    "/api/v1/gateway/stations/{code}/dedications": {
-      "post": {
-        "tags": [
-          "gateway"
-        ],
-        "summary": "A listener's request, from the gateway, with the device's hash: one\nwaiting at a time per device, a few per device and a maximum per\nopening range. Answers its follow link.",
-        "operationId": "gateway_submit",
-        "parameters": [
-          {
-            "name": "code",
-            "in": "path",
-            "description": "The station's code",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DedicationFields"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Followed"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {}
-        ]
-      }
-    },
-    "/api/v1/gateway/stations/{code}/dedications/follow": {
-      "get": {
-        "tags": [
-          "gateway"
-        ],
-        "summary": "A request, by the key of its follow link. `404` once deleted.",
-        "operationId": "gateway_follow",
-        "parameters": [
-          {
-            "name": "code",
-            "in": "path",
-            "description": "The station's code",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "in": "query",
-            "description": "The key of the follow link.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Followed"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {}
-        ]
-      }
-    },
-    "/api/v1/gateway/stations/{code}/dedications/search": {
-      "get": {
-        "tags": [
-          "gateway"
-        ],
-        "summary": "The requestable tracks whose artist or title has `q`, 8 at most. `409`\nwhile the show is closed.",
-        "operationId": "gateway_search",
-        "parameters": [
-          {
-            "name": "code",
-            "in": "path",
-            "description": "The station's code",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "description": "2 to 60 characters of the artist or the title.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RequestableTrack"
-                  }
                 }
               }
             }
@@ -4863,6 +4502,17 @@
               "format": "int64",
               "minimum": 0
             }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part (the master or a relay); every server's\notherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -5735,7 +5385,7 @@
         "tags": [
           "outputs"
         ],
-        "summary": "Replaces an output. Credentials left out of `config` are kept, and so\nare the statistics settings when `statistics` is left out. Admins only.",
+        "summary": "Replaces an output. Credentials left out of `config` are kept. Admins\nonly.",
         "operationId": "update_output",
         "parameters": [
           {
@@ -5800,6 +5450,47 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/outputs/{id}/duplicate": {
+      "post": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Copies an output: the same server, profile and details, its name\nfollowed by `(copy)`, its mount by `-copy`, and disabled, so that two\noutputs never send to one mount. Admins only.",
+        "operationId": "duplicate_output",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputView"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -8088,6 +7779,72 @@
         }
       }
     },
+    "/api/v1/settings/stream-details": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station details sent to the stream servers.",
+        "operationId": "get_stream_details",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Replaces the station details. The outputs that follow them are pushed\nagain, and reconnect. Admins only.",
+        "operationId": "put_stream_details",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamDetails"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings/two-factor": {
       "get": {
         "tags": [
@@ -9301,285 +9058,6 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/dedications": {
-      "get": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "The requests of the opening range on now, else of the last one, the\nlatest first; the waiting ones with what the rules say about them.",
-        "operationId": "list_dedications_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "description": "Only the requests of this status.",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/DedicationStatus"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "1 to 200, 100 by default.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DedicationList"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/dedications/settings": {
-      "get": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "The station's dedication settings.",
-        "operationId": "get_dedication_settings_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DedicationSettings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "Replaces the station's dedication settings. The categories must be the\nstation's (`422`). Operators.",
-        "operationId": "put_dedication_settings_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DedicationSettings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DedicationSettings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/dedications/{id}/accept": {
-      "post": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "Queues the request's track (source `request`) at the place asked and\nanswers the request. `409` for a request not waiting, or a track that\na restriction forbids then or that cannot play. Operators.",
-        "operationId": "accept_dedication_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "description": "The request's ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AcceptDedication"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Dedication"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/dedications/{id}/refuse": {
-      "post": {
-        "tags": [
-          "dedications"
-        ],
-        "summary": "Refuses a waiting request, with a reason or none. `409` for a request\nnot waiting. Operators.",
-        "operationId": "refuse_dedication_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "description": "The request's ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefuseDedication"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Dedication"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/stations/{station_id}/engine": {
       "get": {
         "tags": [
@@ -10199,6 +9677,17 @@
               "format": "int64",
               "minimum": 0
             }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "Only this server's part (the master or a relay); every server's\notherwise.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -10515,7 +10004,7 @@
         "tags": [
           "outputs"
         ],
-        "summary": "Replaces an output. Credentials left out of `config` are kept, and so\nare the statistics settings when `statistics` is left out. Admins only.",
+        "summary": "Replaces an output. Credentials left out of `config` are kept. Admins\nonly.",
         "operationId": "update_output_on_station",
         "parameters": [
           {
@@ -10598,6 +10087,56 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/outputs/{id}/duplicate": {
+      "post": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Copies an output: the same server, profile and details, its name\nfollowed by `(copy)`, its mount by `-copy`, and disabled, so that two\noutputs never send to one mount. Admins only.",
+        "operationId": "duplicate_output_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputView"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -12504,6 +12043,94 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/settings/stream-details": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "The station details sent to the stream servers.",
+        "operationId": "get_stream_details_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Replaces the station details. The outputs that follow them are pushed\nagain, and reconnect. Admins only.",
+        "operationId": "put_stream_details_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamDetails"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamDetails"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/shows": {
       "get": {
         "tags": [
@@ -12653,13 +12280,13 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/top30/chart": {
+    "/api/v1/stations/{station_id}/stream-servers": {
       "get": {
         "tags": [
-          "top30"
+          "outputs"
         ],
-        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
-        "operationId": "get_top30_chart_on_station",
+        "summary": "The station's stream servers and relays, without their passwords.",
+        "operationId": "list_servers_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -12668,75 +12295,6 @@
             "required": true,
             "schema": {
               "type": "integer"
-            }
-          },
-          {
-            "name": "week",
-            "in": "query",
-            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chart"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/top30/charts": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The frozen charts, the latest first.",
-        "operationId": "list_top30_charts_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "before",
-            "in": "query",
-            "description": "Weeks before this one (its Monday), for the next page.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "1 to 100, 20 by default.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
             }
           }
         ],
@@ -12747,7 +12305,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/PastChart"
+                    "$ref": "#/components/schemas/StreamServerView"
                   }
                 }
               }
@@ -12763,15 +12321,13 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/stations/{station_id}/top30/charts/{week}/new-release": {
-      "put": {
+      },
+      "post": {
         "tags": [
-          "top30"
+          "outputs"
         ],
-        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
-        "operationId": "choose_new_release_on_station",
+        "summary": "Adds a stream server, or a relay of one. Admins only.",
+        "operationId": "create_server_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -12781,33 +12337,24 @@
             "schema": {
               "type": "integer"
             }
-          },
-          {
-            "name": "week",
-            "in": "path",
-            "description": "The week's Monday",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewReleaseChoice"
+                "$ref": "#/components/schemas/StreamServerInput"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Chart"
+                  "$ref": "#/components/schemas/StreamServerView"
                 }
               }
             }
@@ -12824,13 +12371,12 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/top30/charts/{week}/removals/{track_id}": {
-      "post": {
+    "/api/v1/stations/{station_id}/stream-servers/{id}": {
+      "get": {
         "tags": [
-          "top30"
+          "outputs"
         ],
-        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
-        "operationId": "remove_track_on_station",
+        "operationId": "get_server_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -12842,18 +12388,8 @@
             }
           },
           {
-            "name": "week",
+            "name": "id",
             "in": "path",
-            "description": "The week's Monday",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "track_id",
-            "in": "path",
-            "description": "The track",
             "required": true,
             "schema": {
               "type": "integer",
@@ -12867,7 +12403,65 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Chart"
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Replaces a stream server. Passwords left out are kept. Outputs using it\nare pushed again: those whose settings changed reconnect. Admins only.",
+        "operationId": "update_server_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
                 }
               }
             }
@@ -12885,10 +12479,10 @@
       },
       "delete": {
         "tags": [
-          "top30"
+          "outputs"
         ],
-        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
-        "operationId": "restore_track_on_station",
+        "summary": "Deletes a stream server no output uses and no relay repeats: `409`\notherwise, naming them. Admins only.",
+        "operationId": "delete_server_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -12900,18 +12494,8 @@
             }
           },
           {
-            "name": "week",
+            "name": "id",
             "in": "path",
-            "description": "The week's Monday",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "track_id",
-            "in": "path",
-            "description": "The track",
             "required": true,
             "schema": {
               "type": "integer",
@@ -12921,150 +12505,7 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chart"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/top30/settings": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The station's Top 30 settings.",
-        "operationId": "get_top30_settings_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
-        "operationId": "put_top30_settings_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Top30Settings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/top30/show": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
-        "operationId": "get_top30_show_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/ShowPlan"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
+          "204": {},
           "4XX": {
             "content": {
               "application/json": {
@@ -13571,6 +13012,195 @@
         ]
       }
     },
+    "/api/v1/stream-servers": {
+      "get": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "The station's stream servers and relays, without their passwords.",
+        "operationId": "list_servers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StreamServerView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Adds a stream server, or a relay of one. Admins only.",
+        "operationId": "create_server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stream-servers/{id}": {
+      "get": {
+        "tags": [
+          "outputs"
+        ],
+        "operationId": "get_server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Replaces a stream server. Passwords left out are kept. Outputs using it\nare pushed again: those whose settings changed reconnect. Admins only.",
+        "operationId": "update_server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamServerView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "outputs"
+        ],
+        "summary": "Deletes a stream server no output uses and no relay repeats: `409`\notherwise, naming them. Admins only.",
+        "operationId": "delete_server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tokens": {
       "get": {
         "tags": [
@@ -13661,352 +13291,6 @@
         ],
         "responses": {
           "204": {},
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/top30/chart": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
-        "operationId": "get_top30_chart",
-        "parameters": [
-          {
-            "name": "week",
-            "in": "query",
-            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chart"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/top30/charts": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The frozen charts, the latest first.",
-        "operationId": "list_top30_charts",
-        "parameters": [
-          {
-            "name": "before",
-            "in": "query",
-            "description": "Weeks before this one (its Monday), for the next page.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "1 to 100, 20 by default.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PastChart"
-                  }
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/top30/charts/{week}/new-release": {
-      "put": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
-        "operationId": "choose_new_release",
-        "parameters": [
-          {
-            "name": "week",
-            "in": "path",
-            "description": "The week's Monday",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewReleaseChoice"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chart"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/top30/charts/{week}/removals/{track_id}": {
-      "post": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
-        "operationId": "remove_track",
-        "parameters": [
-          {
-            "name": "week",
-            "in": "path",
-            "description": "The week's Monday",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "track_id",
-            "in": "path",
-            "description": "The track",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chart"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
-        "operationId": "restore_track",
-        "parameters": [
-          {
-            "name": "week",
-            "in": "path",
-            "description": "The week's Monday",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "track_id",
-            "in": "path",
-            "description": "The track",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chart"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/top30/settings": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The station's Top 30 settings.",
-        "operationId": "get_top30_settings",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
-        "operationId": "put_top30_settings",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Top30Settings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/top30/show": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
-        "operationId": "get_top30_show",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/ShowPlan"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
           "4XX": {
             "content": {
               "application/json": {
@@ -14311,6 +13595,15 @@
             }
           },
           {
+            "name": "own_dayparts",
+            "in": "query",
+            "description": "`true`: the tracks with their own daypart separation or same\ndaypart on the following days; `false`: those that follow their\ncategories'.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -14592,7 +13885,7 @@
         "tags": [
           "library"
         ],
-        "summary": "Sets the mood, sound code, tempo or play ratio of every selected track.\nOperators and admins.",
+        "summary": "Sets the mood, sound code, tempo, play ratio or own daypart separation\nof every selected track. Operators and admins.",
         "operationId": "apply_programming",
         "requestBody": {
           "content": {
@@ -16157,18 +15450,6 @@
           }
         }
       },
-      "AcceptDedication": {
-        "type": "object",
-        "required": [
-          "place"
-        ],
-        "properties": {
-          "place": {
-            "$ref": "#/components/schemas/DedicationPlace"
-          }
-        },
-        "additionalProperties": false
-      },
       "AcceptRequest": {
         "type": "object",
         "properties": {
@@ -17661,151 +16942,6 @@
           }
         }
       },
-      "Chart": {
-        "type": "object",
-        "description": "A week's chart.",
-        "required": [
-          "week",
-          "from_unix_ms",
-          "closes_at_unix_ms",
-          "frozen",
-          "locked",
-          "votes",
-          "entries",
-          "removed"
-        ],
-        "properties": {
-          "closes_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ChartEntry"
-            }
-          },
-          "from_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "frozen": {
-            "type": "boolean",
-            "description": "Closed and kept; else the chart as it stands now."
-          },
-          "locked": {
-            "type": "boolean",
-            "description": "A show was built from it: it does not change any more."
-          },
-          "new_release": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/NewRelease",
-                "description": "`null` without a new release category."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "removed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Removed"
-            }
-          },
-          "votes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The votes on the eligible tracks over the week.",
-            "minimum": 0
-          },
-          "week": {
-            "type": "string",
-            "description": "Its Monday: `2026-11-02`."
-          }
-        }
-      },
-      "ChartEntry": {
-        "type": "object",
-        "description": "A rank of a chart.",
-        "required": [
-          "rank",
-          "likes",
-          "dislikes",
-          "share",
-          "plays",
-          "movement",
-          "weeks"
-        ],
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "dislikes": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "likes": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "movement": {
-            "$ref": "#/components/schemas/Movement"
-          },
-          "plays": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Its plays with votes over the week.",
-            "minimum": 0
-          },
-          "previous_rank": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Its rank in last week's chart.",
-            "minimum": 0
-          },
-          "rank": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "share": {
-            "type": "number",
-            "format": "double",
-            "description": "The share of likes, 0 to 1."
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "track_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Missing once the track is deleted.",
-            "minimum": 0
-          },
-          "weeks": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The charts it was in, this one included.",
-            "minimum": 0
-          }
-        }
-      },
       "Checked": {
         "type": "object",
         "required": [
@@ -17933,6 +17069,17 @@
           "enforce_rules": {
             "type": "boolean",
             "description": "Off, the slot skips the separation rules (restrictions still apply)."
+          },
+          "exact": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExactTime",
+                "description": "Starts at a time of the hour, hard or soft\n(`docs/rotation.md#exact-times`); none by default."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "linked_to_next": {
             "type": "boolean",
@@ -18351,7 +17498,7 @@
               "boolean",
               "null"
             ],
-            "description": "`false` plays the transition out of this track back to back, without overlap.",
+            "description": "`false` plays the transition out of this track back to back, without\noverlap; `true` crossfades it at its own point whatever the two\ntracks' lengths (the first span of a shortened medley).",
             "default": null
           },
           "fade_in": {
@@ -18471,6 +17618,14 @@
           }
         }
       },
+      "DaypartFrom": {
+        "type": "string",
+        "description": "Where a daypart value comes from: the slot's category, or the track's\nown, which replaces it.",
+        "enum": [
+          "category",
+          "track"
+        ]
+      },
       "DaypartLog": {
         "type": "object",
         "description": "The dayparts at a pick, for the rotation log.",
@@ -18495,8 +17650,12 @@
           "days": {
             "type": "integer",
             "format": "int32",
-            "description": "The days the same daypart is kept out on after a play, from the\nslot's category, before relaxation; `windows.daypart_days` is the\none applied. Missing in picks logged before it.",
+            "description": "The days the same daypart is kept out on after a play, before\nrelaxation: the track's own, else the slot's category's\n(`days_from`); `windows.daypart_days` is the one applied. Missing\nin picks logged before it.",
             "minimum": 0
+          },
+          "days_from": {
+            "$ref": "#/components/schemas/DaypartFrom",
+            "description": "Whose `days` they are."
           },
           "last_daypart": {
             "type": [
@@ -18510,8 +17669,12 @@
           "separation": {
             "type": "integer",
             "format": "int32",
-            "description": "The daypart separation of the slot's category, before relaxation;\n`windows.dayparts` is the one applied.",
+            "description": "The daypart separation of the picked track, before relaxation: its\nown, else the slot's category's (`separation_from`);\n`windows.dayparts` is the one applied.",
             "minimum": 0
+          },
+          "separation_from": {
+            "$ref": "#/components/schemas/DaypartFrom",
+            "description": "Whose `separation` it is. Missing in picks logged before tracks had\ntheir own: the category's."
           }
         }
       },
@@ -18616,368 +17779,6 @@
             "minimum": 0
           }
         }
-      },
-      "Dedication": {
-        "type": "object",
-        "description": "A request, for operators.",
-        "required": [
-          "id",
-          "from",
-          "to",
-          "message",
-          "status",
-          "submitted_at_unix_ms",
-          "checks"
-        ],
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "checks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DedicationCheck"
-            },
-            "description": "While it waits: what the rules say about it now."
-          },
-          "decided_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "decided_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Who accepted or refused it."
-          },
-          "from": {
-            "type": "string"
-          },
-          "id": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "message": {
-            "type": "string"
-          },
-          "planned_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "play_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "played_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "reason": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DedicationReason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/DedicationStatus"
-          },
-          "submitted_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "to": {
-            "type": "string"
-          },
-          "track_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          }
-        }
-      },
-      "DedicationCheck": {
-        "type": "object",
-        "required": [
-          "kind",
-          "blocking"
-        ],
-        "properties": {
-          "at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "When the track queued already plays."
-          },
-          "blocking": {
-            "type": "boolean",
-            "description": "It cannot be accepted: a restriction forbids it, or it cannot play."
-          },
-          "kind": {
-            "$ref": "#/components/schemas/DedicationCheckKind"
-          },
-          "minutes_ago": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "How long ago it played (the separation rules)."
-          },
-          "restriction_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "separation_min": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "The rule's window.",
-            "minimum": 0
-          }
-        }
-      },
-      "DedicationCheckKind": {
-        "type": "string",
-        "description": "What the rules say about a waiting request now.",
-        "enum": [
-          "rules_kept",
-          "artist_played",
-          "title_played",
-          "track_played",
-          "in_queue",
-          "restriction",
-          "unplayable"
-        ]
-      },
-      "DedicationCounts": {
-        "type": "object",
-        "description": "The counts of the range's requests.",
-        "required": [
-          "pending",
-          "accepted",
-          "played",
-          "refused",
-          "received"
-        ],
-        "properties": {
-          "accepted": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "pending": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "played": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "received": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "refused": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          }
-        }
-      },
-      "DedicationFields": {
-        "type": "object",
-        "description": "What a listener sends.",
-        "required": [
-          "track_id",
-          "from",
-          "to"
-        ],
-        "properties": {
-          "from": {
-            "type": "string"
-          },
-          "message": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "to": {
-            "type": "string"
-          },
-          "track_id": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
-      "DedicationList": {
-        "type": "object",
-        "required": [
-          "max_per_range",
-          "counts",
-          "dedications"
-        ],
-        "properties": {
-          "closes_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "counts": {
-            "$ref": "#/components/schemas/DedicationCounts"
-          },
-          "dedications": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Dedication"
-            }
-          },
-          "max_per_range": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "on_air": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/OnAirDedication",
-                "description": "The dedication of the track playing."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "opens_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          }
-        }
-      },
-      "DedicationPlace": {
-        "type": "string",
-        "description": "Where an accepted request goes in the queue.",
-        "enum": [
-          "next",
-          "hour",
-          "best"
-        ]
-      },
-      "DedicationReason": {
-        "type": "string",
-        "description": "Why a request was refused, or did not play.",
-        "enum": [
-          "just_played",
-          "unavailable",
-          "inappropriate",
-          "closed",
-          "removed"
-        ]
-      },
-      "DedicationSettings": {
-        "type": "object",
-        "description": "A station's dedication settings (`station_settings`, `dedications`). Its\nhours, website and notifications are its show settings.",
-        "properties": {
-          "category_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            },
-            "description": "The categories whose tracks can be requested; none: the station's\nmusic.",
-            "default": []
-          },
-          "max_per_range": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Requests per opening range, every listener together, 1 to 1000.",
-            "default": 30,
-            "minimum": 0
-          },
-          "message_max": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Characters of a message at most, 20 to 500.",
-            "default": 140,
-            "minimum": 0
-          },
-          "per_device": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Requests per device per opening range, 1 to 10.",
-            "default": 1,
-            "minimum": 0
-          },
-          "retention_days": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Days requests are kept, 1 to 365.",
-            "default": 30,
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
-      "DedicationStatus": {
-        "type": "string",
-        "description": "Where a request stands.",
-        "enum": [
-          "pending",
-          "accepted",
-          "played",
-          "refused"
-        ]
       },
       "DeliveryStatus": {
         "type": "string",
@@ -19117,6 +17918,43 @@
           }
         }
       },
+      "DetailOverrides": {
+        "type": "object",
+        "description": "The station details an output sends instead of the station's: a field\nleft out follows the station's; an empty text sends none.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "genre": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "DetailsReport": {
         "type": "object",
         "description": "What a MusicBrainz details lookup did.",
@@ -19184,6 +18022,67 @@
             "type": "integer",
             "format": "int64",
             "description": "Files removed from the buffer zone.",
+            "minimum": 0
+          }
+        }
+      },
+      "DrawDepth": {
+        "type": "object",
+        "description": "A draw depth: where it starts and how far it widens, in percent of the\ntracks the restrictions allow.",
+        "properties": {
+          "max_pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 to 100, not below the start.",
+            "default": 50,
+            "minimum": 0
+          },
+          "start_pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 to 100.",
+            "default": 20,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DrawLog": {
+        "type": "object",
+        "description": "The draw a pick was made in.",
+        "required": [
+          "pct",
+          "start_pct",
+          "max_pct",
+          "tracks",
+          "blocked"
+        ],
+        "properties": {
+          "blocked": {
+            "$ref": "#/components/schemas/Blocked",
+            "description": "Of them, held back by each rule at the pick's step (the first rule\nthat applies counts)."
+          },
+          "max_pct": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The depth the pick was drawn at, in percent.",
+            "minimum": 0
+          },
+          "start_pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The depth the slot starts at and its maximum.",
+            "minimum": 0
+          },
+          "tracks": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tracks in the draw at that depth.",
             "minimum": 0
           }
         }
@@ -19672,6 +18571,109 @@
         },
         "additionalProperties": false
       },
+      "ExactLog": {
+        "type": "object",
+        "description": "An exact slot's pick: its exact time, and how rotation met it.",
+        "required": [
+          "at_unix_ms",
+          "mode",
+          "before_s",
+          "after_s",
+          "met",
+          "offset_ms",
+          "in_window",
+          "faded",
+          "cut_at_unix_ms"
+        ],
+        "properties": {
+          "after_s": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The exact time (Unix ms)."
+          },
+          "before_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The soft window, in seconds; 0 in hard mode.",
+            "minimum": 0
+          },
+          "cut_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the engine fades out what still plays and starts the slot: the\nexact time (hard) or the end of the window (soft)."
+          },
+          "faded": {
+            "type": "boolean",
+            "description": "What plays before it is faded out at `cut_at_unix_ms`."
+          },
+          "in_window": {
+            "type": "boolean",
+            "description": "The planned start is inside the window (the exact time in hard mode)."
+          },
+          "met": {
+            "$ref": "#/components/schemas/Met"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ExactMode"
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Planned start minus the exact time; negative when early."
+          }
+        }
+      },
+      "ExactMode": {
+        "type": "string",
+        "enum": [
+          "hard",
+          "soft"
+        ]
+      },
+      "ExactTime": {
+        "type": "object",
+        "description": "A clock slot's exact time.",
+        "required": [
+          "at_s"
+        ],
+        "properties": {
+          "after_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Soft: how late it may start; a track ending later is faded out then.",
+            "minimum": 0
+          },
+          "at_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Seconds into the station hour, 0 to 3599.",
+            "minimum": 0
+          },
+          "before_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Soft: how early the slot may start, in seconds (0 to 300).",
+            "minimum": 0
+          },
+          "cut_live": {
+            "type": "boolean",
+            "description": "The exact time cuts a live DJ (ad breaks). Stored for M11: there is\nno live DJ yet."
+          },
+          "medley_fill": {
+            "type": "boolean",
+            "description": "Soft: a gap before the window is filled with a station medley,\nshortened from its end when too long."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ExactMode"
+          }
+        },
+        "additionalProperties": false
+      },
       "Explanation": {
         "type": "object",
         "description": "Why a track was picked: the rotation log.",
@@ -19763,8 +18765,41 @@
               }
             ]
           },
+          "draw": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DrawLog",
+                "description": "The draw depth the pick was drawn at. Missing for a random slot, at\nstep 12, and in picks logged before the draw depth."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "enforce_rules": {
             "type": "boolean"
+          },
+          "exact": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExactLog",
+                "description": "The slot has an exact time: how it was met."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fill": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FillLog",
+                "description": "The pick fills the gap before an exact time: with a medley or a\nfiller track."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "held_by_ratio": {
             "type": "array",
@@ -19795,6 +18830,17 @@
           "linked": {
             "type": "boolean",
             "description": "The slot is linked to the next one: the next pick is that slot's\ntrack, picked with this one."
+          },
+          "lookahead": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LookaheadLog",
+                "description": "Picked looking ahead before an exact time: the endings simulated\nand how the best one meets it."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "method": {
             "$ref": "#/components/schemas/Method",
@@ -19977,6 +19023,69 @@
         },
         "additionalProperties": false
       },
+      "FillKind": {
+        "type": "string",
+        "enum": [
+          "medley",
+          "filler"
+        ]
+      },
+      "FillLog": {
+        "type": "object",
+        "description": "A pick filling the gap before an exact time, in the rotation log.",
+        "required": [
+          "kind",
+          "slot",
+          "exact_at_unix_ms",
+          "length_ms"
+        ],
+        "properties": {
+          "exact_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The exact time (Unix ms)."
+          },
+          "hooks_left_out": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Hooks left out of the medley (0: whole).",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FillKind"
+          },
+          "length_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How long it plays.",
+            "minimum": 0
+          },
+          "medley_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The medley's ID.",
+            "minimum": 0
+          },
+          "parts_left_out": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "The parts left out, by their position in the medley from 0."
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The exact slot it fills the gap before (index in its clock).",
+            "minimum": 0
+          }
+        }
+      },
       "FinalMode": {
         "type": "string",
         "enum": [
@@ -20136,84 +19245,6 @@
             "format": "int32",
             "description": "The user and group the API runs as: the backup folder must be\ntheirs.",
             "minimum": 0
-          }
-        }
-      },
-      "Followed": {
-        "type": "object",
-        "description": "A request, as its follow link gives it to the listener.",
-        "required": [
-          "follow",
-          "status",
-          "from",
-          "to",
-          "message",
-          "submitted_at_unix_ms"
-        ],
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "decided_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "follow": {
-            "type": "string",
-            "description": "The key of the follow link."
-          },
-          "from": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "planned_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "played_at_unix_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "reason": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DedicationReason",
-                "description": "`null` for no reason, or an inappropriate message."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/DedicationStatus"
-          },
-          "submitted_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "to": {
-            "type": "string"
           }
         }
       },
@@ -21314,77 +20345,6 @@
           }
         }
       },
-      "Item": {
-        "type": "object",
-        "description": "An item of a show's programme.",
-        "required": [
-          "kind",
-          "track_id",
-          "length_ms",
-          "planned_at_unix_ms"
-        ],
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "kind": {
-            "$ref": "#/components/schemas/ItemKind"
-          },
-          "length_ms": {
-            "type": "integer",
-            "format": "int32",
-            "description": "What is played of it.",
-            "minimum": 0
-          },
-          "planned_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "queued": {
-            "type": "boolean",
-            "description": "Sent to the queue."
-          },
-          "rank": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "The rank of a track, and of the jingle before it.",
-            "minimum": 0
-          },
-          "skipped": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Why it is passed over (a restriction, a track that cannot play)."
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "track_id": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          }
-        }
-      },
-      "ItemKind": {
-        "type": "string",
-        "description": "What an item of the show is.",
-        "enum": [
-          "jingle",
-          "track",
-          "new_release"
-        ]
-      },
       "KeyRecord": {
         "type": "object",
         "required": [
@@ -22086,7 +21046,8 @@
       "ListenersNow": {
         "type": "object",
         "required": [
-          "outputs"
+          "outputs",
+          "servers"
         ],
         "properties": {
           "outputs": {
@@ -22095,6 +21056,13 @@
               "$ref": "#/components/schemas/OutputListeners"
             },
             "description": "Each enabled output read at the last minute."
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerListeners"
+            },
+            "description": "Each server's listeners (master and relays), its outputs' parts\nadded up; missing when it could not be read."
           },
           "total": {
             "type": [
@@ -22274,6 +21242,59 @@
           }
         },
         "additionalProperties": false
+      },
+      "LookaheadLog": {
+        "type": "object",
+        "description": "How a pick looked ahead, in the rotation log.",
+        "required": [
+          "exact_at_unix_ms",
+          "draws",
+          "faded",
+          "in_window",
+          "filling_ms",
+          "relaxed_steps"
+        ],
+        "properties": {
+          "draws": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Endings simulated.",
+            "minimum": 0
+          },
+          "exact_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The exact time looked ahead to (Unix ms)."
+          },
+          "faded": {
+            "type": "boolean",
+            "description": "The best ending fades out the track before the exact slot: it ends\nafter the cut (the end of the window, the exact time in hard mode).\nFading nothing comes first: every ending simulated did."
+          },
+          "filling_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Time filled before the exact slot (medley or filler track).",
+            "minimum": 0
+          },
+          "in_window": {
+            "type": "boolean",
+            "description": "The best ending: the tracks before the exact slot end inside its\nwindow (at the exact time in hard mode)."
+          },
+          "offset_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where they end, from the exact time; negative when early. Missing\nwhen no ending reached the exact slot."
+          },
+          "relaxed_steps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Relaxation steps of its picks, added up.",
+            "minimum": 0
+          }
+        }
       },
       "LoudnessSettings": {
         "type": "object",
@@ -22650,6 +21671,15 @@
         },
         "additionalProperties": false
       },
+      "Met": {
+        "type": "string",
+        "description": "How an exact time was met, in the rotation log.",
+        "enum": [
+          "on_time",
+          "early",
+          "late"
+        ]
+      },
       "Method": {
         "type": "string",
         "description": "How a clock slot picks among the tracks its category allows.",
@@ -22693,6 +21723,13 @@
           "cover_art",
           "listener_statistics",
           "webhooks",
+          "restrictions",
+          "eq",
+          "processing",
+          "trash",
+          "review",
+          "artists",
+          "labels",
           "dedications",
           "match",
           "top30",
@@ -22703,6 +21740,10 @@
         "type": "object",
         "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: for the installation, the\nmodules that existed before they could be turned off are on, and the\nshows off but Likes; for a station, everything is on ([`Modules::ALL_ON`]), so a\nstation only turns off what the installation has on.",
         "properties": {
+          "artists": {
+            "type": "boolean",
+            "default": true
+          },
           "cover_art": {
             "type": "boolean",
             "default": true
@@ -22710,6 +21751,14 @@
           "dedications": {
             "type": "boolean",
             "default": false
+          },
+          "eq": {
+            "type": "boolean",
+            "default": true
+          },
+          "labels": {
+            "type": "boolean",
+            "default": true
           },
           "likes": {
             "type": "boolean",
@@ -22727,9 +21776,25 @@
             "type": "boolean",
             "default": true
           },
+          "processing": {
+            "type": "boolean",
+            "default": true
+          },
+          "restrictions": {
+            "type": "boolean",
+            "default": true
+          },
+          "review": {
+            "type": "boolean",
+            "default": true
+          },
           "top30": {
             "type": "boolean",
             "default": false
+          },
+          "trash": {
+            "type": "boolean",
+            "default": true
           },
           "webhooks": {
             "type": "boolean",
@@ -22766,17 +21831,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "Movement": {
-        "type": "string",
-        "description": "How a track moved against the chart of the week before.",
-        "enum": [
-          "up",
-          "down",
-          "same",
-          "new",
-          "reentry"
-        ]
       },
       "NameFrom": {
         "type": "string",
@@ -22850,52 +21904,6 @@
           "password": {
             "type": "string",
             "description": "Your password, asked again."
-          }
-        },
-        "additionalProperties": false
-      },
-      "NewRelease": {
-        "type": "object",
-        "description": "The new release at the end of the show.",
-        "required": [
-          "track_id",
-          "proposed"
-        ],
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "proposed": {
-            "type": "boolean",
-            "description": "Proposed by Heron, not chosen by hand."
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "track_id": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          }
-        }
-      },
-      "NewReleaseChoice": {
-        "type": "object",
-        "description": "The new release chosen by hand; `null` goes back to the proposed one.",
-        "properties": {
-          "track_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -23085,26 +22093,6 @@
           }
         }
       },
-      "OnAirDedication": {
-        "type": "object",
-        "description": "The dedication of a track on air.",
-        "required": [
-          "from",
-          "to",
-          "message"
-        ],
-        "properties": {
-          "from": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "to": {
-            "type": "string"
-          }
-        }
-      },
       "OrganizePlan": {
         "type": "object",
         "description": "The dry run of an organization.",
@@ -23155,7 +22143,11 @@
         "properties": {
           "config": {
             "type": "object",
-            "description": "Sink settings. Credentials left out keep their stored value."
+            "description": "Its own settings: Icecast's `mount`. Credentials left out keep\ntheir stored value."
+          },
+          "details": {
+            "$ref": "#/components/schemas/DetailOverrides",
+            "description": "The station details it overrides; left out, it follows the\nstation's."
           },
           "enabled": {
             "type": "boolean"
@@ -23174,16 +22166,14 @@
           "name": {
             "type": "string"
           },
-          "statistics": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/OutputStatisticsInput",
-                "description": "The stream server's admin credentials, for listener statistics.\nLeft out, the stored ones are kept."
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "server_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The stream server, required for Icecast: one of the station's, not\na relay.",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -23206,7 +22196,8 @@
           "output_id",
           "name",
           "sampled_at_unix_ms",
-          "sessions"
+          "sessions",
+          "servers"
         ],
         "properties": {
           "error": {
@@ -23214,7 +22205,7 @@
               "string",
               "null"
             ],
-            "description": "Why the server, or its listener list, could not be read."
+            "description": "Why a server, or its listener list, could not be read."
           },
           "listeners": {
             "type": [
@@ -23222,7 +22213,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Missing when its server could not be read.",
+            "description": "Its servers' parts added up; missing when none could be read.",
             "minimum": 0
           },
           "name": {
@@ -23237,50 +22228,16 @@
             "type": "integer",
             "format": "int64"
           },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerPart"
+            },
+            "description": "Each server's part: the master's first, then the relays'."
+          },
           "sessions": {
             "type": "boolean",
-            "description": "Whether the listener list was read: sessions are up to date."
-          }
-        }
-      },
-      "OutputStatisticsInput": {
-        "type": "object",
-        "description": "Replaces the statistics settings of an output.",
-        "properties": {
-          "admin_password": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Its password: left out, the stored one is kept; `null` removes it."
-          },
-          "admin_username": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The server's admin user; `admin` when missing."
-          }
-        },
-        "additionalProperties": false
-      },
-      "OutputStatisticsView": {
-        "type": "object",
-        "description": "What listener statistics read the stream server with.",
-        "required": [
-          "admin_password_set"
-        ],
-        "properties": {
-          "admin_password_set": {
-            "type": "boolean",
-            "description": "Whether its password is set (never sent back): without it, only\nconcurrent listeners are counted."
-          },
-          "admin_username": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The server's admin user (`admin` when missing)."
+            "description": "Whether every listener list was read: sessions are up to date."
           }
         }
       },
@@ -23345,15 +22302,19 @@
           "kind",
           "encoder_profile_id",
           "config",
+          "details",
           "secrets_set",
           "metadata_enabled",
-          "enabled",
-          "statistics"
+          "enabled"
         ],
         "properties": {
           "config": {
             "type": "object",
-            "description": "Sink settings (Icecast: host, port, mount…), without credentials."
+            "description": "Its own settings (Icecast: the mount), without credentials."
+          },
+          "details": {
+            "$ref": "#/components/schemas/DetailOverrides",
+            "description": "The station details it sends instead of the station's."
           },
           "enabled": {
             "type": "boolean"
@@ -23391,8 +22352,14 @@
             },
             "description": "Credentials set in the settings (e.g. `password`), never sent back."
           },
-          "statistics": {
-            "$ref": "#/components/schemas/OutputStatisticsView"
+          "server_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The stream server it sends to (Icecast).",
+            "minimum": 0
           },
           "status": {
             "oneOf": [
@@ -23592,70 +22559,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "PastChart": {
-        "type": "object",
-        "description": "A frozen chart in the list of past weeks.",
-        "required": [
-          "week",
-          "from_unix_ms",
-          "closes_at_unix_ms",
-          "size"
-        ],
-        "properties": {
-          "closes_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "from_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "number_one": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/PastNumberOne"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "size": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Its tracks.",
-            "minimum": 0
-          },
-          "week": {
-            "type": "string"
-          }
-        }
-      },
-      "PastNumberOne": {
-        "type": "object",
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "track_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          }
-        }
       },
       "Period": {
         "type": "object",
@@ -24246,13 +23149,6 @@
         "type": "object",
         "description": "What to change; what is left out stays as it is.",
         "properties": {
-          "full_width": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Use the whole width of the screen instead of a centred column."
-          },
           "language": {
             "type": [
               "string",
@@ -24260,10 +23156,27 @@
             ],
             "description": "A language tag (`en`, `fr`…) or `system`. The API does not know which\nlanguages the web UI has: it falls back on the browser's for one it\nlacks."
           },
+          "on_air_whole_queue": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The On air page shows the whole queue, editable there."
+          },
           "theme": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/Theme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "width": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Width"
               },
               {
                 "type": "null"
@@ -24383,6 +23296,24 @@
             ],
             "format": "double",
             "description": "The tempo, replacing the measured one; `null` goes back to it."
+          },
+          "daypart_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Their own same daypart on the following days, 0 to 7; `null` goes\nback to their categories'.",
+            "minimum": 0
+          },
+          "dayparts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Their own daypart separation, 0 to 10 (0: off for them), in place\nof their categories', on every station; `null` goes back to their\ncategories'. Missing: kept.",
+            "minimum": 0
           },
           "mood": {
             "type": [
@@ -24565,17 +23496,6 @@
             ],
             "description": "Its cover, else the station's logo (docs/api.md#public-endpoints)."
           },
-          "dedication": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/OnAirDedication",
-                "description": "The accepted dedication it plays for\n(`docs/listener-interaction.md#dedications`)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "duration_ms": {
             "type": "integer",
             "format": "int64",
@@ -24653,6 +23573,15 @@
             "description": "A jingle of a clock slot linked to the next one: the entry of the\ntrack it announces, right after it. Removing that track removes the\njingle, and moving either moves both.",
             "minimum": 0
           },
+          "next_start_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Where the next track starts, in ms from this entry's cue-in: the\nengine's transition into the entry after it. Missing from engines\nbefore it, and for the jingle over the cued track's intro: at its\nend.",
+            "minimum": 0
+          },
           "track": {
             "$ref": "#/components/schemas/QueuedTrack"
           }
@@ -24687,7 +23616,8 @@
           "cue_out_ms",
           "source",
           "no_metadata",
-          "over_intro"
+          "over_intro",
+          "continues"
         ],
         "properties": {
           "album": {
@@ -24701,6 +23631,10 @@
               "string",
               "null"
             ]
+          },
+          "continues": {
+            "type": "boolean",
+            "description": "The rest of the entry before it (the second part of a shortened\nmedley): not a new play."
           },
           "cue_in_ms": {
             "type": "integer",
@@ -24741,6 +23675,14 @@
           },
           "source": {
             "$ref": "#/components/schemas/PlaySource"
+          },
+          "start_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "An exact time (Unix ms): if it still waits then, the engine fades\nout what plays and starts it, dropping the entries before it."
           },
           "title": {
             "type": [
@@ -25077,23 +24019,6 @@
           }
         }
       },
-      "RefuseDedication": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DedicationReason",
-                "description": "`null`: no reason. `closed` and `removed` are Heron's own."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
       "RefuseRequest": {
         "type": "object",
         "required": [
@@ -25135,6 +24060,27 @@
           }
         }
       },
+      "RelayMount": {
+        "type": "object",
+        "description": "A mount a relay repeats.",
+        "required": [
+          "mount"
+        ],
+        "properties": {
+          "mount": {
+            "type": "string",
+            "description": "The mount on the master."
+          },
+          "relay_mount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its name on the relay, when it differs."
+          }
+        },
+        "additionalProperties": false
+      },
       "ReleaseChoice": {
         "type": "object",
         "required": [
@@ -25151,44 +24097,6 @@
         },
         "additionalProperties": false
       },
-      "Removed": {
-        "type": "object",
-        "description": "A track taken out of a chart.",
-        "required": [
-          "track_id",
-          "removed_at_unix_ms"
-        ],
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "removed_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "removed_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Who took it out; missing once the user is deleted."
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "track_id": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          }
-        }
-      },
       "RenderRequest": {
         "type": "object",
         "required": [
@@ -25203,32 +24111,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "RequestableTrack": {
-        "type": "object",
-        "description": "A track a listener can request.",
-        "required": [
-          "track_id"
-        ],
-        "properties": {
-          "artist": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "track_id": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          }
-        }
       },
       "RestoreReport": {
         "type": "object",
@@ -25589,11 +24471,31 @@
             "default": 4,
             "minimum": 0
           },
+          "draw": {
+            "$ref": "#/components/schemas/DrawDepth",
+            "description": "The draw depth of the categories and slots that set none of their\nown, and of hours without a clock.",
+            "default": {
+              "max_pct": 50,
+              "start_pct": 20
+            }
+          },
           "fallback_category_id": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/u64",
                 "description": "Where relaxation ends (steps 9 and 10). The station's library when\nunset."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "filler_category_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/u64",
+                "description": "Where a gap before an exact time is filled from when no medley\nfits: short jingles, liners. None: the slot starts early."
               },
               {
                 "type": "null"
@@ -26109,6 +25011,24 @@
             "description": "Daypart separation: a category's own (none or 0: off), never a\nclock slot's.",
             "minimum": 0
           },
+          "draw_max_pct": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The draw depth's maximum, in percent, 1 to 100.",
+            "minimum": 0
+          },
+          "draw_start_pct": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The draw depth's start, in percent, 1 to 100.",
+            "minimum": 0
+          },
           "title_min": {
             "type": [
               "integer",
@@ -26139,6 +25059,118 @@
           "daypart",
           "daypart_days"
         ]
+      },
+      "ServerKind": {
+        "type": "string",
+        "enum": [
+          "icecast"
+        ]
+      },
+      "ServerListeners": {
+        "type": "object",
+        "description": "A stream server's listeners at the last minute.",
+        "required": [
+          "server_id",
+          "name"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listeners": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The master it relays, for a relay.",
+            "minimum": 0
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ServerPart": {
+        "type": "object",
+        "description": "A server's part of an output's listeners at the last minute: its\nmaster, or a relay.",
+        "required": [
+          "server_id",
+          "name",
+          "sessions"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listeners": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Missing when the server could not be read.",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The master it relays, for a relay.",
+            "minimum": 0
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "boolean",
+            "description": "Whether its listener list was read."
+          }
+        }
+      },
+      "ServerUse": {
+        "type": "object",
+        "description": "An output or a relay using a server.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        }
       },
       "ServiceConfig": {
         "type": "object",
@@ -26253,73 +25285,6 @@
               "null"
             ],
             "description": "Missing when the service was never seen or does not say."
-          }
-        }
-      },
-      "ShowPlan": {
-        "type": "object",
-        "description": "The show on now, or the next one.",
-        "required": [
-          "opens_at_unix_ms",
-          "closes_at_unix_ms",
-          "built",
-          "items",
-          "left_out",
-          "music_ms",
-          "jingles_ms",
-          "new_release_ms",
-          "total_ms"
-        ],
-        "properties": {
-          "built": {
-            "type": "boolean",
-            "description": "Its programme is built: the one on air. Else what would be built now."
-          },
-          "closes_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Item"
-            }
-          },
-          "jingles_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "left_out": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            },
-            "description": "The ranks left out to fit the slot."
-          },
-          "music_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "new_release_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "opens_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "total_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "week": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The chart it plays; `null` without one."
           }
         }
       },
@@ -26657,7 +25622,10 @@
           "same_type_in_a_row",
           "module_off",
           "linked_track_after_hour",
-          "linked_track_not_found"
+          "linked_track_not_found",
+          "exact_time_due",
+          "no_longer_fits",
+          "exact_time_passed"
         ]
       },
       "SkippedFile": {
@@ -27638,6 +26606,252 @@
         },
         "additionalProperties": false
       },
+      "StoppedCleared": {
+        "type": "object",
+        "description": "How many stopped workers `DELETE /about/stopped` took off the list.",
+        "required": [
+          "removed"
+        ],
+        "properties": {
+          "removed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "StreamDetails": {
+        "type": "object",
+        "description": "What the station tells the stream servers about itself, shown in stream\ndirectories. Each output can override each of them.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "genre": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "public": {
+            "type": "boolean",
+            "description": "List the streams in public directories.",
+            "default": false
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The station's website.",
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "StreamServerInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "host"
+        ],
+        "properties": {
+          "admin_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Left out, the stored one is kept; `null` removes it."
+          },
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ServerKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "8000 when left out.",
+            "minimum": 0
+          },
+          "public_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relay_mounts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelayMount"
+            }
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Makes it a relay of this server of the station.",
+            "minimum": 0
+          },
+          "relay_subtract_one": {
+            "type": "boolean"
+          },
+          "source_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Left out, the stored one is kept; `null` removes it. Required for a\nserver outputs send to."
+          },
+          "source_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls": {
+            "type": "boolean",
+            "description": "Relays only for now: the engine does not send over TLS yet."
+          }
+        },
+        "additionalProperties": false
+      },
+      "StreamServerView": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "host",
+          "port",
+          "tls",
+          "source_password_set",
+          "admin_password_set",
+          "relay_subtract_one",
+          "outputs",
+          "relays"
+        ],
+        "properties": {
+          "admin_password_set": {
+            "type": "boolean",
+            "description": "Never sent back: without it, only concurrent listeners are counted."
+          },
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For the listener statistics; `admin` when missing."
+          },
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ServerKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerUse"
+            },
+            "description": "Outputs streaming to it."
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "public_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "As listeners reach the server; `http://host:port` when missing."
+          },
+          "relay_mounts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelayMount"
+            },
+            "description": "The mounts a relay repeats; missing: all of the master's."
+          },
+          "relay_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The master server, for a relay.",
+            "minimum": 0
+          },
+          "relay_subtract_one": {
+            "type": "boolean",
+            "description": "The relay's connection to the master counts as 1 listener per mount."
+          },
+          "relays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerUse"
+            },
+            "description": "Relays repeating it."
+          },
+          "source_password_set": {
+            "type": "boolean",
+            "description": "Never sent back."
+          },
+          "source_username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`source` when missing."
+          },
+          "tls": {
+            "type": "boolean"
+          }
+        }
+      },
       "SuggestionReview": {
         "type": "object",
         "required": [
@@ -28321,71 +27535,6 @@
           "light",
           "dark"
         ]
-      },
-      "Top30Settings": {
-        "type": "object",
-        "description": "A station's Top 30 settings (`station_settings`, `top30`). Its hours,\nwebsite and notifications are its show settings.",
-        "properties": {
-          "category_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            },
-            "description": "The categories whose tracks can enter the chart; none: the\nstation's music.",
-            "default": []
-          },
-          "close_day": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The day the week closes, 1 (Monday) to 7.",
-            "default": 7,
-            "minimum": 0
-          },
-          "close_hour": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The hour it closes, 0 to 24.",
-            "default": 17,
-            "minimum": 0
-          },
-          "jingle_category_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The jingles between the tracks of the show.",
-            "default": null,
-            "minimum": 0
-          },
-          "min_votes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Votes a track needs over the week to be ranked, 1 to 1000.",
-            "default": 10,
-            "minimum": 0
-          },
-          "new_release_category_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Where the new release at the end of the show comes from.",
-            "default": null,
-            "minimum": 0
-          },
-          "size": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Tracks in the chart, 1 to 50.",
-            "default": 30,
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
       },
       "TotpSetup": {
         "type": "object",
@@ -29461,6 +28610,13 @@
             "description": "Only the tracks on this station: in one of its categories and in\nnone it keeps out of its library (`kept_out_category_ids` of its\n`rotation` settings), what rotation can play there.",
             "minimum": 0
           },
+          "own_dayparts": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true`: the tracks with their own daypart separation or same\ndaypart on the following days; `false`: those that follow their\ncategories'."
+          },
           "q": {
             "type": [
               "string",
@@ -29685,6 +28841,24 @@
               "null"
             ],
             "format": "int64",
+            "minimum": 0
+          },
+          "daypart_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its own same daypart on the following days, 0 to 7; none: its\ncategory's.",
+            "minimum": 0
+          },
+          "dayparts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its own daypart separation, 0 to 10, in place of its categories'\n(0: off for it); none: its category's.",
             "minimum": 0
           },
           "disabled_at_unix_ms": {
@@ -30153,7 +29327,7 @@
           "planned_start_unix_ms": {
             "type": "integer",
             "format": "int64",
-            "description": "When it should start, without crossfades, as the Queue page shows it.",
+            "description": "When it should start, crossfades included, as the Queue page shows it.",
             "minimum": 0
           },
           "position": {
@@ -30179,7 +29353,8 @@
           "enabled",
           "theme",
           "language",
-          "full_width",
+          "width",
+          "on_air_whole_queue",
           "created_at_unix_ms",
           "station_roles",
           "two_factor"
@@ -30191,10 +29366,6 @@
           },
           "enabled": {
             "type": "boolean"
-          },
-          "full_width": {
-            "type": "boolean",
-            "description": "The web UI uses the whole width of the screen instead of a centred\ncolumn."
           },
           "id": {
             "type": "integer",
@@ -30211,6 +29382,10 @@
               "null"
             ],
             "format": "int64"
+          },
+          "on_air_whole_queue": {
+            "type": "boolean",
+            "description": "The On air page shows the whole queue, editable there, instead of\nits first tracks."
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -30231,6 +29406,9 @@
           },
           "username": {
             "type": "string"
+          },
+          "width": {
+            "$ref": "#/components/schemas/Width"
           }
         }
       },
@@ -30534,6 +29712,72 @@
                 "minimum": 0
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Drawn from beyond its draw depth: `rank` tracks of its pool, allowed\nby the restrictions, played longer ago than it (or never), and its\ndraw had `tracks`.",
+            "required": [
+              "pick",
+              "rank",
+              "tracks",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "draw"
+                ]
+              },
+              "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "rank": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "tracks": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A slot with an exact time missed its window (it started early, or\nis not logged as an exact pick): `at_unix_ms` is its exact time,\nmissing when the pick does not say it.",
+            "required": [
+              "pick",
+              "start_unix_ms",
+              "kind"
+            ],
+            "properties": {
+              "at_unix_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "exact_time"
+                ]
+              },
+              "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "start_unix_ms": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
           }
         ]
       },
@@ -30677,11 +29921,7 @@
           "ping",
           "show.upcoming",
           "show.started",
-          "show.ended",
-          "top.published",
-          "top.rank",
-          "dedication.played",
-          "dedication.accepted"
+          "show.ended"
         ]
       },
       "WebhookInput": {
@@ -30899,6 +30139,15 @@
         },
         "additionalProperties": false
       },
+      "Width": {
+        "type": "string",
+        "description": "The web UI's width.",
+        "enum": [
+          "normal",
+          "wide",
+          "full"
+        ]
+      },
       "Windows": {
         "type": "object",
         "description": "Separation windows, in minutes; 0 turns a rule off.",
@@ -31076,14 +30325,6 @@
     {
       "name": "likes",
       "description": "Listeners' likes and dislikes of the tracks played, per station"
-    },
-    {
-      "name": "dedications",
-      "description": "Listeners' requests for a track with a message, accepted into the queue or refused"
-    },
-    {
-      "name": "top30",
-      "description": "The weekly chart of the most liked tracks, and its show on air"
     },
     {
       "name": "gateway",

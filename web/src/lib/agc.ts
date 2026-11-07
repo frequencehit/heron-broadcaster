@@ -9,6 +9,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type AgcPresetSettings, type AgcSettings, api, unwrap } from "../api";
 import { useLive } from "./live";
+import { useModule } from "./modules";
 import { here } from "./station";
 
 export const AGC_KEY = ["settings", "agc"] as const;
@@ -186,12 +187,15 @@ export function reductionScale(db: number | null | undefined): number {
 export function useAgcSettings(): { data: AgcSettings | undefined; error: unknown } {
   const connected = useLive((live) => live.connected);
   const live = useLive((live) => live.agc);
+  // Not asked for while the module is off for the station (docs/modules.md).
+  const on = useModule("processing");
   const query = useQuery({
     queryKey: [...AGC_KEY, connected],
+    enabled: on,
     // Read again on every reconnection: the live messages missed meanwhile
     // are not sent again.
     staleTime: 0,
     queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/agc", { params: { path: here() } })),
   });
-  return { data: live ?? query.data, error: query.error };
+  return { data: on ? (live ?? query.data) : undefined, error: query.error };
 }

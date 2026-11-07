@@ -32,6 +32,7 @@ import {
 } from "../components/ui";
 import { type PlainKey, rich, t } from "../i18n";
 import { ago, bytes, duration } from "../lib/format";
+import { useModule } from "../lib/modules";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { type RangeSelection, useRangeSelection } from "../lib/rangeSelection";
@@ -305,6 +306,7 @@ function Uploads({ state }: { state: ReturnType<typeof useUploads> }) {
 
 export function Buffer() {
   const canEdit = useCan("operator");
+  const labelsOn = useModule("labels");
   const client = useQueryClient();
   const toast = useToast();
   const refresh = useCallback(() => void client.invalidateQueries({ queryKey: ["buffer"] }), [client]);
@@ -482,14 +484,16 @@ export function Buffer() {
               >
                 {t("library.categoryAction")}
               </button>
-              <button
-                type="button"
-                className="btn small"
-                disabled={preparable.length === 0}
-                onClick={() => setDialog("labels")}
-              >
-                {t("library.labelsAction")}
-              </button>
+              {labelsOn && (
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={preparable.length === 0}
+                  onClick={() => setDialog("labels")}
+                >
+                  {t("library.labelsAction")}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn small"
@@ -637,6 +641,7 @@ function Group({
 /** The categories and labels the files of a group were given, with how
  * many of them have each when not all do. */
 function GroupPreparation({ files }: { files: StagedFile[] }) {
+  const labelsOn = useModule("labels");
   const counts = new Map<string, { chip: { name: string; color?: string | null }; count: number }>();
   for (const file of files) {
     for (const category of file.categories) {
@@ -645,7 +650,7 @@ function GroupPreparation({ files }: { files: StagedFile[] }) {
       entry.count += 1;
       counts.set(key, entry);
     }
-    for (const label of file.labels) {
+    for (const label of labelsOn ? file.labels : []) {
       const key = `l${label.id}`;
       const entry = counts.get(key) ?? { chip: label, count: 0 };
       entry.count += 1;
@@ -672,13 +677,14 @@ function GroupPreparation({ files }: { files: StagedFile[] }) {
 
 /** What a file was prepared with. */
 function Preparation({ file }: { file: StagedFile }) {
+  const labels = useModule("labels") ? file.labels : [];
   const programming = [
     file.mood && t("buffer.moodValue", { value: file.mood }),
     file.sound_code && t("buffer.soundCodeValue", { value: file.sound_code }),
   ]
     .filter(Boolean)
     .join(" · ");
-  if (file.categories.length === 0 && file.labels.length === 0 && !programming) {
+  if (file.categories.length === 0 && labels.length === 0 && !programming) {
     return null;
   }
   return (
@@ -692,7 +698,7 @@ function Preparation({ file }: { file: StagedFile }) {
           }}
         />
       ))}
-      {file.labels.map((label) => (
+      {labels.map((label) => (
         <LabelChip key={`l${label.id}`} label={label} />
       ))}
       {programming && <span className="muted">{programming}</span>}

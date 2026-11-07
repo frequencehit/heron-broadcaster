@@ -17,6 +17,7 @@ import { type PlainKey, number, rich, t } from "../i18n";
 import { ago, duration, trackName } from "../lib/format";
 import { displayName, layout, linerSlot, medleyName, renderDay } from "../lib/medley";
 import { type PlayerSource, useMedleyPlayer } from "../lib/medleyPlayer";
+import { useModule } from "../lib/modules";
 import { Link, navigate } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 
@@ -158,6 +159,8 @@ function RecipeCard({
 }) {
   const categories = useCategories();
   const labels = useLabels();
+  // Hidden while labels are off; a label already set still applies.
+  const labelsOn = useModule("labels");
   const station = useStation();
   const several = useSeveralStations();
   const [recipe, setRecipe] = useState<Recipe>(medley?.recipe ?? newRecipe(settings));
@@ -242,7 +245,7 @@ function RecipeCard({
       <form className="stack" onSubmit={submit}>
         <p className="small muted" style={{ margin: 0 }}>
           {rich("medleys.sharedHelp", {
-            settings: <Link to="/settings">{t("medleys.settingsLink")}</Link>,
+            settings: <Link to="/settings?tab=programming">{t("medleys.settingsLink")}</Link>,
           })}
         </p>
 
@@ -275,21 +278,23 @@ function RecipeCard({
               ))}
             </div>
             <div className="form-grid">
-              <Field label={t("medleys.label")}>
-                <select
-                  className="input"
-                  value={recipe.label_id ?? ""}
-                  disabled={disabled}
-                  onChange={(event) => set({ label_id: event.target.value ? Number(event.target.value) : null })}
-                >
-                  <option value="">{t("medleys.anyLabel")}</option>
-                  {labels.data?.map((label) => (
-                    <option key={label.id} value={label.id}>
-                      {label.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              {labelsOn && (
+                <Field label={t("medleys.label")}>
+                  <select
+                    className="input"
+                    value={recipe.label_id ?? ""}
+                    disabled={disabled}
+                    onChange={(event) => set({ label_id: event.target.value ? Number(event.target.value) : null })}
+                  >
+                    <option value="">{t("medleys.anyLabel")}</option>
+                    {labels.data?.map((label) => (
+                      <option key={label.id} value={label.id}>
+                        {label.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Field label={t("medleys.order")}>
                 <select
                   className="input"

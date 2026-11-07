@@ -586,10 +586,21 @@ pub struct ProgrammingChange {
     /// `play_ratio` is their ratio on this station (0 disables them there),
     /// not their default. Operators and admins of the station.
     pub station_id: Option<u64>,
+    /// Their own daypart separation, 0 to 10 (0: off for them), in place
+    /// of their categories', on every station; `null` goes back to their
+    /// categories'. Missing: kept.
+    #[serde(default, deserialize_with = "some_or_null")]
+    #[schema(value_type = Option<u8>)]
+    pub dayparts: Option<Option<u8>>,
+    /// Their own same daypart on the following days, 0 to 7; `null` goes
+    /// back to their categories'.
+    #[serde(default, deserialize_with = "some_or_null")]
+    #[schema(value_type = Option<u8>)]
+    pub daypart_days: Option<Option<u8>>,
 }
 
-/// Sets the mood, sound code, tempo or play ratio of every selected track.
-/// Operators and admins.
+/// Sets the mood, sound code, tempo, play ratio or own daypart separation
+/// of every selected track. Operators and admins.
 #[utoipa::path(post, path = "/tracks/programming", tag = "library",
     request_body = ProgrammingChange,
     responses((status = 200, body = SelectionResult), (status = "4XX", body = ErrorBody)))]
@@ -598,7 +609,11 @@ async fn apply_programming(
     State(state): State<AppState>,
     Json(change): Json<ProgrammingChange>,
 ) -> ApiResult<Json<SelectionResult>> {
-    let shared = change.mood.is_some() || change.sound_code.is_some() || change.bpm.is_some();
+    let shared = change.mood.is_some()
+        || change.sound_code.is_some()
+        || change.bpm.is_some()
+        || change.dayparts.is_some()
+        || change.daypart_days.is_some();
     if shared || change.station_id.is_none() {
         user.require(Role::Operator)?;
     }
@@ -629,8 +644,27 @@ async fn apply_programming(
     if let Some(bpm) = bpm {
         columns.push(("bpm", None, bpm));
     }
+    let mut dayparts: Vec<(&str, Option<u8>)> = Vec::new();
+    if let Some(value) = change.dayparts {
+        if value.is_some_and(|value| value > heron_rotation::dayparts::MAX_SEPARATION) {
+            return Err(ApiError::Invalid(format!(
+                "dayparts is 0 to {}",
+                heron_rotation::dayparts::MAX_SEPARATION
+            )));
+        }
+        dayparts.push(("dayparts", value));
+    }
+    if let Some(value) = change.daypart_days {
+        if value.is_some_and(|value| value > heron_rotation::dayparts::MAX_DAYS) {
+            return Err(ApiError::Invalid(format!(
+                "daypart_days is 0 to {}",
+                heron_rotation::dayparts::MAX_DAYS
+            )));
+        }
+        dayparts.push(("daypart_days", value));
+    }
     let disable = check_ratio(None, change.play_ratio)? == Some(false);
-    if columns.is_empty() && change.play_ratio.is_none() {
+    if columns.is_empty() && dayparts.is_empty() && change.play_ratio.is_none() {
         return Err(ApiError::Invalid("nothing to set".to_owned()));
     }
     let ids = change
@@ -670,6 +704,19 @@ async fn apply_programming(
             ));
             let result = query.build().execute(&mut *tx).await?;
             // 1 a row added, 2 a row changed, 0 unchanged.
+            changed += result.rows_affected().min(chunk.len() as u64);
+        }
+        for (column, value) in &dayparts {
+            let mut query = QueryBuilder::new(format!(
+                "INSERT INTO track_programming (track_id, {column}) "
+            ));
+            query.push_values(chunk, |mut row, id| {
+                row.push_bind(*id).push_bind(*value);
+            });
+            query.push(format!(
+                " ON DUPLICATE KEY UPDATE {column} = VALUES({column})"
+            ));
+            let result = query.build().execute(&mut *tx).await?;
             changed += result.rows_affected().min(chunk.len() as u64);
         }
     }

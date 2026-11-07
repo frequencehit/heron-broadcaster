@@ -18,7 +18,7 @@ The configuration file is what a station restores after a bad change or a lost d
 | Saved | Left out |
 |---|---|
 | Stations (name, code, enabled, order, logo) and every settings group, shared and per station (the rotation settings with the station's dayparts) | Tracks themselves, their analysis, waveforms, fingerprints and identification: the scan rebuilds them |
-| Encoder profiles and outputs, with their passwords and statistics credentials | The play history, the rotation log, listener statistics: in the database dump |
+| Encoder profiles, stream servers (with their source and admin passwords, and relays) and outputs | The play history, the rotation log, listener statistics: in the database dump |
 | EQ and AGC presets | Library tasks, import batches, the trash journal |
 | Category types, categories (their separation overrides and daypart separation) and their stations | The buffer zone |
 | Clocks and their slots, every station's schedules, their periods and hours | Webhook deliveries |
@@ -29,7 +29,7 @@ The configuration file is what a station restores after a bad change or a lost d
 | Webhooks, with their secrets | Covers found in the files or on the Cover Art Archive: the scan and a lookup find them again (the database dump has their rows, not their images) |
 | Covers set by hand, on albums and tracks, and the station logos, with their images (read from the covers folder) | |
 | Users (password hashes, shared roles, roles per station, preferences), their second factors (the authenticator app's secret, passkeys, hashes of recovery codes) and API tokens (hashes) | |
-| **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code and play ratio (the default and each station's), disabled everywhere or on a station and by whom, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
+| **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code, play ratio (the default and each station's) and the track's own daypart separation, disabled everywhere or on a station and by whom, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |
 
 **Secrets are in both files.** Output and stream server passwords, webhook secrets, the AcoustID key, password and token hashes: a restore gives back a working station, with nothing to type again. The files are written readable by the API's user only (`0600`). In clear, treat them like the database: do not mail them, and keep copies off the machine somewhere private. [Encrypted](#encryption), they can go anywhere: without the key they are unreadable.
 
@@ -54,7 +54,7 @@ The configuration file is what a station restores after a bad change or a lost d
 - `format` is the version of this document's layout; `schema`, the last database migration of the Heron that wrote it.
 - `kind`: `daily`, `manual` (backed up on request), `before_restore` (taken before a restore), `uploaded`. It is in the files' names too: a backup's name is its time and kind, `2026-11-03T03-30-00Z-daily`.
 - A Heron restores files of its own format and older ones. A file written by a newer Heron is refused, with its version in the message.
-- A file of an older `schema` gets the changes the migrations since made to the configuration: a station's daypart separation from before it was set per category goes onto the categories as the [upgrade](upgrading.md#edge) did.
+- A file of an older `schema` gets the changes the migrations since made to the configuration: a station's daypart separation from before it was set per category goes onto the categories as the [upgrade](upgrading.md#edge) did. A file written before tracks had their own daypart separation restores with every track following its categories.
 - `disabled_tracks` lists the library paths of the tracks disabled everywhere, and `disabled_by` who disabled them and when (`{"<path>": {"user_id", "at"}}`); the stations' own ratios, and the tracks disabled on a station, are the rows of `track_station_ratios`. A file from before them restores with every track on its default ratio, and no one recorded as having disabled a track.
 
 ## Where and when
@@ -85,7 +85,7 @@ docker compose exec -T heron-api heron-api backup restore 2026-11-03T03-30-00Z-d
 
 1. The file is checked first: its format, its schema, every part of it. A file that does not pass changes nothing.
 2. The current configuration is backed up (`before_restore`), so a restore can itself be undone.
-3. Everything the file holds replaces what the database has, in one transaction: a restore applies whole or not at all. Rows are matched by ID: what the database has and the file does not (a category made since) is deleted, except stations, which are left as they are with their history. What is set on tracks is replaced for every track: a track the file does not name (added since) loses its categories and settings. What the file does not hold (the tracks themselves, history…) is not touched. The images of the file's covers are written back to the covers folder ([Library management – Where the images are](library.md#where-the-images-are)); a file written before the images moved out of the database restores the same way.
+3. Everything the file holds replaces what the database has, in one transaction: a restore applies whole or not at all. Rows are matched by ID: what the database has and the file does not (a category made since) is deleted, except stations, which are left as they are with their history. What is set on tracks is replaced for every track: a track the file does not name (added since) loses its categories and settings. What the file does not hold (the tracks themselves, history…) is not touched. The images of the file's covers are written back to the covers folder ([Library management – Where the images are](library.md#where-the-images-are)); a file written before the images moved out of the database restores the same way. A file written before [stream servers](outputs.md#stream-servers) has each output's server inline: its outputs are grouped into servers as the upgrade does ([Upgrading – Edge](upgrading.md#edge)).
 4. Every session is closed: sign in again, with the users of the backup. When no admin can sign in afterwards, `heron-api user passwd` sets a password from the command line, and `heron-api user reset-2fa` removes their second factors. A backup made before two-factor authentication existed restores no second factor and no requirement: everyone signs in with their password alone.
 5. Each engine gets its station's restored playout settings, deck EQ, AGC chain and outputs at once, as after any change ([API – Engine configuration](api.md#engine-configuration)); outputs whose settings did not change keep streaming.
 

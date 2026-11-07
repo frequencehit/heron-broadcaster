@@ -97,6 +97,10 @@ impl HistoryRecorder {
                 at_unix_ms,
                 resumed,
             } => {
+                // The second part of a shortened medley: the same play.
+                if entry.track.continues {
+                    return Ok(());
+                }
                 if !self.open.contains_key(&entry.entry_id) {
                     let reopened = if resumed {
                         self.reopen(deck, &entry, at_unix_ms).await?
@@ -535,8 +539,11 @@ mod tests {
                 no_metadata: false,
                 over_intro: false,
                 intro_ms: None,
+                start_at_unix_ms: None,
+                continues: false,
             },
             linked_to: None,
+            next_start_ms: None,
         }
     }
 

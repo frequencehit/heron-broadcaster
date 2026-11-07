@@ -6,14 +6,14 @@ Listeners connect to the stream servers (Icecast, later Shoutcast), never to Her
 
 ## Collecting
 
-Once a minute, `heron-api` asks the server of every enabled Icecast output:
+Once a minute, `heron-api` reads each [stream server](outputs.md#stream-servers) an enabled Icecast output uses, and each of its [relays](#relay-servers):
 
 | What | Where | Needs |
 |---|---|---|
 | Listeners per mount | `/status-json.xsl` | nothing: the page is public |
-| Connected listeners: address, player (user agent), connected for how long, the server's ID for the connection | `/admin/listclients?mount=…` | the server's **admin** credentials, an optional setting of the output |
+| Connected listeners: address, player (user agent), connected for how long, the server's ID for the connection | `/admin/listclients?mount=…` | the server's **admin** credentials, an optional setting of the server |
 
-The server is reached at the output's `host` and `port`, like the engine reaches it. Outputs on the same server share one request for the listener counts.
+The server is reached at its `host` and `port`, like the engine reaches it (`https` for a relay with TLS). **Each server is read once a minute**: its status page lists every mount, and each output gets its mount's count. The listener list is read once per mount.
 
 Without admin credentials, Heron still has the **concurrent listeners** of each minute, and from them the peak, the average and the listening hours. With them, it also has each listener's **sessions**, and from them the distinct listeners of a day, the number and length of sessions, the players, and the listeners who left during each track.
 
@@ -21,7 +21,9 @@ Shoutcast v1 and v2 servers will be read the same way once their outputs exist (
 
 ### Gaps
 
-A server that does not answer within 10 seconds, or answers something unexpected, leaves that minute **without a sample**: a gap, shown as such, never a zero. Nothing about it reaches the air: the engine does not know. The statistics page and `GET /listeners/now` tell which outputs could not be read and why; `heron_api_listener_polls_total{result="error"}` counts the failures.
+A server that does not answer within 10 seconds, or answers something unexpected, leaves that minute **without a sample**: a gap, shown as such, never a zero. Nothing about it reaches the air: the engine does not know. The statistics page and `GET /listeners/now` tell which outputs and servers could not be read and why; `heron_api_listener_polls_total{result="error"}` counts the failures.
+
+A relay that cannot be read is a gap **for its part** only: the output's minute adds the servers that answered, and the relay's own figures (per server) have the gap.
 
 Listeners connected through a gap keep their session: the server's ID for their connection tells it is the same one. Listeners gone when the server answers again end at the last minute they were seen.
 
@@ -52,6 +54,17 @@ Distinct listeners cannot be added up across days: a listener is not recognized 
 
 The station's figures add up the outputs minute by minute: its peak is the highest sum, not the sum of the outputs' peaks. A listener on two outputs at once counts once in its distinct listeners.
 
+## Relay servers
+
+A station's streams are often repeated by **relay servers**: Icecast relays pulling the master's mounts, so that listeners spread over several machines. A relay is a stream server with `relay_of` set to its master ([Stream servers](outputs.md#stream-servers)): Heron sends nothing to it, no output picks it, it is only read for the statistics, with its own address, port and admin credentials. It relays all of the master's mounts, or a list of them (`relay_mounts`), with their name on the relay when it differs.
+
+- **An output's listeners are its mount's on the master plus its mount's on each relay**, added up minute by minute like the station's figures add up the outputs. Its peak is the highest sum.
+- **No double count.** A relay connects to the master as a listener of each mount it relays; that connection is left out of the master's count. It is recognized in the master's listener list by the relay's address (its `host`, resolved) and the player Icecast relays connect with (`Icecast …`). Its session is not recorded.
+- **A relay behind NAT**, whose address the master does not see: set `relay_subtract_one` on it. Its connection then counts as 1 listener per relayed mount the relay has, subtracted from the master's count. The same is done when the master's listener list cannot be read (no admin credentials): the address cannot be checked.
+- **Sessions and distinct listeners** count across the master and its relays as across outputs: a session is one listener's connection to one server for one output, and a listener is recognized by their address and player, so a listener who moves from the master to a relay is one distinct listener. Listeners behind a relay's own CDN keep the limitation below.
+- **Per server**: the minute samples are kept per server, so the statistics page shows the listeners of the master and of each relay, as well as the total; the totals per day, hour, week and month are per output and for the station.
+
+
 ### Per track
 
 For each play of the music decks (not the FX player), from the [play history](api.md#play-history): the station's listeners when it started and when it ended, the change, and its departures. Over a period, tracks are compared by their **departure rate**: departures over listeners at the start, so that a track played at a busy hour does not look worse than one played at night. Tracks played fewer than 3 times in the period (`min_plays`) are left out of that ranking.
@@ -63,7 +76,7 @@ Departures are counted to the minute: a session ends when its listener was last 
 - **IP addresses are never stored**, not even for a minute. A listener is identified by a **listener key**: a BLAKE3 hash of their address and player, keyed with a random **daily key**. The daily key is kept in the database while its day can still get sessions, then deleted, so keys of different days cannot be linked, and a key cannot be traced back to an address by hashing every possible one.
 - The player (user agent) is stored with each session: it tells which apps and devices listen.
 - **Sessions are kept 90 days** (the statistics settings), the minute samples too. Daily and hourly totals are kept as long as the station keeps its database; delete them with SQL if needed.
-- The admin password of a stream server is stored in the database with the output, like the source password, and never sent back by the API.
+- The admin password of a stream server is stored in the database with the server, like the source password, and never sent back by the API.
 
 ## Settings
 
@@ -76,12 +89,14 @@ Departures are counted to the minute: a session ends when its listener was last 
 
 Changing the minimum session length recomputes the totals still covered by the sessions kept.
 
-Per output, the **statistics** settings (`outputs.statistics`, never pushed to the engine, so changing them does not reconnect the output):
+Per [stream server](outputs.md#stream-servers), its admin credentials (never pushed to the engine, so changing them does not reconnect its outputs):
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `admin_username` | `admin` | The stream server's admin user |
 | `admin_password` | none | Its password: without it, Heron only counts concurrent listeners |
+
+and, for a relay, `relay_mounts` and `relay_subtract_one` ([Relay servers](#relay-servers)).
 
 ## API
 
@@ -89,8 +104,8 @@ Viewers can read every statistic; the routes are under `/api/v1/listeners`. Peri
 
 | Route | Answer |
 |---|---|
-| `GET /listeners/now` | Each enabled output's listeners at the last minute, when that was, whether its sessions are available, and the error if its server could not be read; the station's total |
-| `GET /listeners/samples` (`from_unix_ms`, `to_unix_ms`, at most 8 days; `output_id`) | Concurrent listeners minute by minute, gaps as missing minutes |
+| `GET /listeners/now` | Each enabled output's listeners at the last minute, when that was, whether its sessions are available, the error if a server could not be read, and its part on each server (`servers`); each server's listeners (`servers`: master and relays, `null` when it could not be read); the station's total |
+| `GET /listeners/samples` (`from_unix_ms`, `to_unix_ms`, at most 8 days; `output_id`; `server_id`: only that server's part) | Concurrent listeners minute by minute, gaps as missing minutes |
 | `GET /listeners/days` (`from`, `to`, `output_id`, `group`: `hour`, `day` (by default), `week`, `month`) | Per period: days and minutes measured, peak, average, listening hours, sessions, average session, distinct listeners (for weeks and months, the average per day) and listener-days |
 | `GET /listeners/hours-of-day` (`from`, `to`, `output_id`) | For each hour of the day (0 to 23), averaged over the days of the period: average and peak listeners, listening hours |
 | `GET /listeners/tracks` (`from`, `to`, `min_plays` (3), `limit`) | Tracks of the period by departure rate: plays, average listeners at start and end, departures, departure rate |
@@ -102,7 +117,7 @@ Today's figures are computed as the minutes go by: today's row in `GET /listener
 
 ## Web UI
 
-The **Statistics** page: today live (listeners minute by minute, now, peak and listening hours so far), then by day, week or month over a period, the hours of the day, per output or for the whole station, the players, and the tracks with the most departures; each table can be downloaded in CSV. **On air** shows each output's current listeners, and the station's total.
+The **Statistics** page: today live (listeners minute by minute, now, peak and listening hours so far, for all servers or one: the master or a relay, and each server's listeners now), then by day, week or month over a period, the hours of the day, per output or for the whole station, the players, and the tracks with the most departures; each table can be downloaded in CSV. **On air** shows each output's current listeners, and the station's total.
 
 ## Metrics
 
@@ -114,6 +129,8 @@ See [Data model – Listener statistics](data-model.md#listener-statistics). Eve
 
 ## Limitations
 
+- The totals per day, hour, week and month are per output, not per server: the minute samples have each server's part.
+- A relay is recognized in the master's list by the address its `host` resolves to: give its address as the master sees it, or set `relay_subtract_one`.
 - Only Icecast for now: Shoutcast with its outputs ([M11](roadmap/m11-sinks-live-dj.md)), HLS later.
 - A minute's sample is the count at the moment of the request: a listener who stays less than a minute may be missed by the concurrent counts (sessions still see them, with admin credentials, when their connection lasts across a request).
 - Statistics start when the API first reads the server; nothing is recovered for the time the API was down.

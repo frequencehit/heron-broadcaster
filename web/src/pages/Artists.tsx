@@ -13,6 +13,7 @@ import { ArtistPicker } from "../components/ArtistPicker";
 import { useDebounced } from "../components/TrackSearch";
 import { Card, ConfirmButton, Empty, ErrorView, Field, Icon, Loading, Modal, PageHead } from "../components/ui";
 import { rich, t } from "../i18n";
+import { useModule } from "../lib/modules";
 import { Link, setSearch, useLocation } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
 import { RestrictionDialog } from "./Restrictions";
@@ -152,6 +153,7 @@ function ArtistList() {
 }
 
 function ArtistDialog({ id, onClose }: { id: number; onClose: () => void }) {
+  const restrictionsOn = useModule("restrictions");
   const canEdit = useCan("operator");
   const artist = useQuery({
     queryKey: ["artists", id],
@@ -245,14 +247,18 @@ function ArtistDialog({ id, onClose }: { id: number; onClose: () => void }) {
                 )}
               </span>
               <span className="spacer" />
-              <Link to={`/restrictions?target=artist&target_id=${data.id}`} className="small">
-                {t("nav.restrictions")}
-              </Link>
+              {restrictionsOn && (
+                <Link to={`/restrictions?target=artist&target_id=${data.id}`} className="small">
+                  {t("nav.restrictions")}
+                </Link>
+              )}
               {canEdit && (
                 <>
-                  <button type="button" className="btn small" onClick={() => setRestricting(true)}>
-                    <Icon name="ban" /> {t("artists.restrict")}
-                  </button>
+                  {restrictionsOn && (
+                    <button type="button" className="btn small" onClick={() => setRestricting(true)}>
+                      <Icon name="ban" /> {t("artists.restrict")}
+                    </button>
+                  )}
                   <button type="button" className="btn small" onClick={() => setName(data.name)}>
                     <Icon name="edit" /> {t("artists.rename")}
                   </button>

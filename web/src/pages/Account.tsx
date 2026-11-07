@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Your account: theme, language, width, password, second factors and API tokens.
+// Your account: theme, language, width, the whole queue on On air, password, second factors and API tokens.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { type Theme, api, done, unwrap } from "../api";
+import { type Theme, type Width, api, done, unwrap } from "../api";
 import { TwoFactorCard } from "../components/TwoFactor";
 import { Banner, Card, ConfirmButton, Empty, Field, Icon, NumberInput, PageHead, Segmented } from "../components/ui";
 import { LANGUAGES, type LanguageSetting, resolve, rich, setLanguage, t, toSetting } from "../i18n";
 import { ago, dateTime } from "../lib/format";
 import { ME_KEY, useAction, useUser } from "../lib/session";
-import { applyFullWidth, applyTheme } from "../lib/theme";
+import { applyTheme, applyWidth } from "../lib/theme";
 
 export function Account() {
   const user = useUser();
@@ -21,7 +21,12 @@ export function Account() {
         description={t("account.signedInAs", { user: user.username, role: t(`role.${user.role}`) })}
       />
       <div className="grid two">
-        <DisplayCard theme={user.theme} language={toSetting(user.language)} fullWidth={user.full_width} />
+        <DisplayCard
+          theme={user.theme}
+          language={toSetting(user.language)}
+          width={user.width}
+          wholeQueue={user.on_air_whole_queue}
+        />
         <PasswordCard />
       </div>
       <TwoFactorCard />
@@ -33,15 +38,17 @@ export function Account() {
 function DisplayCard({
   theme,
   language,
-  fullWidth,
+  width,
+  wholeQueue,
 }: {
   theme: Theme;
   language: LanguageSetting;
-  fullWidth: boolean;
+  width: Width;
+  wholeQueue: boolean;
 }) {
   const client = useQueryClient();
   const save = useAction(
-    (preferences: { theme?: Theme; language?: LanguageSetting; full_width?: boolean }) =>
+    (preferences: { theme?: Theme; language?: LanguageSetting; width?: Width; on_air_whole_queue?: boolean }) =>
       unwrap(api.PUT("/api/v1/auth/preferences", { body: preferences })),
     { onSuccess: (user) => client.setQueryData(ME_KEY, user) },
   );
@@ -82,16 +89,28 @@ function DisplayCard({
             ))}
           </select>
         </Field>
+        <Field label={t("account.width")}>
+          <Segmented
+            label={t("account.width")}
+            value={width}
+            onChange={(next) => {
+              applyWidth(next);
+              save.mutate({ width: next });
+            }}
+            options={[
+              { value: "normal", label: t("account.widthNormal") },
+              { value: "wide", label: t("account.widthWide") },
+              { value: "full", label: t("account.widthFull") },
+            ]}
+          />
+        </Field>
         <label className="check">
           <input
             type="checkbox"
-            checked={fullWidth}
-            onChange={(event) => {
-              applyFullWidth(event.target.checked);
-              save.mutate({ full_width: event.target.checked });
-            }}
+            checked={wholeQueue}
+            onChange={(event) => save.mutate({ on_air_whole_queue: event.target.checked })}
           />
-          {t("account.fullWidth")}
+          {t("account.onAirWholeQueue")}
         </label>
         <p className="muted small" style={{ margin: 0 }}>
           {t("account.displayHelp")}
