@@ -7471,11 +7471,25 @@ export interface components {
          */
         Modules: {
             /** @default true */
+            artists: boolean;
+            /** @default true */
             cover_art: boolean;
+            /** @default true */
+            eq: boolean;
+            /** @default true */
+            labels: boolean;
             /** @default true */
             listener_statistics: boolean;
             /** @default true */
             medleys: boolean;
+            /** @default true */
+            processing: boolean;
+            /** @default true */
+            restrictions: boolean;
+            /** @default true */
+            review: boolean;
+            /** @default true */
+            trash: boolean;
             /** @default true */
             webhooks: boolean;
         };

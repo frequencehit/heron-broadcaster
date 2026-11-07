@@ -52,6 +52,7 @@ import {
 import { number, rich, t } from "../i18n";
 import { ago, bytes, dateTime, db, duration, parseDuration, trackName } from "../lib/format";
 import { endingLabel } from "../lib/labels";
+import { useModule } from "../lib/modules";
 import { withNextStart } from "../lib/nextStart";
 import { Link } from "../lib/router";
 import { useAction, useCan, useCanOn } from "../lib/session";
@@ -244,6 +245,8 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
     }
   }, [deleting.data, client, toast, track.id]);
   const deleted = track.deleted_at_unix_ms !== null && track.deleted_at_unix_ms !== undefined;
+  const trashOn = useModule("trash");
+  const reviewOn = useModule("review");
 
   const { length, cueIn, cueOut } = effectiveCues(track, draft);
   const crossfade = settings?.crossfade;
@@ -475,7 +478,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
         <Banner kind="warn">
           {rich("track.inTrash", {
             date: dateTime(track.deleted_at_unix_ms),
-            link: <Link to="/trash">{t("track.restoreFromTrash")}</Link>,
+            link: trashOn ? <Link to="/trash">{t("track.restoreFromTrash")}</Link> : t("track.restoreFromTrash"),
           })}
         </Banner>
       )}
@@ -490,7 +493,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
           {t("track.disabled")} {disabledText(track.disabled_by, track.disabled_at_unix_ms)}
         </Banner>
       )}
-      {track.identification?.status === "needs_review" && (
+      {reviewOn && track.identification?.status === "needs_review" && (
         <Banner kind="warn">
           {rich("track.needsReview", {
             reason: track.identification.reason,
@@ -995,6 +998,7 @@ function currentTags(track: TrackDetail): TagValues {
 
 function ProgrammingCard({ track, canEdit }: { track: TrackDetail; canEdit: boolean }) {
   const [dialog, setDialog] = useState<"labels" | "programming" | null>(null);
+  const labelsOn = useModule("labels");
   const measured = track.analysis?.bpm;
   const mb = track.musicbrainz;
   const bpm = (value: number | null | undefined) =>
@@ -1005,9 +1009,11 @@ function ProgrammingCard({ track, canEdit }: { track: TrackDetail; canEdit: bool
       actions={
         canEdit && (
           <>
-            <button type="button" className="btn small" onClick={() => setDialog("labels")}>
-              {t("library.column.labels")}
-            </button>
+            {labelsOn && (
+              <button type="button" className="btn small" onClick={() => setDialog("labels")}>
+                {t("library.column.labels")}
+              </button>
+            )}
             <button type="button" className="btn small" onClick={() => setDialog("programming")}>
               {t("track.programmingEdit")}
             </button>
@@ -1021,20 +1027,24 @@ function ProgrammingCard({ track, canEdit }: { track: TrackDetail; canEdit: bool
           {effectiveRatio(track) === 0 ? t("ratio.offLabel") : ratioLabel(track.play_ratio)}{" "}
           <span className="muted">{t("ratio.outOfTen", { plays: effectiveRatio(track) })}</span>
         </dd>
-        <dt>{t("library.column.labels")}</dt>
-        <dd>
-          {track.labels.length === 0 ? (
-            <span className="muted">{t("track.noLabel")}</span>
-          ) : (
-            <span className="chips">
-              {track.labels.map((label) => (
-                <Link key={label.id} to={`/library?labels_any=${label.id}`}>
-                  <LabelChip label={label} />
-                </Link>
-              ))}
-            </span>
-          )}
-        </dd>
+        {labelsOn && (
+          <>
+            <dt>{t("library.column.labels")}</dt>
+            <dd>
+              {track.labels.length === 0 ? (
+                <span className="muted">{t("track.noLabel")}</span>
+              ) : (
+                <span className="chips">
+                  {track.labels.map((label) => (
+                    <Link key={label.id} to={`/library?labels_any=${label.id}`}>
+                      <LabelChip label={label} />
+                    </Link>
+                  ))}
+                </span>
+              )}
+            </dd>
+          </>
+        )}
         <dt>{t("library.column.era")}</dt>
         <dd>
           {track.era ?? "–"}

@@ -64,7 +64,8 @@ pub fn target(kind: &str, id: u64) -> Option<Target> {
 pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Library> {
     // Medleys turned off: no medley track plays, and the slots calling
     // the medley category are passed over (docs/modules.md).
-    let medleys = crate::modules::on_for(pool, station_id).await?.medleys;
+    let modules = crate::modules::on_for(pool, station_id).await?;
+    let medleys = modules.medleys;
     let medley_category = crate::medleys::categories_of(pool, station_id)
         .await?
         .category_id;
@@ -194,15 +195,18 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
         .collect();
     let (schedule, schedules) = crate::schedules::load(pool, station_id).await?;
 
+    // Restrictions turned off: none applies on the station, and they are
+    // kept (docs/modules.md).
     let rows: Vec<(u64, String, u64, String)> = sqlx::query_as(
         "SELECT r.id, CAST(r.target AS CHAR), r.target_id, CAST(r.rule AS CHAR)
          FROM restrictions r
-         WHERE r.enabled
+         WHERE r.enabled AND ?
            AND (NOT EXISTS (SELECT 1 FROM restriction_stations rs WHERE rs.restriction_id = r.id)
                 OR EXISTS (SELECT 1 FROM restriction_stations rs
                            WHERE rs.restriction_id = r.id AND rs.station_id = ?))
          ORDER BY r.id",
     )
+    .bind(modules.restrictions)
     .bind(station_id)
     .fetch_all(pool)
     .await?;

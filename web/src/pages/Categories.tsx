@@ -23,6 +23,7 @@ import { Card, ConfirmButton, Empty, ErrorView, Field, Icon, Loading, Modal, Pag
 import { number, rich, t } from "../i18n";
 import { COLORS } from "../lib/colors";
 import { totalTime } from "../lib/format";
+import { useModule } from "../lib/modules";
 import { describeOverrides } from "../lib/rotation";
 import { Link } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
@@ -56,6 +57,8 @@ export function Categories() {
   });
   const [editing, setEditing] = useState<Category | "new" | null>(null);
   const [filling, setFilling] = useState<Category | null>(null);
+  // Filling from a label needs labels (docs/modules.md).
+  const labelsOn = useModule("labels");
   const [type, setType] = useState<number | "all" | "none">("all");
   const [sort, setSort] = useState<{ by: SortKey; descending: boolean }>({ by: "name", descending: false });
   const types = useCategoryTypes();
@@ -205,14 +208,16 @@ export function Categories() {
                         >
                           <Icon name="edit" />
                         </button>
-                        <button
-                          type="button"
-                          className="btn ghost small"
-                          title={t("categories.fillHelp")}
-                          onClick={() => setFilling(category)}
-                        >
-                          {t("categories.fill")}
-                        </button>
+                        {labelsOn && (
+                          <button
+                            type="button"
+                            className="btn ghost small"
+                            title={t("categories.fillHelp")}
+                            onClick={() => setFilling(category)}
+                          >
+                            {t("categories.fill")}
+                          </button>
+                        )}
                         <ConfirmButton
                           className="btn ghost small icon danger"
                           title={t("categories.delete", { name: category.name })}
@@ -240,7 +245,7 @@ export function Categories() {
       </Card>
       <TypesCard />
       {editing && <CategoryDialog category={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
-      {filling && <FillDialog category={filling} onClose={() => setFilling(null)} />}
+      {labelsOn && filling && <FillDialog category={filling} onClose={() => setFilling(null)} />}
     </>
   );
 }

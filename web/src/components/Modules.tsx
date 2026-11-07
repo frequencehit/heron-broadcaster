@@ -27,7 +27,8 @@ export function ModuleSwitches({
 }>) {
   return (
     <ul className="module-list">
-      {MODULES.map((module) => {
+      {/* A station's page leaves out the library's modules: the installation's only. */}
+      {MODULES.filter((module) => installation === undefined || !module.installationOnly).map((module) => {
         const locked = installation !== undefined && !installation[module.key];
         const on = value[module.key] && !locked;
         return (
