@@ -12,6 +12,7 @@ import { MIN_VOTES, isRanked, likeShare, shareLabel } from "../lib/likes";
 import { useModule } from "../lib/modules";
 import { Link } from "../lib/router";
 import { here, useStation } from "../lib/station";
+import { Top30Rank } from "./Top30";
 import { Card, Empty, ErrorView, Icon, Loading } from "./ui";
 
 /** Likes in green, dislikes in red; grey without votes. */
@@ -125,6 +126,7 @@ export function TrackLikesCard({ trackId }: Readonly<{ trackId: number }>) {
               })}
             </div>
             <p className="muted small">{t("likes.opinionHelp", { count: likes.data.min_votes })}</p>
+            <Top30Rank trackId={trackId} />
           </>
         )}
       </Card>

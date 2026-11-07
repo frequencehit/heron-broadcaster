@@ -56,7 +56,7 @@ A [module](modules.md) turned off for the station shown disappears: its entries 
 | To do | The To do page, a track's *needs review* banner, the link from the tags dialog |
 | Artists | The Artists page, the links to it from the Restrictions page |
 | Labels | The Labels page, the track list's labels column, filters and *Labels* action, the same in the import buffer, a track's labels, *Fill from a label* on the Categories page, the label of a medley's recipe |
-| Dedications, Match, Top 30 | The show's page, and the *Shows* section when no show is on |
+| Dedications, Match, Top 30 | The show's page, and the *Shows* section when no show is on; for the Top 30, the track page's rank in the chart and the likes widget's line |
 | Likes | Its page under *Shows*, the votes on On air, the track page's listeners' opinion, the *Liked* column and filters of the track list, the week's most liked tracks on Statistics |
 
 An address of a page that is off (a bookmark, a link) shows *This module is turned off* instead, with a link to where an admin turns it on.
@@ -70,6 +70,13 @@ The *Shows* section of the menu has a page per [show](listener-interaction.md) t
 - **Hours**: *Open during its hours* (`enabled`), and ranges of days and whole hours (*Mon Tue … Sun, from 17:00 to 18:00*), added and removed. A range that takes hours from another show says which, before saving. The week below draws the show's hours and, hatched, those of the other shows.
 - **Notifications**: the station's webhooks that receive it, each event on or off with its message (and, for *Before opening*, how many minutes before), the language of the dates, and a preview of the messages as they will read, with an example. Hidden while webhooks are off.
 - **On the website**: the line of the dedicated page and of the small widget, each with *Copy the line*, and *Small widget* on or off; *View the page alone*; outside the hours, a message (with `{day}` and `{hour}`) or nothing; the color, the title and the website's page of the show. A live preview, *Open* or *Closed*, follows the settings before they are saved. The lines start with the station's gateway address (*Settings › Station*); without one, the page says to set it.
+
+**Top 30** has four tabs (see [Top 30](listener-interaction.md#top-30)):
+
+- **Chart**: the chart of the week as it stands, live (rank, movement, the track, share of likes with its bar and votes, weeks in the chart), when it closes and the week's votes; *Take out* on each track, and the tracks taken out with who and when, to put back. A closed chart whose show has not started yet comes first, with the same controls.
+- **The show**: the next show (or the one on air): how many tracks, the music, the jingles and the new release in time, against the slot; the new release, proposed or chosen among the tracks of its category; the programme in order with planned times, the ranks left out to fit the slot and the tracks passed over with why.
+- **Past weeks**: the frozen charts, the latest first; one opens with its movements and the tracks taken out.
+- **Settings**: the close of the week, the minimum votes, the size, the eligible categories, the jingle and new release categories; then the hours (the show's slot), the notifications and *On the website* every show has.
 
 **Likes** have no hours and send no notifications: their page has the week's most liked and least liked tracks of the station (share of likes, votes, plays; from 10 votes), then *On the website*. See [Likes](listener-interaction.md#likes).
 

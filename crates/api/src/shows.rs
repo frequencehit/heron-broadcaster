@@ -86,6 +86,10 @@ pub async fn public_shows(pool: &MySqlPool, station_id: u64) -> ApiResult<Vec<Sh
         if show.module == Module::Likes {
             public.state = crate::likes::public_state(pool, station_id).await?;
         }
+        if show.module == Module::Top30 {
+            public.state =
+                crate::top30::public_state(pool, station_id, &settings, &timezone).await?;
+        }
         shows.push(public);
     }
     Ok(shows)
@@ -253,6 +257,7 @@ pub(crate) async fn notify_station(
                 change,
                 at,
                 &wanted.message,
+                &[],
             );
             let payload = Payload::show(event, payload.0, payload.1);
             let sent = webhooks
@@ -270,6 +275,62 @@ pub(crate) async fn notify_station(
     Ok(())
 }
 
+/// Sends one of a show's own events (`top.published`), with its own
+/// placeholders, to the webhooks the show chose: not while the webhooks or
+/// the event are off. Returns the deliveries queued.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn send_own_event(
+    pool: &MySqlPool,
+    webhooks: &Webhooks,
+    station_id: u64,
+    code: &str,
+    show: &Show,
+    event: WebhookEvent,
+    at: Timestamp,
+    extra: &[(&str, String)],
+) -> ApiResult<usize> {
+    if !crate::modules::on_for(pool, station_id).await?.webhooks {
+        return Ok(0);
+    }
+    let settings = load(pool, station_id, show).await?;
+    let notifications = &settings.notifications;
+    let Some(wanted) = notifications
+        .events
+        .get(event.as_str())
+        .filter(|wanted| wanted.enabled)
+    else {
+        return Ok(0);
+    };
+    if notifications.webhook_ids.is_empty() {
+        return Ok(0);
+    }
+    let station = station_settings(pool, station_id).await?;
+    let tz = station.time_zone();
+    let (show_payload, text) = message(
+        show,
+        &settings,
+        &station,
+        code,
+        &tz,
+        Change::Started,
+        at,
+        &wanted.message,
+        extra,
+    );
+    let payload = Payload::show(event, show_payload, text);
+    let sent = webhooks
+        .queue_show(station_id, &notifications.webhook_ids, payload)
+        .await?;
+    tracing::info!(
+        station = code,
+        show = show.module.key(),
+        event = event.as_str(),
+        sent,
+        "show notification"
+    );
+    Ok(sent)
+}
+
 /// A show event's show and message, written out.
 #[allow(clippy::too_many_arguments)]
 fn message(
@@ -281,6 +342,7 @@ fn message(
     change: Change,
     at: Timestamp,
     template: &str,
+    extra: &[(&str, String)],
 ) -> (PayloadShow, String) {
     let week = settings.open_week();
     // Upcoming: as the show will be once it opens.
@@ -308,7 +370,7 @@ fn message(
     });
     let time = |ms: Option<i64>| ms.and_then(|ms| Timestamp::from_millisecond(ms).ok());
     let language = &settings.notifications.language;
-    let values = [
+    let mut values = vec![
         ("name", name.clone()),
         ("link", link.clone().unwrap_or_default()),
         (
@@ -324,6 +386,7 @@ fn message(
                 .unwrap_or_default(),
         ),
     ];
+    values.extend(extra.iter().cloned());
     (
         PayloadShow {
             module: show.module,
@@ -375,6 +438,7 @@ mod tests {
             Change::Started,
             at("2026-11-09T17:00"),
             template,
+            &[],
         );
         assert_eq!(
             text,
@@ -397,6 +461,7 @@ mod tests {
             Change::Upcoming { opens },
             at("2026-11-09T16:00"),
             template,
+            &[],
         );
         assert_eq!(
             text,

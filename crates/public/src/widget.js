@@ -41,6 +41,19 @@
       back: "Back {day} at {hour}.",
       nowPlaying: "Now playing",
       sep: " to ",
+      top30: {
+        live: "Live: the places to come are revealed on air",
+        week: "Week of {date}",
+        hidden: "? ? ?",
+        answer: "The answer on air",
+        onAir: "ON AIR",
+        isNew: "NEW",
+        reentry: "RE-ENTRY",
+        weeks: "{n} wk",
+        newRelease: "New release",
+        none: "No chart yet.",
+        votesFor: "Your vote counts for {day}'s Top 30.",
+      },
     },
     fr: {
       names: { dedications: "Dédicaces", match: "Le match", top30: "Top 30", likes: "Vous aimez ?" },
@@ -60,6 +73,19 @@
       back: "Réouverture {day} à {hour}.",
       nowPlaying: "En ce moment",
       sep: " au ",
+      top30: {
+        live: "En direct : les places à venir se découvrent à l'antenne",
+        week: "Semaine du {date}",
+        hidden: "? ? ?",
+        answer: "Réponse à l'antenne",
+        onAir: "EN ONDE",
+        isNew: "NOUVEAU",
+        reentry: "RETOUR",
+        weeks: "{n} sem.",
+        newRelease: "La nouveauté",
+        none: "Pas encore de classement.",
+        votesFor: "Votre vote compte pour le Top 30 de {day}.",
+      },
     },
     es: {
       names: { dedications: "Dedicatorias", match: "El duelo", top30: "Top 30", likes: "¿Te gusta?" },
@@ -79,6 +105,19 @@
       back: "Vuelve el {day} a las {hour}.",
       nowPlaying: "Suena ahora",
       sep: " a ",
+      top30: {
+        live: "En directo: los puestos que faltan se descubren en antena",
+        week: "Semana del {date}",
+        hidden: "? ? ?",
+        answer: "La respuesta en antena",
+        onAir: "EN ANTENA",
+        isNew: "NUEVO",
+        reentry: "VUELVE",
+        weeks: "{n} sem.",
+        newRelease: "La novedad",
+        none: "Todavía no hay lista.",
+        votesFor: "Tu voto cuenta para el Top 30 del {day}.",
+      },
     },
     de: {
       names: { dedications: "Widmungen", match: "Das Duell", top30: "Top 30", likes: "Gefällt's dir?" },
@@ -98,6 +137,19 @@
       back: "Wieder da am {day} um {hour}.",
       nowPlaying: "Jetzt läuft",
       sep: " bis ",
+      top30: {
+        live: "Live: die nächsten Plätze gibt es im Radio",
+        week: "Woche vom {date}",
+        hidden: "? ? ?",
+        answer: "Die Antwort im Radio",
+        onAir: "LÄUFT",
+        isNew: "NEU",
+        reentry: "WIEDER DA",
+        weeks: "{n} Wo.",
+        newRelease: "Die Neuheit",
+        none: "Noch keine Charts.",
+        votesFor: "Deine Stimme zählt für die Top 30 am {day}.",
+      },
     },
   };
   var wanted = script.getAttribute("data-lang") || document.documentElement.lang || navigator.language || "en";
@@ -173,6 +225,17 @@
     ".vote[aria-pressed=true]{background:var(--color);border-color:var(--color);color:#fff}" +
     ".vote svg{width:20px;height:20px}" +
     ".page .vote{font-size:18px;padding:12px 24px}" +
+    ".chart{list-style:none;margin:0;padding:0}" +
+    ".chart li{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid #e3e3df}" +
+    ".chart li:first-child{border-top:0}" +
+    ".chart li.on{background:#1d1d1b;color:#fff;margin:0 -18px;padding:8px 18px}" +
+    ".rank{font-weight:800;font-size:20px;min-width:2ch;text-align:right}" +
+    ".page .rank{font-size:26px}" +
+    ".mv{font-size:12px;font-weight:700;min-width:5.5em;color:#5f6067}" +
+    ".mv.up{color:#2e7d32}.mv.down{color:#c62828}.mv.new{color:var(--color)}" +
+    ".who{flex:1;min-width:0}.who strong{display:block}.chart .q{color:#9a9a95;letter-spacing:.3em}" +
+    ".tag{font-size:11px;font-weight:700;background:var(--color);color:#fff;border-radius:6px;padding:1px 6px;margin-left:6px}" +
+    ".release{margin-top:12px;border:2px solid var(--color);border-radius:10px;padding:10px 14px}" +
     "@media (prefers-color-scheme: dark){.card{background:#1f1f1e;color:#ededea;border-color:#3a3a37}.muted,.closed svg{color:#b5b5b0}}";
   root.appendChild(style);
   var box = el("div", mode);
@@ -258,6 +321,80 @@
     });
     body.appendChild(votes);
     body.appendChild(el("p", "muted", mine.note || t.likes.sub + "."));
+    // The votes of now count for the next Top 30.
+    var top = (state.shows || []).filter(function (s) { return s.module === "top30"; })[0];
+    var counts = top && top.enabled && top.state && top.state.votes_count_for_unix_ms;
+    if (counts) {
+      var weekday = new Intl.DateTimeFormat(lang, { weekday: "long", timeZone: top.timezone || state.timezone }).format(counts);
+      body.appendChild(el("p", "muted", fill(t.top30.votesFor, { day: weekday })));
+    }
+  };
+
+  // Top 30 (docs/listener-interaction.md#top-30): the chart of the last show,
+  // or of the show playing, whose ranks to come are hidden (the gateway's
+  // state does not have them).
+  function movementText(entry) {
+    switch (entry.movement) {
+      case "up": return "▲ " + (entry.previous_rank - entry.rank);
+      case "down": return "▼ " + (entry.rank - entry.previous_rank);
+      case "same": return "=";
+      case "new": return t.top30.isNew;
+      case "reentry": return t.top30.reentry;
+      default: return "";
+    }
+  }
+
+  function chart(body, show) {
+    var top = show.state || {};
+    if (!top.chart) {
+      if (show.open) body.appendChild(el("p", "muted", t.top30.none));
+      return;
+    }
+    if (top.live) body.appendChild(el("p", "muted", t.top30.live));
+    else body.appendChild(el("p", "muted", fill(t.top30.week, {
+      date: new Intl.DateTimeFormat(lang, { day: "numeric", month: "long", timeZone: "UTC" }).format(Date.parse(top.chart.week + "T00:00:00Z")),
+    })));
+    var entries = top.chart.entries || [];
+    if (mode === "widget") {
+      if (top.live && top.on_air_rank) {
+        // The rank on air and the next one to come.
+        entries = entries.filter(function (e) { return e.rank === top.on_air_rank || e.rank === top.on_air_rank - 1; });
+      } else {
+        entries = entries.slice(0, 5);
+      }
+    }
+    var list = el("ol", "chart");
+    entries.forEach(function (entry) {
+      var row = el("li", entry.on_air ? "on" : "");
+      row.appendChild(el("span", "rank", String(entry.rank)));
+      var who = el("span", "who");
+      if (entry.hidden) {
+        row.appendChild(el("span", "mv", ""));
+        who.appendChild(el("strong", "q", t.top30.hidden));
+        who.appendChild(el("span", "muted", t.top30.answer));
+      } else {
+        row.appendChild(el("span", "mv " + (entry.movement || ""), movementText(entry)));
+        var title = el("strong", "", entry.title || "");
+        if (entry.on_air) title.appendChild(el("span", "tag", t.top30.onAir));
+        who.appendChild(title);
+        if (entry.artist) who.appendChild(el("span", entry.on_air ? "" : "muted", entry.artist));
+      }
+      row.appendChild(who);
+      if (!entry.hidden && entry.weeks && mode === "page") row.appendChild(el("span", "muted", fill(t.top30.weeks, { n: entry.weeks })));
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+    var release = top.new_release;
+    if (release && !release.hidden && mode === "page") {
+      var box = el("div", "release");
+      box.appendChild(el("span", "tag", t.top30.newRelease));
+      box.appendChild(el("strong", "", " " + [release.artist, release.title].filter(Boolean).join(" – ")));
+      body.appendChild(box);
+    }
+  }
+
+  RENDERERS.top30 = function (body, show) {
+    chart(body, show);
   };
 
   function render(state) {
@@ -299,6 +436,12 @@
       else if (next) closed.appendChild(el("p", "muted", fill(t.back, values)));
       if (show.hours && show.hours.length) closed.appendChild(el("p", "muted", hoursText(show.hours)));
       card.appendChild(closed);
+      // Outside the show, the Top 30 shows the chart of the last one.
+      if (module === "top30" && show.state && show.state.chart) {
+        var last = el("div", "body");
+        chart(last, show);
+        card.appendChild(last);
+      }
     }
     box.appendChild(card);
   }

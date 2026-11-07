@@ -51,6 +51,7 @@ mod staging;
 mod stations;
 mod sync;
 mod system;
+mod top30;
 mod tracks;
 mod two_factor;
 mod users;
@@ -317,6 +318,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     tasks.push(tokio::spawn(levels::run(pool.clone())));
     tasks.push(tokio::spawn(users::purge_sessions(pool.clone())));
     tasks.push(tokio::spawn(likes::purge(pool.clone())));
+    tasks.push(tokio::spawn(top30::run(
+        pool.clone(),
+        Arc::clone(&stations),
+        Arc::clone(&webhooks),
+    )));
     tasks.push(tokio::spawn(
         Arc::clone(&backups).run_daily(pool.clone(), Arc::clone(&stations)),
     ));

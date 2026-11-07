@@ -48,12 +48,20 @@ pub const SHOWS: [Show; 4] = [
         events: &[],
         placeholders: &[],
     },
+    // The chart when the week closes; each rank as it plays (#134).
     Show {
         module: Module::Top30,
         name: "Top 30",
         has_hours: true,
-        events: &[],
-        placeholders: &[],
+        events: &[
+            (
+                TOP_PUBLISHED,
+                "This week's number 1: {artist} – {title}",
+                true,
+            ),
+            (TOP_RANK, "Number {rank}: {artist} – {title}", false),
+        ],
+        placeholders: &["artist", "title", "top3", "rank"],
     },
     // No notification per vote: too many (#133).
     Show {
@@ -74,6 +82,10 @@ pub const COMMON_EVENTS: [(&str, &str, bool); 3] = [
 pub const SHOW_UPCOMING: &str = "show.upcoming";
 pub const SHOW_STARTED: &str = "show.started";
 pub const SHOW_ENDED: &str = "show.ended";
+/// The Top 30's chart, when its week closes.
+pub const TOP_PUBLISHED: &str = "top.published";
+/// A rank of the Top 30, as it starts playing in the show.
+pub const TOP_RANK: &str = "top.rank";
 
 /// The placeholders of every show's messages.
 pub const COMMON_PLACEHOLDERS: [&str; 4] = ["name", "link", "end", "next"];
@@ -537,6 +549,54 @@ pub fn status(week: &Week, tz: &TimeZone, now: Timestamp) -> ShowStatus {
     }
 }
 
+/// The opening `at` is in: when it started and when it closes. `None`
+/// while closed.
+pub fn opening(week: &Week, tz: &TimeZone, at: Timestamp) -> Option<(Timestamp, Timestamp)> {
+    let state = status(week, tz, at);
+    if !state.open {
+        return None;
+    }
+    let closes = Timestamp::from_millisecond(state.closes_at_unix_ms?).ok()?;
+    let mut start = hour_start(&at.to_zoned(tz.clone()));
+    for _ in 0..LOOKAHEAD_HOURS {
+        match self::at(&start, -1) {
+            Some(before) if week.is_open_at(&before) => start = before,
+            _ => break,
+        }
+    }
+    Some((start.timestamp(), closes))
+}
+
+/// When the latest opening that started at or before `at` started, within
+/// the last 8 days.
+pub fn last_opening(week: &Week, tz: &TimeZone, at: Timestamp) -> Option<Timestamp> {
+    if week.is_empty() {
+        return None;
+    }
+    let mut time = hour_start(&at.to_zoned(tz.clone()));
+    for _ in 0..LOOKAHEAD_HOURS {
+        let before = self::at(&time, -1)?;
+        if week.is_open_at(&time) && !week.is_open_at(&before) {
+            return Some(time.timestamp());
+        }
+        time = before;
+    }
+    None
+}
+
+/// The next opening after `at` (or the one `at` is in, when it starts at
+/// `at`): when it starts and when it closes.
+pub fn next_opening(week: &Week, tz: &TimeZone, at: Timestamp) -> Option<(Timestamp, Timestamp)> {
+    if let Some((start, closes)) = opening(week, tz, at)
+        && start == at
+    {
+        return Some((start, closes));
+    }
+    let next = status(week, tz, at).next_opening_unix_ms?;
+    let start = Timestamp::from_millisecond(next).ok()?;
+    opening(week, tz, start)
+}
+
 /// A change a notification tells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Change {
@@ -775,6 +835,52 @@ impl ShowPublic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn openings_start_and_close_on_their_hours() {
+        let week = Week::of(&[HourRange {
+            days: vec![7],
+            start_hour: 18,
+            end_hour: 20,
+        }]);
+        let tz = TimeZone::get("Europe/Paris").unwrap();
+        let at = |text: &str| {
+            format!("{text}[Europe/Paris]")
+                .parse::<Zoned>()
+                .unwrap()
+                .timestamp()
+        };
+        // Sunday 8 November 2026, 19:12.
+        assert_eq!(
+            opening(&week, &tz, at("2026-11-08T19:12")),
+            Some((at("2026-11-08T18:00"), at("2026-11-08T20:00")))
+        );
+        assert_eq!(opening(&week, &tz, at("2026-11-08T20:00")), None);
+        assert_eq!(
+            last_opening(&week, &tz, at("2026-11-10T09:00")),
+            Some(at("2026-11-08T18:00"))
+        );
+        assert_eq!(
+            last_opening(&week, &tz, at("2026-11-08T18:00")),
+            Some(at("2026-11-08T18:00"))
+        );
+        assert_eq!(
+            last_opening(&week, &tz, at("2026-11-08T17:59")),
+            Some(at("2026-11-01T18:00"))
+        );
+        assert_eq!(
+            next_opening(&week, &tz, at("2026-11-08T17:00")),
+            Some((at("2026-11-08T18:00"), at("2026-11-08T20:00")))
+        );
+        assert_eq!(
+            next_opening(&week, &tz, at("2026-11-08T18:00")),
+            Some((at("2026-11-08T18:00"), at("2026-11-08T20:00")))
+        );
+        assert_eq!(
+            next_opening(&week, &tz, at("2026-11-08T18:30")),
+            Some((at("2026-11-15T18:00"), at("2026-11-15T20:00")))
+        );
+    }
 
     fn range(days: &[u8], start_hour: u8, end_hour: u8) -> HourRange {
         HourRange {
