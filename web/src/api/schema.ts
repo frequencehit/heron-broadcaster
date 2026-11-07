@@ -370,7 +370,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Saves your preferences: the web UI's theme, language and width. */
+        /**
+         * Saves your preferences: the web UI's theme, language, width and whether
+         *     the On air page shows the whole queue.
+         */
         put: operations["set_preferences"];
         post?: never;
         delete?: never;
@@ -8017,6 +8020,8 @@ export interface components {
              *     lacks.
              */
             language?: string | null;
+            /** @description The On air page shows the whole queue, editable there. */
+            on_air_whole_queue?: boolean | null;
             theme?: components["schemas"]["Theme"] | null;
             width?: components["schemas"]["Width"] | null;
         };
@@ -10274,6 +10279,11 @@ export interface components {
             language: string;
             /** Format: int64 */
             last_login_at_unix_ms?: number | null;
+            /**
+             * @description The On air page shows the whole queue, editable there, instead of
+             *     its first tracks.
+             */
+            on_air_whole_queue: boolean;
             role: components["schemas"]["Role"];
             /**
              * @description Their role on each station; a station left out is `none`. `role` is

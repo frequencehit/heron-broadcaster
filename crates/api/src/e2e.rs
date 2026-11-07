@@ -1979,6 +1979,31 @@ async fn web_ui_routes() {
         let (status, _) = admin.send(Method::PUT, "/auth/preferences", refused).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     }
+
+    // And the whole queue on On air: off unless the user turns it on.
+    assert_eq!(me["on_air_whole_queue"], false);
+    let (status, me) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{me}");
+    assert_eq!(
+        (&me["on_air_whole_queue"], &me["width"], &me["theme"]),
+        (&json!(true), &json!("full"), &json!("dark"))
+    );
+    assert_eq!(admin.get("/auth/me").await["on_air_whole_queue"], true);
+    assert_eq!(viewer.get("/auth/me").await["on_air_whole_queue"], false);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": "yes"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let (status, _) = admin
         .send(
             Method::PUT,
@@ -8831,6 +8856,56 @@ async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories(
             json!({}),
         ]
     );
+    station.stop().await;
+}
+
+/// The whole queue on On air is kept by a configuration backup; a file
+/// from before it restores it off.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_backup_keeps_the_whole_queue_on_air_and_an_older_one_turns_it_off() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"on_air_whole_queue": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    assert!(
+        file["tables"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|user| user["username"] == "admin" && user["on_air_whole_queue"] == 1)
+    );
+
+    // Restored as it is, it stays on.
+    let (status, report) = admin
+        .send(Method::POST, "/backups/restore", file.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    assert_eq!(admin.get("/auth/me").await["on_air_whole_queue"], true);
+
+    // A file written before the column: off.
+    file["schema"] = json!(20270702000000_i64);
+    for user in file["tables"]["users"].as_array_mut().unwrap() {
+        user.as_object_mut().unwrap().remove("on_air_whole_queue");
+    }
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let admin = station.signed_in("admin").await;
+    for user in admin.get("/users").await.as_array().unwrap() {
+        assert_eq!(user["on_air_whole_queue"], false, "{user}");
+    }
     station.stop().await;
 }
 
