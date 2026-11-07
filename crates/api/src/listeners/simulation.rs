@@ -37,6 +37,8 @@ struct Connection {
 struct Server {
     now_ms: i64,
     down: bool,
+    /// The mounts it has; `/live` and `/other` when empty.
+    mounts: Vec<&'static str>,
     connections: Vec<Connection>,
 }
 
@@ -56,7 +58,12 @@ async fn status(State(server): State<Shared>) -> Response {
     if server.down {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
-    let sources: Vec<_> = ["/live", "/other"]
+    let mounts = if server.mounts.is_empty() {
+        vec!["/live", "/other"]
+    } else {
+        server.mounts.clone()
+    };
+    let sources: Vec<_> = mounts
         .iter()
         .map(|mount| {
             serde_json::json!({
@@ -108,6 +115,30 @@ async fn fake_icecast(server: Shared) -> u16 {
     port
 }
 
+/// A stream server on the fake's port; a relay of `relay_of`.
+async fn add_server(
+    pool: &sqlx::MySqlPool,
+    name: &str,
+    port: u16,
+    admin_password: Option<&str>,
+    relay_of: Option<u64>,
+) -> u64 {
+    sqlx::query(
+        "INSERT INTO stream_servers (station_id, name, host, port, source_password,
+                                     admin_password, relay_of)
+         VALUES (1, ?, '127.0.0.1', ?, 'hackme', ?, ?)",
+    )
+    .bind(name)
+    .bind(port)
+    .bind(admin_password)
+    .bind(relay_of)
+    .execute(pool)
+    .await
+    .unwrap()
+    .last_insert_id()
+}
+
+/// An output, on a server of its own.
 async fn add_output(
     pool: &sqlx::MySqlPool,
     name: &str,
@@ -115,16 +146,18 @@ async fn add_output(
     mount: &str,
     admin_password: Option<&str>,
 ) -> u64 {
-    let config = serde_json::json!({"host": "127.0.0.1", "port": port, "mount": mount, "password": "hackme"});
-    let statistics =
-        admin_password.map(|password| format!(r#"{{"admin_password": "{password}"}}"#));
+    let server = add_server(pool, &format!("{name} server"), port, admin_password, None).await;
+    add_output_on(pool, name, server, mount).await
+}
+
+async fn add_output_on(pool: &sqlx::MySqlPool, name: &str, server: u64, mount: &str) -> u64 {
     sqlx::query(
-        "INSERT INTO outputs (station_id, name, kind, encoder_profile_id, config, statistics, enabled)
-         SELECT 1, ?, 'icecast', MIN(id), ?, ?, TRUE FROM encoder_profiles",
+        "INSERT INTO outputs (station_id, name, kind, server_id, encoder_profile_id, config, enabled)
+         SELECT 1, ?, 'icecast', ?, MIN(id), ?, TRUE FROM encoder_profiles",
     )
     .bind(name)
-    .bind(config.to_string())
-    .bind(statistics)
+    .bind(server)
+    .bind(serde_json::json!({"mount": mount}).to_string())
     .execute(pool)
     .await
     .unwrap()
@@ -206,11 +239,16 @@ async fn simulated_listeners_are_counted() {
     let refused = add_output(&pool, "Refused", port, "/none", Some("wrong")).await;
     // Not read: HLS has no server to ask, a disabled output, settings the
     // engine would refuse.
+    let off = add_output(&pool, "Off", port, "/live", Some("pw")).await;
+    sqlx::query("UPDATE outputs SET enabled = FALSE WHERE id = ?")
+        .bind(off)
+        .execute(&pool)
+        .await
+        .unwrap();
+    add_output(&pool, "Broken", port, "live", Some("pw")).await;
     sqlx::query(
         "INSERT INTO outputs (station_id, name, kind, encoder_profile_id, config, enabled)
-         SELECT 1, 'HLS', 'hls', MIN(id), '{}', TRUE FROM encoder_profiles
-         UNION ALL SELECT 1, 'Off', 'icecast', MIN(id), '{\"host\": \"127.0.0.1\", \"mount\": \"/live\", \"password\": \"x\"}', FALSE FROM encoder_profiles
-         UNION ALL SELECT 1, 'Broken', 'icecast', MIN(id), '{\"host\": \"127.0.0.1\", \"mount\": \"live\", \"password\": \"x\"}', TRUE FROM encoder_profiles",
+         SELECT 1, 'HLS', 'hls', MIN(id), '{}', TRUE FROM encoder_profiles",
     )
     .execute(&pool)
     .await
@@ -532,5 +570,178 @@ async fn simulated_listeners_are_counted() {
         collector.minute(later + 60_000, later + 3_600_000).await,
         later + 3_600_000
     );
+    db.drop().await;
+}
+
+/// A master and two relays: one known by its address, one behind NAT
+/// whose connection counts as one listener. The output's listeners add up
+/// the three, without the relays' own connections; a relay that cannot be
+/// read is a gap for its part only.
+#[tokio::test]
+async fn relays_add_their_listeners_without_their_connections() {
+    let Some(db) = ScratchDatabase::create().await else {
+        return;
+    };
+    let pool = db.pool.clone();
+    settings::save_for(
+        &pool,
+        1,
+        StationSettings::SETTINGS_NAME,
+        &StationSettings {
+            timezone: "UTC".to_owned(),
+            public_url: None,
+        },
+    )
+    .await
+    .unwrap();
+    let (master, known, nat): (Shared, Shared, Shared) =
+        (Arc::default(), Arc::default(), Arc::default());
+    let master_port = fake_icecast(Arc::clone(&master)).await;
+    let known_port = fake_icecast(Arc::clone(&known)).await;
+    let nat_port = fake_icecast(Arc::clone(&nat)).await;
+    let master_id = add_server(&pool, "Master", master_port, Some("pw"), None).await;
+    // Relays /live as /r-live; the master sees it at 127.0.0.1.
+    let known_id = add_server(&pool, "Relay", known_port, Some("pw"), Some(master_id)).await;
+    sqlx::query(
+        "UPDATE stream_servers SET relay_mounts = '[{\"mount\": \"/live\", \"relay_mount\": \"/r-live\"}]'
+         WHERE id = ?",
+    )
+    .bind(known_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    // Behind NAT, without admin credentials: every mount.
+    let nat_id = add_server(&pool, "NAT relay", nat_port, None, Some(master_id)).await;
+    sqlx::query("UPDATE stream_servers SET relay_subtract_one = TRUE WHERE id = ?")
+        .bind(nat_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let live = add_output_on(&pool, "Live", master_id, "/live").await;
+
+    let (day, _) = totals::day_bounds(date(2026, 10, 20), &TimeZone::UTC);
+    let at = |minute: i64, second: i64| day + 10 * 3_600_000 + minute * MIN + second * 1_000;
+    let connection = |mount, id, address, player, from_ms, to_ms| Connection {
+        mount,
+        id,
+        address,
+        player,
+        from_ms,
+        to_ms,
+    };
+    master.lock().unwrap().connections = vec![
+        connection("/live", 1, "192.0.2.1", "VLC/3.0", at(0, 0), at(10, 0)),
+        // The relays' own connections.
+        connection(
+            "/live",
+            2,
+            "127.0.0.1",
+            "Icecast 2.4.4",
+            at(0, 0),
+            at(10, 0),
+        ),
+        connection(
+            "/live",
+            3,
+            "198.51.100.9",
+            "Icecast 2.5.0",
+            at(0, 0),
+            at(5, 0),
+        ),
+        connection(
+            "/live",
+            4,
+            "198.51.100.9",
+            "Icecast 2.5.0",
+            at(7, 0),
+            at(10, 0),
+        ),
+    ];
+    {
+        let mut relay = known.lock().unwrap();
+        relay.mounts = vec!["/r-live"];
+        relay.connections = vec![
+            connection("/r-live", 1, "192.0.2.2", "mpv/0.38", at(0, 0), at(10, 0)),
+            // The master's listener, here too for 5 minutes: one listener.
+            connection("/r-live", 2, "192.0.2.1", "VLC/3.0", at(0, 0), at(5, 0)),
+        ];
+    }
+    nat.lock().unwrap().connections = vec![
+        connection("/live", 1, "203.0.113.1", "VLC/3.0", at(0, 0), at(10, 0)),
+        connection("/live", 2, "203.0.113.2", "VLC/3.0", at(0, 0), at(10, 0)),
+    ];
+
+    let collector = Collector::new(pool.clone()).unwrap();
+    let mut next_purge = 0;
+    for minute in 0..10 {
+        let now = at(minute, 1);
+        for server in [&master, &known, &nat] {
+            server.lock().unwrap().now_ms = now;
+        }
+        // The NAT relay is down from 10:05 to 10:07, and so is its
+        // connection to the master.
+        nat.lock().unwrap().down = (at(5, 0)..at(7, 0)).contains(&now);
+        next_purge = collector.minute(now, next_purge).await;
+        let last = collector.last();
+        assert_eq!(last.len(), 1, "{last:?}");
+        let parts: Vec<(u64, Option<u32>)> = last[0]
+            .servers
+            .iter()
+            .map(|part| (part.server_id, part.listeners))
+            .collect();
+        match minute {
+            0..=4 => {
+                assert_eq!(
+                    parts,
+                    [(master_id, Some(1)), (known_id, Some(2)), (nat_id, Some(2))]
+                );
+                assert_eq!(last[0].listeners, Some(5));
+                assert!(!last[0].sessions, "the NAT relay has no listener list");
+            }
+            5 | 6 => {
+                assert_eq!(
+                    parts,
+                    [(master_id, Some(1)), (known_id, Some(1)), (nat_id, None)]
+                );
+                assert_eq!(last[0].listeners, Some(2));
+                assert!(last[0].error.as_deref().unwrap().starts_with("NAT relay: "));
+            }
+            _ => assert_eq!(last[0].listeners, Some(4)),
+        }
+    }
+
+    // Samples per server: the NAT relay's gap is its own.
+    let samples: Vec<(u64, i64)> = sqlx::query_as(
+        "SELECT server_id, COUNT(*) FROM listener_samples GROUP BY server_id ORDER BY server_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(samples, [(master_id, 10), (known_id, 10), (nat_id, 8)]);
+    // No session for the relays' connections.
+    let sessions: Vec<(u64, String)> = sqlx::query_as(
+        "SELECT server_id, user_agent FROM listener_sessions ORDER BY server_id, started_at, id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        sessions,
+        [
+            (master_id, "VLC/3.0".to_owned()),
+            (known_id, "mpv/0.38".to_owned()),
+            (known_id, "VLC/3.0".to_owned()),
+        ]
+    );
+
+    // The output's day adds up its servers, minute by minute; a listener
+    // on the master and a relay is one listener.
+    let day_live = total(&pool, "2026-10-20", Some(live), None).await;
+    assert_eq!((day_live.minutes, day_live.peak), (10, 5));
+    assert!((day_live.listening_hours - 41.0 / 60.0).abs() < 1e-9);
+    assert_eq!(day_live.sessions, Some(3));
+    assert_eq!(day_live.distinct_listeners, Some(2));
+    let station = total(&pool, "2026-10-20", None, None).await;
+    assert_eq!(station.peak, 5);
     db.drop().await;
 }

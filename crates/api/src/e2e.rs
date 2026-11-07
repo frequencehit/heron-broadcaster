@@ -777,69 +777,218 @@ async fn settings_and_outputs_reach_the_engine() {
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
-    // An output: validated, stored without showing its password, pushed.
+    // A stream server: its passwords never shown.
     let profiles = admin.get("/encoder-profiles").await;
     let profile = profiles[0]["id"].as_u64().unwrap();
     let (status, body) = admin
         .send(
             Method::POST,
-            "/outputs",
-            json!({"name": "Bad", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "mount": "live", "password": "x"}}),
+            "/stream-servers",
+            json!({"name": "No password", "host": "127.0.0.1"}),
         )
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme",
+                   "admin_password": "adm1n-pw"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
+    assert_eq!(server["source_password_set"], true);
+    assert_eq!(server["admin_password_set"], true);
+    assert!(!server.to_string().contains("hackme") && !server.to_string().contains("adm1n-pw"));
+    let server_id = server["id"].as_u64().unwrap();
+
+    // An output: validated, its own settings only, pushed in full.
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "Bad", "kind": "icecast", "encoder_profile_id": profile,
+                   "server_id": server_id, "config": {"mount": "live"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "Inline", "kind": "icecast", "encoder_profile_id": profile,
+                   "server_id": server_id,
+                   "config": {"host": "127.0.0.1", "mount": "/live", "password": "x"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/outputs",
+            json!({"name": "No server", "kind": "icecast", "encoder_profile_id": profile,
+                   "config": {"mount": "/live"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, details) = admin
+        .send(
+            Method::PUT,
+            "/settings/stream-details",
+            json!({"name": "My station", "genre": "Pop", "public": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{details}");
     let (status, output) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live", "password": "hackme"}}),
+                   "server_id": server_id, "config": {"mount": "/live"},
+                   "details": {"name": "My station HD"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{output}");
-    assert!(output["config"].get("password").is_none());
-    assert_eq!(output["secrets_set"], json!(["password"]));
+    assert_eq!(output["config"], json!({"mount": "/live"}));
+    assert_eq!(output["details"], json!({"name": "My station HD"}));
     assert_eq!(output["listen_url"], "http://127.0.0.1:9/live");
     let id = output["id"].as_u64().unwrap();
-    eventually(
+    let engine_output = |json: &str, id: u64| {
+        let config: heron_core::OutputsConfig = serde_json::from_str(json).unwrap();
+        config.outputs.into_iter().find(|o| o.id == id)
+    };
+    let pushed = eventually(
         "the output in the engine",
         Duration::from_secs(10),
         || async {
             let config = station.state.stations.first().engine.config().await.ok()?;
-            config.outputs_json.contains("hackme").then_some(())
+            engine_output(&config.outputs_json, id)
         },
     )
     .await;
+    assert_eq!(
+        pushed.config,
+        json!({"host": "127.0.0.1", "port": 9, "mount": "/live", "username": "source",
+               "password": "hackme", "name": "My station HD", "genre": "Pop", "public": true})
+    );
 
-    // Updating without the password keeps it.
+    // The station details: an output follows those it does not override.
     let (status, _) = admin
         .send(
             Method::PUT,
-            &format!("/outputs/{id}"),
-            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/other",
-                              "public_url": "https://stream.example.org/"}}),
+            "/settings/stream-details",
+            json!({"name": "My station", "genre": "Hits"}),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    eventually(
-        "the changed output in the engine",
+    eventually("the new genre", Duration::from_secs(10), || async {
+        let config = station.state.stations.first().engine.config().await.ok()?;
+        let output = engine_output(&config.outputs_json, id)?;
+        (output.config["genre"] == "Hits"
+            && output.config["name"] == "My station HD"
+            && output.config["public"] == false)
+            .then_some(())
+    })
+    .await;
+
+    // Changing the server's password pushes its outputs again; its admin
+    // credentials and public address never reach the engine.
+    let (status, changed) = admin
+        .send(
+            Method::PUT,
+            &format!("/stream-servers/{server_id}"),
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "n3w-pw",
+                   "public_url": "https://stream.example.org/"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{changed}");
+    assert_eq!(changed["admin_password_set"], true);
+    assert_eq!(changed["outputs"], json!([{"id": id, "name": "Icecast"}]));
+    let pushed = eventually(
+        "the new password in the engine",
         Duration::from_secs(10),
         || async {
             let config = station.state.stations.first().engine.config().await.ok()?;
-            (config.outputs_json.contains("/other") && config.outputs_json.contains("hackme"))
-                .then_some(())
+            config
+                .outputs_json
+                .contains("n3w-pw")
+                .then_some(config.outputs_json)
         },
     )
     .await;
+    assert!(!pushed.contains("hackme") && !pushed.contains("adm1n-pw"));
     let outputs = eventually("the output's state", Duration::from_secs(10), || async {
         let outputs = admin.get("/outputs").await;
         outputs[0]["status"].is_object().then_some(outputs)
     })
     .await;
-    assert_eq!(outputs[0]["listen_url"], "https://stream.example.org/other");
+    assert_eq!(outputs[0]["listen_url"], "https://stream.example.org/live");
     assert_ne!(outputs[0]["status"]["state"], "connected");
+
+    // Duplicate: a disabled copy on another mount.
+    let (status, copy) = admin
+        .request(Method::POST, &format!("/outputs/{id}/duplicate"), None)
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{copy}");
+    assert_eq!(copy["name"], "Icecast (copy)");
+    assert_eq!(copy["config"], json!({"mount": "/live-copy"}));
+    assert_eq!(copy["enabled"], false);
+    assert_eq!(copy["server_id"], server_id);
+    assert_eq!(copy["details"], json!({"name": "My station HD"}));
+    let (_, second) = admin
+        .request(Method::POST, &format!("/outputs/{id}/duplicate"), None)
+        .await;
+    assert_eq!(second["name"], "Icecast (copy 2)");
+    assert_eq!(second["config"], json!({"mount": "/live-copy-2"}));
+
+    // A relay: read for the statistics, no output can pick it.
+    let (status, relay) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Relay", "host": "127.0.0.2", "relay_of": server_id, "tls": true,
+                   "relay_mounts": [{"mount": "/live", "relay_mount": "/relay"}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{relay}");
+    let relay_id = relay["id"].as_u64().unwrap();
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/outputs/{}", copy["id"]),
+            json!({"name": "Copy", "kind": "icecast", "encoder_profile_id": profile,
+                   "server_id": relay_id, "config": {"mount": "/live-copy"}, "enabled": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "TLS", "host": "127.0.0.3", "tls": true, "source_password": "x"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    // A server in use cannot be deleted: the answer names what uses it.
+    let (status, body) = admin
+        .request(
+            Method::DELETE,
+            &format!("/stream-servers/{server_id}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().contains("Icecast (copy)"),
+        "{body}"
+    );
+    for output in [&copy, &second] {
+        let (status, _) = admin
+            .request(Method::DELETE, &format!("/outputs/{}", output["id"]), None)
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
 
     // A profile in use cannot be deleted.
     let (status, _) = admin
@@ -859,10 +1008,25 @@ async fn settings_and_outputs_reach_the_engine() {
         Duration::from_secs(10),
         || async {
             let config = station.state.stations.first().engine.config().await.ok()?;
-            (!config.outputs_json.contains("hackme")).then_some(())
+            (!config.outputs_json.contains("n3w-pw")).then_some(())
         },
     )
     .await;
+    // The master still has its relay.
+    let (status, body) = admin
+        .request(
+            Method::DELETE,
+            &format!("/stream-servers/{server_id}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    for server in [relay_id, server_id] {
+        let (status, _) = admin
+            .request(Method::DELETE, &format!("/stream-servers/{server}"), None)
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
 
     // Library settings never show the AcoustID key.
     let (status, library) = admin
@@ -903,21 +1067,27 @@ async fn listener_statistics_through_the_api() {
     let profile = admin.get("/encoder-profiles").await[0]["id"]
         .as_u64()
         .unwrap();
-    let config = json!({"host": "127.0.0.1", "port": 9, "mount": "/live", "password": "hackme"});
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme",
+                   "admin_password": "adm1n-pw"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
+    assert_eq!(server["admin_password_set"], true);
+    assert!(!server.to_string().contains("adm1n-pw"));
+    let server_id = server["id"].as_u64().unwrap();
     let (status, output) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": config, "statistics": {"admin_password": "adm1n-pw"}}),
+                   "server_id": server_id, "config": {"mount": "/live"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{output}");
-    assert_eq!(
-        output["statistics"],
-        json!({"admin_username": null, "admin_password_set": true})
-    );
-    assert!(!output.to_string().contains("adm1n-pw"));
     let id = output["id"].as_u64().unwrap();
     let pushed = eventually(
         "the output in the engine",
@@ -937,17 +1107,13 @@ async fn listener_statistics_through_the_api() {
     let (status, changed) = admin
         .send(
             Method::PUT,
-            &format!("/outputs/{id}"),
-            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live"},
-                   "statistics": {"admin_username": "ops"}}),
+            &format!("/stream-servers/{server_id}"),
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "admin_username": "ops"}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{changed}");
-    assert_eq!(
-        changed["statistics"],
-        json!({"admin_username": "ops", "admin_password_set": true})
-    );
+    assert_eq!(changed["admin_username"], "ops");
+    assert_eq!(changed["admin_password_set"], true);
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(
         station
@@ -964,13 +1130,12 @@ async fn listener_statistics_through_the_api() {
     let (_, removed) = admin
         .send(
             Method::PUT,
-            &format!("/outputs/{id}"),
-            json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live"},
-                   "statistics": {"admin_password": null}}),
+            &format!("/stream-servers/{server_id}"),
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "admin_password": null}),
         )
         .await;
-    assert_eq!(removed["statistics"]["admin_password_set"], false);
+    assert_eq!(removed["admin_password_set"], false);
+    assert_eq!(removed["source_password_set"], true);
 
     // Settings.
     assert_eq!(
@@ -1089,7 +1254,7 @@ async fn listener_statistics_through_the_api() {
     // The other routes answer, and check their parameters.
     assert_eq!(
         viewer.get("/listeners/now").await,
-        json!({"outputs": [], "total": null})
+        json!({"outputs": [], "total": null, "servers": []})
     );
     assert_eq!(
         viewer
@@ -1710,6 +1875,11 @@ async fn adopts_outputs_configured_on_the_engine() {
     let outputs = admin.get("/outputs").await;
     assert_eq!(outputs[0]["id"], 3);
     assert_eq!(outputs[0]["encoder_profile_id"], 7);
+    // Grouped into a stream server, its own settings only.
+    assert_eq!(outputs[0]["config"], json!({"mount": "/low"}));
+    let servers = admin.get("/stream-servers").await;
+    assert_eq!(servers[0]["name"], "127.0.0.1:9");
+    assert_eq!(outputs[0]["server_id"], servers[0]["id"]);
     let playout = admin.get("/settings/playout").await;
     assert_eq!(playout["crossfade"]["min_track_ms"], 25000);
     let eq = admin.get("/settings/eq").await;
@@ -1719,7 +1889,8 @@ async fn adopts_outputs_configured_on_the_engine() {
     assert_eq!(agc["bypass_all"], false);
     assert_eq!(agc["final_stage"]["ceiling_db"], -2.0);
 
-    // Same IDs: the engine kept its configuration as it was.
+    // Same IDs, and the same settings written as the engine had them: the
+    // engine kept its configuration as it was.
     let config = station
         .state
         .stations
@@ -7197,6 +7368,8 @@ async fn configuration(admin: &Client, tracks: &[u64]) -> Value {
         "/clocks",
         "/schedules",
         "/restrictions",
+        "/stream-servers",
+        "/settings/stream-details",
         "/outputs",
         "/webhooks",
         "/users",
@@ -7442,12 +7615,39 @@ async fn a_backup_restores_onto_an_empty_database() {
     }
     // Outputs, webhooks, users and their tokens.
     let profile = admin.get("/encoder-profiles").await[0]["id"].clone();
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme",
+                   "admin_password": "adm1n"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
+    let (status, body) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Relay", "host": "127.0.0.2", "relay_of": server["id"],
+                   "relay_mounts": [{"mount": "/live"}], "relay_subtract_one": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/settings/stream-details",
+            json!({"name": "My station", "url": "https://example.org"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
     let (status, body) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile, "enabled": false,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live", "password": "hackme"}}),
+                   "server_id": server["id"], "config": {"mount": "/live"},
+                   "details": {"genre": "Pop"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -8424,6 +8624,123 @@ async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories(
     station.stop().await;
 }
 
+/// A configuration file from before stream servers: each output holds its
+/// server's settings. Restored, its outputs are grouped into servers as the
+/// migration does, the station details lifted onto the station.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_older_backup_groups_its_outputs_into_servers() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    let profile = file["tables"]["encoder_profiles"][0]["id"].clone();
+    file["schema"] = json!(20261228000000_i64);
+    let tables = file["tables"].as_object_mut().unwrap();
+    tables.remove("stream_servers");
+    tables.insert(
+        "outputs".to_owned(),
+        json!([
+            {"id": 11, "station_id": 1, "name": "MP3", "kind": "icecast",
+             "encoder_profile_id": profile, "metadata_enabled": true, "enabled": false,
+             "config": {"host": "127.0.0.1", "port": 9, "mount": "/mp3", "password": "hackme",
+                        "name": "My station", "genre": "Pop"},
+             "statistics": {"admin_password": "adm1n"}},
+            {"id": 12, "station_id": 1, "name": "AAC", "kind": "icecast",
+             "encoder_profile_id": profile, "metadata_enabled": true, "enabled": false,
+             "config": {"host": "127.0.0.1", "port": 9, "mount": "/aac", "password": "hackme",
+                        "username": "source", "name": "My station HD", "genre": "Pop",
+                        "public_url": "https://stream.example.org"},
+             "statistics": {"admin_username": "admin", "admin_password": "adm1n"}},
+            {"id": 13, "station_id": 1, "name": "Other", "kind": "icecast",
+             "encoder_profile_id": profile, "metadata_enabled": true, "enabled": false,
+             "config": {"host": "127.0.0.1", "port": 9, "mount": "/other", "password": "else",
+                        "name": "My station", "public": true},
+             "statistics": null}
+        ]),
+    );
+    let settings = tables["station_settings"].as_array_mut().unwrap();
+    settings.retain(|row| row["name"] != "stream_details");
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+
+    let admin = station.signed_in("admin").await;
+    let servers = admin.get("/stream-servers").await;
+    let servers = servers.as_array().unwrap();
+    assert_eq!(servers.len(), 2, "{servers:?}");
+    assert_eq!(servers[0]["name"], "127.0.0.1:9");
+    assert_eq!(servers[0]["admin_password_set"], true);
+    assert_eq!(servers[0]["admin_username"], "admin");
+    // The first output's public address.
+    assert_eq!(servers[0]["public_url"], Value::Null);
+    assert_eq!(
+        servers[0]["outputs"],
+        json!([{"id": 12, "name": "AAC"}, {"id": 11, "name": "MP3"}])
+    );
+    assert_eq!(servers[1]["name"], "127.0.0.1:9 (2)");
+    assert_eq!(servers[1]["admin_password_set"], false);
+    assert_eq!(
+        admin.get("/settings/stream-details").await,
+        json!({"name": "My station", "description": null, "genre": "Pop", "url": null,
+               "public": false})
+    );
+    let outputs = admin.get("/outputs").await;
+    let shown: Vec<(Value, Value, Value)> = outputs
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| {
+            (
+                o["config"].clone(),
+                o["details"].clone(),
+                o["server_id"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            (
+                json!({"mount": "/mp3"}),
+                json!({}),
+                servers[0]["id"].clone()
+            ),
+            (
+                json!({"mount": "/aac"}),
+                json!({"name": "My station HD"}),
+                servers[0]["id"].clone()
+            ),
+            (
+                json!({"mount": "/other"}),
+                json!({"genre": "", "public": true}),
+                servers[1]["id"].clone()
+            ),
+        ]
+    );
+    // The engine gets what each output had.
+    let config = eventually(
+        "the outputs in the engine",
+        Duration::from_secs(10),
+        || async {
+            let config = station.state.stations.first().engine.config().await.ok()?;
+            let config: heron_core::OutputsConfig =
+                serde_json::from_str(&config.outputs_json).ok()?;
+            (config.outputs.len() == 3).then_some(config)
+        },
+    )
+    .await;
+    let other = config.outputs.iter().find(|o| o.id == 13).unwrap();
+    assert_eq!(
+        other.config,
+        json!({"host": "127.0.0.1", "port": 9, "mount": "/other", "username": "source",
+               "password": "else", "name": "My station", "public": true})
+    );
+    station.stop().await;
+}
+
 /// A base32 secret (RFC 4648, no padding) as apps read it.
 fn from_base32(text: &str) -> Vec<u8> {
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -9240,13 +9557,20 @@ async fn modules_are_turned_off_and_on_again() {
     let profile = admin.get("/encoder-profiles").await[0]["id"]
         .as_u64()
         .unwrap();
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Local", "host": "127.0.0.1", "port": 9, "source_password": "hackme"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
     let (status, output) = admin
         .send(
             Method::POST,
             "/outputs",
             json!({"name": "Icecast", "kind": "icecast", "encoder_profile_id": profile,
-                   "config": {"host": "127.0.0.1", "port": 9, "mount": "/live",
-                              "password": "hackme"}}),
+                   "server_id": server["id"], "config": {"mount": "/live"}}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{output}");
