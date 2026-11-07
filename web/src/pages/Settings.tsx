@@ -29,6 +29,7 @@ export function Settings() {
       <QueueCard />
       <RotationCard />
       <StationCard />
+      <StreamDetailsCard />
       <StationModulesCard />
       <ProgrammingCard />
       {medleys && <MedleysCard />}
@@ -674,6 +675,79 @@ function StationCard() {
             />
           </Field>
           {coverArt && <StationLogo canEdit={isAdmin} />}
+        </>
+      )}
+    </SettingsCard>
+  );
+}
+
+/** What the outputs tell the stream servers about the station; each output can override them. */
+function StreamDetailsCard() {
+  const isAdmin = useCan("admin");
+  const stationId = useStation();
+  const stationName = useStations().find((station) => station.id === stationId)?.name ?? "";
+  const details = useQuery({
+    queryKey: ["settings", "stream-details", stationId],
+    queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/settings/stream-details", { params: { path: here() } })),
+  });
+  const save = useAction(
+    (body: Schemas["StreamDetails"]) =>
+      unwrap(api.PUT("/api/v1/stations/{station_id}/settings/stream-details", { params: { path: here() }, body })),
+    { success: t("outputs.saved"), invalidate: [["settings", "stream-details"], ["outputs"], ["engine"]] },
+  );
+  if (details.isPending) {
+    return <Loading />;
+  }
+  if (details.isError) {
+    return <ErrorView error={details.error} />;
+  }
+  const text = (value: string) => (value.trim() === "" ? null : value);
+  return (
+    <SettingsCard
+      title={t("settings.streamDetails")}
+      description={t("settings.streamDetailsHelp")}
+      value={details.data}
+      save={(value) => save.mutate(value)}
+      saving={save.isPending}
+      canEdit={isAdmin}
+    >
+      {(draft, set) => (
+        <>
+          <div className="form-grid">
+            <Field label={t("outputs.stationName")} hint={draft.name ? undefined : t("settings.streamNameEmpty")}>
+              <input
+                className="input"
+                value={draft.name ?? ""}
+                placeholder={stationName}
+                disabled={!isAdmin}
+                onChange={(e) => set({ name: text(e.target.value) })}
+              />
+            </Field>
+            <Field label={t("outputs.genre")}>
+              <input className="input" value={draft.genre ?? ""} disabled={!isAdmin} onChange={(e) => set({ genre: text(e.target.value) })} />
+            </Field>
+            <Field label={t("outputs.website")}>
+              <input
+                className="input"
+                type="url"
+                value={draft.url ?? ""}
+                disabled={!isAdmin}
+                onChange={(e) => set({ url: text(e.target.value) })}
+              />
+            </Field>
+            <Field label={t("outputs.descriptionField")}>
+              <input
+                className="input"
+                value={draft.description ?? ""}
+                disabled={!isAdmin}
+                onChange={(e) => set({ description: text(e.target.value) })}
+              />
+            </Field>
+          </div>
+          <label className="check" style={{ marginTop: "0.75rem" }}>
+            <input type="checkbox" checked={draft.public ?? false} disabled={!isAdmin} onChange={(e) => set({ public: e.target.checked })} />
+            {t("outputs.public")}
+          </label>
         </>
       )}
     </SettingsCard>

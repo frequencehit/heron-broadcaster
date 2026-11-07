@@ -1817,13 +1817,34 @@ export interface paths {
         };
         get: operations["get_output"];
         /**
-         * Replaces an output. Credentials left out of `config` are kept, and so
-         *     are the statistics settings when `statistics` is left out. Admins only.
+         * Replaces an output. Credentials left out of `config` are kept. Admins
+         *     only.
          */
         put: operations["update_output"];
         post?: never;
         /** Deletes an output; the engine stops streaming to it. Admins only. */
         delete: operations["delete_output"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/outputs/{id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copies an output: the same server, profile and details, its name
+         *     followed by `(copy)`, its mount by `-copy`, and disabled, so that two
+         *     outputs never send to one mount. Admins only.
+         */
+        post: operations["duplicate_output"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2572,6 +2593,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/stream-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station details sent to the stream servers. */
+        get: operations["get_stream_details"];
+        /**
+         * Replaces the station details. The outputs that follow them are pushed
+         *     again, and reconnect. Admins only.
+         */
+        put: operations["put_stream_details"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/two-factor": {
         parameters: {
             query?: never;
@@ -3124,13 +3166,34 @@ export interface paths {
         };
         get: operations["get_output_on_station"];
         /**
-         * Replaces an output. Credentials left out of `config` are kept, and so
-         *     are the statistics settings when `statistics` is left out. Admins only.
+         * Replaces an output. Credentials left out of `config` are kept. Admins
+         *     only.
          */
         put: operations["update_output_on_station"];
         post?: never;
         /** Deletes an output; the engine stops streaming to it. Admins only. */
         delete: operations["delete_output_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/outputs/{id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copies an output: the same server, profile and details, its name
+         *     followed by `(copy)`, its mount by `-copy`, and disabled, so that two
+         *     outputs never send to one mount. Admins only.
+         */
+        post: operations["duplicate_output_on_station"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3603,6 +3666,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/settings/stream-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station details sent to the stream servers. */
+        get: operations["get_stream_details_on_station"];
+        /**
+         * Replaces the station details. The outputs that follow them are pushed
+         *     again, and reconnect. Admins only.
+         */
+        put: operations["put_stream_details_on_station"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/stream-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's stream servers and relays, without their passwords. */
+        get: operations["list_servers_on_station"];
+        put?: never;
+        /** Adds a stream server, or a relay of one. Admins only. */
+        post: operations["create_server_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/stream-servers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_server_on_station"];
+        /**
+         * Replaces a stream server. Passwords left out are kept. Outputs using it
+         *     are pushed again: those whose settings changed reconnect. Admins only.
+         */
+        put: operations["update_server_on_station"];
+        post?: never;
+        /**
+         * Deletes a stream server no output uses and no relay repeats: `409`
+         *     otherwise, naming them. Admins only.
+         */
+        delete: operations["delete_server_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/webhook-deliveries/{id}/retry": {
         parameters: {
             query?: never;
@@ -3734,6 +3860,48 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stream-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's stream servers and relays, without their passwords. */
+        get: operations["list_servers"];
+        put?: never;
+        /** Adds a stream server, or a relay of one. Admins only. */
+        post: operations["create_server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stream-servers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_server"];
+        /**
+         * Replaces a stream server. Passwords left out are kept. Outputs using it
+         *     are pushed again: those whose settings changed reconnect. Admins only.
+         */
+        put: operations["update_server"];
+        post?: never;
+        /**
+         * Deletes a stream server no output uses and no relay repeats: `409`
+         *     otherwise, naming them. Admins only.
+         */
+        delete: operations["delete_server"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5643,6 +5811,17 @@ export interface components {
              */
             ffmpeg?: string | null;
         };
+        /**
+         * @description The station details an output sends instead of the station's: a field
+         *     left out follows the station's; an empty text sends none.
+         */
+        DetailOverrides: {
+            description?: string | null;
+            genre?: string | null;
+            name?: string | null;
+            public?: boolean | null;
+            url?: string | null;
+        };
         /** @description What a MusicBrainz details lookup did. */
         DetailsReport: {
             /**
@@ -6839,6 +7018,11 @@ export interface components {
             /** @description Each enabled output read at the last minute. */
             outputs: components["schemas"]["OutputListeners"][];
             /**
+             * @description Each server's listeners (master and relays), its outputs' parts
+             *     added up; missing when it could not be read.
+             */
+            servers: components["schemas"]["ServerListeners"][];
+            /**
              * Format: int32
              * @description The outputs' listeners added up; missing before the first reading or
              *     when no server could be read.
@@ -7242,25 +7426,38 @@ export interface components {
         /** @enum {string} */
         OutputConnection: "stopped" | "connecting" | "connected" | "reconnecting";
         OutputInput: {
-            /** @description Sink settings. Credentials left out keep their stored value. */
+            /**
+             * @description Its own settings: Icecast's `mount`. Credentials left out keep
+             *     their stored value.
+             */
             config: Record<string, never>;
+            /**
+             * @description The station details it overrides; left out, it follows the
+             *     station's.
+             */
+            details?: components["schemas"]["DetailOverrides"];
             enabled?: boolean;
             /** Format: int64 */
             encoder_profile_id: number;
             kind: components["schemas"]["OutputKind"];
             metadata_enabled?: boolean;
             name: string;
-            statistics?: components["schemas"]["OutputStatisticsInput"] | null;
+            /**
+             * Format: int64
+             * @description The stream server, required for Icecast: one of the station's, not
+             *     a relay.
+             */
+            server_id?: number | null;
         };
         /** @enum {string} */
         OutputKind: "icecast" | "shoutcast_v1" | "shoutcast_v2" | "hls" | "file" | "pipe";
         /** @description An output's listeners at the last minute. */
         OutputListeners: {
-            /** @description Why the server, or its listener list, could not be read. */
+            /** @description Why a server, or its listener list, could not be read. */
             error?: string | null;
             /**
              * Format: int32
-             * @description Missing when its server could not be read.
+             * @description Its servers' parts added up; missing when none could be read.
              */
             listeners?: number | null;
             name: string;
@@ -7268,25 +7465,10 @@ export interface components {
             output_id: number;
             /** Format: int64 */
             sampled_at_unix_ms: number;
-            /** @description Whether the listener list was read: sessions are up to date. */
+            /** @description Each server's part: the master's first, then the relays'. */
+            servers: components["schemas"]["ServerPart"][];
+            /** @description Whether every listener list was read: sessions are up to date. */
             sessions: boolean;
-        };
-        /** @description Replaces the statistics settings of an output. */
-        OutputStatisticsInput: {
-            /** @description Its password: left out, the stored one is kept; `null` removes it. */
-            admin_password?: string | null;
-            /** @description The server's admin user; `admin` when missing. */
-            admin_username?: string | null;
-        };
-        /** @description What listener statistics read the stream server with. */
-        OutputStatisticsView: {
-            /**
-             * @description Whether its password is set (never sent back): without it, only
-             *     concurrent listeners are counted.
-             */
-            admin_password_set: boolean;
-            /** @description The server's admin user (`admin` when missing). */
-            admin_username?: string | null;
         };
         /** @description The live state of an output, as the engine reports it. */
         OutputStatus: {
@@ -7305,8 +7487,10 @@ export interface components {
             state: components["schemas"]["OutputConnection"];
         };
         OutputView: {
-            /** @description Sink settings (Icecast: host, port, mount…), without credentials. */
+            /** @description Its own settings (Icecast: the mount), without credentials. */
             config: Record<string, never>;
+            /** @description The station details it sends instead of the station's. */
+            details: components["schemas"]["DetailOverrides"];
             enabled: boolean;
             /** Format: int64 */
             encoder_profile_id: number;
@@ -7319,7 +7503,11 @@ export interface components {
             name: string;
             /** @description Credentials set in the settings (e.g. `password`), never sent back. */
             secrets_set: string[];
-            statistics: components["schemas"]["OutputStatisticsView"];
+            /**
+             * Format: int64
+             * @description The stream server it sends to (Icecast).
+             */
+            server_id?: number | null;
             status?: components["schemas"]["OutputStatus"] | null;
         };
         /** @description A span of a track's file in the medley. */
@@ -8044,6 +8232,13 @@ export interface components {
              */
             suggestions: number;
         };
+        /** @description A mount a relay repeats. */
+        RelayMount: {
+            /** @description The mount on the master. */
+            mount: string;
+            /** @description Its name on the relay, when it differs. */
+            relay_mount?: string | null;
+        };
         ReleaseChoice: {
             recording_id: string;
             release_id: string;
@@ -8414,6 +8609,50 @@ export interface components {
          * @enum {string}
          */
         SeparationRule: "track" | "title" | "artist" | "album" | "daypart" | "daypart_days";
+        /** @enum {string} */
+        ServerKind: "icecast";
+        /** @description A stream server's listeners at the last minute. */
+        ServerListeners: {
+            error?: string | null;
+            /** Format: int32 */
+            listeners?: number | null;
+            name: string;
+            /**
+             * Format: int64
+             * @description The master it relays, for a relay.
+             */
+            relay_of?: number | null;
+            /** Format: int64 */
+            server_id: number;
+        };
+        /**
+         * @description A server's part of an output's listeners at the last minute: its
+         *     master, or a relay.
+         */
+        ServerPart: {
+            error?: string | null;
+            /**
+             * Format: int32
+             * @description Missing when the server could not be read.
+             */
+            listeners?: number | null;
+            name: string;
+            /**
+             * Format: int64
+             * @description The master it relays, for a relay.
+             */
+            relay_of?: number | null;
+            /** Format: int64 */
+            server_id: number;
+            /** @description Whether its listener list was read. */
+            sessions: boolean;
+        };
+        /** @description An output or a relay using a server. */
+        ServerUse: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
         ServiceConfig: {
             instance?: string | null;
             items: components["schemas"]["ConfigItem"][];
@@ -8908,6 +9147,90 @@ export interface components {
              * @default -40
              */
             threshold_db: number;
+        };
+        /**
+         * @description What the station tells the stream servers about itself, shown in stream
+         *     directories. Each output can override each of them.
+         */
+        StreamDetails: {
+            /** @default null */
+            description: string | null;
+            /** @default null */
+            genre: string | null;
+            /** @default null */
+            name: string | null;
+            /**
+             * @description List the streams in public directories.
+             * @default false
+             */
+            public: boolean;
+            /**
+             * @description The station's website.
+             * @default null
+             */
+            url: string | null;
+        };
+        StreamServerInput: {
+            /** @description Left out, the stored one is kept; `null` removes it. */
+            admin_password?: string | null;
+            admin_username?: string | null;
+            host: string;
+            kind?: components["schemas"]["ServerKind"];
+            name: string;
+            /**
+             * Format: int32
+             * @description 8000 when left out.
+             */
+            port?: number | null;
+            public_url?: string | null;
+            relay_mounts?: components["schemas"]["RelayMount"][] | null;
+            /**
+             * Format: int64
+             * @description Makes it a relay of this server of the station.
+             */
+            relay_of?: number | null;
+            relay_subtract_one?: boolean;
+            /**
+             * @description Left out, the stored one is kept; `null` removes it. Required for a
+             *     server outputs send to.
+             */
+            source_password?: string | null;
+            source_username?: string | null;
+            /** @description Relays only for now: the engine does not send over TLS yet. */
+            tls?: boolean;
+        };
+        StreamServerView: {
+            /** @description Never sent back: without it, only concurrent listeners are counted. */
+            admin_password_set: boolean;
+            /** @description For the listener statistics; `admin` when missing. */
+            admin_username?: string | null;
+            host: string;
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ServerKind"];
+            name: string;
+            /** @description Outputs streaming to it. */
+            outputs: components["schemas"]["ServerUse"][];
+            /** Format: int32 */
+            port: number;
+            /** @description As listeners reach the server; `http://host:port` when missing. */
+            public_url?: string | null;
+            /** @description The mounts a relay repeats; missing: all of the master's. */
+            relay_mounts?: components["schemas"]["RelayMount"][] | null;
+            /**
+             * Format: int64
+             * @description The master server, for a relay.
+             */
+            relay_of?: number | null;
+            /** @description The relay's connection to the master counts as 1 listener per mount. */
+            relay_subtract_one: boolean;
+            /** @description Relays repeating it. */
+            relays: components["schemas"]["ServerUse"][];
+            /** @description Never sent back. */
+            source_password_set: boolean;
+            /** @description `source` when missing. */
+            source_username?: string | null;
+            tls: boolean;
         };
         SuggestionReview: {
             /** @description `true` marks the artists similar; `false` dismisses the suggestion. */
@@ -13152,6 +13475,11 @@ export interface operations {
                 to_unix_ms: number;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
             };
             header?: never;
             path?: never;
@@ -13808,6 +14136,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    duplicate_output: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutputView"];
+                };
             };
             "4XX": {
                 headers: {
@@ -15670,6 +16027,64 @@ export interface operations {
             };
         };
     };
+    get_stream_details: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetails"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_stream_details: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamDetails"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetails"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_two_factor_settings: {
         parameters: {
             query?: never;
@@ -16705,6 +17120,11 @@ export interface operations {
                 to_unix_ms: number;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
             };
             header?: never;
             path: {
@@ -16955,6 +17375,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    duplicate_output_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutputView"];
+                };
             };
             "4XX": {
                 headers: {
@@ -18331,6 +18782,229 @@ export interface operations {
             };
         };
     };
+    get_stream_details_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetails"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_stream_details_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamDetails"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetails"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_servers_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_server_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamServerInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_server_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_server_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamServerInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_server_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     retry_delivery_on_station: {
         parameters: {
             query?: never;
@@ -18635,6 +19309,153 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Status"];
+                };
+            };
+        };
+    };
+    list_servers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamServerInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamServerInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamServerView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
