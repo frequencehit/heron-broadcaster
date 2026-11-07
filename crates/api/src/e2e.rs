@@ -1404,7 +1404,7 @@ async fn listener_statistics_through_the_api() {
         [
             named("named", Some("mobile"), 7),
             named("named", Some("desktop"), 6),
-            named("other", None, 1),
+            named("named", Some("smart_speaker"), 1),
         ]
     );
     let player_groups = viewer.get(&by("player")).await;
@@ -1413,7 +1413,7 @@ async fn listener_statistics_through_the_api() {
         [
             named("named", Some("Safari"), 7),
             named("named", Some("VLC"), 6),
-            named("other", None, 1),
+            named("named", Some("Alexa"), 1),
         ]
     );
     // One server, one output: the same; another server: nothing.
