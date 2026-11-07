@@ -16,7 +16,7 @@ import { startLive, stopLive, useLive } from "./lib/live";
 import { Link, match, navigate, useLocation } from "./lib/router";
 import { ME_KEY, StationScope, UserContext, useCan, useMeQuery, useUser } from "./lib/session";
 import { chooseStation, here, initialStation, stationRole, useStation } from "./lib/station";
-import { applyFullWidth, applyTheme, storedFullWidth, storedTheme } from "./lib/theme";
+import { applyTheme, applyWidth, storedTheme, storedWidth } from "./lib/theme";
 import { mustEnrol } from "./lib/twoFactor";
 import { buildLabel, differentBuilds, webBuild } from "./lib/version";
 import { About } from "./pages/About";
@@ -52,7 +52,7 @@ import { Users } from "./pages/Users";
 import { Webhooks } from "./pages/Webhooks";
 
 applyTheme(storedTheme());
-applyFullWidth(storedFullWidth());
+applyWidth(storedWidth());
 
 export function App() {
   const client = useQueryClient();
@@ -64,7 +64,7 @@ export function App() {
   useEffect(() => {
     if (user) {
       applyTheme(user.theme);
-      applyFullWidth(user.full_width);
+      applyWidth(user.width);
       void setLanguage(toSetting(user.language));
       // The live WebSocket opens once the station shown is known (Shell).
     } else if (user === null) {

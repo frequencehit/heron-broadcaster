@@ -442,6 +442,13 @@ fn simulations_meet_the_exact_times_and_audit_them() {
         filler_category_id: Some(FILLER),
         ..library.settings.clone()
     };
+    // The one news flash plays every hour: its separation allows it.
+    if let Some(news) = library.categories.get_mut(&NEWS) {
+        news.separation.track_min = Some(30);
+        news.separation.title_min = Some(30);
+        news.separation.artist_min = Some(30);
+        news.separation.album_min = Some(30);
+    }
     let simulation = simulate(&library, History::default(), None, 0, 6 * HOUR, 3);
     let news: Vec<_> = simulation
         .picks
@@ -515,4 +522,42 @@ fn the_repeated_hour_runs_its_exact_times_again() {
         "{:?}",
         simulation.violations
     );
+}
+
+#[test]
+fn after_its_exact_slot_the_clock_goes_on_with_the_next_slot() {
+    // The news at the top of the hour, started at 00:20 inside its window:
+    // the songs follow it, the news is not due again (#157).
+    for mode in [ExactMode::Soft, ExactMode::Hard] {
+        let library = top_of_hour(mode, &[180_000, 200_000]);
+        let news = &library.tracks[&50];
+        let start = HOUR + 20 * SEC;
+        let history = History::new(vec![Play::of(news, start)], HashMap::new());
+        let end = start + i64::from(news.length_ms);
+        for seed in 0..10 {
+            let next = pick(&library, &history, end, at(0, 1), seed);
+            assert_ne!(next.track, 50, "{mode:?}, seed {seed}");
+            assert!(next.explanation.exact.is_none());
+            assert_eq!(next.position.map(|position| position.slot), Some(1));
+        }
+    }
+}
+
+#[test]
+fn after_its_exact_slot_a_looping_clock_does_not_run_it_again_this_hour() {
+    let mut library = top_of_hour(ExactMode::Soft, &[180_000, 200_000]);
+    for clock in library.clocks.values_mut() {
+        clock.looping = true;
+    }
+    let news = &library.tracks[&50];
+    let start = HOUR + 20 * SEC;
+    let history = History::new(vec![Play::of(news, start)], HashMap::new());
+    let next = pick(
+        &library,
+        &history,
+        start + i64::from(news.length_ms),
+        at(0, 1),
+        1,
+    );
+    assert_ne!(next.track, 50);
 }

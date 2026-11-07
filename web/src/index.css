@@ -282,7 +282,11 @@ code,
   gap: 1.25rem;
 }
 
-/* The user's choice: the whole width of the screen (Account › Display). */
+/* The user's choice (Account › Display): 80 % of the window, or all of it. */
+:root[data-width="wide"] .content {
+  max-width: max(82rem, 80vw);
+}
+
 :root[data-width="full"] .content {
   max-width: none;
 }

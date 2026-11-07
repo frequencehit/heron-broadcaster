@@ -159,7 +159,7 @@ Every time and date is shown in the station's time zone (`station` settings, see
 
 Light and dark themes. *System* (the default) follows the device's setting (`prefers-color-scheme`); *Light* or *Dark* is saved per user by the API (`PUT /api/v1/auth/preferences`) and also remembered by the browser, so the first paint uses it.
 
-Pages are a centred column by default. *Use the whole width of the screen* (Account › Display) drops that limit, for wide screens and the many columns of the track list; it is saved and remembered like the theme (`{"full_width": true}`).
+Pages are a centred column by default. *Width* (Account › Display) picks *Normal* (that column), *80 %* (80 % of the window's width, still centred, and never narrower than *Normal*) or *100 %* (the whole width), for wide screens and the many columns of the track list; it is saved and remembered like the theme (`{"width": "wide"}`).
 
 ## Languages
 

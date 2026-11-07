@@ -36,6 +36,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Listener statistics read each stream server once a minute**, for all its mounts, instead of once per output.
 - **Outputs in the API** give a `server_id` and only their mount in `config`; their `statistics` (the admin credentials) moved to the stream server. A migration groups the existing outputs into servers ([Upgrading – Edge](docs/upgrading.md#edge)).
 - **Settings** are in tabs: *Station*, *Programming*, *Audio*, *Library* and *Statistics*.
+- **Page width** (Account › Display): *Normal*, *80 %* or *100 %* of the window, instead of a *whole width* checkbox. The API's `full_width` is now `width` (`normal`, `wide` or `full`); a migration and older configuration backups turn `full_width` into `full`.
 - **The track list's bar**: search on its own line, then the station, category, play ratio and sort menus, each with its name above it; the status menu (playable, missing, silent…) and the daypart separation filter moved to *More filters*, which opens by itself when one of them is set (as from the library's *missing* or *silent* links).
 - **Settings › Programming › Rotation** is split into titled sections (separation, dayparts, draw depth, when no track fits, weight after a play, the station's library, across stations), each with a one-line explanation; how each slot method draws is folded away, the draw depth has a diagram that follows its two values, and the two divisions of the day sit on one line.
 
@@ -44,6 +45,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - The shared routes that take a station to look at (`GET /tracks?station_id=`, `GET /categories?station_id=`, `GET /medleys?station_id=`, `GET /tracks/{id}/plays/grid?station_id=`, and a selection's filters) answer `404` for a station the user does not see, as that station's routes do.
 - Backups have their database dump again after MariaDB moves to a new version: the Compose file has MariaDB upgrade its own tables when it starts (`MARIADB_AUTO_UPGRADE`). `mariadb-dump` failed on them before (*Column count of mysql.proc is wrong*).
 - The queue starts a track with an [exact time](docs/rotation.md#exact-times) at that time at the latest, on a colored background, instead of an estimate counted from the tracks before it, and the tracks after it follow from that time.
+- **Autofill stopped after an exact time** until the hour changed, when the exact slot was the clock's first slot: rotation went back to it, found it due again and, unable to play it twice, picked nothing. A clock that does not loop now goes on with the slots after the one just played, and the slot just played is never due again in the same hour. The log also says rotation found nothing to queue instead of blaming restrictions.
 
 ## 0.3.0 – 2026-11-05
 

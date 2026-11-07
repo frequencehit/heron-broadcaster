@@ -1960,21 +1960,25 @@ async fn web_ui_routes() {
         (&json!("fr"), &json!("dark"))
     );
 
-    // And the width: a centred column unless the user wants the whole screen.
-    assert_eq!(me["full_width"], false);
-    let (status, me) = admin
-        .send(
-            Method::PUT,
-            "/auth/preferences",
-            json!({"full_width": true}),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK, "{me}");
-    assert_eq!(
-        (&me["full_width"], &me["language"], &me["theme"]),
-        (&json!(true), &json!("fr"), &json!("dark"))
-    );
-    assert_eq!(viewer.get("/auth/me").await["full_width"], false);
+    // And the width: a centred column unless the user wants 80 % or the
+    // whole window.
+    assert_eq!(me["width"], "normal");
+    for width in ["wide", "full"] {
+        let (status, me) = admin
+            .send(Method::PUT, "/auth/preferences", json!({"width": width}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{me}");
+        assert_eq!(
+            (&me["width"], &me["language"], &me["theme"]),
+            (&json!(width), &json!("fr"), &json!("dark"))
+        );
+    }
+    assert_eq!(admin.get("/auth/me").await["width"], "full");
+    assert_eq!(viewer.get("/auth/me").await["width"], "normal");
+    for refused in [json!({"width": "80"}), json!({"full_width": true})] {
+        let (status, _) = admin.send(Method::PUT, "/auth/preferences", refused).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
     let (status, _) = admin
         .send(
             Method::PUT,
@@ -8827,6 +8831,52 @@ async fn an_older_backup_moves_the_station_daypart_separation_to_its_categories(
             json!({}),
         ]
     );
+    station.stop().await;
+}
+
+/// A configuration file from before the width choice: a user with the
+/// whole width (`full_width`) gets it back as `full`.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_older_backup_turns_full_width_into_a_width() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, _) = admin
+        .send(Method::PUT, "/auth/preferences", json!({"width": "wide"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let mut file = admin.get(&format!("/backups/{name}/config")).await;
+    assert!(
+        file["tables"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|user| user["username"] == "admin" && user["width"] == "wide")
+    );
+    file["schema"] = json!(20270701000000_i64);
+    for user in file["tables"]["users"].as_array_mut().unwrap() {
+        let user = user.as_object_mut().unwrap();
+        user.remove("width");
+        let full = user["username"] == "admin";
+        user.insert("full_width".to_owned(), json!(full));
+    }
+    let (status, report) = admin.send(Method::POST, "/backups/restore", file).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+
+    let admin = station.signed_in("admin").await;
+    let users = admin.get("/users").await;
+    for user in users.as_array().unwrap() {
+        let expected = if user["username"] == "admin" {
+            "full"
+        } else {
+            "normal"
+        };
+        assert_eq!(user["width"], expected, "{user}");
+    }
     station.stop().await;
 }
 
