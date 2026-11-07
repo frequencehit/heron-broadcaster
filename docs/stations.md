@@ -84,7 +84,7 @@ A restriction (daypart, date range, category sequence) **applies to the stations
 
 - Each play in the history is a station's (`play_history.station_id`), recorded from that station's engine.
 - A track and an artist show their **plays and last play per station** and **in total**: the track and artist pages (`plays`), the library list and its sort and filters (`station_id`: a station's plays; without it, every station's).
-- Separation (daypart separation included), weights and the rotation log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
+- Separation (daypart separation included), the [draw depth](rotation.md#draw-depth)'s order, weights and the rotation log of a station only look at that station's plays, except for the [rules across stations](#rules-across-stations).
 - Listener statistics are per output, so per station, and for a whole station (an output's totals with no output: the station's).
 
 ## Rules across stations
