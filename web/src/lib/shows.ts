@@ -8,17 +8,24 @@ import type { Schemas } from "../api";
 import type { IconName } from "../components/ui";
 import type { PlainKey } from "../i18n";
 
-export type ShowKey = "dedications" | "match" | "top30";
+export type ShowKey = "dedications" | "match" | "top30" | "likes";
 export type ShowSettings = Schemas["ShowSettings"];
 export type HourRange = Schemas["HourRange"];
 export type ShowView = Schemas["ShowView"];
 
 /** The shows, in the order of the menu. Each show adds its own tabs to its page. */
-export const SHOWS: { key: ShowKey; label: PlainKey; icon: IconName }[] = [
-  { key: "dedications", label: "nav.dedications", icon: "mic" },
-  { key: "match", label: "nav.match", icon: "bolt" },
-  { key: "top30", label: "nav.top30", icon: "chart" },
+export const SHOWS: { key: ShowKey; label: PlainKey; icon: IconName; hours: boolean }[] = [
+  { key: "dedications", label: "nav.dedications", icon: "mic", hours: true },
+  { key: "match", label: "nav.match", icon: "bolt", hours: true },
+  { key: "top30", label: "nav.top30", icon: "chart", hours: true },
+  // Open all the time: no hours, no notifications.
+  { key: "likes", label: "nav.likes", icon: "like", hours: false },
 ];
+
+/** Whether a show opens at set hours (Likes are always open). */
+export function hasHours(key: string): boolean {
+  return SHOWS.find((show) => show.key === key)?.hours ?? true;
+}
 
 export function showLabel(key: string): PlainKey {
   return SHOWS.find((show) => show.key === key)?.label ?? "nav.shows";

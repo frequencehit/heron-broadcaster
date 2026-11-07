@@ -82,7 +82,11 @@ pub async fn public_shows(pool: &MySqlPool, station_id: u64) -> ApiResult<Vec<Sh
     for show in SHOWS.iter().filter(|show| on.is_on(show.module)) {
         let settings = load(pool, station_id, show).await?;
         // Each show adds its live data here (`state`).
-        shows.push(ShowPublic::new(show.module, &settings, &timezone));
+        let mut public = ShowPublic::new(show.module, &settings, &timezone);
+        if show.module == Module::Likes {
+            public.state = crate::likes::public_state(pool, station_id).await?;
+        }
+        shows.push(public);
     }
     Ok(shows)
 }
@@ -124,7 +128,7 @@ async fn list_shows(
 
 /// A show's settings on the station, and whether it is open now.
 #[utoipa::path(get, path = "/shows/{module}", tag = "shows",
-    params(("module" = String, Path, description = "dedications, match or top30")),
+    params(("module" = String, Path, description = "dedications, match, top30 or likes")),
     responses((status = 200, body = ShowView), (status = "4XX", body = ErrorBody)))]
 async fn get_show(
     _user: CurrentUser,
@@ -139,7 +143,7 @@ async fn get_show(
 /// Replaces a show's settings on the station. Hours another show of the
 /// station has are refused (`409`). Operators.
 #[utoipa::path(put, path = "/shows/{module}", tag = "shows",
-    params(("module" = String, Path, description = "dedications, match or top30")),
+    params(("module" = String, Path, description = "dedications, match, top30 or likes")),
     request_body = ShowSettings,
     responses((status = 200, body = ShowView), (status = "4XX", body = ErrorBody)))]
 async fn put_show(

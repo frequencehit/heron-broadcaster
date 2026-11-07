@@ -46,7 +46,7 @@ pub fn token_from(value: Option<&str>) -> GatewayToken {
 #[derive(Clone, Debug)]
 pub struct GatewayClient {
     /// The device's hash, on a listener's write.
-    // Read by the shows' writes (#131, #132, #133).
+    // Read by the shows' writes sent on one by one (#131).
     #[allow(dead_code)]
     pub device: Option<String>,
 }
@@ -71,8 +71,6 @@ impl FromRequestParts<AppState> for GatewayClient {
     }
 }
 
-// Used by the shows' writes (#131, #132, #133) and the tests.
-#[cfg_attr(not(test), allow(dead_code))]
 /// An enabled station's show, on and open now: what a show's write needs.
 /// `404` for an unknown station, a show that is not one or is off, `409`
 /// while it is closed.

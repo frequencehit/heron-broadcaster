@@ -98,6 +98,9 @@ pub enum TrackSort {
     LevelMax,
     /// Lowest play ratio first, disabled tracks (0) before all.
     PlayRatio,
+    /// Lowest share of likes first, over `likes_days`; tracks below 10
+    /// votes after those ranked, those without votes last.
+    Liked,
 }
 
 /// Which tracks: the filters of `GET /tracks`, also used to select tracks
@@ -155,6 +158,17 @@ pub struct TrackQuery {
     /// Tracks whose play ratio, in tenths, is at most this (0: the disabled
     /// tracks).
     pub ratio_max: Option<u8>,
+    /// The period of the likes, in days ending now: 1 to 3650, 30 by
+    /// default. On the station of `station_id`, else of `on_station_id`,
+    /// every station's when neither is given.
+    pub likes_days: Option<u32>,
+    /// Tracks with at least this share of likes, in percent (0 to 100);
+    /// tracks without votes are left out.
+    pub liked_min: Option<u8>,
+    /// Tracks with at most this share of likes, in percent.
+    pub liked_max: Option<u8>,
+    /// Tracks with at least this many votes (likes and dislikes).
+    pub votes_min: Option<u32>,
     /// `true`: the tracks with their own daypart separation or same
     /// daypart on the following days; `false`: those that follow their
     /// categories'.
@@ -246,6 +260,10 @@ pub struct TrackSummary {
     /// deleted), while it is disabled.
     pub disabled_by: Option<String>,
     pub disabled_at_unix_ms: Option<i64>,
+    /// Listeners' likes and dislikes over `likes_days`
+    /// (`docs/listener-interaction.md#likes`).
+    pub likes: u64,
+    pub dislikes: u64,
     /// Listed on a station (`on_station_id`): its ratio there.
     #[sqlx(skip)]
     pub station_ratio: Option<crate::ratios::StationRatio>,
@@ -273,7 +291,13 @@ pub(crate) struct ListContext {
     /// The station listed, whose play ratios it gives.
     on_station_id: Option<u64>,
     kept_out: Vec<u64>,
+    /// The period of the likes, in days.
+    likes_days: u32,
 }
+
+/// The period of the likes in the track list, by default.
+const LIKES_DAYS: u32 = 30;
+const MAX_LIKES_DAYS: u32 = 3_650;
 
 impl ListContext {
     pub async fn load(pool: &sqlx::MySqlPool) -> ApiResult<Self> {
@@ -282,6 +306,7 @@ impl ListContext {
             station_id: None,
             on_station_id: None,
             kept_out: Vec::new(),
+            likes_days: LIKES_DAYS,
         })
     }
 
@@ -300,11 +325,26 @@ impl ListContext {
             }
             None => Vec::new(),
         };
+        let likes_days = params.likes_days.unwrap_or(LIKES_DAYS);
+        if !(1..=MAX_LIKES_DAYS).contains(&likes_days) {
+            return Err(ApiError::BadRequest(format!(
+                "likes_days is 1 to {MAX_LIKES_DAYS}"
+            )));
+        }
+        for (name, share) in [
+            ("liked_min", params.liked_min),
+            ("liked_max", params.liked_max),
+        ] {
+            if share.is_some_and(|share| share > 100) {
+                return Err(ApiError::BadRequest(format!("{name} is 0 to 100")));
+            }
+        }
         Ok(Self {
             settings: self.settings.clone(),
             station_id: params.station_id,
             on_station_id: params.on_station_id,
             kept_out,
+            likes_days,
         })
     }
 
@@ -346,6 +386,8 @@ impl ListContext {
                 AS disabled_by,
               IF(t.enabled, NULL, CAST(UNIX_TIMESTAMP(t.disabled_at) * 1000 AS SIGNED))
                 AS disabled_at_unix_ms,
+              CAST(COALESCE(v.likes, 0) AS UNSIGNED) AS likes,
+              CAST(COALESCE(v.dislikes, 0) AS UNSIGNED) AS dislikes,
               CONCAT('/api/v1/public/covers/',
                      LOWER(HEX(COALESCE(tcv.cover_hash, acv.cover_hash)))) AS cover_url ",
         );
@@ -387,6 +429,17 @@ impl ListContext {
         query.push(" OR (played_ms IS NULL AND started_at <= NOW(6) - INTERVAL ");
         query.push_bind(min_play_s);
         query.push(" SECOND)) GROUP BY track_id) h ON h.track_id = t.id");
+        // Listeners' likes over the period, on the station whose plays it
+        // counts, else the station it lists.
+        query.push(
+            " LEFT JOIN (SELECT track_id, SUM(likes) AS likes, SUM(dislikes) AS dislikes
+                         FROM play_votes WHERE started_at >= NOW(6) - INTERVAL ",
+        );
+        query.push_bind(self.likes_days).push(" DAY");
+        if let Some(station_id) = self.station_id.or(self.on_station_id) {
+            query.push(" AND station_id = ").push_bind(station_id);
+        }
+        query.push(" GROUP BY track_id) v ON v.track_id = t.id");
     }
 
     /// The era of the year of first release.
@@ -600,6 +653,21 @@ impl ListContext {
                 .push(format!(" AND {} <= ", self.effective_ratio()))
                 .push_bind(ratio);
         }
+        for (share, comparison) in [(params.liked_min, ">="), (params.liked_max, "<=")] {
+            if let Some(share) = share {
+                query
+                    .push(format!(
+                        " AND v.likes + v.dislikes > 0 AND v.likes * 100 {comparison} "
+                    ))
+                    .push_bind(share)
+                    .push(" * (v.likes + v.dislikes)");
+            }
+        }
+        if let Some(votes) = params.votes_min {
+            query
+                .push(" AND COALESCE(v.likes + v.dislikes, 0) >= ")
+                .push_bind(votes);
+        }
         if let Some(own) = params.own_dayparts {
             query.push(if own {
                 " AND (p.dayparts IS NOT NULL OR p.daypart_days IS NOT NULL)"
@@ -671,6 +739,14 @@ impl ListContext {
             TrackSort::PlayRatio => query.push(format!(
                 " ORDER BY {}{}, t.artist, t.title",
                 self.effective_ratio(),
+                direction(true)
+            )),
+            TrackSort::Liked => query.push(format!(
+                " ORDER BY COALESCE(v.likes + v.dislikes, 0) = 0,
+                           COALESCE(v.likes + v.dislikes, 0) < {},
+                           v.likes / (v.likes + v.dislikes){}, v.likes + v.dislikes DESC,
+                           t.artist, t.title",
+                crate::likes::MIN_VOTES,
                 direction(true)
             )),
             TrackSort::Duration => query.push(format!(

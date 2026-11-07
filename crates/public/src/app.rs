@@ -381,6 +381,15 @@ async fn write(
             );
         }
     };
+    // Only what the show has open now: the track playing, for a like.
+    if let Some(stale) = action.stale(&fields, &show["state"]) {
+        return refuse(
+            StatusCode::CONFLICT,
+            "conflict",
+            "stale",
+            format!("{stale} is not open to writes any more"),
+        );
+    }
     let device = gateway.proofs.device(
         address,
         header_text(headers, header::USER_AGENT),
@@ -403,6 +412,10 @@ async fn write(
     match action.delivery {
         Delivery::Batch => {
             gateway.add_to_batch(path, fields);
+            (StatusCode::ACCEPTED, axum::Json(json!({"accepted": true}))).into_response()
+        }
+        Delivery::Latest => {
+            gateway.keep_latest(path, &device, fields);
             (StatusCode::ACCEPTED, axum::Json(json!({"accepted": true}))).into_response()
         }
         Delivery::Forward => {
@@ -1028,6 +1041,92 @@ mod tests {
             .collect();
         counts.sort();
         assert_eq!(counts, [("a".to_owned(), 3), ("b".to_owned(), 1)]);
+    }
+
+    #[tokio::test]
+    async fn likes_keep_each_devices_last_vote_on_the_track_playing() {
+        let (api, url) = fake_api().await;
+        let config = Config {
+            api_url: url,
+            token: Some("token".to_owned()),
+            writes_per_minute: 100,
+            ..Config::default()
+        };
+        let gateway = Gateway::with_proofs(
+            config,
+            vec![crate::actions::LIKE],
+            Proofs::with_key([3; 32], 0),
+        )
+        .unwrap();
+        // Likes have no hours: open all the time, on play 7.
+        let on_air = |play: Value| {
+            let mut open = state(json!([]), 0);
+            let mut likes = open.stations[0].shows[0].clone();
+            likes.module = Module::Likes;
+            likes.state = json!({ "play_id": play });
+            open.stations[0].shows = vec![likes];
+            open
+        };
+        gateway.apply(Some(on_air(json!(7))), Timestamp::now());
+        let vote = |body: Value, from: [u8; 4]| {
+            let gateway = Arc::clone(&gateway);
+            async move {
+                call(
+                    &gateway,
+                    Method::POST,
+                    "/api/v1/public/stations/main/likes/vote",
+                    &[],
+                    Some(body),
+                    from,
+                )
+                .await
+            }
+        };
+        let other = [203, 0, 113, 9];
+        for (body, from) in [
+            (json!({"play_id": 7, "vote": "like"}), LISTENER),
+            // Changes its mind: only this one goes.
+            (json!({"play_id": 7, "vote": "dislike"}), LISTENER),
+            (json!({"play_id": 7, "vote": "like"}), other),
+        ] {
+            let (status, _, answer) = vote(body, from).await;
+            assert_eq!(status, StatusCode::ACCEPTED, "{answer}");
+        }
+        // A past track, a vote that is neither.
+        let (status, _, _) = vote(json!({"play_id": 6, "vote": "like"}), LISTENER).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        let (status, _, _) = vote(json!({"play_id": 7, "vote": "love"}), LISTENER).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        gateway.flush().await;
+        {
+            let received = api.received.lock().unwrap();
+            assert_eq!(received.len(), 1);
+            let (path, _, body) = &received[0];
+            assert_eq!(path, "main/likes/vote");
+            let mut writes: Vec<(String, String)> = body["writes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|write| {
+                    assert_eq!(write["fields"]["play_id"], 7);
+                    (
+                        write["device"].as_str().unwrap().to_owned(),
+                        write["fields"]["vote"].as_str().unwrap().to_owned(),
+                    )
+                })
+                .collect();
+            writes.sort_by(|a, b| a.1.cmp(&b.1));
+            assert_eq!(writes.len(), 2, "one per device");
+            assert_ne!(writes[0].0, writes[1].0);
+            assert_eq!(writes[0].1, "dislike");
+            assert_eq!(writes[1].1, "like");
+        }
+        // A jingle: nothing to vote on.
+        gateway.apply(Some(on_air(Value::Null)), Timestamp::now());
+        let (status, _, _) = vote(json!({"play_id": 7, "vote": "like"}), LISTENER).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        gateway.flush().await;
+        assert_eq!(api.received.lock().unwrap().len(), 1, "nothing more sent");
     }
 
     #[tokio::test]

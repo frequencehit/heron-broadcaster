@@ -10,6 +10,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, type ReactNode, useState } from "react";
 import { type Schemas, api, query, unwrap } from "../api";
+import { LikesWeekCard } from "../components/Likes";
 import { type Bar, BarChart, MinuteChart, type Point } from "../components/ListenerChart";
 import { InfoTip } from "../components/InfoTip";
 import { Card, Empty, ErrorView, Loading, PageHead, Segmented } from "../components/ui";
@@ -236,6 +237,7 @@ export function Statistics() {
             </>
           )}
           <Departures filter={filter} period={period} station={several ? seen.find((s) => s.id === here().station_id)?.name : undefined} />
+          <LikesWeekCard />
           <HowCounted zone={zone} several={seen.length > 1} />
         </div>
       )}

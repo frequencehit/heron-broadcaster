@@ -48,11 +48,12 @@ export const MODULES: ModuleEntry[] = [
   { key: "dedications", label: "nav.dedications", help: "modules.dedicationsHelp", off: "modules.showOff" },
   { key: "match", label: "nav.match", help: "modules.matchHelp", off: "modules.showOff" },
   { key: "top30", label: "nav.top30", help: "modules.top30Help", off: "modules.showOff" },
+  { key: "likes", label: "nav.likes", help: "modules.likesHelp", off: "modules.likesOff" },
 ];
 
 /**
  * What is shown until the station's modules are known: their defaults,
- * everything on but the shows (docs/modules.md).
+ * everything on but the shows, Likes aside (docs/modules.md).
  */
 export const ALL_ON: Modules = {
   medleys: true,
@@ -69,6 +70,7 @@ export const ALL_ON: Modules = {
   dedications: false,
   match: false,
   top30: false,
+  likes: true,
 };
 
 export function moduleKey(station: number | null): readonly unknown[] {

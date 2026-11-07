@@ -17,6 +17,24 @@ pub struct Field {
     /// Characters at most (of its text; numbers and booleans pass).
     pub max_chars: usize,
     pub required: bool,
+    /// The values it may take; empty: any.
+    pub choices: &'static [&'static str],
+    /// It must be what the show's live state has under the same name (the
+    /// play being voted on): else `409`, the write came too late.
+    pub current: bool,
+}
+
+impl Field {
+    /// A field of any value, at most `max_chars` characters.
+    pub const fn text(name: &'static str, max_chars: usize, required: bool) -> Self {
+        Self {
+            name,
+            max_chars,
+            required,
+            choices: &[],
+            current: false,
+        }
+    }
 }
 
 /// How a write reaches the API.
@@ -29,6 +47,10 @@ pub enum Delivery {
     /// `{"counts": [{"fields": {…}, "count": n}]}` (votes); the listener
     /// gets `202`.
     Batch,
+    /// Kept per device, its last write only, and sent every second as
+    /// `{"writes": [{"device": "…", "fields": {…}}]}` (likes, which a
+    /// device can change); the listener gets `202`.
+    Latest,
 }
 
 /// A write a show takes.
@@ -43,8 +65,33 @@ pub struct Action {
     pub delivery: Delivery,
 }
 
-/// The writes of every show. Each show adds its own (#131, #132, #133).
-pub const ACTIONS: &[Action] = &[];
+/// The writes of every show. Each show adds its own (#131, #132).
+pub const ACTIONS: &[Action] = &[LIKE];
+
+/// A like or a dislike of the track playing (#133): one per device per
+/// play, the last one counting, so no limit per device but the address's.
+pub const LIKE: Action = Action {
+    module: Module::Likes,
+    name: "vote",
+    fields: &[
+        Field {
+            name: "play_id",
+            max_chars: 20,
+            required: true,
+            choices: &[],
+            current: true,
+        },
+        Field {
+            name: "vote",
+            max_chars: 7,
+            required: true,
+            choices: &["like", "dislike"],
+            current: false,
+        },
+    ],
+    per_device: 0,
+    delivery: Delivery::Latest,
+};
 
 impl Action {
     /// Its path after `/stations/{code}/`.
@@ -73,6 +120,14 @@ impl Action {
                 Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null => {}
                 _ => return Err(format!("{name} is a text, a number or a boolean")),
             }
+            if !field.choices.is_empty()
+                && !value.is_null()
+                && !value
+                    .as_str()
+                    .is_some_and(|text| field.choices.contains(&text))
+            {
+                return Err(format!("{name} is one of {}", field.choices.join(", ")));
+            }
         }
         if let Some(missing) = self
             .fields
@@ -82,6 +137,15 @@ impl Action {
             return Err(format!("{} is required", missing.name));
         }
         Ok(fields.clone())
+    }
+
+    /// The first field that is not what the show's live `state` has now.
+    pub fn stale(&self, fields: &Map<String, Value>, state: &Value) -> Option<&'static str> {
+        self.fields
+            .iter()
+            .filter(|field| field.current)
+            .find(|field| fields.get(field.name) != state.get(field.name).filter(|v| !v.is_null()))
+            .map(|field| field.name)
     }
 }
 
@@ -101,16 +165,8 @@ pub(crate) mod tests {
         module: Module::Dedications,
         name: "",
         fields: &[
-            Field {
-                name: "first_name",
-                max_chars: 5,
-                required: true,
-            },
-            Field {
-                name: "message",
-                max_chars: 10,
-                required: false,
-            },
+            Field::text("first_name", 5, true),
+            Field::text("message", 10, false),
         ],
         per_device: 1,
         delivery: Delivery::Forward,
@@ -119,11 +175,7 @@ pub(crate) mod tests {
     pub const VOTE: Action = Action {
         module: Module::Match,
         name: "vote",
-        fields: &[Field {
-            name: "choice",
-            max_chars: 1,
-            required: true,
-        }],
+        fields: &[Field::text("choice", 1, true)],
         per_device: 0,
         delivery: Delivery::Batch,
     };
@@ -155,6 +207,36 @@ pub(crate) mod tests {
                 .check(&serde_json::json!({"first_name": "Zoë"}))
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn likes_name_the_play_and_like_or_dislike_it() {
+        assert_eq!(LIKE.path(), "likes/vote");
+        let vote = LIKE
+            .check(&serde_json::json!({"play_id": 12, "vote": "like"}))
+            .unwrap();
+        for (body, error) in [
+            (
+                serde_json::json!({"play_id": 12, "vote": "love"}),
+                "one of like, dislike",
+            ),
+            (serde_json::json!({"play_id": 12, "vote": 1}), "one of"),
+            (serde_json::json!({"vote": "like"}), "play_id is required"),
+        ] {
+            let refused = LIKE.check(&body).unwrap_err();
+            assert!(refused.contains(error), "{body}: {refused}");
+        }
+        // Only the play on air now.
+        assert_eq!(LIKE.stale(&vote, &serde_json::json!({"play_id": 12})), None);
+        assert_eq!(
+            LIKE.stale(&vote, &serde_json::json!({"play_id": 13})),
+            Some("play_id")
+        );
+        assert_eq!(LIKE.stale(&vote, &Value::Null), Some("play_id"));
+        let no_play = LIKE
+            .check(&serde_json::json!({"play_id": null, "vote": "like"}))
+            .unwrap_err();
+        assert!(no_play.contains("required"));
     }
 
     #[test]

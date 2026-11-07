@@ -24,6 +24,7 @@ import {
   type ShowView,
   clashes,
   fillMessage,
+  hasHours,
   hourLabel,
   pageUrl,
   showLabel,
@@ -72,7 +73,7 @@ export function ShowPage({ module, tabs }: Readonly<{ module: ShowKey; tabs?: Re
     <>
       <PageHead
         title={title}
-        description={t("shows.help", { zone: show.data.timezone })}
+        description={hasHours(module) ? t("shows.help", { zone: show.data.timezone }) : t("shows.likesHelp")}
         actions={
           canEdit && (
             <>
@@ -93,11 +94,38 @@ export function ShowPage({ module, tabs }: Readonly<{ module: ShowKey; tabs?: Re
           )
         }
       />
-      {tabs}
-      <Hours show={show.data} draft={draft} set={set} others={others} canEdit={canEdit} />
-      <Notifications show={show.data} draft={draft} set={set} canEdit={canEdit} />
+      {hasHours(module) ? (
+        <>
+          {tabs}
+          <Hours show={show.data} draft={draft} set={set} others={others} canEdit={canEdit} />
+          <Notifications show={show.data} draft={draft} set={set} canEdit={canEdit} />
+        </>
+      ) : (
+        <>
+          <AlwaysOpen draft={draft} set={set} canEdit={canEdit} />
+          {tabs}
+        </>
+      )}
       <Website module={module} title={title} show={show.data} draft={draft} set={set} canEdit={canEdit} station={station} />
     </>
+  );
+}
+
+/** A show without hours (Likes): open all the time, unless turned off. */
+function AlwaysOpen({ draft, set, canEdit }: Readonly<{ draft: ShowSettings; set: Update; canEdit: boolean }>) {
+  return (
+    <Card>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={draft.enabled}
+          disabled={!canEdit}
+          onChange={(e) => set((d) => ({ ...d, enabled: e.target.checked }))}
+        />
+        {t("shows.alwaysOpen")}
+      </label>
+      <p className="muted small">{t("shows.alwaysOpenHelp")}</p>
+    </Card>
   );
 }
 
@@ -555,6 +583,7 @@ function Website({
             ]}
           />
           <WidgetPreview
+            module={module}
             open={preview === "open"}
             title={website.title || title}
             color={website.color}
@@ -572,6 +601,7 @@ function Website({
 
 /** What the website shows, as the gateway's script draws it. */
 export function WidgetPreview({
+  module,
   open,
   title,
   color,
@@ -580,6 +610,7 @@ export function WidgetPreview({
   hours,
   next,
 }: Readonly<{
+  module?: string;
   open: boolean;
   title: string;
   color: string;
@@ -591,16 +622,31 @@ export function WidgetPreview({
   if (!open && closed === "nothing") {
     return <div className="show-widget empty muted small">{t("shows.previewNothing")}</div>;
   }
+  const likes = module === "likes";
   const when = next ? dateTime(next) : "…";
   const values = next ? { day: fullDate(next), hour: shortTime(next) } : { day: "…", hour: "" };
   return (
     <div className="show-widget">
       <div className="show-widget-head" style={{ background: open ? color : "var(--muted)" }}>
         <strong>{title}</strong>
-        <div className="small">{open ? t("shows.until", { time: "18:00" }) : t("shows.closedTitle")}</div>
+        <div className="small">
+          {!open ? t("shows.closedTitle") : likes ? t("likes.widgetSub") : t("shows.until", { time: "18:00" })}
+        </div>
       </div>
       <div className="show-widget-body">
-        {open ? (
+        {open && likes ? (
+          <div className="stack" style={{ gap: 8, textAlign: "left" }}>
+            <strong>{t("likes.exampleTrack")}</strong>
+            <div className="row">
+              <span className="btn">
+                <Icon name="like" /> {t("likes.like")}
+              </span>
+              <span className="btn">
+                <Icon name="dislike" /> {t("likes.dislike")}
+              </span>
+            </div>
+          </div>
+        ) : open ? (
           <p className="muted">{t("shows.previewOpenBody")}</p>
         ) : (
           <>

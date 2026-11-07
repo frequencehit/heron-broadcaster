@@ -22,6 +22,7 @@ import {
   unwrap,
 } from "../api";
 import { FadeEditor } from "../components/FadeEditor";
+import { TrackLikesCard } from "../components/Likes";
 import { PlayGrids } from "../components/PlayGrids";
 import { NewCategory } from "../components/NewCategory";
 import { TaskState, useTask } from "../components/Task";
@@ -707,6 +708,7 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
       </div>
       <div className="stack track-tab" hidden={tab !== "plays"}>
         <PlaysCard track={track} />
+        <TrackLikesCard trackId={track.id} />
         <PlayGrids trackId={track.id} />
       </div>
       <TagsDialog

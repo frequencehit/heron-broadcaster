@@ -28,6 +28,7 @@ mod labels;
 mod levels;
 mod librarian;
 mod library;
+mod likes;
 mod listeners;
 mod live;
 mod medleys;
@@ -315,6 +316,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     let gateway_token = gateway::token_from(public_token.as_deref());
     tasks.push(tokio::spawn(levels::run(pool.clone())));
     tasks.push(tokio::spawn(users::purge_sessions(pool.clone())));
+    tasks.push(tokio::spawn(likes::purge(pool.clone())));
     tasks.push(tokio::spawn(
         Arc::clone(&backups).run_daily(pool.clone(), Arc::clone(&stations)),
     ));
@@ -598,6 +600,8 @@ mod tests {
             "listener_totals",
             "outputs",
             "play_history",
+            "play_vote_devices",
+            "play_votes",
             "restrictions",
             "rotation_picks",
             "sessions",

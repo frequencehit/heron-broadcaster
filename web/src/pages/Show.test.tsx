@@ -135,4 +135,27 @@ describe("a show's page", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect((screen.getByRole("checkbox", { name: "Open during its hours" }) as HTMLInputElement).disabled).toBe(true);
   });
+
+  it("has no hours nor notifications for likes, which are always open", async () => {
+    answers();
+    const likes = { ...view("likes", { hours: [] }), status: { open: true, closes_at_unix_ms: null, next_opening_unix_ms: null } };
+    likes.settings.notifications.events = {};
+    answer({
+      [SHOW]: likes,
+      "GET /api/v1/stations/{station_id}/shows": [likes],
+      [SAVE]: (options: { body: ShowSettings }) => ({ ...likes, settings: options.body }),
+      "GET /api/v1/stations": [{ id: 1, name: "Main", code: "main", enabled: true, position: 0 }],
+      "GET /api/v1/stations/{station_id}/settings/station": { timezone: "Europe/Paris", public_url: null, gateway_url: null },
+      "GET /api/v1/stations/{id}/modules": { installation: ALL_ON, station: ALL_ON, on: ALL_ON },
+    });
+    renderApp(<ShowPage module="likes" />);
+    const open = await screen.findByRole("checkbox", { name: "Open to votes" });
+    expect(screen.queryByText("Hours")).toBeNull();
+    expect(screen.queryByText("Notifications")).toBeNull();
+    expect(screen.getByText("Only the track playing can be voted on.")).toBeTruthy();
+    fireEvent.click(open);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(SAVE)).toHaveLength(1));
+    expect((sent(SAVE)[0]?.options?.body as ShowSettings).enabled).toBe(false);
+  });
 });

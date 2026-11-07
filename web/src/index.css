@@ -2884,6 +2884,93 @@ a.statusbar-deck:hover .statusbar-deck-text,
   background: var(--good);
 }
 
+/* Likes (docs/listener-interaction.md#likes): likes in green, dislikes in red. */
+.like-bar {
+  display: inline-block;
+  width: 3.5rem;
+  height: 0.4rem;
+  border-radius: 3px;
+  background: var(--bad);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.like-bar.empty {
+  background: var(--surface-2);
+}
+
+.like-bar i {
+  display: block;
+  height: 100%;
+  background: var(--good);
+}
+
+.liked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.like-periods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+}
+
+.like-period {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.like-period .like-bar {
+  width: 100%;
+}
+
+.like-share {
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.like-plays,
+.like-ranking {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.like-ranking {
+  padding-left: 1.4rem;
+  list-style: decimal;
+}
+
+.like-plays li,
+.like-ranking li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.like-ranking li {
+  display: list-item;
+}
+
+.like-ranking li .liked {
+  float: right;
+}
+
+.like-plays li .like-bar {
+  flex: 1;
+  width: auto;
+}
+
 ul.held {
   margin: 0.25rem 0;
   padding-left: 1.1rem;

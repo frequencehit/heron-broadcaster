@@ -39,7 +39,9 @@ A write (a dedication, a vote) goes through, in order:
 5. **The device's limit**: what one device may send, set by each show (one dedication per opening range, one vote per match). Over it: `429`.
 6. **The API's limit**: writes sent on to the API per second, for every listener together. Over it: `429`, and the API sees nothing more.
 
-Then a write is either **sent on** to the API at once (a dedication: one request, answered with the API's answer) or **added up** in the gateway and sent every second in one batch (votes: `202` for the listener).
+A show can also ask that a field be one of a few values (`like` or `dislike`), and that a field match its live state (`play_id`: the track playing, see [Likes](#likes)): else `422` or `409`.
+
+Then a write is either **sent on** to the API at once (a dedication: one request, answered with the API's answer), **added up** in the gateway and sent every second in one batch (votes: `202` for the listener), or **kept per device**, the device's last write only, and sent every second in one batch with each device's hash (likes: `202`).
 
 When the gateway is flooded, its limits fill and listeners get `429`: the API and the engines see no more than the usual batches, and the air carries on.
 
@@ -76,13 +78,13 @@ Reads answer any origin (`Access-Control-Allow-Origin: *`), like the API's publi
 
 ## Shows and their hours
 
-The shows are [modules](modules.md), off until an admin turns them on: *Dedications* (`dedications`), *Match* (`match`), *Top 30* (`top30`). Each has, per station, its settings (`GET`, `PUT /stations/{id}/shows/{module}`, operators):
+The shows are [modules](modules.md): *Dedications* (`dedications`), *Match* (`match`), *Top 30* (`top30`), off until an admin turns them on, and *Likes* (`likes`), on by default. Each has, per station, its settings (`GET`, `PUT /stations/{id}/shows/{module}`, operators):
 
 - **Opening hours**, in **whole hours**, in the station's time zone: ranges of days and hours (Monday to Friday, 17:00 to 18:00; up to 24:00). `enabled` off closes the show whatever its hours.
 - **An hour belongs to one show at most**, on a station: saving hours that another show of the station has is refused (`409`, saying which hours and which show). The hours of a show that is off or not enabled still count, so that turning it back on finds them free.
 - **Outside its hours**, a show's API refuses writes (`409`) and its widget says when it opens next.
 
-Likes (#133) have no hours: they are open all the time, and do not take hours from the others.
+[Likes](#likes) have no hours: they are open all the time (while *enabled*), and do not take hours from the others. Saving hours for them is refused (`422`).
 
 ### Closed
 
@@ -130,9 +132,47 @@ A show event is sent to the webhooks chosen on the show's page, whatever events 
 
 Events are not sent while the webhooks or the show are turned off, nor for times that passed while the API was stopped.
 
+## Likes
+
+*Likes* (`likes`) let listeners say whether they like the track playing. A show with no hours, **on by default**: open all the time while the module is on and the show *enabled*. The weekly Top 30 (#134) ranks the tracks on these votes. Like every show, it reaches listeners through the gateway: nothing is voted on until `heron-public` runs.
+
+### Voting
+
+- **Only the track playing.** The show's live state (`state` in the gateway's state and events) names the play listeners can vote on, `{"play_id": 1234}`, or is `null` while nothing can be voted on. A vote names that play: a vote for another one, a track that ended, is refused (`409`).
+- **Only music**: a track of the library on deck A or B, not one that sends no metadata (jingles, ads, medleys, voice tracks) and not one from the fallback directory. While a jingle plays, nothing can be voted on.
+- **Like or dislike**: `POST …/stations/{code}/likes/vote` with `{"play_id": 1234, "vote": "like"}` (or `"dislike"`) and the proof of work, answered `202`.
+- **One vote per device per play.** A device can change its mind while the track plays: its last vote counts, once. The same track played again is another play, voted on again.
+- **Kept per device in the gateway**, the last vote of each device only, and sent to the API every second in one batch, with each device's hash. The API counts a vote while its play is on air and up to 10 seconds after it ends (for the batch on its way); it drops the others.
+
+### The score
+
+The **share of likes**, `likes / (likes + dislikes)`, shown with the number of votes (*79 %, 611 votes*). A track is ranked, among the week's most and least liked, from **10 votes** in the period; below, its share is shown but it is *not ranked yet*.
+
+### What is kept
+
+- **Per play**, the likes and dislikes of each play, with its station, its track and when it started, kept as long as the history. Heron adds them up per track and per station: over this week, 30 days or always, the week's most and least liked tracks, and any period the Top 30 ranks (#134).
+- **Per device**, the device's hash and its vote on a play, so that a device changes its vote instead of adding one: deleted an hour after the play ends, and a day after the vote at the latest. No IP address.
+
+The votes are in the database dump of the [backups](backups.md), with the history, not in the configuration file.
+
+### In Heron
+
+- **On air**: the likes and dislikes of the track playing, as they come.
+- **The track's page**: for the station shown, this week, 30 days and always (share and votes), and its latest plays with their votes. Hovering a play in the plays grid gives its votes.
+- **The track list**: a *Liked* column (share and votes over 7, 30 or 365 days, on the station listed), its sort, and filters on the share and the number of votes (*under 40 %, at least 20 votes*: the tracks to rest, or whose [ratio](rotation.md#play-ratio) to lower).
+- **Shows › Likes** and the **Statistics** page: the most liked and least liked tracks of the week.
+
+### Notifications
+
+No notification per vote: there would be too many. Likes have no hours, so they send no `show.upcoming`, `show.started` or `show.ended` either. The week's results go out with the Top 30 (#134).
+
+### On the website
+
+The page and the small widget show the track playing with two buttons, *I like* and *I don't like*. The one chosen stays pressed until the track ends; another click changes the vote. While nothing can be voted on (a jingle, nothing on air), they say so. Nothing is kept in the browser.
+
 ## Personal data
 
-- **The gateway** keeps nothing on disk. In memory: the hash of each device that wrote, with its count, until the opening range ends (at most a day); the challenges given, 5 minutes. Addresses are counted for the per-address limits for a minute, and dropped.
+- **The gateway** keeps nothing on disk. In memory: the hash of each device that wrote, with its count, until the opening range ends (at most a day); a device's last like until the next batch, a second; the challenges given, 5 minutes. Addresses are counted for the per-address limits for a minute, and dropped.
 - **The API** stores what a show keeps (a dedication's first name and message, the device's hash), and deletes it after the time the show says, written on the show's page; no IP address. Each show's part of these docs says what it keeps and for how long.
 - **Nothing a listener writes reaches the air, the website or a webhook without a person's approval.**
 
@@ -146,7 +186,7 @@ What a show module adds, and where:
 | `heron_core::shows::Show` | Its entry: key, whether it has hours, its own notification events with their default messages, its own placeholders |
 | `heron-api`, `shows.rs` | Its part of the public state (`ShowPublic::state`, any JSON: the current match, the day's dedications), read once a second by the gateway |
 | `heron-api`, gateway routes | Its writes, under `/api/v1/gateway/stations/{code}/{module}/…`, behind `GatewayClient` and `gateway::open_show`, which check the token, the module and the hours |
-| `heron-public`, `actions.rs` | Its writes as the gateway takes them: path, fields and their sizes, the device's limit, sent on or added up |
+| `heron-public`, `actions.rs` | Its writes as the gateway takes them: path, fields and their sizes (and their values, or the field of its state they must match), the device's limit, sent on, added up or kept per device |
 | `heron-public`, `widget.js` | Its renderer: what the page and the small widget show while it is open |
 | `web/src/pages/Show.tsx` | Its tabs (the live view: requests, the match in progress) and its settings, next to the common ones |
 | `docs/` | Its part: what it keeps, its routes, its events |
