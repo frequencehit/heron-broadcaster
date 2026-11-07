@@ -438,6 +438,136 @@ mod tests {
         assert!(ahead < greedy);
     }
 
+    /// How the exact times were met over a simulation: their count, how
+    /// many started late, the average and the worst lateness (ms), how
+    /// many came 20 s late or more, and how many faded the track before.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct Timing {
+        exact: usize,
+        late: usize,
+        mean_late_ms: i64,
+        max_late_ms: i64,
+        late_20s: usize,
+        faded: usize,
+        mean_early_ms: i64,
+        /// Average time cut from the track before, when faded (ms).
+        mean_cut_ms: i64,
+    }
+
+    fn timing(mode: ExactMode, days: i64, lookahead: bool) -> Timing {
+        let library = station(mode);
+        let simulation = simulate_with(
+            &library,
+            History::default(),
+            None,
+            0,
+            days * 24 * HOUR,
+            7,
+            lookahead,
+        );
+        let exact: Vec<_> = simulation
+            .picks
+            .iter()
+            .filter_map(|pick| pick.explanation.exact)
+            .collect();
+        let late: Vec<i64> = exact
+            .iter()
+            .map(|e| e.offset_ms)
+            .filter(|&o| o > 0)
+            .collect();
+        let early: Vec<i64> = exact
+            .iter()
+            .map(|e| e.offset_ms)
+            .filter(|&o| o < 0)
+            .collect();
+        let mean = |values: &[i64]| {
+            if values.is_empty() {
+                0
+            } else {
+                values.iter().sum::<i64>() / i64::try_from(values.len()).unwrap_or(1)
+            }
+        };
+        let cuts: Vec<i64> = simulation
+            .picks
+            .windows(2)
+            .filter(|pair| pair[1].explanation.exact.is_some_and(|exact| exact.faded))
+            .map(|pair| {
+                let planned = library
+                    .tracks
+                    .get(&pair[0].track_id)
+                    .map_or(0, |track| i64::from(track.next_ms()));
+                pair[0].start_unix_ms + planned - pair[1].start_unix_ms
+            })
+            .collect();
+        Timing {
+            mean_cut_ms: mean(&cuts),
+            exact: exact.len(),
+            late: late.len(),
+            mean_late_ms: mean(&late),
+            max_late_ms: late.iter().copied().max().unwrap_or(0),
+            late_20s: late.iter().filter(|&&o| o >= 20 * SEC).count(),
+            faded: exact.iter().filter(|e| e.faded).count(),
+            mean_early_ms: -mean(&early),
+        }
+    }
+
+    /// Prints how soft and hard exact times are met with and without
+    /// lookahead, to compare the two modes.
+    fn compare_modes(days: i64) -> Vec<(ExactMode, bool, Timing)> {
+        let mut rows = Vec::new();
+        eprintln!(
+            "{days} days | mode | lookahead | exact times | late | mean late | worst late | 20 s late or more | faded | mean cut | mean early"
+        );
+        for mode in [ExactMode::Soft, ExactMode::Hard] {
+            for lookahead in [false, true] {
+                let t = timing(mode, days, lookahead);
+                eprintln!(
+                    "{days} days | {mode:?} | {lookahead} | {} | {} | {:.1} s | {:.1} s | {} | {} | {:.1} s | {:.1} s",
+                    t.exact,
+                    t.late,
+                    t.mean_late_ms as f64 / 1000.0,
+                    t.max_late_ms as f64 / 1000.0,
+                    t.late_20s,
+                    t.faded,
+                    t.mean_cut_ms as f64 / 1000.0,
+                    t.mean_early_ms as f64 / 1000.0,
+                );
+                rows.push((mode, lookahead, t));
+            }
+        }
+        rows
+    }
+
+    #[test]
+    fn looking_ahead_starts_exact_times_late_less_often() {
+        let rows = compare_modes(1);
+        for mode in [ExactMode::Soft, ExactMode::Hard] {
+            let of = |lookahead: bool| {
+                rows.iter()
+                    .find(|(m, l, _)| *m == mode && *l == lookahead)
+                    .map(|(_, _, t)| *t)
+                    .unwrap()
+            };
+            let (greedy, ahead) = (of(false), of(true));
+            assert!(
+                ahead.late_20s <= greedy.late_20s,
+                "{mode:?}: {greedy:?} {ahead:?}"
+            );
+            assert!(
+                ahead.faded <= greedy.faded,
+                "{mode:?}: {greedy:?} {ahead:?}"
+            );
+        }
+    }
+
+    /// Over a week, in release: `cargo test --release -p heron-rotation --
+    /// --ignored --nocapture`.
+    #[test]
+    #[ignore = "a week of simulations: slow in debug"]
+    fn exact_times_soft_and_hard_over_a_week() {
+        compare_modes(7);
+    }
+
     #[test]
     fn picks_look_ahead_within_a_quarter_of_an_hour_or_four_slots() {
         let library = station(ExactMode::Soft);
