@@ -56,6 +56,11 @@ describe("windows", () => {
     expect(describeOverrides({ track_min: 90, dayparts: 2 })).toBe("track 90 min");
     expect(describeOverrides({ dayparts: 0 })).toBe("");
     expect(describeOverrides({ dayparts: 1, daypart_days: 2 })).toBe("");
+    // The draw depth, the start or the maximum alone.
+    expect(describeOverrides({ track_min: 90, draw_start_pct: 30, draw_max_pct: 60 })).toBe(
+      "track 90 min, draw 30–60 %",
+    );
+    expect(describeOverrides({ draw_max_pct: 80 })).toBe("draw …–80 %");
   });
 
   it("lists every applied one", () => {

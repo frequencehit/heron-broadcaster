@@ -16600,6 +16600,67 @@
           }
         }
       },
+      "DrawDepth": {
+        "type": "object",
+        "description": "A draw depth: where it starts and how far it widens, in percent of the\ntracks the restrictions allow.",
+        "properties": {
+          "max_pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 to 100, not below the start.",
+            "default": 50,
+            "minimum": 0
+          },
+          "start_pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 to 100.",
+            "default": 20,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DrawLog": {
+        "type": "object",
+        "description": "The draw a pick was made in.",
+        "required": [
+          "pct",
+          "start_pct",
+          "max_pct",
+          "tracks",
+          "blocked"
+        ],
+        "properties": {
+          "blocked": {
+            "$ref": "#/components/schemas/Blocked",
+            "description": "Of them, held back by each rule at the pick's step (the first rule\nthat applies counts)."
+          },
+          "max_pct": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The depth the pick was drawn at, in percent.",
+            "minimum": 0
+          },
+          "start_pct": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The depth the slot starts at and its maximum.",
+            "minimum": 0
+          },
+          "tracks": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tracks in the draw at that depth.",
+            "minimum": 0
+          }
+        }
+      },
       "DualBandSettings": {
         "type": "object",
         "description": "The dual-band processor.",
@@ -17151,6 +17212,17 @@
               {
                 "$ref": "#/components/schemas/DaypartLog",
                 "description": "The pick's daypart, and the one the track last played in. Missing\nin picks logged before daypart separation."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "draw": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DrawLog",
+                "description": "The draw depth the pick was drawn at. Missing for a random slot, at\nstep 12, and in picks logged before the draw depth."
               },
               {
                 "type": "null"
@@ -22311,6 +22383,14 @@
             "default": 4,
             "minimum": 0
           },
+          "draw": {
+            "$ref": "#/components/schemas/DrawDepth",
+            "description": "The draw depth of the categories and slots that set none of their\nown, and of hours without a clock.",
+            "default": {
+              "max_pct": 50,
+              "start_pct": 20
+            }
+          },
           "fallback_category_id": {
             "oneOf": [
               {
@@ -22829,6 +22909,24 @@
             ],
             "format": "int32",
             "description": "Daypart separation: a category's own (none or 0: off), never a\nclock slot's.",
+            "minimum": 0
+          },
+          "draw_max_pct": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The draw depth's maximum, in percent, 1 to 100.",
+            "minimum": 0
+          },
+          "draw_start_pct": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The draw depth's start, in percent, 1 to 100.",
             "minimum": 0
           },
           "title_min": {
@@ -26882,6 +26980,39 @@
                 ]
               },
               "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Drawn from beyond its draw depth: `rank` tracks of its pool, allowed\nby the restrictions, played longer ago than it (or never), and its\ndraw had `tracks`.",
+            "required": [
+              "pick",
+              "rank",
+              "tracks",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "draw"
+                ]
+              },
+              "pick": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "rank": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "tracks": {
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0

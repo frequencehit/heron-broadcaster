@@ -17,6 +17,7 @@ import { here, useStation } from "../lib/station";
 import { type Category, type SeparationOverrides, api, done, query, unwrap } from "../api";
 import { useLabels } from "../components/SelectionActions";
 import { CategoryDaypartDays, CategoryDayparts } from "../components/Dayparts";
+import { DEFAULT_DRAW, DrawDepthEditor } from "../components/DrawDepth";
 import { SeparationEditor } from "../components/Separation";
 import { Card, ConfirmButton, Empty, ErrorView, Field, Icon, Loading, Modal, PageHead } from "../components/ui";
 import { number, rich, t } from "../i18n";
@@ -355,6 +356,17 @@ function CategoryDialog({ category, onClose }: { category: Category | null; onCl
             value={separation.daypart_days ?? 0}
             onChange={(daypart_days) => setSeparation({ ...separation, daypart_days })}
           />
+        </fieldset>
+        <fieldset>
+          <legend>{t("draw.title")}</legend>
+          <DrawDepthEditor
+            value={separation}
+            inherited={rotation.data?.draw ?? DEFAULT_DRAW}
+            onChange={setSeparation}
+          />
+          <p className="muted small" style={{ marginBottom: 0 }}>
+            {t("draw.methods")}
+          </p>
         </fieldset>
       </form>
     </Modal>

@@ -15,6 +15,7 @@ use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
 pub mod dayparts;
+pub mod draw;
 pub mod names;
 pub mod ratio;
 pub mod restrict;
@@ -25,6 +26,7 @@ mod select;
 mod sim;
 
 pub use dayparts::{DaypartFrom, DaypartLog};
+pub use draw::{DrawDepth, DrawLog};
 pub use ratio::HeldByRatio;
 pub use restrict::{Mode, Restriction, Rule, Target};
 pub use rng::Rng;
@@ -119,6 +121,9 @@ pub struct RotationSettings {
     pub weights: WeightSettings,
     /// Rules across stations: off by default.
     pub across: AcrossStations,
+    /// The draw depth of the categories and slots that set none of their
+    /// own, and of hours without a clock.
+    pub draw: DrawDepth,
 }
 
 impl Default for RotationSettings {
@@ -130,6 +135,7 @@ impl Default for RotationSettings {
             kept_out_category_ids: Vec::new(),
             weights: WeightSettings::default(),
             across: AcrossStations::default(),
+            draw: DrawDepth::default(),
         }
     }
 }
@@ -168,6 +174,7 @@ impl RotationSettings {
             return Err("daypart_count is 4 or 6".to_owned());
         }
         self.across.windows().check()?;
+        self.draw.check()?;
         let weights = &self.weights;
         if !(0.5..=1.0).contains(&weights.play_factor) {
             return Err("weights.play_factor is between 0.5 and 1".to_owned());
@@ -490,6 +497,20 @@ impl Library {
             .min(dayparts::max_separation(self.daypart_count()));
         windows.daypart_days = windows.daypart_days.min(dayparts::MAX_DAYS);
         windows
+    }
+
+    /// The station's draw depth, overridden by a category, then by a clock
+    /// slot; a start above the maximum is at the maximum.
+    pub fn draw(
+        &self,
+        category: Option<&SeparationOverrides>,
+        slot: Option<&SeparationOverrides>,
+    ) -> DrawDepth {
+        let mut draw = self.settings.draw;
+        for overrides in [category, slot].into_iter().flatten() {
+            draw = draw.with(overrides);
+        }
+        draw.clamped()
     }
 
     /// `windows`, a slot's before relaxation, with the track's own daypart

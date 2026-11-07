@@ -35,6 +35,7 @@ import {
   query,
   unwrap,
 } from "../api";
+import { DEFAULT_DRAW, DrawDepthEditor, applyDraw } from "../components/DrawDepth";
 import { SeparationEditor, applyOverrides } from "../components/Separation";
 import { useDebounced } from "../components/TrackSearch";
 import {
@@ -403,6 +404,21 @@ function Editor({ clock }: { clock: ClockView | null }) {
             disabled={!canEdit}
             onChange={(separation) => update(editingSlot.key, { separation })}
           />
+          <fieldset>
+            <legend>{t("draw.title")}</legend>
+            <DrawDepthEditor
+              value={editingSlot.separation ?? {}}
+              inherited={applyDraw(
+                rotation.data?.draw ?? DEFAULT_DRAW,
+                byId.get(editingSlot.category_id)?.separation,
+              )}
+              disabled={!canEdit}
+              onChange={(separation) => update(editingSlot.key, { separation })}
+            />
+            <p className="muted small" style={{ marginBottom: 0 }}>
+              {t("draw.methods")}
+            </p>
+          </fieldset>
         </Modal>
       )}
     </>
@@ -474,6 +490,7 @@ function SlotRow({
           <select
             className="input"
             aria-label={t("clocks.slotMethod", { slot: index + 1 })}
+            title={t("clocks.methodHelp")}
             value={slot.method}
             disabled={!canEdit}
             onChange={(event) => onChange({ method: event.target.value as Method })}

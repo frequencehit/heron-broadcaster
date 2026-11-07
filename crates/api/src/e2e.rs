@@ -2127,6 +2127,42 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
         )
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // The draw depth: 1 to 100 %, the start not above the maximum.
+    for draw in [
+        json!({"start_pct": 60, "max_pct": 40}),
+        json!({"start_pct": 0}),
+        json!({"max_pct": 101}),
+    ] {
+        let (status, _) = admin
+            .send(Method::PUT, "/settings/rotation", json!({"draw": draw}))
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{draw}");
+    }
+    let (status, rotation) = admin
+        .send(
+            Method::PUT,
+            "/settings/rotation",
+            json!({"draw": {"start_pct": 30, "max_pct": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rotation["draw"], json!({"start_pct": 30, "max_pct": 60}));
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/rotation", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        admin.get("/settings/rotation").await["draw"],
+        json!({"start_pct": 20, "max_pct": 50})
+    );
+    let (status, _) = admin
+        .send(
+            Method::POST,
+            "/categories",
+            json!({"name": "Too deep", "separation": {"draw_start_pct": 70, "draw_max_pct": 60}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Two categories, a clock calling them in turn, all week.
     let mut categories = Vec::new();
@@ -2135,11 +2171,12 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             .send(
                 Method::POST,
                 "/categories",
-                json!({"name": name, "separation": {"track_min": 1}}),
+                json!({"name": name, "separation": {"track_min": 1, "draw_max_pct": 80}}),
             )
             .await;
         assert_eq!(status, StatusCode::CREATED, "{category}");
         assert_eq!(category["separation"]["track_min"], 1);
+        assert_eq!(category["separation"]["draw_max_pct"], 80);
         for track in members {
             let (status, _) = admin
                 .send(
@@ -2167,13 +2204,14 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             json!({"name": "Hour", "slots": [
                 {"category_id": categories[0], "method": "random"},
                 {"category_id": categories[1], "method": "weighted",
-                 "separation": {"artist_min": 0}},
+                 "separation": {"artist_min": 0, "draw_start_pct": 40}},
             ]}),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{clock}");
     let clock_id = clock["id"].as_u64().unwrap();
     assert_eq!(clock["slots"][1]["separation"]["artist_min"], 0);
+    assert_eq!(clock["slots"][1]["separation"]["draw_start_pct"], 40);
     assert_eq!(clock["looping"], false);
     let week: Vec<Value> = (1..=7)
         .flat_map(|day| {
@@ -2287,6 +2325,14 @@ async fn rotation_follows_clocks_restrictions_and_logs_its_picks() {
             let explanation = &p["explanation"];
             assert_eq!(explanation["clock_id"], clock_id, "{p}");
             assert_ne!(p["track_id"], banned, "{p}");
+            // The random slot has no draw; the weighted one starts at its
+            // own 40 %, up to its category's 80 %.
+            if explanation["slot"] == 0 {
+                assert!(explanation["draw"].is_null(), "{p}");
+            } else if explanation["step"].as_u64().unwrap() < 11 {
+                assert_eq!(explanation["draw"]["start_pct"], 40, "{p}");
+                assert_eq!(explanation["draw"]["max_pct"], 80, "{p}");
+            }
             (
                 explanation["slot"].as_u64().unwrap(),
                 explanation["slot_category_id"].as_u64().unwrap(),

@@ -17,7 +17,7 @@ Configurable, in minutes. Do not play the same:
 | Title within | 240 min |
 | Track within | 240 min |
 
-Separation windows can be overridden per category (a power rotation category repeats its titles sooner than a gold category) and per clock slot.
+Separation windows can be overridden per category (a power rotation category repeats its titles sooner than a gold category) and per clock slot. So can the [draw depth](#draw-depth).
 
 Artist separation compares **artists, not names**: see [Artists with several names](#artists-with-several-names).
 
@@ -113,9 +113,9 @@ Keep N tracks queued ahead: `queue.min_queued` ([API – Queue manager](api.md#q
 An ordered list of slots. Each slot **calls a category**, and how it calls it matters as much as which category it is. Each slot has:
 
 - a **category**;
-- a **selection method**: least recently played, random or weighted;
+- a **selection method**: least recently played, random or weighted (see [Draw depth](#draw-depth) for how each one draws);
 - an **enforce rules** flag;
-- separation overrides for this slot (see [Separation rules](#separation-rules));
+- separation overrides for this slot (see [Separation rules](#separation-rules)), and its draw depth (see [Draw depth](#draw-depth));
 - a **linked to the next slot** flag, for a jingle that announces the next slot's track (see [Linked slots](#linked-slots)).
 
 Building good clocks has to be easy: the editor shows each hour as it will sound (slots, expected starts from the categories' average lengths, categories running short of tracks for their track separation), and a clock can be simulated before it goes on air. A category running short (a few jingles for a slot every quarter of an hour) only plays with its rules relaxed; the editor offers to turn *enforce rules* off on the slots calling it instead, which stops the separation rules there and keeps the restrictions.
@@ -125,7 +125,7 @@ How a clock runs:
 - Each station hour starts its clock at the **first slot**; slots run in order. A clock shorter than the hour **starts over**; slots expected after the end of the hour do not play (the next hour starts its own clock). The track playing at the top of the hour finishes: there is no hard sync yet.
 - A clock can instead **loop across hours**, like SAM Broadcaster's clockwheel: it carries on from its last slot whatever the hour, so it can be longer than an hour (a 27-line wheel of two hours plays every line). Scheduled again after another clock, it resumes where it stopped.
 - A slot that has nothing it may play, even relaxed, is skipped for the next one, and the pick says so.
-- Hours without a clock rotate the **station's library**: least recently played, rules enforced. The station's library is the tracks of the categories tagged with the station, except those also in a category it **keeps out** (`kept_out_category_ids` in the `rotation` settings: a category of tracks set aside, say). A track kept out does not play there even if another of its categories is the station's, and a track in none of the station's categories does not play there without a clock. A station with no category yet rotates the whole library, so a new Heron plays as soon as its music is imported.
+- Hours without a clock rotate the **station's library**: least recently played, with the station's [draw depth](#draw-depth), rules enforced. The station's library is the tracks of the categories tagged with the station, except those also in a category it **keeps out** (`kept_out_category_ids` in the `rotation` settings: a category of tracks set aside, say). A track kept out does not play there even if another of its categories is the station's, and a track in none of the station's categories does not play there without a clock. A station with no category yet rotates the whole library, so a new Heron plays as soon as its music is imported.
 
 Clockwheels are data stored in the database and edited in the UI. There is no scripting language (see [Locked decisions](decisions.md)).
 
@@ -180,6 +180,35 @@ A station's counter can be reset to 10 for one track, or **for all its tracks at
 
 The counter is state, not configuration: backups keep the ratios (the default and each station's) and who disabled a track, not the counters ([Backups](backups.md)). A simulation starts from the station's counters and moves copies of them in memory; the station's counters do not move.
 
+### Draw depth
+
+A slot in *least recently played* that always took the track played longest ago would play its category in the same order round after round, when nothing gets in the way: listeners hear the same sequence again and again. The **draw depth** breaks that, without a shuffled stack to keep:
+
+- A slot only draws among the **X % of its category's tracks played longest ago** on the station, and picks among those that pass the rules: **at random** in a *least recently played* slot, **by weight** in a *weighted* slot.
+- The depth is **20 % to start**, with **at least 3 tracks** (20 % of 5 jingles would leave one, so no draw at all; a category of 3 tracks or fewer draws among all of them). The percentage is of the tracks the restrictions allow at that time, rounded down.
+- **Never-played tracks** are in the draw like the others: they count as the oldest, but are not picked before the others of the draw, so a category just imported does not play in import order. Tracks with the same last play, never played ones included, are ordered at random.
+- When nothing in the draw passes the rules, the draw **widens by 10 points** (20 %, 30 %, 40 %, 50 %) **before any rule is relaxed** (see [Rule relaxation](#rule-relaxation)).
+- It stops at its **maximum, 50 % by default**: the half of the category played most recently is never drawn from. The rules are then relaxed as before, with the draw kept at its maximum: a track a bit older with a looser rule is preferred to a track just played.
+- The start and the maximum are set **per category** (`draw_start_pct` and `draw_max_pct` with its separation overrides, 1 to 100), and can be **overridden per clock slot**, like the separation windows. A category or a slot that sets neither follows the station's (`draw` in the `rotation` settings: `start_pct` 20 and `max_pct` 50 by default), which also applies to hours without a clock. A start above the maximum starts at the maximum.
+- **Play ratio:** a track held back by its ratio leaves its place to another track of the same draw; the draw widens only when every track of it is held back or blocked by the rules.
+- The order is **per station**: a category shared by several stations is ordered on each by that station's own plays, as the separation rules are.
+
+How each method draws:
+
+| Method | Draws among |
+|---|---|
+| Least recently played | the draw depth, at random |
+| Weighted | the draw depth, by weight |
+| Random | every track that passes the rules: no draw depth |
+
+*Least recently played* in the strict sense (always the oldest track) is no longer offered: with the minimum of 3 tracks, it draws among the 3 oldest at least. Step 12 still takes the oldest track of the fallback category.
+
+**Weight, ratio or depth?** The **depth** says *which tracks* rotation can draw from: the ones played longest ago, a share of the category. The **weight** gives each of them a chance against the others, in weighted slots only. The **ratio** decides whether the drawn track plays, an exact quota out of 10. Rotation takes the depth first, then the rules, then the weights, and the ratio decides last.
+
+**Hours without a clock and the fallback category.** The station's library draws with the station's depth. At step 11 the fallback category draws with its own depth, widened from its start to its maximum as at step 0; without a fallback category, the station's library with the station's depth. Step 12 has no depth: it takes the least recently played track of the fallback category, without rules.
+
+The rotation log gives, for each pick, the depth it was drawn at, the start and the maximum, how many tracks the draw had, and how many of them each rule held back at the pick's step (`draw`: `pct`, `start_pct`, `max_pct`, `tracks`, `blocked`): `draw: 30 %, 30 tracks, 4 held back by the artist`. A pick of a random slot, or of step 12, has none.
+
 ### Rule relaxation
 
 When no track satisfies the rules, relax them step by step, then fall back to a safe category. Log every relaxation. **The queue must never be empty.**
@@ -188,7 +217,7 @@ The rule listeners notice least is relaxed first, and each rule is **halved befo
 
 | Step | Relaxation | With the default windows, and a category's daypart separation of 3 |
 |---|---|---|
-| 0 | All rules as configured | album 60, dayparts 3, artist 120, title 240, track 240 min |
+| 0 | All rules as configured, the [draw](#draw-depth) widened 10 points at a time from its start to its maximum | album 60, dayparts 3, artist 120, title 240, track 240 min; draw 20 %, 30 %, 40 %, 50 % |
 | 1 | Album separation halved | album 30 |
 | 2 | Album separation dropped | album off |
 | 3 | Daypart separation halved, rounded down | dayparts 1 |
@@ -199,10 +228,10 @@ The rule listeners notice least is relaxed first, and each rule is **halved befo
 | 8 | Title separation dropped | title off |
 | 9 | Track separation halved | track 120 |
 | 10 | Track separation quartered | track 60 |
-| 11 | Fallback category, track separation still at a quarter | |
+| 11 | Fallback category, track separation still at a quarter, its draw widened from its start to its maximum | |
 | 12 | Fallback category, least recently played track, no rules | |
 
-- Rotation tries the steps in order, stops at the first one that yields at least one candidate, then applies the slot's selection method to those candidates.
+- Rotation tries the steps in order, stops at the first one that yields at least one candidate, then applies the slot's selection method to those candidates. At step 0 it first widens the [draw](#draw-depth) to its maximum; steps 1 to 10 keep the draw at its maximum.
 - Track separation is never dropped inside the slot's own category: playing the exact same recording again is the most audible repeat.
 - Step 12 cannot fail while the fallback category has a track; picking the least recently played one still avoids an immediate repeat. If the fallback category is empty, the engine's fallback directory takes over.
 - Slots with **enforce rules** off skip the separation rules entirely (step 0 without rules, then steps 11 and 12 only if restrictions leave nothing). Restrictions still apply.
@@ -236,5 +265,5 @@ A station has **several schedules** ([M14](roadmap/m14-schedules.md)), each a we
 
 - Rotation is a **pure function** of (library, play history, rules, current clock, current time), in the `heron-rotation` crate. The library carries the station's ratio counters; the caller moves them after each pick (`Library::count_down`) and saves them.
 - The history is what played on the decks (on the FX player, only the jingles rotation picked to play over an intro) as far back as the longest window looks, followed by the queue at its planned times: the queue manager picks each new track for when it should start.
-- It returns the next track plus an **explanation**: which clock and slot, the windows applied (with the picked track's daypart values), the relaxation step, how many tracks each rule held back or restrictions forbade, how many were left to choose from, and the dayparts (`daypart`: the station's `count`, the pick's `daypart` from 0 for A, the daypart `separation` and the `days` before relaxation, where they came from, `separation_from` and `days_from`, `track` or `category`, and `last_daypart`, where the track last played). Each pick is kept in the **rotation log** (`rotation_picks`); its play is linked to it and carries its step (`play_history.relaxation_applied`).
-- This makes it possible to **simulate** days of programming offline and test it without audio. A simulation is **audited** without trusting the log: each pick's windows are recomputed from its slot, its track's own daypart values and its step, and the pick is compared with every play before it, one by one, daypart separation included (a `daypart` or `daypart_days` violation names the earlier play); restrictions are checked again, and so is the play ratio: the counters are replayed from the station's, and a pick whose counter was in its held-back steps is a violation (tracks held back are not picks, so they are never flagged). Simulations run from the API (`POST /rotation/simulate`) and the web UI, and in the tests on a synthetic station over a week that crosses a daylight saving change.
+- It returns the next track plus an **explanation**: which clock and slot, the windows applied (with the picked track's daypart values), the relaxation step, how many tracks each rule held back or restrictions forbade, how many were left to choose from, and the dayparts (`daypart`: the station's `count`, the pick's `daypart` from 0 for A, the daypart `separation` and the `days` before relaxation, where they came from, `separation_from` and `days_from`, `track` or `category`, and `last_daypart`, where the track last played), and the draw depth (`draw`, see [Draw depth](#draw-depth)). Each pick is kept in the **rotation log** (`rotation_picks`); its play is linked to it and carries its step (`play_history.relaxation_applied`).
+- This makes it possible to **simulate** days of programming offline and test it without audio. A simulation is **audited** without trusting the log: each pick's windows are recomputed from its slot, its track's own daypart values and its step, and the pick is compared with every play before it, one by one, daypart separation included (a `daypart` or `daypart_days` violation names the earlier play); restrictions are checked again, and so is the draw depth: the tracks of the pick's pool that the restrictions allowed and that played longer ago than it (or never) are counted, and a pick with as many as its draw had, or more, is a `draw` violation (the draw is the one logged at step 0 and step 11, within the start and the maximum, and the maximum at steps 1 to 10); and so is the play ratio: the counters are replayed from the station's, and a pick whose counter was in its held-back steps is a violation (tracks held back are not picks, so they are never flagged). Simulations run from the API (`POST /rotation/simulate`) and the web UI, and in the tests on a synthetic station over a week that crosses a daylight saving change.

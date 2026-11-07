@@ -5690,6 +5690,49 @@ export interface components {
              */
             discarded: number;
         };
+        /**
+         * @description A draw depth: where it starts and how far it widens, in percent of the
+         *     tracks the restrictions allow.
+         */
+        DrawDepth: {
+            /**
+             * Format: int32
+             * @description 1 to 100, not below the start.
+             * @default 50
+             */
+            max_pct: number;
+            /**
+             * Format: int32
+             * @description 1 to 100.
+             * @default 20
+             */
+            start_pct: number;
+        };
+        /** @description The draw a pick was made in. */
+        DrawLog: {
+            /**
+             * @description Of them, held back by each rule at the pick's step (the first rule
+             *     that applies counts).
+             */
+            blocked: components["schemas"]["Blocked"];
+            /** Format: int32 */
+            max_pct: number;
+            /**
+             * Format: int32
+             * @description The depth the pick was drawn at, in percent.
+             */
+            pct: number;
+            /**
+             * Format: int32
+             * @description The depth the slot starts at and its maximum.
+             */
+            start_pct: number;
+            /**
+             * Format: int32
+             * @description Tracks in the draw at that depth.
+             */
+            tracks: number;
+        };
         /** @description The dual-band processor. */
         DualBandSettings: {
             /**
@@ -5934,6 +5977,7 @@ export interface components {
              */
             counter?: number | null;
             daypart?: components["schemas"]["DaypartLog"] | null;
+            draw?: components["schemas"]["DrawLog"] | null;
             enforce_rules: boolean;
             /**
              * @description Tracks offered before this one and held back by their play ratio,
@@ -8202,6 +8246,15 @@ export interface components {
              * @default 4
              */
             daypart_count: number;
+            /**
+             * @description The draw depth of the categories and slots that set none of their
+             *     own, and of hours without a clock.
+             * @default {
+             *       "max_pct": 50,
+             *       "start_pct": 20
+             *     }
+             */
+            draw: components["schemas"]["DrawDepth"];
             /** @default null */
             fallback_category_id: components["schemas"]["u64"] | null;
             /**
@@ -8432,6 +8485,16 @@ export interface components {
              *     clock slot's.
              */
             dayparts?: number | null;
+            /**
+             * Format: int32
+             * @description The draw depth's maximum, in percent, 1 to 100.
+             */
+            draw_max_pct?: number | null;
+            /**
+             * Format: int32
+             * @description The draw depth's start, in percent, 1 to 100.
+             */
+            draw_start_pct?: number | null;
             /** Format: int32 */
             title_min?: number | null;
             /** Format: int32 */
@@ -9858,6 +9921,15 @@ export interface components {
             kind: "daypart_days";
             /** Format: int32 */
             pick: number;
+        } | {
+            /** @enum {string} */
+            kind: "draw";
+            /** Format: int32 */
+            pick: number;
+            /** Format: int32 */
+            rank: number;
+            /** Format: int32 */
+            tracks: number;
         };
         Waveform: {
             /**
