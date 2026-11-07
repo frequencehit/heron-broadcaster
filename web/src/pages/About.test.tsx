@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { About as AboutData, ApiStatus } from "../api";
 import { t } from "../i18n";
-import { Failure, answer, renderApp, user } from "../test/render";
+import { Failure, answer, renderApp, sent, user } from "../test/render";
 import { About } from "./About";
 
 const WEB = { version: __APP_VERSION__, revision: __APP_REVISION__ };
@@ -81,6 +81,26 @@ describe("About", () => {
     expect(within(analyzer).getByText(t("about.stopped"))).toBeTruthy();
     const librarian = screen.getByText("heron-librarian").closest("tr") as HTMLElement;
     expect(within(librarian).getByText(t("about.neverSeen"))).toBeTruthy();
+  });
+
+  it("lets an admin take the stopped workers off the list", async () => {
+    answer({
+      "GET /api/v1/about": ADMIN,
+      "GET /api/v1/status": status(),
+      "DELETE /api/v1/about/stopped": { removed: 1 },
+    });
+    renderApp(<About />, user("admin"));
+    fireEvent.click(await screen.findByRole("button", { name: t("about.clearStopped") }));
+    // The dialog's own button confirms.
+    const dialog = (await screen.findByText(/stopped worker/)).closest("dialog") as HTMLElement;
+    fireEvent.click(within(dialog).getByRole("button", { name: t("about.clearStopped") }));
+    await waitFor(() => expect(sent("DELETE /api/v1/about/stopped")).toHaveLength(1));
+  });
+
+  it("does not offer a viewer to clear the list", async () => {
+    page(VIEWER, status(), "viewer");
+    await screen.findByText("heron-api");
+    expect(screen.queryByRole("button", { name: t("about.clearStopped") })).toBeNull();
   });
 
   it("gives a viewer the build only", async () => {

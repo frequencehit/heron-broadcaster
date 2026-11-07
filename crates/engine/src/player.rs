@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
-use heron_core::playout::{TrackPlayout, Transition, db_to_gain, plan_transition};
+use heron_core::playout::{TrackPlayout, Transition, db_to_gain, next_start_ms, plan_transition};
 use heron_core::{
     AgcSettings, CrossfadeSettings, DeckEq, EqSettings, FadeCurve, PlaySource, PlayoutSettings,
 };
@@ -47,6 +47,27 @@ const STALLED_CUE_MS: u32 = 10_000;
 const RESUME_FADE_MS: u32 = 500;
 /// A track this close to its end when the engine stopped is not resumed.
 const RESUME_MIN_LEFT_MS: u64 = 2_000;
+/// The audio thread renders this far ahead of real time: a start time is
+/// acted on this early.
+const START_AT_LEAD_MS: i64 = 50;
+/// The entries before a start time are dropped, and its entry cued, this
+/// long before it, so its first audio is decoded in time.
+const START_AT_PREPARE_MS: i64 = 1_000;
+/// A cued entry whose audio is not decoded yet at its start time starts
+/// anyway after this.
+const START_AT_GRACE_MS: i64 = 2_000;
+
+/// The server's clock, in Unix ms.
+pub type WallClock = fn() -> i64;
+
+fn system_now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+        })
+}
+
 /// Nothing to play for this long is dead air: shorter gaps happen while
 /// the engine starts (before the API queues tracks or the fallback
 /// directory is scanned).
@@ -86,6 +107,23 @@ pub struct TrackRequest {
     /// Where the intro ends (the vocals start), in ms on the file's timeline.
     #[serde(default)]
     pub intro_ms: Option<u32>,
+    /// An exact time: when it comes and the entry still waits, the entries
+    /// before it are dropped, what plays fades out and it starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at: Option<StartAt>,
+    /// The rest of the entry before it (the second span of a shortened
+    /// medley): not a new play.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub continues: bool,
+}
+
+/// When a queue entry starts at the latest ([`TrackRequest::start_at`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartAt {
+    /// Unix ms, on the server's clock.
+    pub unix_ms: i64,
+    /// How long what plays fades out.
+    pub fade_ms: u32,
 }
 
 impl TrackRequest {
@@ -170,6 +208,10 @@ pub struct PlayerSnapshot {
     pub queue: Vec<QueueEntry>,
     pub rendered_ms: u64,
     pub underruns: u64,
+    /// Where the next track starts, by entry, in ms from its cue-in: for
+    /// the track on air, the cued one and the queue, the transition into
+    /// the entry after it (into a full-length track for the last one).
+    pub next_starts: HashMap<u64, u32>,
 }
 
 /// The queue as saved on disk, to resume it after a restart.
@@ -273,6 +315,8 @@ pub struct Player {
     /// The track on air restored from a saved or handed-over queue, until
     /// its start.
     resuming: Option<u64>,
+    /// The server's clock, for start times.
+    wall_clock: WallClock,
 }
 
 impl Player {
@@ -314,7 +358,14 @@ impl Player {
             held: false,
             halted: None,
             resuming: None,
+            wall_clock: system_now_ms,
         }
+    }
+
+    /// Replaces the server's clock (tests).
+    pub fn with_wall_clock(mut self, wall_clock: WallClock) -> Self {
+        self.wall_clock = wall_clock;
+        self
     }
 
     /// Replaces how tracks are opened (decode threads by default).
@@ -740,6 +791,13 @@ impl Player {
         if stop.saturating_add(ms_to_frames(1_000)) > next_start {
             return HandoverPoint::Wait;
         }
+        // An exact time before the stop: the queue would change under the
+        // standby.
+        if self.next_start_at().is_some_and(|(_, start)| {
+            start.unix_ms - START_AT_PREPARE_MS <= (self.wall_clock)() + i64::from(lead_ms) + 1_000
+        }) {
+            return HandoverPoint::Wait;
+        }
         HandoverPoint::At { position: stop }
     }
 
@@ -838,9 +896,76 @@ impl Player {
         }
         self.watch_silence();
         self.watch_stalled_cue();
+        self.watch_start_times();
         self.pair_cued_jingle();
         self.ensure_cued();
         self.preload();
+    }
+
+    /// The first waiting entry with a start time, and that time.
+    fn next_start_at(&self) -> Option<(u64, StartAt)> {
+        self.waiting()
+            .find_map(|entry| Some((entry.entry_id, entry.track.start_at?)))
+    }
+
+    /// At an entry's start time: drops the entries waiting before it, fades
+    /// out what plays and starts it (`docs/audio-engine.md#exact-times`).
+    /// The entries before it go a second ahead, and it is cued then.
+    fn watch_start_times(&mut self) {
+        if self.held || self.paused {
+            return;
+        }
+        let Some((entry_id, start)) = self.next_start_at() else {
+            return;
+        };
+        let now = (self.wall_clock)();
+        if now + START_AT_PREPARE_MS < start.unix_ms {
+            return;
+        }
+        if !self.is_cued(entry_id) {
+            if self.cued.is_some() && self.uncue_with(false).is_err() {
+                return;
+            }
+            while let Some(front) = self.queue.front() {
+                if front.entry_id == entry_id {
+                    break;
+                }
+                if let Some(dropped) = self.queue.pop_front() {
+                    tracing::info!(
+                        entry_id = dropped.entry_id,
+                        path = %dropped.track.path,
+                        "dropped: an exact time comes before it can play"
+                    );
+                }
+            }
+            self.changed = true;
+            self.ensure_cued();
+            if !self.is_cued(entry_id) {
+                return;
+            }
+        }
+        if now + START_AT_LEAD_MS < start.unix_ms
+            || (!self.cued_ready() && now < start.unix_ms + START_AT_GRACE_MS)
+        {
+            return;
+        }
+        if self.on_air.is_some() {
+            let curve = self.settings.crossfade.fade_out.curve;
+            let fade_frames = ms_to_frames(start.fade_ms);
+            if self.send(Command::Skip { fade_frames, curve }).is_err() {
+                return;
+            }
+            tracing::info!(
+                entry_id,
+                late_ms = now - start.unix_ms,
+                "exact time: cut to the entry"
+            );
+        }
+        // Used once.
+        if let Some(entry) = self.loaded.get_mut(&entry_id) {
+            entry.track.start_at = None;
+        }
+        self.changed = true;
     }
 
     /// Reads the files of the next queued tracks into memory.
@@ -1582,7 +1707,32 @@ impl Player {
             queue: self.queue.iter().cloned().collect(),
             rendered_ms: frames_to_ms(status.frame.load(Ordering::Relaxed)),
             underruns: status.underruns.load(Ordering::Relaxed),
+            next_starts: self.next_starts(),
         }
+    }
+
+    /// [`PlayerSnapshot::next_starts`]: the track on air, the cued one,
+    /// then the queue, each into the one after it. The jingle over the
+    /// cued track's intro plays beside it, on the FX player.
+    fn next_starts(&self) -> HashMap<u64, u32> {
+        let crossfade = self.crossfade();
+        let order: Vec<&QueueEntry> = [self.on_air, self.cued]
+            .into_iter()
+            .flatten()
+            .filter_map(|entry_id| self.loaded.get(&entry_id))
+            .chain(&self.queue)
+            .collect();
+        order
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                let incoming = order.get(index + 1).map(|next| &next.track.playout);
+                (
+                    entry.entry_id,
+                    next_start_ms(&entry.track.playout, incoming, &crossfade),
+                )
+            })
+            .collect()
     }
 }
 

@@ -300,7 +300,7 @@ The requests are in the database dump of the [backups](backups.md); the settings
 
 ### On air
 
-- **An announcement**: a jingle of the station's **announcement category** (*Jingles "vote on the website"*, say) plays over the intro of the vote's track, linked to it as the jingle of a [linked slot](rotation.md#linked-slots) is (it takes the place of the slot's own linked jingle, if any). The category's type plays over the intro, so it plays on the FX player. Its jingles are picked in turn, the least recently played first. Without an announcement category, no jingle.
+- **An announcement**: a jingle of the station's **announcement category** (*Jingles "vote on the website"*, say) plays over the intro of the vote's track, linked to it as the jingle of a [linked slot](rotation.md#linked-slots) is (it takes the place of the slot's own linked jingle, if any). The category's type plays over the intro, so it plays on the FX player. Its jingles are picked in turn, the least recently played first, whatever played before: over the intro, it is not two jingles in a row. Without an announcement category, no jingle.
 - **In the queue**: the announcement, the vote's track, then **both tracks**, one after the other. They are both read ahead by the engine, so whichever wins starts without a gap.
 - **The vote opens** when the vote's track starts on air, and **closes 10 seconds before the next transition** (5 to 60, set by the station): where the next track starts mixing in, the vote's track's mix point, else its end.
 - **At the close**, the loser is taken out of the queue: the winner is next. The engine had both ready, and the 10 seconds leave it time to cue the winner.

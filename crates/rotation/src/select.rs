@@ -7,13 +7,18 @@ use std::collections::HashMap;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::dayparts::{self, DaypartLog};
+use crate::dayparts::{self, DaypartFrom, DaypartLog};
+use crate::draw::{self, DrawDepth, DrawLog};
+use crate::exact::{
+    self, ExactLog, ExactMode, ExactTime, FillKind, FillLog, Fit, FitMode, MedleyCut, Window,
+};
+use crate::lookahead::{self, LookaheadLog};
 use crate::ratio::{self, HeldByRatio};
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{AcrossWindows, FALLBACK_STEP, LAST_STEP, Windows, describe_step};
 use crate::{
-    ArtistId, CategoryId, ClockId, Elsewhere, History, Library, Method, Position, Rng, ScheduleId,
-    StationId, Track, TrackId,
+    ArtistId, CategoryId, Clock, ClockId, Elsewhere, History, Library, Method, Position, Rng,
+    ScheduleId, StationId, Track, TrackId,
 };
 
 /// The next track, where it sits in the clock and why it was picked.
@@ -26,9 +31,32 @@ pub struct Pick {
     /// The track of the next slot, picked with this one because this
     /// pick's slot is linked to it: it plays right after this track.
     pub linked: Option<Box<Pick>>,
+    /// A medley shortened to fill the gap before an exact time: it plays
+    /// as two spans of its file.
+    pub medley_cut: Option<MedleyCut>,
+    /// The exact slot's start time for the engine (Unix ms): what still
+    /// plays then is faded out and this track starts.
+    pub start_at_ms: Option<i64>,
 }
 
 impl Pick {
+    /// How long it plays: its track's length, or its medley cut's.
+    pub fn length_ms(&self, library: &Library) -> u32 {
+        self.medley_cut.as_ref().map_or_else(
+            || library.tracks.get(&self.track).map_or(0, |t| t.length_ms),
+            |cut| cut.length_ms,
+        )
+    }
+
+    /// How long from its start to the next track's: its track's mix point
+    /// ([`Track::next_ms`]), or its medley cut's length.
+    pub fn next_ms(&self, library: &Library) -> u32 {
+        self.medley_cut.as_ref().map_or_else(
+            || library.tracks.get(&self.track).map_or(0, Track::next_ms),
+            |cut| cut.length_ms,
+        )
+    }
+
     /// This pick, then the one linked to it, in play order.
     pub fn into_picks(mut self) -> Vec<Pick> {
         let linked = self.linked.take();
@@ -111,10 +139,25 @@ pub struct Explanation {
     /// in picks logged before daypart separation.
     #[serde(default)]
     pub daypart: Option<DaypartLog>,
+    /// The draw depth the pick was drawn at. Missing for a random slot, at
+    /// step 12, and in picks logged before the draw depth.
+    #[serde(default)]
+    pub draw: Option<DrawLog>,
     /// The slot is linked to the next one: the next pick is that slot's
     /// track, picked with this one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub linked: bool,
+    /// The slot has an exact time: how it was met.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact: Option<ExactLog>,
+    /// The pick fills the gap before an exact time: with a medley or a
+    /// filler track.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<FillLog>,
+    /// Picked looking ahead before an exact time: the endings simulated
+    /// and how the best one meets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lookahead: Option<LookaheadLog>,
 }
 
 /// A track another station's play or planned track held back.
@@ -178,6 +221,12 @@ pub enum SkipReason {
     LinkedTrackAfterHour,
     /// The slot is linked to the next one, which found nothing.
     LinkedTrackNotFound,
+    /// The next exact time is due: the slots before it are passed over.
+    ExactTimeDue,
+    /// Its tracks would all end after the next exact time's window (soft).
+    NoLongerFits,
+    /// Its exact time has passed in this run of the clock.
+    ExactTimePassed,
 }
 
 /// A separation rule.
@@ -362,7 +411,7 @@ pub(crate) fn held_elsewhere<'h>(
 }
 
 /// A category as a slot calls it.
-struct Call<'l> {
+pub(crate) struct Call<'l> {
     category_id: Option<CategoryId>,
     category_name: Option<String>,
     /// Tracks and their weights, in a fixed order.
@@ -372,7 +421,7 @@ struct Call<'l> {
 
 impl<'l> Call<'l> {
     /// `None`: the station's library.
-    fn new(
+    pub(crate) fn new(
         library: &'l Library,
         category: Option<CategoryId>,
         extra: Option<&crate::SeparationOverrides>,
@@ -411,7 +460,7 @@ impl<'l> Call<'l> {
     }
 
     /// The tracks restrictions allow at `at`, and how many they forbid.
-    fn allowed(
+    pub(crate) fn allowed(
         &self,
         library: &Library,
         at: DateTime,
@@ -438,9 +487,12 @@ impl<'l> Call<'l> {
     }
 }
 
-/// The relaxation steps a slot goes through.
-fn steps(enforce_rules: bool) -> Vec<u8> {
-    if enforce_rules {
+/// The relaxation steps a slot goes through: none but the first when
+/// filling the gap before an exact time.
+fn steps(enforce_rules: bool, first_only: bool) -> Vec<u8> {
+    if first_only {
+        vec![0]
+    } else if enforce_rules {
         (0..=LAST_STEP).collect()
     } else {
         vec![0, FALLBACK_STEP, LAST_STEP]
@@ -488,14 +540,39 @@ struct SlotCall<'l> {
     call: Call<'l>,
     method: Method,
     enforce_rules: bool,
+    /// The draw depth of the slot's category; `None` for a random slot.
+    draw: Option<DrawDepth>,
+    /// Filling a gap: the rules as configured only, never relaxed.
+    first_only: bool,
+    /// Whether what played before counts (restrictions after a category, a
+    /// type never twice in a row): not for a jingle over a track's intro.
+    after_previous: bool,
+}
+
+/// Counts a track held back by `rule` in `blocked`.
+fn count(blocked: &mut Blocked, rule: SeparationRule) {
+    match rule {
+        SeparationRule::Track => blocked.track += 1,
+        SeparationRule::Title => blocked.title += 1,
+        SeparationRule::Artist => blocked.artist += 1,
+        SeparationRule::Album => blocked.album += 1,
+        SeparationRule::Daypart => blocked.daypart += 1,
+        SeparationRule::DaypartDays => blocked.daypart_days += 1,
+    }
 }
 
 /// Tries the relaxation steps in order and picks with the slot's method
-/// among the first step's candidates.
+/// among the first step's candidates, within the slot's draw depth: at step
+/// 0 (and 11, in the fallback category) the draw widens from its start to
+/// its maximum before the next step is tried.
 ///
 /// The play ratio decides after the method: a track it holds back is added
 /// to `held` (its counter moves, see [`Library::count_down`]) and the method
 /// picks again among the others. Tracks in `held` are never offered again.
+///
+/// Before an exact time, `fit` keeps the candidates that fit best
+/// ([`Fit::keep`]); when none fits at a step, the slot no longer fits
+/// ([`Miss::TooLong`]) rather than being relaxed.
 fn fill(
     library: &Library,
     history: &History,
@@ -503,12 +580,21 @@ fn fill(
     slot: &SlotCall<'_>,
     held_by_ratio: &mut Vec<HeldByRatio>,
     rng: &mut Rng,
-) -> Option<(TrackId, Explanation)> {
+    fit: Option<&Fit<'_>>,
+) -> Result<(TrackId, Explanation, Option<MedleyCut>), Miss> {
     let local = library.local(at_ms).datetime();
     let previous = history
         .previous(at_ms)
+        .filter(|_| slot.after_previous)
         .map(|play| play.categories.as_slice());
-    let recent = Recent::new(library, history, at_ms, slot.call.windows.daypart_days);
+    // The days of the slot's category, or of a track's own.
+    let days = slot
+        .call
+        .pool
+        .iter()
+        .map(|(track, _)| library.for_track(slot.call.windows, track).daypart_days)
+        .fold(slot.call.windows.daypart_days, u8::max);
+    let recent = Recent::new(library, history, at_ms, days);
     let (allowed, restricted) = slot.call.allowed(library, local, previous);
     let across = if slot.enforce_rules {
         library.settings.across.windows()
@@ -519,13 +605,9 @@ fn fill(
     let mut held: Option<(Option<i64>, HeldElsewhere)> = None;
     if slot.enforce_rules {
         for (track, _) in &allowed {
-            match recent.blocking(library, track, slot.call.windows, at_ms) {
-                Some(SeparationRule::Track) => blocked.track += 1,
-                Some(SeparationRule::Title) => blocked.title += 1,
-                Some(SeparationRule::Artist) => blocked.artist += 1,
-                Some(SeparationRule::Album) => blocked.album += 1,
-                Some(SeparationRule::Daypart) => blocked.daypart += 1,
-                Some(SeparationRule::DaypartDays) => blocked.daypart_days += 1,
+            let windows = library.for_track(slot.call.windows, track);
+            match recent.blocking(library, track, windows, at_ms) {
+                Some(rule) => count(&mut blocked, rule),
                 None => {
                     if let Some((rule, other)) =
                         held_elsewhere(library, history, track, across, at_ms)
@@ -553,65 +635,168 @@ fn fill(
             }
         }
     }
-    let mut fallback: Option<(Call<'_>, Vec<(&Track, f64)>)> = None;
-    for step in steps(slot.enforce_rules) {
+    // Ordered once per pick for the draw, played longest ago first, and
+    // reused by every step.
+    let ordered = slot.draw.map(|_| draw::order(&allowed, history, rng));
+    type Fallback<'l> = (Call<'l>, Vec<(&'l Track, f64)>, Option<DrawDepth>);
+    let mut fallback: Option<Fallback<'_>> = None;
+    let gap_fill = fit.is_some_and(|fit| fit.mode == FitMode::Medley) || slot.first_only;
+    for step in steps(slot.enforce_rules, gap_fill) {
         let across = if step < FALLBACK_STEP {
             across.at_step(step)
         } else {
             AcrossWindows::OFF
         };
-        let (call, pool, windows) = if step < FALLBACK_STEP {
-            let windows = if slot.enforce_rules {
-                slot.call.windows.at_step(step)
-            } else {
-                Windows::OFF
-            };
-            (&slot.call, &allowed, windows)
+        // The windows before relaxation: none in a slot without rules.
+        let (call, pool, configured, depth) = if step < FALLBACK_STEP {
+            let configured = slot.enforce_rules.then_some(slot.call.windows);
+            let pool = ordered.as_ref().unwrap_or(&allowed);
+            (&slot.call, pool, configured, slot.draw)
         } else {
-            let (call, pool) = fallback.get_or_insert_with(|| {
-                let call = Call::new(library, library.fallback_category().map(|c| c.id), None);
+            let (call, pool, depth) = fallback.get_or_insert_with(|| {
+                let category = library.fallback_category();
+                let call = Call::new(library, category.map(|c| c.id), None);
                 let (pool, _) = call.allowed(library, local, previous);
-                (call, pool)
+                // The fallback category's own draw depth.
+                let depth = slot
+                    .draw
+                    .map(|_| library.draw(category.map(|c| &c.separation), None));
+                let pool = if depth.is_some() {
+                    draw::order(&pool, history, rng)
+                } else {
+                    pool
+                };
+                (call, pool, depth)
             });
-            let windows = call.windows.at_step(step);
-            (&*call, &*pool, windows)
+            (&*call, &*pool, Some(call.windows), *depth)
         };
-        let mut candidates: Vec<_> = pool
-            .iter()
-            .filter(|(track, _)| {
-                !held_by_ratio.iter().any(|held| held.track_id == track.id)
-                    && recent.blocking(library, track, windows, at_ms).is_none()
-                    && held_elsewhere(library, history, track, across, at_ms).is_none()
+        // Step 12 takes the least recently played track: no draw.
+        let depth = depth.filter(|_| step < LAST_STEP);
+        // Each track's, with its own daypart values, relaxed at this step.
+        let windows_of = |track: &Track| {
+            configured.map_or(Windows::OFF, |windows| {
+                library.for_track(windows, track).at_step(step)
             })
-            .copied()
+        };
+        let passes = |track: &Track| {
+            recent
+                .blocking(library, track, windows_of(track), at_ms)
+                .is_none()
+                && held_elsewhere(library, history, track, across, at_ms).is_none()
+        };
+        // The draw's sizes at this step, widest last: never beyond the
+        // maximum.
+        let sizes: Vec<(Option<u8>, usize)> = match depth {
+            Some(depth) => depth
+                .depths(step)
+                .into_iter()
+                .map(|pct| (Some(pct), draw::size(pool.len(), pct)))
+                .collect(),
+            None => vec![(None, pool.len())],
+        };
+        let reach = sizes.last().map_or(0, |(_, size)| *size);
+        let passing: Vec<(usize, &Track, f64)> = pool[..reach]
+            .iter()
+            .enumerate()
+            .filter(|(_, (track, _))| passes(track))
+            .map(|(index, (track, weight))| (index, *track, *weight))
             .collect();
-        let count = u32::try_from(candidates.len()).unwrap_or(u32::MAX);
         let method = if step == LAST_STEP {
             Method::LeastRecentlyPlayed
         } else {
             slot.method
         };
-        // The ratio is never relaxed: tracks it holds back leave the slot
-        // to the others, then to the next step.
-        let picked = loop {
-            if candidates.is_empty() {
-                break None;
-            }
-            let (track, weight) = choose(method, &candidates, history, rng);
-            let counter = library.counter(track.id);
-            if ratio::plays(track.ratio, counter) {
-                break Some((track, weight, counter));
-            }
-            held_by_ratio.push(HeldByRatio {
-                track_id: track.id,
-                ratio: track.ratio,
-                counter,
-            });
-            candidates.retain(|(other, _)| other.id != track.id);
+        // Least recently played draws at random within the draw.
+        let chooser = match (depth, method) {
+            (Some(_), Method::LeastRecentlyPlayed) => Method::Random,
+            _ => method,
         };
-        let Some((track, weight, counter)) = picked else {
+        let mut picked = None;
+        let mut tried = None;
+        let mut too_long = false;
+        // A track that would be cut (hard mode) only when no draw, however
+        // wide, has one that is not.
+        let passes: &[bool] = if fit.is_some_and(Fit::cuts) {
+            &[false, true]
+        } else {
+            &[true]
+        };
+        for (&late_ok, (pct, size)) in passes
+            .iter()
+            .flat_map(|late_ok| sizes.iter().map(move |size| (late_ok, *size)))
+        {
+            if picked.is_some() {
+                break;
+            }
+            // A wider depth with no more tracks has nothing new.
+            if tried == Some((late_ok, size)) {
+                continue;
+            }
+            tried = Some((late_ok, size));
+            let mut candidates: Vec<_> = passing
+                .iter()
+                .filter(|(index, track, _)| {
+                    *index < size && !held_by_ratio.iter().any(|held| held.track_id == track.id)
+                })
+                .map(|(_, track, weight)| (*track, *weight))
+                .collect();
+            let among = u32::try_from(candidates.len()).unwrap_or(u32::MAX);
+            // The ratio is never relaxed: tracks it holds back leave the
+            // draw to the others, then to a wider draw and the next step.
+            while !candidates.is_empty() {
+                let fitted: Vec<exact::Fitted<'_>> = match fit {
+                    Some(fit) => fit.keep(&candidates, at_ms, late_ok),
+                    None => candidates.iter().map(|(t, w)| (*t, *w, None)).collect(),
+                };
+                if fitted.is_empty() {
+                    too_long = true;
+                    break;
+                }
+                let choices: Vec<(&Track, f64)> = fitted.iter().map(|(t, w, _)| (*t, *w)).collect();
+                let (track, weight) = choose(chooser, &choices, history, rng);
+                let cut = fitted
+                    .iter()
+                    .find(|(other, ..)| other.id == track.id)
+                    .and_then(|(_, _, cut)| cut.clone());
+                let counter = library.counter(track.id);
+                if ratio::plays(track.ratio, counter) {
+                    picked = Some((track, weight, counter, among, pct, size, cut));
+                    break;
+                }
+                held_by_ratio.push(HeldByRatio {
+                    track_id: track.id,
+                    ratio: track.ratio,
+                    counter,
+                });
+                candidates.retain(|(other, _)| other.id != track.id);
+            }
+        }
+        let Some((track, weight, counter, among, pct, size, cut)) = picked else {
+            if too_long {
+                // Tracks pass the rules here, but none fits the time left.
+                return Err(Miss::TooLong);
+            }
             continue;
         };
+        let draw = depth.zip(pct).map(|(depth, pct)| {
+            let mut blocked = Blocked::default();
+            for (other, _) in &pool[..size] {
+                if let Some(rule) = recent.blocking(library, other, windows_of(other), at_ms) {
+                    count(&mut blocked, rule);
+                } else if held_elsewhere(library, history, other, across, at_ms).is_some() {
+                    blocked.across += 1;
+                }
+            }
+            DrawLog {
+                pct,
+                start_pct: depth.start_pct,
+                max_pct: depth.max_pct,
+                tracks: u32::try_from(size).unwrap_or(u32::MAX),
+                blocked,
+            }
+        });
+        let windows = windows_of(track);
+        let own = library.for_track(slot.call.windows, track);
         let explanation = Explanation {
             at_unix_ms: at_ms,
             schedule_id: None,
@@ -631,7 +816,7 @@ fn fill(
             pool: u32::try_from(slot.call.pool.len()).unwrap_or(u32::MAX),
             restricted,
             blocked,
-            candidates: count,
+            candidates: among,
             last_played_unix_ms: history.last_played(track.id),
             weight,
             skipped_slots: Vec::new(),
@@ -642,17 +827,32 @@ fn fill(
             daypart: Some(DaypartLog {
                 count: recent.daypart_count,
                 daypart: dayparts::of(recent.daypart_count, local),
-                separation: slot.call.windows.dayparts,
-                days: slot.call.windows.daypart_days,
+                separation: own.dayparts,
+                days: own.daypart_days,
+                separation_from: DaypartFrom::of(track.dayparts),
+                days_from: DaypartFrom::of(track.daypart_days),
                 last_daypart: history
                     .last_played(track.id)
                     .map(|last| dayparts::of(recent.daypart_count, library.local(last).datetime())),
             }),
+            draw,
             linked: false,
+            exact: None,
+            fill: None,
+            lookahead: None,
         };
-        return Some((track.id, explanation));
+        return Ok((track.id, explanation, cut));
     }
-    None
+    Err(Miss::Nothing)
+}
+
+/// Why [`fill`] picked nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Miss {
+    /// Nothing passes the rules, even relaxed.
+    Nothing,
+    /// Tracks pass the rules, but none fits before the exact time.
+    TooLong,
 }
 
 /// The track to play at `at_ms` (Unix ms), after `history`, the last
@@ -711,8 +911,39 @@ pub fn next_outcome(
     last: Option<&Position>,
     rng: &mut Rng,
 ) -> Outcome {
+    outcome(library, history, at_ms, last, rng, true)
+}
+
+/// [`next_outcome`], looking ahead before an exact time or not: within
+/// [`lookahead::REACH_MS`] of it, or [`lookahead::REACH_SLOTS`] slots.
+pub(crate) fn outcome(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+    rng: &mut Rng,
+    look_ahead: bool,
+) -> Outcome {
     let mut held_by_ratio = Vec::new();
-    let pick = pick(library, history, at_ms, last, &mut held_by_ratio, rng).map(|mut pick| {
+    let ahead = next_exact(library, history, at_ms, last)
+        .filter(|_| look_ahead)
+        .filter(|ahead| {
+            ahead.window.at_ms - at_ms <= lookahead::REACH_MS
+                || ahead.slots_before <= lookahead::REACH_SLOTS
+        });
+    let pick = match ahead {
+        Some(ahead) => lookahead::best(
+            library,
+            history,
+            at_ms,
+            last,
+            ahead.window,
+            &mut held_by_ratio,
+            rng,
+        ),
+        None => pick(library, history, at_ms, last, &mut held_by_ratio, rng),
+    }
+    .map(|mut pick| {
         pick.explanation.held_by_ratio = held_by_ratio.clone();
         pick
     });
@@ -727,8 +958,11 @@ pub fn next_outcome(
 /// by step), outside any clock: a show's pick (the match's two tracks,
 /// `docs/listener-interaction.md#match`). Without `enforce_rules`, the
 /// separation rules do not hold (an announcement jingle), as for a slot
-/// that does not enforce them. Tracks in `excluded` are never offered. `None` when nothing of the category can be picked: the
-/// fallback category does not stand in for it.
+/// that does not enforce them, nor does what played before (restrictions
+/// after a category, a type never twice in a row): it plays over the next
+/// track's intro. Tracks in `excluded` are never offered.
+/// `None` when nothing of the category can be picked: the fallback
+/// category does not stand in for it.
 ///
 /// The play ratio decides as for a slot, but its counters do not move.
 pub fn from_category(
@@ -749,9 +983,16 @@ pub fn from_category(
         call,
         method: Method::LeastRecentlyPlayed,
         enforce_rules,
+        draw: Some(library.draw(
+            library.categories.get(&category).map(|c| &c.separation),
+            None,
+        )),
+        first_only: false,
+        after_previous: enforce_rules,
     };
     let mut held = Vec::new();
-    let (track, mut explanation) = fill(library, history, at_ms, &slot, &mut held, rng)?;
+    let (track, mut explanation, _) =
+        fill(library, history, at_ms, &slot, &mut held, rng, None).ok()?;
     if explanation.category_id != Some(category) {
         return None;
     }
@@ -764,7 +1005,69 @@ pub fn from_category(
         position: None,
         explanation,
         linked: None,
+        medley_cut: None,
+        start_at_ms: None,
     })
+}
+
+/// The next exact time ahead of a pick, for [`lookahead`].
+pub(crate) struct Ahead {
+    pub window: Window,
+    /// Slots before it in this run of the clock, from the next one.
+    pub slots_before: usize,
+}
+
+/// The next exact time not due yet for a pick at `at_ms`, as [`pick`]
+/// finds it.
+fn next_exact(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+) -> Option<Ahead> {
+    let hour_start = hour_start_of(library, at_ms);
+    let clock = library.clock_at(&library.local(at_ms))?;
+    let (played, first) = run(clock, hour_start, last);
+    let previous_start = history.previous(at_ms).map(|play| play.start_ms);
+    let upcoming = upcoming(
+        library,
+        clock,
+        first,
+        played,
+        hour_start,
+        at_ms,
+        previous_start,
+        &mut Vec::new(),
+    )?;
+    if upcoming.status != Status::Ahead {
+        return None;
+    }
+    let count = clock.slots.len();
+    let rest = if clock.looping {
+        count
+    } else {
+        count.saturating_sub(first)
+    };
+    Some(Ahead {
+        window: upcoming.window,
+        slots_before: upcoming.offset.unwrap_or(rest),
+    })
+}
+
+/// The slot played last in this run of `clock`, if any, and the first
+/// slot to try.
+fn run(clock: &Clock, hour_start: i64, last: Option<&Position>) -> (Option<usize>, usize) {
+    let count = clock.slots.len();
+    let played = match last {
+        Some(last)
+            if last.clock_id == clock.id
+                && (clock.looping || last.hour_start_unix_ms == hour_start) =>
+        {
+            Some(last.slot as usize % count)
+        }
+        _ => None,
+    };
+    (played, played.map_or(0, |slot| (slot + 1) % count))
 }
 
 /// Start of the station hour of `at_ms` (Unix ms).
@@ -775,55 +1078,147 @@ fn hour_start_of(library: &Library, at_ms: i64) -> i64 {
     at_ms - into_hour
 }
 
-fn pick(
-    library: &Library,
-    history: &History,
+/// Where the next exact time stands for a pick at `at_ms`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Status {
+    /// The pick ends before its window: tracks are fitted to it.
+    Ahead,
+    /// Its slot starts now: at `start`, the track before faded or not.
+    Due { start: i64, faded: bool },
+    /// Its time has passed in this run of the clock.
+    Missed,
+}
+
+fn status(window: Window, at_ms: i64, previous_start: Option<i64>) -> Status {
+    if at_ms < window.from_ms {
+        Status::Ahead
+    } else if at_ms <= window.cut_ms {
+        Status::Due {
+            start: at_ms,
+            faded: false,
+        }
+    } else if previous_start.is_some_and(|start| start < window.cut_ms) {
+        // The track before crosses the cut: it is faded out there.
+        Status::Due {
+            start: window.cut_ms,
+            faded: true,
+        }
+    } else {
+        Status::Missed
+    }
+}
+
+/// The next exact time after the clock's position.
+struct Upcoming<'c> {
+    clock: &'c Clock,
+    /// The slot starting at it (the first of a linked pair).
+    index: usize,
+    /// Its place in this run from the first slot to try; `None` for the
+    /// next hour's first slot.
+    offset: Option<usize>,
+    hour_start: i64,
+    exact: ExactTime,
+    window: Window,
+    status: Status,
+}
+
+const HOUR_MS: i64 = 3_600_000;
+
+/// The next exact time from `first` in this run of `clock` (the slots whose
+/// time has passed are added to `missed`), else the next hour's first slot.
+/// The slots before `first` played in this run already: a clock that does
+/// not loop does not go back to them, and the slot just played (`played`)
+/// is never due again.
+#[allow(clippy::too_many_arguments)]
+fn upcoming<'c>(
+    library: &'c Library,
+    clock: &'c Clock,
+    first: usize,
+    played: Option<usize>,
+    hour_start: i64,
     at_ms: i64,
-    last: Option<&Position>,
-    held_by_ratio: &mut Vec<HeldByRatio>,
-    rng: &mut Rng,
-) -> Option<Pick> {
-    let local = library.local(at_ms);
-    let hour_start = hour_start_of(library, at_ms);
-    let named = |mut explanation: Explanation, at_ms: i64| {
-        let schedule = library.schedule_at(&library.local(at_ms));
+    previous_start: Option<i64>,
+    missed: &mut Vec<usize>,
+) -> Option<Upcoming<'c>> {
+    let count = clock.slots.len();
+    let run = if clock.looping {
+        count
+    } else {
+        count.saturating_sub(first)
+    };
+    for offset in 0..run {
+        let index = (first + offset) % count;
+        if clock.follows_linked(index) || played == Some(index) {
+            continue;
+        }
+        let Some(exact) = clock.exact(index) else {
+            continue;
+        };
+        let window = exact.window(hour_start + i64::from(exact.at_s) * 1_000);
+        match status(window, at_ms, previous_start) {
+            Status::Missed => missed.push(index),
+            status => {
+                return Some(Upcoming {
+                    clock,
+                    index,
+                    offset: Some(offset),
+                    hour_start,
+                    exact,
+                    window,
+                    status,
+                });
+            }
+        }
+    }
+    if clock.looping {
+        return None;
+    }
+    let next_hour = hour_start + HOUR_MS;
+    let next = library.clock_at(&library.local(next_hour))?;
+    let exact = next.exact(0).filter(|_| !next.follows_linked(0))?;
+    let window = exact.window(next_hour + i64::from(exact.at_s) * 1_000);
+    match status(window, at_ms, previous_start) {
+        Status::Missed => None,
+        status => Some(Upcoming {
+            clock: next,
+            index: 0,
+            offset: None,
+            hour_start: next_hour,
+            exact,
+            window,
+            status,
+        }),
+    }
+}
+
+/// Picks from the slots of a clock, and the gaps before its exact times.
+struct Picker<'a, 'h> {
+    library: &'a Library,
+    history: &'h History,
+    held_by_ratio: &'a mut Vec<HeldByRatio>,
+    rng: &'a mut Rng,
+}
+
+impl Picker<'_, '_> {
+    fn named(&self, mut explanation: Explanation, at_ms: i64) -> Explanation {
+        let schedule = self.library.schedule_at(&self.library.local(at_ms));
         explanation.schedule_id = Some(schedule.id);
         explanation.schedule_name = Some(schedule.name.clone());
         explanation
-    };
-    let Some(clock) = library.clock_at(&local) else {
-        let slot = SlotCall {
-            call: Call::new(library, None, None),
-            method: Method::LeastRecentlyPlayed,
-            enforce_rules: true,
-        };
-        return fill(library, history, at_ms, &slot, held_by_ratio, rng).map(
-            |(track, explanation)| Pick {
-                track,
-                position: None,
-                explanation: named(explanation, at_ms),
-                linked: None,
-            },
-        );
-    };
-    let count = clock.slots.len();
-    let first = match last {
-        Some(last)
-            if last.clock_id == clock.id
-                && (clock.looping || last.hour_start_unix_ms == hour_start) =>
-        {
-            (last.slot as usize + 1) % count
-        }
-        _ => 0,
-    };
-    let mut skipped = Vec::new();
-    // The slot at `index` at `at_ms`, after `history`: passed over (and
-    // why) or picked.
-    let mut try_slot = |index: usize,
-                        history: &History,
-                        at_ms: i64,
-                        held_by_ratio: &mut Vec<HeldByRatio>|
-     -> Result<Pick, SkipReason> {
+    }
+
+    /// The slot at `index` of `clock` at `at_ms`, after `history`: passed
+    /// over (and why) or picked.
+    fn slot(
+        &mut self,
+        clock: &Clock,
+        index: usize,
+        hour_start: i64,
+        history: &History,
+        at_ms: i64,
+        fit: Option<&Fit<'_>>,
+    ) -> Result<Pick, SkipReason> {
+        let library = self.library;
         let slot = &clock.slots[index];
         // A module turned off: passed over, never relaxed.
         if library.modules_off.contains(&slot.category) {
@@ -839,83 +1234,382 @@ fn pick(
         {
             return Err(SkipReason::SameTypeInARow);
         }
+        let category = library.categories.get(&slot.category);
         let call = SlotCall {
             call: Call::new(library, Some(slot.category), Some(&slot.separation)),
             method: slot.method,
             enforce_rules: slot.enforce_rules,
+            draw: (slot.method != Method::Random)
+                .then(|| library.draw(category.map(|c| &c.separation), Some(&slot.separation))),
+            first_only: false,
+            after_previous: true,
         };
-        let index = u32::try_from(index).unwrap_or(u32::MAX);
-        let (track, mut explanation) = fill(library, history, at_ms, &call, held_by_ratio, rng)
-            .ok_or(SkipReason::NothingAllowed)?;
+        let position = u32::try_from(index).unwrap_or(u32::MAX);
+        // A looping clock's position is in the hour the track plays in.
+        let hour_start = if clock.looping {
+            hour_start_of(library, at_ms)
+        } else {
+            hour_start
+        };
+        let (track, mut explanation, _) = fill(
+            library,
+            history,
+            at_ms,
+            &call,
+            self.held_by_ratio,
+            self.rng,
+            fit,
+        )
+        .map_err(|miss| match miss {
+            Miss::Nothing => SkipReason::NothingAllowed,
+            Miss::TooLong => SkipReason::NoLongerFits,
+        })?;
         explanation.clock_id = Some(clock.id);
         explanation.clock_name = Some(clock.name.clone());
-        explanation.slot = Some(index);
+        explanation.slot = Some(position);
         Ok(Pick {
             track,
             position: Some(Position {
-                hour_start_unix_ms: hour_start_of(library, at_ms),
+                hour_start_unix_ms: hour_start,
                 clock_id: clock.id,
-                slot: index,
+                slot: position,
             }),
-            explanation: named(explanation, at_ms),
+            explanation: self.named(explanation, at_ms),
             linked: None,
+            medley_cut: None,
+            start_at_ms: None,
         })
+    }
+
+    /// The slot at `index`, with the next slot's track when it is linked
+    /// to it; or the slots passed over (and why), and how many slots that
+    /// took.
+    fn group(
+        &mut self,
+        clock: &Clock,
+        index: usize,
+        hour_start: i64,
+        at_ms: i64,
+        fit: Option<&Fit<'_>>,
+    ) -> Result<Pick, (Vec<(usize, SkipReason)>, usize)> {
+        let library = self.library;
+        let history = self.history;
+        let count = clock.slots.len();
+        let mut pick = self
+            .slot(clock, index, hour_start, history, at_ms, fit)
+            .map_err(|reason| (vec![(index, reason)], 1))?;
+        if !clock.linked(index) {
+            return Ok(pick);
+        }
+        // The next slot's track, right after this one: in this run of the
+        // clock, or neither plays.
+        let next = (index + 1) % count;
+        let next_at = at_ms + i64::from(pick.next_ms(library));
+        let same_run = library
+            .clock_at(&library.local(next_at))
+            .is_some_and(|other| other.id == clock.id)
+            && (clock.looping || hour_start_of(library, next_at) == hour_start);
+        if !same_run {
+            let reason = SkipReason::LinkedTrackAfterHour;
+            return Err((vec![(index, reason), (next, reason)], 2));
+        }
+        let mut with_jingle = history.clone();
+        if let Some(track) = library.tracks.get(&pick.track) {
+            with_jingle.push(crate::Play::of(track, at_ms));
+        }
+        match self.slot(clock, next, hour_start, &with_jingle, next_at, fit) {
+            Ok(linked) => {
+                pick.explanation.linked = true;
+                pick.linked = Some(Box::new(linked));
+                Ok(pick)
+            }
+            Err(reason) => Err((
+                vec![(index, SkipReason::LinkedTrackNotFound), (next, reason)],
+                2,
+            )),
+        }
+    }
+
+    /// The exact slot `upcoming` starting at `start`.
+    fn exact(
+        &mut self,
+        upcoming: &Upcoming<'_>,
+        start: i64,
+        faded: bool,
+    ) -> Result<Pick, (Vec<(usize, SkipReason)>, usize)> {
+        let mut pick = self.group(
+            upcoming.clock,
+            upcoming.index,
+            upcoming.hour_start,
+            start,
+            None,
+        )?;
+        pick.explanation.exact = Some(ExactLog::new(
+            &upcoming.exact,
+            upcoming.window,
+            start,
+            faded,
+        ));
+        pick.start_at_ms = Some(upcoming.window.cut_ms);
+        Ok(pick)
+    }
+
+    /// Fills the gap before `upcoming`'s window: a medley landing in it
+    /// (soft, with the fill on), else a track of the filler category.
+    fn gap(&mut self, upcoming: &Upcoming<'_>, at_ms: i64) -> Option<Pick> {
+        let library = self.library;
+        let soft = upcoming.exact.mode == ExactMode::Soft;
+        let medley = exact::medley_category(library).filter(|_| soft && upcoming.exact.medley_fill);
+        let tries = [
+            medley.map(|category| (category, FitMode::Medley, FillKind::Medley)),
+            library.settings.filler_category_id.map(|category| {
+                (
+                    category,
+                    FitMode::Prefer { late_ok: !soft },
+                    FillKind::Filler,
+                )
+            }),
+        ];
+        for (category_id, mode, kind) in tries.into_iter().flatten() {
+            let Some(category) = library.categories.get(&category_id) else {
+                continue;
+            };
+            let call = SlotCall {
+                call: Call::new(library, Some(category_id), None),
+                method: Method::LeastRecentlyPlayed,
+                enforce_rules: true,
+                draw: Some(library.draw(Some(&category.separation), None)),
+                first_only: true,
+                after_previous: true,
+            };
+            let fit = Fit {
+                window: upcoming.window,
+                mode,
+                medleys: Some(&library.medleys),
+            };
+            let Ok((track, mut explanation, cut)) = fill(
+                library,
+                self.history,
+                at_ms,
+                &call,
+                self.held_by_ratio,
+                self.rng,
+                Some(&fit),
+            ) else {
+                continue;
+            };
+            let length_ms = cut.as_ref().map_or_else(
+                || library.tracks.get(&track).map_or(0, |t| t.length_ms),
+                |cut| cut.length_ms,
+            );
+            explanation.clock_id = Some(upcoming.clock.id);
+            explanation.clock_name = Some(upcoming.clock.name.clone());
+            explanation.fill = Some(FillLog {
+                kind,
+                slot: u32::try_from(upcoming.index).unwrap_or(u32::MAX),
+                exact_at_unix_ms: upcoming.window.at_ms,
+                medley_id: (kind == FillKind::Medley)
+                    .then(|| library.medleys.get(&track).map(|medley| medley.id))
+                    .flatten(),
+                hooks_left_out: cut.as_ref().map_or(0, |cut| cut.hooks_left_out),
+                parts_left_out: cut
+                    .as_ref()
+                    .map(|cut| cut.parts_left_out.clone())
+                    .unwrap_or_default(),
+                length_ms,
+            });
+            return Some(Pick {
+                track,
+                position: None,
+                explanation: self.named(explanation, at_ms),
+                linked: None,
+                medley_cut: cut,
+                start_at_ms: None,
+            });
+        }
+        None
+    }
+}
+
+pub(crate) fn pick(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+    held_by_ratio: &mut Vec<HeldByRatio>,
+    rng: &mut Rng,
+) -> Option<Pick> {
+    let local = library.local(at_ms);
+    let hour_start = hour_start_of(library, at_ms);
+    let mut picker = Picker {
+        library,
+        history,
+        held_by_ratio,
+        rng,
     };
-    let skip = |skipped: &mut Vec<SkippedSlot>, index: usize, reason| {
+    let Some(clock) = library.clock_at(&local) else {
+        let slot = SlotCall {
+            call: Call::new(library, None, None),
+            method: Method::LeastRecentlyPlayed,
+            enforce_rules: true,
+            draw: Some(library.draw(None, None)),
+            first_only: false,
+            after_previous: true,
+        };
+        return fill(
+            library,
+            history,
+            at_ms,
+            &slot,
+            picker.held_by_ratio,
+            picker.rng,
+            None,
+        )
+        .ok()
+        .map(|(track, explanation, _)| Pick {
+            track,
+            position: None,
+            explanation: picker.named(explanation, at_ms),
+            linked: None,
+            medley_cut: None,
+            start_at_ms: None,
+        });
+    };
+    let count = clock.slots.len();
+    let (played, first) = run(clock, hour_start, last);
+    let mut skipped = Vec::new();
+    let skip = |skipped: &mut Vec<SkippedSlot>, clock: &Clock, index: usize, reason| {
         skipped.push(SkippedSlot {
             slot: u32::try_from(index).unwrap_or(u32::MAX),
             category_id: clock.slots[index].category,
             reason,
         });
     };
+    let done = |mut pick: Pick, skipped: Vec<SkippedSlot>| {
+        pick.explanation.skipped_slots = skipped;
+        Some(pick)
+    };
+    let previous_start = history.previous(at_ms).map(|play| play.start_ms);
+    let mut missed = Vec::new();
+    let mut upcoming = upcoming(
+        library,
+        clock,
+        first,
+        played,
+        hour_start,
+        at_ms,
+        previous_start,
+        &mut missed,
+    );
     let mut k = 0;
-    while k < count {
-        let index = (first + k) % count;
-        k += 1;
-        let mut pick = match try_slot(index, history, at_ms, held_by_ratio) {
-            Ok(pick) => pick,
-            Err(reason) => {
-                skip(&mut skipped, index, reason);
-                continue;
-            }
-        };
-        if clock.linked(index) {
-            // The next slot's track, right after this one: in this run of
-            // the clock, or neither plays.
-            let next = (index + 1) % count;
-            let length = library.tracks.get(&pick.track).map_or(0, |t| t.length_ms);
-            let next_at = at_ms + i64::from(length);
-            let same_run = library
-                .clock_at(&library.local(next_at))
-                .is_some_and(|other| other.id == clock.id)
-                && (clock.looping || hour_start_of(library, next_at) == hour_start);
-            if !same_run {
-                skip(&mut skipped, index, SkipReason::LinkedTrackAfterHour);
-                skip(&mut skipped, next, SkipReason::LinkedTrackAfterHour);
-                k += 1;
-                continue;
-            }
-            let mut with_jingle = history.clone();
-            if let Some(track) = library.tracks.get(&pick.track) {
-                with_jingle.push(crate::Play::of(track, at_ms));
-            }
-            match try_slot(next, &with_jingle, next_at, held_by_ratio) {
-                Ok(linked) => {
-                    pick.explanation.linked = true;
-                    pick.linked = Some(Box::new(linked));
+    if let Some(due) = upcoming.as_ref()
+        && let Status::Due { start, faded } = due.status
+    {
+        // The clock jumps to the exact slot: the slots before it pass.
+        match picker.exact(due, start, faded) {
+            Ok(pick) => {
+                for offset in 0..due.offset.unwrap_or(count) {
+                    let index = (first + offset) % count;
+                    skip(&mut skipped, clock, index, SkipReason::ExactTimeDue);
                 }
-                Err(reason) => {
-                    skip(&mut skipped, index, SkipReason::LinkedTrackNotFound);
-                    skip(&mut skipped, next, reason);
+                return done(pick, skipped);
+            }
+            Err((skips, taken)) => {
+                for (index, reason) in skips {
+                    skip(&mut skipped, due.clock, index, reason);
+                }
+                // The slots after it, as if it were not there; this run's
+                // slots when it was the next hour's.
+                k = due.offset.map_or(0, |offset| offset + taken);
+            }
+        }
+        upcoming = None;
+    }
+    let mut fitting = true;
+    let before_run = skipped.len();
+    loop {
+        let fit = upcoming.as_ref().filter(|_| fitting).map(|upcoming| Fit {
+            window: upcoming.window,
+            mode: FitMode::Prefer {
+                late_ok: upcoming.exact.mode == ExactMode::Hard,
+            },
+            medleys: None,
+        });
+        while k < count {
+            let index = (first + k) % count;
+            k += 1;
+            // A clock starting over within the hour reaches its exact
+            // slots again: their time has passed.
+            let passed = || {
+                !clock.looping
+                    && first + k > count
+                    && clock.exact(index).is_some_and(|exact| {
+                        exact
+                            .window(hour_start + i64::from(exact.at_s) * 1_000)
+                            .cut_ms
+                            < at_ms
+                    })
+            };
+            if missed.contains(&index) || passed() {
+                skip(&mut skipped, clock, index, SkipReason::ExactTimePassed);
+                if clock.linked(index) {
+                    skip(
+                        &mut skipped,
+                        clock,
+                        (index + 1) % count,
+                        SkipReason::ExactTimePassed,
+                    );
                     k += 1;
-                    continue;
+                }
+                continue;
+            }
+            if let Some(ahead) = upcoming.as_ref().filter(|_| fitting)
+                && ahead.offset.is_some()
+                && ahead.index == index
+            {
+                // The exact slot before its window: fill the gap, else
+                // it starts early.
+                if let Some(pick) = picker.gap(ahead, at_ms) {
+                    return done(pick, skipped);
+                }
+                match picker.exact(ahead, at_ms, false) {
+                    Ok(pick) => return done(pick, skipped),
+                    Err((skips, taken)) => {
+                        for (index, reason) in skips {
+                            skip(&mut skipped, clock, index, reason);
+                        }
+                        k += taken - 1;
+                        // The slots after it are not fitted any more.
+                        fitting = false;
+                        continue;
+                    }
+                }
+            }
+            let fit = fit.as_ref().filter(|_| fitting);
+            match picker.group(clock, index, hour_start, at_ms, fit) {
+                Ok(pick) => return done(pick, skipped),
+                Err((skips, taken)) => {
+                    for (index, reason) in skips {
+                        skip(&mut skipped, clock, index, reason);
+                    }
+                    k += taken - 1;
                 }
             }
         }
-        pick.explanation.skipped_slots = skipped;
-        return Some(pick);
+        // Nothing fitted in this run before the next hour's exact time:
+        // fill the gap, else play on, cut at the end of its window.
+        match upcoming.as_ref().filter(|_| fitting) {
+            Some(ahead) if ahead.offset.is_none() => {
+                if let Some(pick) = picker.gap(ahead, at_ms) {
+                    return done(pick, skipped);
+                }
+                fitting = false;
+                k = 0;
+                skipped.truncate(before_run);
+            }
+            _ => return None,
+        }
     }
-    None
 }
 
 #[cfg(test)]
@@ -941,7 +1635,10 @@ mod tests {
             artists: vec![100 + id],
             categories: vec![],
             length_ms: 240_000,
+            mix_ms: None,
             ratio: 10,
+            dayparts: None,
+            daypart_days: None,
         }
     }
 
@@ -963,7 +1660,17 @@ mod tests {
             method,
             enforce_rules: true,
             linked_to_next: false,
+            exact: None,
             separation: SeparationOverrides::default(),
+        }
+    }
+
+    /// A draw of the whole category: the method alone decides.
+    fn whole_draw() -> SeparationOverrides {
+        SeparationOverrides {
+            draw_start_pct: Some(100),
+            draw_max_pct: Some(100),
+            ..SeparationOverrides::default()
         }
     }
 
@@ -1132,10 +1839,11 @@ mod tests {
     }
 
     #[test]
-    fn least_recently_played_prefers_never_played_then_oldest() {
+    fn least_recently_played_draws_among_the_oldest_three_at_least() {
         let library = library(vec![slot(1, Method::LeastRecentlyPlayed)]);
         let mut rng = Rng::new(2);
-        // 1 to 4 played (long ago: no separation), 5 never.
+        // 1 to 4 played (long ago: no separation), 5 never: 20 % of 5 is
+        // 1, so the draw is the 3 oldest, never played included.
         let last_played = HashMap::from([
             (1, -900 * MIN),
             (2, -1000 * MIN),
@@ -1143,15 +1851,20 @@ mod tests {
             (4, -700 * MIN),
         ]);
         let history = History::new(vec![], last_played);
-        let pick = next(&library, &history, 0, None, &mut rng).unwrap();
-        assert_eq!(pick.track, 5);
-        assert_eq!(pick.explanation.last_played_unix_ms, None);
-        let mut history = history;
-        history.push(Play::of(&library.tracks[&5], -720 * MIN));
-        assert_eq!(
-            next(&library, &history, 0, None, &mut rng).unwrap().track,
-            2
-        );
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..100 {
+            let pick = next(&library, &history, 0, None, &mut rng).unwrap();
+            seen.insert(pick.track);
+            let draw = pick.explanation.draw.unwrap();
+            assert_eq!(
+                (draw.pct, draw.start_pct, draw.max_pct, draw.tracks),
+                (20, 20, 50, 3)
+            );
+            assert_eq!(pick.explanation.candidates, 3);
+            assert_eq!(pick.explanation.method, Method::LeastRecentlyPlayed);
+        }
+        // At random among them: the never played one is not ahead.
+        assert_eq!(seen, [1, 2, 5].into());
     }
 
     #[test]
@@ -1257,6 +1970,7 @@ mod tests {
     #[test]
     fn weighted_follows_the_weights() {
         let mut library = library(vec![slot(1, Method::Weighted)]);
+        library.categories.get_mut(&1).unwrap().separation = whole_draw();
         for member in &mut library.categories.get_mut(&1).unwrap().members {
             member.weight = if member.track == 1 { 9.0 } else { 0.25 };
         }
@@ -1319,6 +2033,7 @@ mod tests {
     fn linked(category: CategoryId) -> Slot {
         Slot {
             linked_to_next: true,
+            exact: None,
             ..slot(category, Method::Random)
         }
     }
@@ -1758,6 +2473,8 @@ mod tests {
                 daypart: 2,
                 separation: 2,
                 days: 0,
+                separation_from: DaypartFrom::Category,
+                days_from: DaypartFrom::Category,
                 last_daypart: Some(0),
             })
         );
@@ -1900,12 +2617,170 @@ mod tests {
         assert_eq!((log.daypart, log.days, log.last_daypart), (1, 2, Some(1)));
     }
 
+    #[test]
+    fn a_track_s_own_daypart_separation_replaces_its_category_s() {
+        // The category keeps out the 3 dayparts after a play; track 1's
+        // own 0 turns it off for it. All of them played in A.
+        let mut library = daypart_library(4, 3);
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(0);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 10 * MIN));
+        for id in 2..=5 {
+            history.push(Play::of(&library.tracks[&id], 30 * MIN));
+        }
+        let mut rng = Rng::new(25);
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!((pick.track, pick.explanation.step), (1, 0));
+        assert_eq!(pick.explanation.blocked.daypart, 4);
+        assert_eq!(pick.explanation.windows.dayparts, 0);
+        let log = pick.explanation.daypart.unwrap();
+        assert_eq!(
+            (log.separation, log.separation_from, log.days_from),
+            (0, DaypartFrom::Track, DaypartFrom::Category)
+        );
+        // Its own 1, in a category without separation, keeps it out of B
+        // only; the others of the category are free.
+        let mut library = daypart_library(4, 0);
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(1);
+        assert!(held_by_daypart(&library, 30 * MIN, 6 * HOUR + 30 * MIN));
+        assert!(!held_by_daypart(&library, 30 * MIN, 12 * HOUR));
+        // The same in every category the track is in.
+        library.clocks.get_mut(&1).unwrap().slots = vec![slot(2, Method::LeastRecentlyPlayed)];
+        library
+            .categories
+            .get_mut(&2)
+            .unwrap()
+            .members
+            .push(Member {
+                track: 1,
+                weight: 1.0,
+            });
+        library.tracks.get_mut(&1).unwrap().categories.push(2);
+        assert!(held_by_daypart(&library, 30 * MIN, 6 * HOUR + 30 * MIN));
+    }
+
+    #[test]
+    fn a_track_s_own_values_are_cut_to_the_station_s_maximum() {
+        let mut library = daypart_library(4, 0);
+        let track = library.tracks.get_mut(&1).unwrap();
+        track.dayparts = Some(10);
+        track.daypart_days = Some(9);
+        let track = library.tracks[&1].clone();
+        let windows = library.for_track(Windows::OFF, &track);
+        assert_eq!((windows.dayparts, windows.daypart_days), (6, 7));
+        library.settings.daypart_count = 6;
+        assert_eq!(library.for_track(Windows::OFF, &track).dayparts, 10);
+        // Unset: the category's stays.
+        let other = library.tracks[&2].clone();
+        let category = Windows {
+            dayparts: 2,
+            daypart_days: 1,
+            ..Windows::OFF
+        };
+        assert_eq!(library.for_track(category, &other), category);
+        // The history reaches back as far as the track's own values do.
+        assert!(library.horizon_ms() >= 7 * DAY + 4 * HOUR);
+    }
+
+    #[test]
+    fn a_track_s_own_days_in_the_same_daypart_replace_its_category_s() {
+        // The category keeps the same daypart out 2 days; track 1 only 1.
+        let mut library = daypart_library(4, 0);
+        for id in 1..=5 {
+            library.tracks.get_mut(&id).unwrap().daypart_days = (id == 1).then_some(1);
+        }
+        library
+            .categories
+            .get_mut(&1)
+            .unwrap()
+            .separation
+            .daypart_days = Some(2);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 8 * HOUR));
+        for id in 2..=5 {
+            history.push(Play::of(&library.tracks[&id], 8 * HOUR + 10 * MIN));
+        }
+        let mut rng = Rng::new(26);
+        // Saturday's B: the others are kept out (2 days), track 1 is not.
+        let pick = next(&library, &history, 2 * DAY + 9 * HOUR, None, &mut rng).unwrap();
+        assert_eq!((pick.track, pick.explanation.step), (1, 0));
+        assert_eq!(pick.explanation.blocked.daypart_days, 4);
+        let log = pick.explanation.daypart.unwrap();
+        assert_eq!((log.days, log.days_from), (1, DaypartFrom::Track));
+    }
+
+    #[test]
+    fn a_track_s_own_daypart_separation_is_relaxed_like_the_category_s() {
+        // Every track of the category has its own 2, played in A.
+        let mut library = daypart_library(4, 0);
+        let mut history = History::default();
+        for id in 1..=5 {
+            library.tracks.get_mut(&id).unwrap().dayparts = Some(2);
+            history.push(Play::of(&library.tracks[&id], (id as i64) * MIN));
+        }
+        let mut rng = Rng::new(27);
+        // C: halved to 1 at step 3, it is free.
+        let pick = next(&library, &history, 12 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 3);
+        assert_eq!(pick.explanation.windows.dayparts, 1);
+        assert_eq!(pick.explanation.blocked.daypart, 5);
+        let log = pick.explanation.daypart.unwrap();
+        assert_eq!(
+            (log.separation, log.separation_from),
+            (2, DaypartFrom::Track)
+        );
+        // B: still kept out halved, dropped at step 4.
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!(pick.explanation.step, 4);
+        assert_eq!(pick.explanation.windows.dayparts, 0);
+    }
+
+    #[test]
+    fn a_track_s_own_daypart_separation_holds_in_hours_without_a_clock() {
+        // No clock: the station's library, without a category value.
+        let mut library = daypart_library(4, 0);
+        library.schedule.hours.clear();
+        let mut history = History::default();
+        for id in 1..=20 {
+            if id < 20 {
+                library.tracks.get_mut(&id).unwrap().dayparts = Some(1);
+            }
+            // 20 played first: in the draw.
+            let at = if id == 20 { 0 } else { id as i64 };
+            history.push(Play::of(&library.tracks[&id], at * MIN));
+        }
+        let mut rng = Rng::new(28);
+        let pick = next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap();
+        assert_eq!((pick.track, pick.explanation.step), (20, 0));
+        assert_eq!(pick.explanation.blocked.daypart, 19);
+    }
+
+    #[test]
+    fn a_slot_without_rules_ignores_a_track_s_own_daypart_separation() {
+        let mut library = daypart_library(4, 0);
+        library.clocks.get_mut(&1).unwrap().slots[0].enforce_rules = false;
+        library.tracks.get_mut(&1).unwrap().dayparts = Some(3);
+        let mut history = History::default();
+        history.push(Play::of(&library.tracks[&1], 30 * MIN));
+        for id in 2..=5 {
+            history.push(Play::of(&library.tracks[&id], HOUR));
+        }
+        let mut rng = Rng::new(29);
+        // Track 1, the oldest, is in the draw, and plays without rules.
+        let picks: Vec<_> = (0..30)
+            .map(|_| next(&library, &history, 6 * HOUR + 30 * MIN, None, &mut rng).unwrap())
+            .collect();
+        assert!(picks.iter().all(|pick| pick.explanation.step == 0));
+        assert!(picks.iter().any(|pick| pick.track == 1));
+    }
+
     /// Track 1 at 0.2, offered first at every pick (its weight dwarfs the
     /// others'), in a slot without separation.
     fn ratio_library() -> Library {
         let mut free = slot(1, Method::Weighted);
         free.enforce_rules = false;
         let mut library = library(vec![free]);
+        library.categories.get_mut(&1).unwrap().separation = whole_draw();
         library.tracks.get_mut(&1).unwrap().ratio = 2;
         for member in &mut library.categories.get_mut(&1).unwrap().members {
             member.weight = if member.track == 1 { 1e9 } else { 1.0 };
@@ -1955,6 +2830,7 @@ mod tests {
             let mut free = slot(1, Method::Weighted);
             free.enforce_rules = false;
             let mut category = category(1, &[1, 2, 3, 4, 5]);
+            category.separation = whole_draw();
             for member in &mut category.members {
                 member.weight = if member.track == 1 { 1e9 } else { 1.0 };
             }
@@ -2071,5 +2947,214 @@ mod tests {
         let pick = next(&library, &history, 0, None, &mut rng).unwrap();
         assert_eq!(pick.track, 1);
         assert_eq!(pick.explanation.counter, Some(10));
+    }
+
+    /// 20 tracks in category 1, played long ago, 1 the oldest; the
+    /// `blocked` oldest share an artist with track 21, played 10 minutes
+    /// ago (outside the category): artist separation holds them back
+    /// until it is dropped at step 6.
+    fn draw_library(blocked: u64, method: Method) -> (Library, History) {
+        let mut tracks: Vec<_> = (1..=21).map(track).collect();
+        for track in tracks.iter_mut().take(blocked as usize) {
+            track.artists = vec![999];
+        }
+        tracks[20].artists = vec![999];
+        let library = Library::new(
+            LibraryParts {
+                tracks,
+                categories: vec![category(1, &(1..=20).collect::<Vec<_>>())],
+                clocks: vec![Clock {
+                    id: 1,
+                    name: "Clock".into(),
+                    looping: false,
+                    slots: vec![slot(1, method)],
+                }],
+                schedule: Schedule {
+                    hours: HashMap::from_iter((0..24).map(|h| ((4, h), 1))),
+                    ..Schedule::default()
+                },
+                ..LibraryParts::default()
+            },
+            TimeZone::UTC,
+        );
+        let mut history = History::default();
+        for id in 1..=20 {
+            history.push(Play::of(
+                &library.tracks[&id],
+                -(1_000 + (21 - id as i64) * 10) * MIN,
+            ));
+        }
+        history.push(Play::of(&library.tracks[&21], -10 * MIN));
+        (library, history)
+    }
+
+    /// The picks of 40 calls at 0, and their draws.
+    fn draws(library: &Library, history: &History, seed: u64) -> Vec<(TrackId, u8, DrawLog)> {
+        let mut rng = Rng::new(seed);
+        (0..40)
+            .map(|_| {
+                let pick = next(library, history, 0, None, &mut rng).unwrap();
+                (
+                    pick.track,
+                    pick.explanation.step,
+                    pick.explanation.draw.unwrap(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_draw_widens_by_ten_points_before_any_relaxation() {
+        // The 4 oldest held back: 20 % (4 tracks) has nothing, 30 % has 2.
+        let (library, history) = draw_library(4, Method::LeastRecentlyPlayed);
+        for (track, step, draw) in draws(&library, &history, 30) {
+            assert_eq!(step, 0);
+            assert!([5, 6].contains(&track), "{track}");
+            assert_eq!((draw.pct, draw.tracks, draw.blocked.artist), (30, 6, 4));
+        }
+        // The 8 oldest: 20, 30 and 40 % have nothing, 50 % has 2.
+        let (library, history) = draw_library(8, Method::LeastRecentlyPlayed);
+        for (track, step, draw) in draws(&library, &history, 31) {
+            assert_eq!(step, 0);
+            assert!([9, 10].contains(&track), "{track}");
+            assert_eq!((draw.pct, draw.tracks, draw.blocked.artist), (50, 10, 8));
+        }
+    }
+
+    #[test]
+    fn rules_are_relaxed_with_the_draw_at_its_maximum() {
+        // The 10 oldest, half of the category, held back: the draw never
+        // goes beyond 50 %, the artist separation is dropped instead.
+        let (library, history) = draw_library(10, Method::LeastRecentlyPlayed);
+        let picks = draws(&library, &history, 32);
+        for (track, step, draw) in &picks {
+            assert_eq!(*step, 6);
+            assert!((1..=10).contains(track), "{track}");
+            assert_eq!((draw.pct, draw.tracks, draw.blocked.artist), (50, 10, 0));
+        }
+        assert!(
+            picks
+                .iter()
+                .map(|(track, ..)| track)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                > 3
+        );
+        // Weighted slots draw the same way.
+        let (library, history) = draw_library(10, Method::Weighted);
+        for (track, step, draw) in draws(&library, &history, 33) {
+            assert_eq!((step, draw.pct), (6, 50));
+            assert!((1..=10).contains(&track), "{track}");
+        }
+    }
+
+    #[test]
+    fn two_rounds_of_a_category_do_not_play_in_the_same_order() {
+        let mut library = library(vec![slot(3, Method::LeastRecentlyPlayed)]);
+        library.settings.separation = Windows::OFF.into();
+        let mut rng = Rng::new(7);
+        let mut history = History::default();
+        let mut order = Vec::new();
+        for n in 0..20 {
+            let pick = next(&library, &history, n * 4 * MIN, None, &mut rng).unwrap();
+            history.push(Play::of(&library.tracks[&pick.track], n * 4 * MIN));
+            // Never from the most recently played half.
+            assert!(pick.explanation.draw.unwrap().tracks <= 5);
+            order.push(pick.track);
+        }
+        assert_ne!(order[..10], order[10..]);
+        // Never played tracks do not play in their ID order.
+        assert_ne!(order[..10], (11..=20).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn a_track_held_back_by_its_ratio_leaves_its_place_in_the_draw() {
+        // Track 1, the oldest, at 0.1 and a counter of 5: held back.
+        let (mut library, history) = draw_library(0, Method::LeastRecentlyPlayed);
+        library.tracks.get_mut(&1).unwrap().ratio = 1;
+        library.counters.insert(1, 5);
+        let mut rng = Rng::new(34);
+        for _ in 0..30 {
+            let outcome = next_outcome(&library, &history, 0, None, &mut rng);
+            let pick = outcome.pick.unwrap();
+            assert!((2..=4).contains(&pick.track), "{}", pick.track);
+            assert_eq!(pick.explanation.draw.unwrap().pct, 20);
+            assert!(outcome.held_by_ratio.iter().all(|held| held.track_id == 1));
+        }
+        // The whole draw held back: it widens.
+        for id in 1..=4 {
+            library.tracks.get_mut(&id).unwrap().ratio = 1;
+            library.counters.insert(id, 5);
+        }
+        let outcome = next_outcome(&library, &history, 0, None, &mut rng);
+        let pick = outcome.pick.unwrap();
+        assert!([5, 6].contains(&pick.track));
+        assert_eq!(
+            (pick.explanation.step, pick.explanation.draw.unwrap().pct),
+            (0, 30)
+        );
+        assert_eq!(outcome.held_by_ratio.len(), 4);
+    }
+
+    #[test]
+    fn a_slot_overrides_its_category_s_draw_depth() {
+        let (mut library, history) = draw_library(0, Method::LeastRecentlyPlayed);
+        library.categories.get_mut(&1).unwrap().separation = SeparationOverrides {
+            draw_start_pct: Some(50),
+            draw_max_pct: Some(80),
+            ..SeparationOverrides::default()
+        };
+        let (_, _, draw) = draws(&library, &history, 35)[0];
+        assert_eq!(
+            (draw.pct, draw.start_pct, draw.max_pct, draw.tracks),
+            (50, 50, 80, 10)
+        );
+        library.clocks.get_mut(&1).unwrap().slots[0].separation = whole_draw();
+        let picks = draws(&library, &history, 36);
+        assert_eq!((picks[0].2.pct, picks[0].2.tracks), (100, 20));
+        assert!(picks.iter().any(|(track, ..)| *track > 10));
+        // A random slot has no draw.
+        library.clocks.get_mut(&1).unwrap().slots[0].method = Method::Random;
+        let pick = next(&library, &history, 0, None, &mut Rng::new(37)).unwrap();
+        assert_eq!(pick.explanation.draw, None);
+    }
+
+    #[test]
+    fn hours_without_a_clock_draw_with_the_station_s_depth() {
+        let (mut library, history) = draw_library(0, Method::LeastRecentlyPlayed);
+        library.schedule.hours.clear();
+        library.settings.draw = DrawDepth {
+            start_pct: 30,
+            max_pct: 60,
+        };
+        let pick = next(&library, &history, 0, None, &mut Rng::new(38)).unwrap();
+        let draw = pick.explanation.draw.unwrap();
+        // The station's library: the category's 20 tracks (21 is in none).
+        assert_eq!((draw.pct, draw.max_pct, draw.tracks), (30, 60, 6));
+    }
+
+    #[test]
+    fn the_fallback_category_draws_with_its_own_depth() {
+        let mut library = library(vec![slot(1, Method::LeastRecentlyPlayed)]);
+        library.settings.fallback_category_id = Some(2);
+        library.categories.get_mut(&2).unwrap().separation = SeparationOverrides {
+            draw_start_pct: Some(40),
+            draw_max_pct: Some(60),
+            ..SeparationOverrides::default()
+        };
+        // Category 1 played within the hour: its track separation, even
+        // quartered, holds it back.
+        let mut history = History::default();
+        for id in 1..=5 {
+            history.push(Play::of(&library.tracks[&id], -(id as i64) * MIN));
+        }
+        let pick = next(&library, &history, 0, None, &mut Rng::new(39)).unwrap();
+        assert_eq!(pick.explanation.step, 11);
+        assert!((6..=10).contains(&pick.track));
+        let draw = pick.explanation.draw.unwrap();
+        assert_eq!(
+            (draw.pct, draw.start_pct, draw.max_pct, draw.tracks),
+            (40, 40, 60, 3)
+        );
     }
 }

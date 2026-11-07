@@ -121,7 +121,9 @@ pub struct CrossfadeOverrides {
     pub fade_in: Option<Fade>,
     pub mode: Option<CrossfadeMode>,
     pub fixed_ms: Option<u32>,
-    /// `false` plays the transition out of this track back to back, without overlap.
+    /// `false` plays the transition out of this track back to back, without
+    /// overlap; `true` crossfades it at its own point whatever the two
+    /// tracks' lengths (the first span of a shortened medley).
     pub crossfade: Option<bool>,
 }
 
@@ -352,9 +354,11 @@ pub fn plan_transition(
     if overrides.crossfade == Some(false) {
         return back_to_back;
     }
+    // `true`: crossfaded whatever the lengths (a shortened medley's spans).
+    let forced = overrides.crossfade == Some(true);
     // A short track (a jingle) that sets where the next track starts keeps
     // that point, without fades: the tracks only overlap.
-    if outgoing.playable_ms() <= settings.min_track_ms {
+    if !forced && outgoing.playable_ms() <= settings.min_track_ms {
         let own_point = match (overrides.mode, overrides.fixed_ms) {
             (Some(CrossfadeMode::Fixed), Some(fixed_ms)) => {
                 Some(outgoing.cue_out_ms.saturating_sub(fixed_ms))
@@ -370,7 +374,7 @@ pub fn plan_transition(
                 fade_in: None,
             });
     }
-    if incoming.playable_ms() <= settings.min_track_ms {
+    if !forced && incoming.playable_ms() <= settings.min_track_ms {
         return back_to_back;
     }
 
@@ -409,6 +413,20 @@ pub fn plan_transition(
     }
 }
 
+/// Where the track after `outgoing` starts, in ms from `outgoing`'s
+/// cue-in: the transition into `incoming`, or into a full-length track when
+/// it is not known yet (rotation's planning, the last waiting track).
+pub fn next_start_ms(
+    outgoing: &TrackPlayout,
+    incoming: Option<&TrackPlayout>,
+    settings: &CrossfadeSettings,
+) -> u32 {
+    let full_length = TrackPlayout::unanalyzed(u32::MAX);
+    plan_transition(outgoing, incoming.unwrap_or(&full_length), settings)
+        .next_start_ms
+        .saturating_sub(outgoing.cue_in_ms)
+}
+
 /// Converts a gain in dB to a linear factor.
 pub fn db_to_gain(db: f64) -> f32 {
     10f64.powf(db / 20.0) as f32
@@ -431,6 +449,36 @@ mod tests {
     }
 
     #[test]
+    fn a_forced_crossfade_ignores_the_lengths() {
+        let settings = CrossfadeSettings::default();
+        let mut first = track(0, 15_000, None);
+        first.crossfade = CrossfadeOverrides {
+            mode: Some(CrossfadeMode::Fixed),
+            fixed_ms: Some(500),
+            fade_out: Some(Fade {
+                time_ms: 500,
+                ..Fade::default()
+            }),
+            crossfade: Some(true),
+            ..CrossfadeOverrides::default()
+        };
+        let second = track(40_000, 43_500, None);
+        let transition = plan_transition(&first, &second, &settings);
+        assert_eq!(transition.next_start_ms, 14_500);
+        assert!(transition.fade_out.is_some());
+        // Without it, a short track after a long one is back to back.
+        first.crossfade.crossfade = None;
+        let first = TrackPlayout {
+            cue_out_ms: 25_000,
+            ..first
+        };
+        assert_eq!(
+            plan_transition(&first, &second, &settings).next_start_ms,
+            25_000
+        );
+    }
+
+    #[test]
     fn curves_go_from_zero_to_one() {
         for curve in [
             FadeCurve::Linear,
@@ -449,6 +497,22 @@ mod tests {
         }
         assert!(FadeCurve::Logarithmic.fade_in(0.5) > 0.5);
         assert!(FadeCurve::Exponential.fade_in(0.5) < 0.5);
+    }
+
+    #[test]
+    fn the_next_track_starts_at_the_transition_from_the_cue_in() {
+        let settings = CrossfadeSettings::default();
+        let song = track(1_000, 200_000, Some(194_000));
+        // Into a full-length track: the mix point.
+        assert_eq!(next_start_ms(&song, None, &settings), 193_000);
+        // Into a jingle: back to back.
+        let jingle = track(0, 5_000, None);
+        assert_eq!(next_start_ms(&song, Some(&jingle), &settings), 199_000);
+        // Without a mix point: at its end.
+        assert_eq!(
+            next_start_ms(&track(1_000, 200_000, None), None, &settings),
+            199_000
+        );
     }
 
     #[test]

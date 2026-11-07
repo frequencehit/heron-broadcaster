@@ -22,6 +22,7 @@ import {
 } from "../components/ui";
 import { type PlainKey, t } from "../i18n";
 import { trackName } from "../lib/format";
+import { useModule } from "../lib/modules";
 import { DAY_NUMBERS, dayName, describeRule, hourLabel, targetKind } from "../lib/rotation";
 import { Link, setSearch, useLocation } from "../lib/router";
 import { useAction, useCan } from "../lib/session";
@@ -49,6 +50,8 @@ function targetLink(target: Target): string {
 }
 
 export function Restrictions() {
+  // An artist has no page to link to while the artists module is off.
+  const artistsOn = useModule("artists");
   const canEdit = useCan("operator");
   const { search } = useLocation();
   const kind = (search.get("target") as TargetKind | null) ?? undefined;
@@ -125,9 +128,13 @@ export function Restrictions() {
                   <tr key={restriction.id} className={restriction.enabled ? undefined : "muted"}>
                     <td className="title-cell">
                       <span className="badge">{targetKind(restriction.target)}</span>{" "}
-                      <Link to={targetLink(restriction.target)}>
-                        {restriction.target_name ?? `#${restriction.target.id}`}
-                      </Link>
+                      {restriction.target.kind === "artist" && !artistsOn ? (
+                        (restriction.target_name ?? `#${restriction.target.id}`)
+                      ) : (
+                        <Link to={targetLink(restriction.target)}>
+                          {restriction.target_name ?? `#${restriction.target.id}`}
+                        </Link>
+                      )}
                     </td>
                     <td>{describeRule(restriction.rule, categoryName)}</td>
                     <td className="muted small">

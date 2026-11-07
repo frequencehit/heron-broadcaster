@@ -11,6 +11,8 @@
 //! - `queue`: the queue manager.
 //! - `rotation`: separation rules, fallback category and weights.
 //! - `station`: the time zone clocks and restrictions follow.
+//! - `stream_details`: what the outputs tell the stream servers about the
+//!   station (`servers.rs`).
 //! - `programming`: what counts as a play, eras, and the mood and sound
 //!   code scales.
 //! - `statistics`: listener statistics (the minimum session, retention).
@@ -310,6 +312,7 @@ impl EngineManagement {
 /// (docs/stations.md#settings). The others are shared, in `settings`.
 pub const PER_STATION: [&str; 16] = [
     "station",
+    "stream_details",
     "playout",
     "eq",
     "agc",

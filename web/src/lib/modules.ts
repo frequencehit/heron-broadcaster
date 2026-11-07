@@ -12,8 +12,18 @@ import { useStation } from "./station";
 export type Modules = Schemas["Modules"];
 export type ModuleKey = keyof Modules;
 
+/** A module of the list, with its texts. */
+export interface ModuleEntry {
+  key: ModuleKey;
+  label: PlainKey;
+  help: PlainKey;
+  off: PlainKey;
+  /** Of the library, which the stations share: turned off for the installation only. */
+  installationOnly?: boolean;
+}
+
 /** The modules, in the order the pages list them. */
-export const MODULES: { key: ModuleKey; label: PlainKey; help: PlainKey; off: PlainKey }[] = [
+export const MODULES: ModuleEntry[] = [
   { key: "medleys", label: "nav.medleys", help: "modules.medleysHelp", off: "modules.medleysOff" },
   { key: "cover_art", label: "modules.coverArt", help: "modules.coverArtHelp", off: "modules.coverArtOff" },
   {
@@ -23,6 +33,18 @@ export const MODULES: { key: ModuleKey; label: PlainKey; help: PlainKey; off: Pl
     off: "modules.listenerStatisticsOff",
   },
   { key: "webhooks", label: "nav.webhooks", help: "modules.webhooksHelp", off: "modules.webhooksOff" },
+  {
+    key: "restrictions",
+    label: "nav.restrictions",
+    help: "modules.restrictionsHelp",
+    off: "modules.restrictionsOff",
+  },
+  { key: "eq", label: "modules.eq", help: "modules.eqHelp", off: "modules.eqOff" },
+  { key: "processing", label: "nav.agc", help: "modules.processingHelp", off: "modules.processingOff" },
+  { key: "trash", label: "nav.trash", help: "modules.trashHelp", off: "modules.trashOff", installationOnly: true },
+  { key: "review", label: "nav.review", help: "modules.reviewHelp", off: "modules.reviewOff", installationOnly: true },
+  { key: "artists", label: "nav.artists", help: "modules.artistsHelp", off: "modules.artistsOff", installationOnly: true },
+  { key: "labels", label: "nav.labels", help: "modules.labelsHelp", off: "modules.labelsOff", installationOnly: true },
   { key: "dedications", label: "nav.dedications", help: "modules.dedicationsHelp", off: "modules.showOff" },
   { key: "match", label: "nav.match", help: "modules.matchHelp", off: "modules.showOff" },
   { key: "top30", label: "nav.top30", help: "modules.top30Help", off: "modules.showOff" },
@@ -38,6 +60,13 @@ export const ALL_ON: Modules = {
   cover_art: true,
   listener_statistics: true,
   webhooks: true,
+  restrictions: true,
+  eq: true,
+  processing: true,
+  trash: true,
+  review: true,
+  artists: true,
+  labels: true,
   dedications: false,
   match: false,
   top30: false,

@@ -365,7 +365,7 @@ function Organize() {
           <p style={{ margin: 0 }}>
             {rich("review.organizeHelp", {
               layout: <code>{settings.data?.layout ?? "…"}</code>,
-              link: <Link to="/settings">{t("review.changeIt")}</Link>,
+              link: <Link to="/settings?tab=library">{t("review.changeIt")}</Link>,
             })}
           </p>
           <p className="muted small" style={{ margin: 0 }}>

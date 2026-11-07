@@ -373,7 +373,6 @@ impl Planner {
         history: &History,
         at: i64,
         picks: &mut Vec<Pick>,
-        linked: &mut Vec<u32>,
         rng: &mut Rng,
     ) -> Option<Planned> {
         let vote = picks.last()?;
@@ -382,7 +381,9 @@ impl Planner {
             return None;
         }
         let length = i64::from(track.length_ms);
-        if !self.due(at - length, length) {
+        // Its planned start: an exact slot's jumps to its time.
+        let start = vote.explanation.at_unix_ms;
+        if !self.due(start, length) {
             self.since = self.since.saturating_add(1);
             return None;
         }
@@ -413,10 +414,10 @@ impl Planner {
         // The announcement, in turn and without separation rules, takes the
         // place of a linked slot's jingle.
         let announcement = self.settings.jingle_category_id.and_then(|jingles| {
-            heron_rotation::from_category(library, history, at - length, jingles, &[], false, rng)
+            heron_rotation::from_category(library, history, start, jingles, &[], false, rng)
         });
         let mut vote = picks.len() - 1;
-        let had_jingle = vote > 0 && linked.contains(&u32::try_from(vote - 1).unwrap_or(u32::MAX));
+        let had_jingle = vote > 0 && picks[vote - 1].explanation.linked;
         let jingle = match (announcement, had_jingle) {
             (Some(mut announcement), true) => {
                 announcement.explanation.linked = true;
@@ -426,7 +427,6 @@ impl Planner {
             (Some(mut announcement), false) => {
                 announcement.explanation.linked = true;
                 picks.insert(vote, announcement);
-                linked.push(u32::try_from(vote).unwrap_or(u32::MAX));
                 vote += 1;
                 Some(vote - 1)
             }

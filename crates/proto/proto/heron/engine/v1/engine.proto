@@ -80,6 +80,14 @@ message Track {
   bool over_intro = 15;
   // Where the intro ends (the vocals start), in ms on the file's timeline.
   optional uint32 intro_ms = 16;
+  // An exact time (a clock slot's), Unix ms on the server's clock: if the
+  // entry still waits then, the engine drops the entries waiting before it,
+  // fades out what plays over `cut_fade_ms` and starts it.
+  optional int64 start_at_unix_ms = 17;
+  uint32 cut_fade_ms = 18;
+  // The rest of the entry before it (the second span of a shortened
+  // medley): not a new play.
+  bool continues = 19;
 }
 
 message QueueEntry {
@@ -91,6 +99,11 @@ message QueueEntry {
   // the next one): removing that entry removes this one, moving either
   // moves both, and nothing goes between them.
   optional uint64 linked_to = 3;
+  // In the state: where the next track starts, in ms from this entry's
+  // cue-in (the transition into the entry after it, or into a full-length
+  // track for the last one). Set for the track on air, the cued one and
+  // the queue.
+  optional uint32 next_start_ms = 4;
 }
 
 message EnqueueRequest {
