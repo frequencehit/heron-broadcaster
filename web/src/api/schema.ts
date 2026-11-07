@@ -5287,6 +5287,7 @@ export interface components {
             category_id: number;
             /** @description Off, the slot skips the separation rules (restrictions still apply). */
             enforce_rules?: boolean;
+            exact?: components["schemas"]["ExactTime"] | null;
             /**
              * @description Plays only if the next slot's track plays right after it (a jingle
              *     announcing it); the next slot of the last one is the first. A
@@ -5447,7 +5448,9 @@ export interface components {
          */
         CrossfadeOverrides: {
             /**
-             * @description `false` plays the transition out of this track back to back, without overlap.
+             * @description `false` plays the transition out of this track back to back, without
+             *     overlap; `true` crossfades it at its own point whatever the two
+             *     tracks' lengths (the first span of a shortened medley).
              * @default null
              */
             crossfade: boolean | null;
@@ -5947,6 +5950,69 @@ export interface components {
             /** @description For people. */
             message: string;
         };
+        /** @description An exact slot's pick: its exact time, and how rotation met it. */
+        ExactLog: {
+            /** Format: int32 */
+            after_s: number;
+            /**
+             * Format: int64
+             * @description The exact time (Unix ms).
+             */
+            at_unix_ms: number;
+            /**
+             * Format: int32
+             * @description The soft window, in seconds; 0 in hard mode.
+             */
+            before_s: number;
+            /**
+             * Format: int64
+             * @description When the engine fades out what still plays and starts the slot: the
+             *     exact time (hard) or the end of the window (soft).
+             */
+            cut_at_unix_ms: number;
+            /** @description What plays before it is faded out at `cut_at_unix_ms`. */
+            faded: boolean;
+            /** @description The planned start is inside the window (the exact time in hard mode). */
+            in_window: boolean;
+            met: components["schemas"]["Met"];
+            mode: components["schemas"]["ExactMode"];
+            /**
+             * Format: int64
+             * @description Planned start minus the exact time; negative when early.
+             */
+            offset_ms: number;
+        };
+        /** @enum {string} */
+        ExactMode: "hard" | "soft";
+        /** @description A clock slot's exact time. */
+        ExactTime: {
+            /**
+             * Format: int32
+             * @description Soft: how late it may start; a track ending later is faded out then.
+             */
+            after_s?: number;
+            /**
+             * Format: int32
+             * @description Seconds into the station hour, 0 to 3599.
+             */
+            at_s: number;
+            /**
+             * Format: int32
+             * @description Soft: how early the slot may start, in seconds (0 to 300).
+             */
+            before_s?: number;
+            /**
+             * @description The exact time cuts a live DJ (ad breaks). Stored for M11: there is
+             *     no live DJ yet.
+             */
+            cut_live?: boolean;
+            /**
+             * @description Soft: a gap before the window is filled with a station medley,
+             *     shortened from its end when too long.
+             */
+            medley_fill?: boolean;
+            mode?: components["schemas"]["ExactMode"];
+        };
         /** @description Why a track was picked: the rotation log. */
         Explanation: {
             /** @description Windows across stations applied at this step. */
@@ -5979,6 +6045,8 @@ export interface components {
             daypart?: components["schemas"]["DaypartLog"] | null;
             draw?: components["schemas"]["DrawLog"] | null;
             enforce_rules: boolean;
+            exact?: components["schemas"]["ExactLog"] | null;
+            fill?: components["schemas"]["FillLog"] | null;
             /**
              * @description Tracks offered before this one and held back by their play ratio,
              *     in the order they were offered.
@@ -6076,6 +6144,39 @@ export interface components {
         };
         FileSelection: {
             file_ids: number[];
+        };
+        /** @enum {string} */
+        FillKind: "medley" | "filler";
+        /** @description A pick filling the gap before an exact time, in the rotation log. */
+        FillLog: {
+            /**
+             * Format: int64
+             * @description The exact time (Unix ms).
+             */
+            exact_at_unix_ms: number;
+            /**
+             * Format: int32
+             * @description Hooks left out of the medley (0: whole).
+             */
+            hooks_left_out?: number;
+            kind: components["schemas"]["FillKind"];
+            /**
+             * Format: int32
+             * @description How long it plays.
+             */
+            length_ms: number;
+            /**
+             * Format: int64
+             * @description The medley's ID.
+             */
+            medley_id?: number | null;
+            /** @description The parts left out, by their position in the medley from 0. */
+            parts_left_out?: number[];
+            /**
+             * Format: int32
+             * @description The exact slot it fills the gap before (index in its clock).
+             */
+            slot: number;
         };
         /** @enum {string} */
         FinalMode: "limiter" | "clipper";
@@ -7158,6 +7259,11 @@ export interface components {
             artist_id: number;
         };
         /**
+         * @description How an exact time was met, in the rotation log.
+         * @enum {string}
+         */
+        Met: "on_time" | "early" | "late";
+        /**
          * @description How a clock slot picks among the tracks its category allows.
          * @enum {string}
          */
@@ -7911,6 +8017,11 @@ export interface components {
             album?: string | null;
             artist?: string | null;
             /**
+             * @description The rest of the entry before it (the second part of a shortened
+             *     medley): not a new play.
+             */
+            continues: boolean;
+            /**
              * Format: int32
              * @description Cue points the engine plays between, overrides applied.
              */
@@ -7934,6 +8045,12 @@ export interface components {
             /** @description Relative to the library root. */
             path: string;
             source: components["schemas"]["PlaySource"];
+            /**
+             * Format: int64
+             * @description An exact time (Unix ms): if it still waits then, the engine fades
+             *     out what plays and starts it, dropping the entries before it.
+             */
+            start_at_unix_ms?: number | null;
             title?: string | null;
             /**
              * Format: int64
@@ -8257,6 +8374,8 @@ export interface components {
             draw: components["schemas"]["DrawDepth"];
             /** @default null */
             fallback_category_id: components["schemas"]["u64"] | null;
+            /** @default null */
+            filler_category_id: components["schemas"]["u64"] | null;
             /**
              * @description Categories whose tracks are kept out of the station's library (hours
              *     without a clock, the fallback without a category), even when another
@@ -8613,7 +8732,7 @@ export interface components {
          * @description Why a slot was passed over.
          * @enum {string}
          */
-        SkipReason: "nothing_allowed" | "same_type_in_a_row" | "module_off" | "linked_track_after_hour" | "linked_track_not_found";
+        SkipReason: "nothing_allowed" | "same_type_in_a_row" | "module_off" | "linked_track_after_hour" | "linked_track_not_found" | "exact_time_due" | "no_longer_fits" | "exact_time_passed";
         SkippedFile: {
             path: string;
             reason: string;
@@ -9930,6 +10049,15 @@ export interface components {
             rank: number;
             /** Format: int32 */
             tracks: number;
+        } | {
+            /** Format: int64 */
+            at_unix_ms?: number | null;
+            /** @enum {string} */
+            kind: "exact_time";
+            /** Format: int32 */
+            pick: number;
+            /** Format: int64 */
+            start_unix_ms: number;
         };
         Waveform: {
             /**

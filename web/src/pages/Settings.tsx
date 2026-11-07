@@ -225,6 +225,21 @@ function RotationCard() {
                 ))}
               </select>
             </Field>
+            <Field label={t("settings.filler")} hint={t("settings.fillerHint")}>
+              <select
+                className="input"
+                value={draft.filler_category_id ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => set({ filler_category_id: e.target.value ? Number(e.target.value) : null })}
+              >
+                <option value="">{t("settings.noFiller")}</option>
+                {categories.data?.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label={t("settings.playFactor")} hint={t("settings.playFactorHint")}>
               <NumberInput
                 value={draft.weights.play_factor}
