@@ -1017,88 +1017,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/dedications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The requests of the opening range on now, else of the last one, the
-         *     latest first; the waiting ones with what the rules say about them.
-         */
-        get: operations["list_dedications"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/dedications/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's dedication settings. */
-        get: operations["get_dedication_settings"];
-        /**
-         * Replaces the station's dedication settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_dedication_settings"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/dedications/{id}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Queues the request's track (source `request`) at the place asked and
-         *     answers the request. `409` for a request not waiting, or a track that
-         *     a restriction forbids then or that cannot play. Operators.
-         */
-        post: operations["accept_dedication"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/dedications/{id}/refuse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refuses a waiting request, with a reason or none. `409` for a request
-         *     not waiting. Operators.
-         */
-        post: operations["refuse_dedication"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/encoder-profiles": {
         parameters: {
             query?: never;
@@ -1190,126 +1108,6 @@ export interface paths {
          *     Operators and admins.
          */
         delete: operations["delete_preset"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gateway/state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * What the gateway serves listeners: every enabled station, its now
-         *     playing and its shows. Read once a second by `heron-public`, with the
-         *     gateway token only.
-         */
-        get: operations["gateway_state"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gateway/stations/{code}/dedications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * A listener's request, from the gateway, with the device's hash: one
-         *     waiting at a time per device, a few per device and a maximum per
-         *     opening range. Answers its follow link.
-         */
-        post: operations["gateway_submit"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gateway/stations/{code}/dedications/follow": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** A request, by the key of its follow link. `404` once deleted. */
-        get: operations["gateway_follow"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gateway/stations/{code}/dedications/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The requestable tracks whose artist or title has `q`, 8 at most. `409`
-         *     while the show is closed.
-         */
-        get: operations["gateway_search"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gateway/stations/{code}/likes/vote": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Each device's last like or dislike, from the gateway, every second. A
-         *     vote counts while its play is on air and up to 10 seconds after; a
-         *     device's vote on a play replaces its earlier one.
-         */
-        post: operations["gateway_votes"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gateway/stations/{code}/match/vote": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Each device's last vote, from the gateway, every second. A vote counts
-         *     while its match is open; a device's vote replaces its earlier one.
-         */
-        post: operations["gateway_match_votes"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1718,15 +1516,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/likes/current": {
+    "/api/v1/listeners/audience": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The votes on the track playing, as they come. */
-        get: operations["current"];
+        /**
+         * The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session
+         *     lengths), and of the period of the same length before it.
+         */
+        get: operations["audience_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1735,7 +1536,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/likes/tracks/{id}": {
+    "/api/v1/listeners/breakdown": {
         parameters: {
             query?: never;
             header?: never;
@@ -1743,31 +1544,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * A track's likes and dislikes on the station: this week, 30 days and
-         *     always, and its latest plays with votes.
+         * The shares of the listeners and of the time spent listening by
+         *     country, device or player, small groups as *Other*. No address and no
+         *     user agent: countries, devices and player families only.
          */
-        get: operations["track_likes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/likes/week": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The most liked and least liked tracks of the week so far, from
-         *     Monday 00:00 in the station's time zone, among those with at least
-         *     `min_votes` votes.
-         */
-        get: operations["week"];
+        get: operations["breakdown_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1833,26 +1614,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/listeners/players": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sessions and listening hours by player (user agent), most listened
-         *     first.
-         */
-        get: operations["players"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/listeners/samples": {
         parameters: {
             query?: never;
@@ -1903,104 +1664,6 @@ export interface paths {
         /** Opens the live WebSocket. Messages are [`LiveMessage`]s. */
         get: operations["live"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/match/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The match waiting for its vote or open, else `null`. */
-        get: operations["current_match"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/match/current/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancels the match: the first track stays in the queue as an ordinary
-         *     track, the second leaves it. Operators.
-         */
-        post: operations["cancel_match"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/match/current/close": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Closes the vote now and decides with the votes so far. `409` while the
-         *     vote is not open. Operators.
-         */
-        post: operations["close_match"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/match/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The matches decided or cancelled, the latest first, and the week's
-         *     matches and votes.
-         */
-        get: operations["match_history"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/match/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's match settings. */
-        get: operations["get_match_settings"];
-        /**
-         * Replaces the station's match settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_match_settings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2179,8 +1842,8 @@ export interface paths {
         /** The installation's modules. */
         get: operations["get_modules"];
         /**
-         * Turns modules on or off for the installation (a module left out takes
-         *     its default: off for a show). Admins only.
+         * Turns modules on or off for the installation (a module left out is
+         *     on). Admins only.
          */
         put: operations["put_modules"];
         post?: never;
@@ -3035,47 +2698,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/shows": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The shows on for the station, with their settings and whether they are
-         *     open now.
-         */
-        get: operations["list_shows"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/shows/{module}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** A show's settings on the station, and whether it is open now. */
-        get: operations["get_show"];
-        /**
-         * Replaces a show's settings on the station. Hours another show of the
-         *     station has are refused (`409`). Operators.
-         */
-        put: operations["put_show"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/staging": {
         parameters: {
             query?: never;
@@ -3413,88 +3035,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/dedications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The requests of the opening range on now, else of the last one, the
-         *     latest first; the waiting ones with what the rules say about them.
-         */
-        get: operations["list_dedications_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/dedications/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's dedication settings. */
-        get: operations["get_dedication_settings_on_station"];
-        /**
-         * Replaces the station's dedication settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_dedication_settings_on_station"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/dedications/{id}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Queues the request's track (source `request`) at the place asked and
-         *     answers the request. `409` for a request not waiting, or a track that
-         *     a restriction forbids then or that cannot play. Operators.
-         */
-        post: operations["accept_dedication_on_station"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/dedications/{id}/refuse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refuses a waiting request, with a reason or none. `409` for a request
-         *     not waiting. Operators.
-         */
-        post: operations["refuse_dedication_on_station"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/stations/{station_id}/engine": {
         parameters: {
             query?: never;
@@ -3528,15 +3068,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/likes/current": {
+    "/api/v1/stations/{station_id}/listeners/audience": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The votes on the track playing, as they come. */
-        get: operations["current_on_station"];
+        /**
+         * The audience figures of a period (TTSL, ATSL, cume, AQH, peak, session
+         *     lengths), and of the period of the same length before it.
+         */
+        get: operations["audience_route_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3545,7 +3088,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/likes/tracks/{id}": {
+    "/api/v1/stations/{station_id}/listeners/breakdown": {
         parameters: {
             query?: never;
             header?: never;
@@ -3553,31 +3096,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * A track's likes and dislikes on the station: this week, 30 days and
-         *     always, and its latest plays with votes.
+         * The shares of the listeners and of the time spent listening by
+         *     country, device or player, small groups as *Other*. No address and no
+         *     user agent: countries, devices and player families only.
          */
-        get: operations["track_likes_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/likes/week": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The most liked and least liked tracks of the week so far, from
-         *     Monday 00:00 in the station's time zone, among those with at least
-         *     `min_votes` votes.
-         */
-        get: operations["week_on_station"];
+        get: operations["breakdown_route_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3643,26 +3166,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/listeners/players": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sessions and listening hours by player (user agent), most listened
-         *     first.
-         */
-        get: operations["players_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/stations/{station_id}/listeners/samples": {
         parameters: {
             query?: never;
@@ -3713,104 +3216,6 @@ export interface paths {
         /** Opens the live WebSocket. Messages are [`LiveMessage`]s. */
         get: operations["live_on_station"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/match/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The match waiting for its vote or open, else `null`. */
-        get: operations["current_match_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/match/current/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancels the match: the first track stays in the queue as an ordinary
-         *     track, the second leaves it. Operators.
-         */
-        post: operations["cancel_match_on_station"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/match/current/close": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Closes the vote now and decides with the votes so far. `409` while the
-         *     vote is not open. Operators.
-         */
-        post: operations["close_match_on_station"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/match/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The matches decided or cancelled, the latest first, and the week's
-         *     matches and votes.
-         */
-        get: operations["match_history_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/match/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's match settings. */
-        get: operations["get_match_settings_on_station"];
-        /**
-         * Replaces the station's match settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_match_settings_on_station"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4369,47 +3774,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/shows": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The shows on for the station, with their settings and whether they are
-         *     open now.
-         */
-        get: operations["list_shows_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/shows/{module}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** A show's settings on the station, and whether it is open now. */
-        get: operations["get_show_on_station"];
-        /**
-         * Replaces a show's settings on the station. Hours another show of the
-         *     station has are refused (`409`). Operators.
-         */
-        put: operations["put_show_on_station"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/stations/{station_id}/stream-servers": {
         parameters: {
             query?: never;
@@ -4447,129 +3811,6 @@ export interface paths {
          *     otherwise, naming them. Admins only.
          */
         delete: operations["delete_server_on_station"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/top30/chart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * A week's chart: this week's as it stands now by default, frozen once
-         *     the week closed.
-         */
-        get: operations["get_top30_chart_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/top30/charts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The frozen charts, the latest first. */
-        get: operations["list_top30_charts_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/top30/charts/{week}/new-release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Chooses a week's new release among the tracks of the new release
-         *     category, or goes back to the proposed one. `409` once a show was built
-         *     from the chart. Operators.
-         */
-        put: operations["choose_new_release_on_station"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/top30/charts/{week}/removals/{track_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Takes a track out of a week's chart: the tracks after it move up. `409`
-         *     once a show was built from the chart. Operators.
-         */
-        post: operations["remove_track_on_station"];
-        /**
-         * Puts back a track taken out of a week's chart. `409` once a show was
-         *     built from the chart. Operators.
-         */
-        delete: operations["restore_track_on_station"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/top30/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's Top 30 settings. */
-        get: operations["get_top30_settings_on_station"];
-        /**
-         * Replaces the station's Top 30 settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_top30_settings_on_station"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/top30/show": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The show on now, else the next one within a week, with its programme:
-         *     the one built, or what would be built now. `null` without hours.
-         */
-        get: operations["get_top30_show_on_station"];
-        put?: never;
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4783,129 +4024,6 @@ export interface paths {
         post?: never;
         /** Revokes one of your API tokens (admins: anyone's). */
         delete: operations["revoke_token"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/top30/chart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * A week's chart: this week's as it stands now by default, frozen once
-         *     the week closed.
-         */
-        get: operations["get_top30_chart"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/top30/charts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The frozen charts, the latest first. */
-        get: operations["list_top30_charts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/top30/charts/{week}/new-release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Chooses a week's new release among the tracks of the new release
-         *     category, or goes back to the proposed one. `409` once a show was built
-         *     from the chart. Operators.
-         */
-        put: operations["choose_new_release"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/top30/charts/{week}/removals/{track_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Takes a track out of a week's chart: the tracks after it move up. `409`
-         *     once a show was built from the chart. Operators.
-         */
-        post: operations["remove_track"];
-        /**
-         * Puts back a track taken out of a week's chart. `409` once a show was
-         *     built from the chart. Operators.
-         */
-        delete: operations["restore_track"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/top30/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's Top 30 settings. */
-        get: operations["get_top30_settings"];
-        /**
-         * Replaces the station's Top 30 settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_top30_settings"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/top30/show": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The show on now, else the next one within a week, with its programme:
-         *     the one built, or what would be built now. `null` without hours.
-         */
-        get: operations["get_top30_show"];
-        put?: never;
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5524,9 +4642,6 @@ export interface components {
             runtime?: components["schemas"]["Runtime"] | null;
             services: components["schemas"]["ServiceInfo"][];
         };
-        AcceptDedication: {
-            place: components["schemas"]["DedicationPlace"];
-        };
         AcceptRequest: {
             /**
              * Format: int64
@@ -6010,6 +5125,70 @@ export interface components {
             source: string;
         };
         /**
+         * @description The audience figures of a period. Those from sessions are missing
+         *     without listener lists.
+         */
+        Audience: {
+            /**
+             * Format: double
+             * @description Average quarter-hour audience: listeners heard 5 minutes or more in
+             *     a clock quarter-hour, on average over the quarter-hours measured.
+             */
+            aqh?: number | null;
+            /**
+             * Format: double
+             * @description Average time spent listening: TTSL over the sessions, in seconds.
+             */
+            atsl_s?: number | null;
+            /**
+             * Format: double
+             * @description Distinct listeners per day, on average over the days measured.
+             */
+            cume?: number | null;
+            /**
+             * Format: int32
+             * @description Days with a minute measured.
+             */
+            days: number;
+            /** @description First day (`YYYY-MM-DD`, station time). */
+            from: string;
+            /**
+             * Format: int32
+             * @description Distinct listeners of each day, added up.
+             */
+            listener_days?: number | null;
+            /** Format: double */
+            median_session_s?: number | null;
+            /**
+             * Format: int32
+             * @description The most listeners at once.
+             */
+            peak?: number | null;
+            /**
+             * Format: int64
+             * @description The (first) minute of the peak.
+             */
+            peak_at_unix_ms?: number | null;
+            session_lengths?: components["schemas"]["SessionLengths"] | null;
+            /**
+             * Format: int32
+             * @description Sessions of at least 5 s.
+             */
+            sessions?: number | null;
+            /** @description Last day, included. */
+            to: string;
+            /**
+             * Format: double
+             * @description Total time spent listening: the sessions added up, in hours.
+             */
+            ttsl_hours?: number | null;
+        };
+        /** @description The figures of a period and of the period of the same length before. */
+        AudienceComparison: {
+            current: components["schemas"]["Audience"];
+            previous: components["schemas"]["Audience"];
+        };
+        /**
          * @description Which key opens an encrypted backup.
          * @enum {string}
          */
@@ -6214,6 +5393,16 @@ export interface components {
             /** Format: int32 */
             track: number;
         };
+        /** @description The shares of a period by country, device or player. */
+        Breakdown: {
+            /**
+             * @description The GeoIP country database's type when countries are on (a
+             *     database by DB-IP asks to be credited), `null` otherwise.
+             */
+            geoip?: string | null;
+            /** @description The most listened first, then *Unknown* and *Other*. */
+            groups: components["schemas"]["Share"][];
+        };
         Buffer: {
             /**
              * Format: int64
@@ -6383,64 +5572,6 @@ export interface components {
             /** Format: float */
             rms_right: number;
         };
-        /** @description A week's chart. */
-        Chart: {
-            /** Format: int64 */
-            closes_at_unix_ms: number;
-            entries: components["schemas"]["ChartEntry"][];
-            /** Format: int64 */
-            from_unix_ms: number;
-            /** @description Closed and kept; else the chart as it stands now. */
-            frozen: boolean;
-            /** @description A show was built from it: it does not change any more. */
-            locked: boolean;
-            new_release?: components["schemas"]["NewRelease"] | null;
-            removed: components["schemas"]["Removed"][];
-            /**
-             * Format: int64
-             * @description The votes on the eligible tracks over the week.
-             */
-            votes: number;
-            /** @description Its Monday: `2026-11-02`. */
-            week: string;
-        };
-        /** @description A rank of a chart. */
-        ChartEntry: {
-            artist?: string | null;
-            /** Format: int64 */
-            dislikes: number;
-            /** Format: int64 */
-            likes: number;
-            movement: components["schemas"]["Movement"];
-            /**
-             * Format: int64
-             * @description Its plays with votes over the week.
-             */
-            plays: number;
-            /**
-             * Format: int32
-             * @description Its rank in last week's chart.
-             */
-            previous_rank?: number | null;
-            /** Format: int32 */
-            rank: number;
-            /**
-             * Format: double
-             * @description The share of likes, 0 to 1.
-             */
-            share: number;
-            title?: string | null;
-            /**
-             * Format: int64
-             * @description Missing once the track is deleted.
-             */
-            track_id?: number | null;
-            /**
-             * Format: int32
-             * @description The charts it was in, this one included.
-             */
-            weeks: number;
-        };
         Checked: {
             /**
              * Format: int64
@@ -6528,11 +5659,6 @@ export interface components {
             scheduled_hours: number;
             slots: components["schemas"]["ClockSlot"][];
         };
-        /**
-         * @description What the website shows outside the hours.
-         * @enum {string}
-         */
-        Closed: "message" | "nothing";
         CodeRequest: {
             code: string;
         };
@@ -6815,144 +5941,6 @@ export interface components {
              */
             position_ms: number;
         };
-        /** @description A request, for operators. */
-        Dedication: {
-            artist?: string | null;
-            /** @description While it waits: what the rules say about it now. */
-            checks: components["schemas"]["DedicationCheck"][];
-            /** Format: int64 */
-            decided_at_unix_ms?: number | null;
-            /** @description Who accepted or refused it. */
-            decided_by?: string | null;
-            from: string;
-            /** Format: int64 */
-            id: number;
-            message: string;
-            /** Format: int64 */
-            planned_at_unix_ms?: number | null;
-            /** Format: int64 */
-            play_id?: number | null;
-            /** Format: int64 */
-            played_at_unix_ms?: number | null;
-            reason?: components["schemas"]["DedicationReason"] | null;
-            status: components["schemas"]["DedicationStatus"];
-            /** Format: int64 */
-            submitted_at_unix_ms: number;
-            title?: string | null;
-            to: string;
-            /** Format: int64 */
-            track_id?: number | null;
-        };
-        DedicationCheck: {
-            /**
-             * Format: int64
-             * @description When the track queued already plays.
-             */
-            at_unix_ms?: number | null;
-            /** @description It cannot be accepted: a restriction forbids it, or it cannot play. */
-            blocking: boolean;
-            kind: components["schemas"]["DedicationCheckKind"];
-            /**
-             * Format: int64
-             * @description How long ago it played (the separation rules).
-             */
-            minutes_ago?: number | null;
-            /** Format: int64 */
-            restriction_id?: number | null;
-            /**
-             * Format: int32
-             * @description The rule's window.
-             */
-            separation_min?: number | null;
-        };
-        /**
-         * @description What the rules say about a waiting request now.
-         * @enum {string}
-         */
-        DedicationCheckKind: "rules_kept" | "artist_played" | "title_played" | "track_played" | "in_queue" | "restriction" | "unplayable";
-        /** @description The counts of the range's requests. */
-        DedicationCounts: {
-            /** Format: int64 */
-            accepted: number;
-            /** Format: int64 */
-            pending: number;
-            /** Format: int64 */
-            played: number;
-            /** Format: int64 */
-            received: number;
-            /** Format: int64 */
-            refused: number;
-        };
-        /** @description What a listener sends. */
-        DedicationFields: {
-            from: string;
-            message?: string | null;
-            to: string;
-            /** Format: int64 */
-            track_id: number;
-        };
-        DedicationList: {
-            /** Format: int64 */
-            closes_at_unix_ms?: number | null;
-            counts: components["schemas"]["DedicationCounts"];
-            dedications: components["schemas"]["Dedication"][];
-            /** Format: int32 */
-            max_per_range: number;
-            on_air?: components["schemas"]["OnAirDedication"] | null;
-            /** Format: int64 */
-            opens_at_unix_ms?: number | null;
-        };
-        /**
-         * @description Where an accepted request goes in the queue.
-         * @enum {string}
-         */
-        DedicationPlace: "next" | "hour" | "best";
-        /**
-         * @description Why a request was refused, or did not play.
-         * @enum {string}
-         */
-        DedicationReason: "just_played" | "unavailable" | "inappropriate" | "closed" | "removed";
-        /**
-         * @description A station's dedication settings (`station_settings`, `dedications`). Its
-         *     hours, website and notifications are its show settings.
-         */
-        DedicationSettings: {
-            /**
-             * @description The categories whose tracks can be requested; none: the station's
-             *     music.
-             * @default []
-             */
-            category_ids: number[];
-            /**
-             * Format: int32
-             * @description Requests per opening range, every listener together, 1 to 1000.
-             * @default 30
-             */
-            max_per_range: number;
-            /**
-             * Format: int32
-             * @description Characters of a message at most, 20 to 500.
-             * @default 140
-             */
-            message_max: number;
-            /**
-             * Format: int32
-             * @description Requests per device per opening range, 1 to 10.
-             * @default 1
-             */
-            per_device: number;
-            /**
-             * Format: int32
-             * @description Days requests are kept, 1 to 365.
-             * @default 30
-             */
-            retention_days: number;
-        };
-        /**
-         * @description Where a request stands.
-         * @enum {string}
-         */
-        DedicationStatus: "pending" | "accepted" | "played" | "refused";
         /** @enum {string} */
         DeliveryStatus: "pending" | "delivered" | "failed";
         DeliverySummary: {
@@ -7037,12 +6025,6 @@ export interface components {
              * @default false
              */
             all: boolean;
-        };
-        /** @description A device's last vote. */
-        DeviceVote: {
-            /** @description The gateway's hash of the device. */
-            device: string;
-            fields: components["schemas"]["LikeFields"];
         };
         Discarded: {
             /**
@@ -7306,15 +6288,6 @@ export interface components {
              */
             error: string;
             /** @description For people. */
-            message: string;
-        };
-        /** @description One notification event. */
-        EventSettings: {
-            enabled: boolean;
-            /**
-             * @description With `{name}`, `{link}`, `{end}`, `{next}` and the show's own
-             *     placeholders.
-             */
             message: string;
         };
         /** @description An exact slot's pick: its exact time, and how rotation met it. */
@@ -7663,26 +6636,6 @@ export interface components {
              */
             uid: number;
         };
-        /** @description A request, as its follow link gives it to the listener. */
-        Followed: {
-            artist?: string | null;
-            /** Format: int64 */
-            decided_at_unix_ms?: number | null;
-            /** @description The key of the follow link. */
-            follow: string;
-            from: string;
-            message: string;
-            /** Format: int64 */
-            planned_at_unix_ms?: number | null;
-            /** Format: int64 */
-            played_at_unix_ms?: number | null;
-            reason?: components["schemas"]["DedicationReason"] | null;
-            status: components["schemas"]["DedicationStatus"];
-            /** Format: int64 */
-            submitted_at_unix_ms: number;
-            title?: string | null;
-            to: string;
-        };
         /** @description The gated AGC: a slow gain to the station's loudness target. */
         GatedAgcSettings: {
             /** @default false */
@@ -7699,23 +6652,6 @@ export interface components {
              * @default 6
              */
             max_gain_db: number;
-        };
-        GatewayState: {
-            /** Format: int64 */
-            server_time_unix_ms: number;
-            /** @description The enabled stations. */
-            stations: components["schemas"]["GatewayStation"][];
-        };
-        /** @description A station as the gateway serves it. */
-        GatewayStation: {
-            code: string;
-            name: string;
-            /** @description As `GET /public/now-playing` gives it. */
-            now_playing: components["schemas"]["NowPlaying"];
-            /** @description The shows on for the station. */
-            shows: components["schemas"]["ShowPublic"][];
-            /** @description IANA time zone, which the shows' hours follow. */
-            timezone: string;
         };
         /** @description A day of the last 30. */
         GridDay: {
@@ -7755,13 +6691,6 @@ export interface components {
         GridPlay: {
             /** @description `2026-10-12`, in the grid's time zone. */
             date: string;
-            /** Format: int64 */
-            dislikes: number;
-            /**
-             * Format: int64
-             * @description Listeners' likes and dislikes of the play.
-             */
-            likes: number;
             source: components["schemas"]["PlaySource"];
             /** Format: int64 */
             started_at_unix_ms: number;
@@ -7842,21 +6771,18 @@ export interface components {
              * @description The highest peak.
              */
             peak: number;
-        };
-        /** @description Days and whole hours: Monday to Friday, 17:00 to 18:00. */
-        HourRange: {
-            /** @description 1 (Monday) to 7 (Sunday). */
-            days: number[];
             /**
-             * Format: int32
-             * @description After `start_hour`, up to 24.
+             * Format: double
+             * @description Sessions of at least 5 s started in that hour, on average per day;
+             *     missing without listener lists.
              */
-            end_hour: number;
+            tune_in?: number | null;
             /**
-             * Format: int32
-             * @description 0 to 23.
+             * Format: double
+             * @description Sessions that ended in that hour (not at midnight), on average per
+             *     day.
              */
-            start_hour: number;
+            tune_out?: number | null;
         };
         ImportApplyRequest: {
             categories?: components["schemas"]["ImportCategoryChoice"][];
@@ -8178,35 +7104,6 @@ export interface components {
             line: number;
             value: string;
         };
-        /** @description An item of a show's programme. */
-        Item: {
-            artist?: string | null;
-            kind: components["schemas"]["ItemKind"];
-            /**
-             * Format: int32
-             * @description What is played of it.
-             */
-            length_ms: number;
-            /** Format: int64 */
-            planned_at_unix_ms: number;
-            /** @description Sent to the queue. */
-            queued?: boolean;
-            /**
-             * Format: int32
-             * @description The rank of a track, and of the jingle before it.
-             */
-            rank?: number | null;
-            /** @description Why it is passed over (a restriction, a track that cannot play). */
-            skipped?: string | null;
-            title?: string | null;
-            /** Format: int64 */
-            track_id: number;
-        };
-        /**
-         * @description What an item of the show is.
-         * @enum {string}
-         */
-        ItemKind: "jingle" | "track" | "new_release";
         KeyRecord: {
             /** @description The public key, `age1…`. */
             recipient: string;
@@ -8443,26 +7340,6 @@ export interface components {
             started_at_unix_ms?: number | null;
             status: components["schemas"]["TaskStatus"];
         };
-        /** @description What a listener sent. */
-        LikeFields: {
-            /** Format: int64 */
-            play_id: number;
-            vote: components["schemas"]["Vote"];
-        };
-        /** @description The play on air that listeners can vote on. */
-        LikesNow: {
-            /** Format: int64 */
-            dislikes: number;
-            /** Format: int64 */
-            likes: number;
-            /**
-             * Format: int64
-             * @description None while nothing can be voted on (a jingle, nothing on air).
-             */
-            play_id?: number | null;
-            /** Format: int64 */
-            track_id?: number | null;
-        };
         /** @enum {string} */
         LinerMode: "between" | "over";
         /**
@@ -8583,160 +7460,6 @@ export interface components {
              * @default -16
              */
             target_lufs: number;
-        };
-        /** @description One of the two tracks, with its votes. */
-        MatchChoice: {
-            artist?: string | null;
-            choice: components["schemas"]["MatchSide"];
-            /**
-             * Format: int32
-             * @description Its share of the votes, 0 to 100.
-             */
-            percent: number;
-            title?: string | null;
-            /** Format: int64 */
-            track_id?: number | null;
-            /** Format: int32 */
-            votes: number;
-        };
-        /**
-         * @description How the winner was decided.
-         * @enum {string}
-         */
-        MatchDecision: "votes" | "tie" | "no_votes" | "early";
-        /** @description A device's last vote. */
-        MatchDeviceVote: {
-            /** @description The gateway's hash of the device. */
-            device: string;
-            fields: components["schemas"]["MatchVoteFields"];
-        };
-        MatchHistory: {
-            /** @description Decided or cancelled, the latest first. */
-            matches: components["schemas"]["MatchView"][];
-            week: components["schemas"]["MatchWeek"];
-        };
-        /**
-         * @description A station's match settings (`station_settings`, `match`). Its hours,
-         *     website and notifications are its show settings.
-         */
-        MatchSettings: {
-            /**
-             * Format: int64
-             * @description The category the two tracks come from, the station's; none: no
-             *     match.
-             * @default null
-             */
-            category_id: number | null;
-            /**
-             * Format: int32
-             * @description Seconds before the next transition the vote closes, 5 to 60.
-             * @default 10
-             */
-            close_before_s: number;
-            /**
-             * Format: int32
-             * @description A winner every N tracks, 2 to 20: the vote runs during the track
-             *     before it.
-             * @default 4
-             */
-            every_tracks: number;
-            /**
-             * Format: int64
-             * @description The announcement over the intro of the vote's track; none: no
-             *     jingle.
-             * @default null
-             */
-            jingle_category_id: number | null;
-            /**
-             * @description The votes on the website as they come; off: the result only.
-             * @default true
-             */
-            live_results: boolean;
-            /**
-             * @description A loser can be one of the two tracks again the same day.
-             * @default false
-             */
-            loser_same_day: boolean;
-        };
-        /**
-         * @description One of the two tracks.
-         * @enum {string}
-         */
-        MatchSide: "a" | "b";
-        /** @enum {string} */
-        MatchStatus: "queued" | "open" | "closed" | "cancelled";
-        /** @description A track of a match. */
-        MatchTrack: {
-            artist?: string | null;
-            title?: string | null;
-            /** Format: int64 */
-            track_id?: number | null;
-        };
-        /** @description A match waiting for its vote or open, for operators. */
-        MatchView: {
-            /** Format: int64 */
-            category_id?: number | null;
-            category_name?: string | null;
-            /** @description A, then B. */
-            choices: components["schemas"]["MatchChoice"][];
-            /** Format: int64 */
-            closed_at_unix_ms?: number | null;
-            /** Format: int64 */
-            closes_at_unix_ms?: number | null;
-            decided_by?: components["schemas"]["MatchDecision"] | null;
-            /** Format: int64 */
-            id: number;
-            jingle?: components["schemas"]["MatchTrack"] | null;
-            /**
-             * Format: int64
-             * @description When the vote's track started.
-             */
-            opened_at_unix_ms?: number | null;
-            status: components["schemas"]["MatchStatus"];
-            /**
-             * Format: int64
-             * @description The next transition, as planned when the vote opened.
-             */
-            transition_at_unix_ms?: number | null;
-            /** @description The track the vote runs during. */
-            vote_track: components["schemas"]["MatchTrack"];
-            /** Format: int32 */
-            votes: number;
-            winner?: components["schemas"]["MatchSide"] | null;
-        };
-        /** @description Each device's last vote since the last batch. */
-        MatchVoteBatch: {
-            writes: components["schemas"]["MatchDeviceVote"][];
-        };
-        /** @description What a listener sent. */
-        MatchVoteFields: {
-            choice: components["schemas"]["MatchSide"];
-            /** Format: int64 */
-            match_id: number;
-        };
-        MatchVotesTaken: {
-            /**
-             * Format: int64
-             * @description The votes counted.
-             */
-            counted: number;
-            /**
-             * Format: int64
-             * @description Those dropped: for a match that is not open, or another station's.
-             */
-            dropped: number;
-        };
-        /** @description The week's matches and votes. */
-        MatchWeek: {
-            /**
-             * Format: int64
-             * @description Monday 00:00, in the station's time zone.
-             */
-            from_unix_ms: number;
-            /** Format: int64 */
-            matches: number;
-            /** Format: int64 */
-            votes: number;
         };
         Medley: {
             /** Format: int64 */
@@ -8955,35 +7678,22 @@ export interface components {
         /** @enum {string} */
         Mode: "allow" | "ban";
         /**
-         * @description A module.
-         * @enum {string}
-         */
-        Module: "medleys" | "cover_art" | "listener_statistics" | "webhooks" | "restrictions" | "eq" | "processing" | "trash" | "review" | "artists" | "labels" | "dedications" | "match" | "top30" | "likes";
-        /**
          * @description Which modules are on. Stored as the `modules` settings (the
          *     installation) and the `station_modules` settings of each station; a
-         *     module never stored takes its default: for the installation, the
-         *     modules that existed before they could be turned off are on, and the
-         *     shows off but Likes; for a station, everything is on ([`Modules::ALL_ON`]), so a
-         *     station only turns off what the installation has on.
+         *     module never stored takes its default: the modules that existed before
+         *     they could be turned off are on.
          */
         Modules: {
             /** @default true */
             artists: boolean;
             /** @default true */
             cover_art: boolean;
-            /** @default false */
-            dedications: boolean;
             /** @default true */
             eq: boolean;
             /** @default true */
             labels: boolean;
             /** @default true */
-            likes: boolean;
-            /** @default true */
             listener_statistics: boolean;
-            /** @default false */
-            match: boolean;
             /** @default true */
             medleys: boolean;
             /** @default true */
@@ -8992,8 +7702,6 @@ export interface components {
             restrictions: boolean;
             /** @default true */
             review: boolean;
-            /** @default false */
-            top30: boolean;
             /** @default true */
             trash: boolean;
             /** @default true */
@@ -9014,11 +7722,6 @@ export interface components {
              */
             position: number;
         };
-        /**
-         * @description How a track moved against the chart of the week before.
-         * @enum {string}
-         */
-        Movement: "up" | "down" | "same" | "new" | "reentry";
         /** @enum {string} */
         NameFrom: "artists" | "titles";
         NewGroup: {
@@ -9044,20 +7747,6 @@ export interface components {
             name: string;
             /** @description Your password, asked again. */
             password: string;
-        };
-        /** @description The new release at the end of the show. */
-        NewRelease: {
-            artist?: string | null;
-            /** @description Proposed by Heron, not chosen by hand. */
-            proposed: boolean;
-            title?: string | null;
-            /** Format: int64 */
-            track_id: number;
-        };
-        /** @description The new release chosen by hand; `null` goes back to the proposed one. */
-        NewReleaseChoice: {
-            /** Format: int64 */
-            track_id?: number | null;
         };
         NewSchedule: {
             /**
@@ -9108,32 +7797,6 @@ export interface components {
             /** Format: int64 */
             schedule_id: number;
         };
-        /** @description Notifications through the station's webhooks. */
-        NotificationSettings: {
-            /**
-             * @description Each event by name (`show.started`).
-             * @default {}
-             */
-            events: {
-                [key: string]: components["schemas"]["EventSettings"];
-            };
-            /**
-             * @description The language of the dates: `en`, `fr`, `es` or `de`.
-             * @default en
-             */
-            language: string;
-            /**
-             * Format: int32
-             * @description When `show.upcoming` is sent before the show opens, 1 to 1440.
-             * @default 60
-             */
-            lead_minutes: number;
-            /**
-             * @description Webhooks of the station that receive the show's events.
-             * @default []
-             */
-            webhook_ids: number[];
-        };
         NowPlaying: {
             now?: components["schemas"]["PublicTrack"] | null;
             /**
@@ -9141,24 +7804,6 @@ export interface components {
              * @description To tell how far the track has gone since.
              */
             server_time_unix_ms: number;
-        };
-        /** @description The dedication of a track on air. */
-        OnAirDedication: {
-            from: string;
-            message: string;
-            to: string;
-        };
-        /** @description What `now-playing` says of a track the listeners chose. */
-        OnAirMatch: {
-            /** @description The show's name on the website. */
-            name: string;
-            /**
-             * Format: int32
-             * @description Its share of the votes, 0 to 100.
-             */
-            percent: number;
-            /** Format: int32 */
-            votes: number;
         };
         /** @description The dry run of an organization. */
         OrganizePlan: {
@@ -9337,26 +7982,6 @@ export interface components {
             /** @description Your password, asked again. */
             password: string;
         };
-        /** @description A frozen chart in the list of past weeks. */
-        PastChart: {
-            /** Format: int64 */
-            closes_at_unix_ms: number;
-            /** Format: int64 */
-            from_unix_ms: number;
-            number_one?: components["schemas"]["PastNumberOne"] | null;
-            /**
-             * Format: int32
-             * @description Its tracks.
-             */
-            size: number;
-            week: string;
-        };
-        PastNumberOne: {
-            artist?: string | null;
-            title?: string | null;
-            /** Format: int64 */
-            track_id?: number | null;
-        };
         /** @description When a schedule other than the default one plays. */
         Period: {
             /**
@@ -9515,28 +8140,6 @@ export interface components {
          * @enum {string}
          */
         PlaySource: "rotation" | "request" | "fallback" | "manual";
-        /** @description A play's votes. */
-        PlayVotes: {
-            /** Format: int64 */
-            dislikes: number;
-            /** Format: int64 */
-            likes: number;
-            /** Format: int64 */
-            play_id: number;
-            /** Format: int64 */
-            started_at_unix_ms: number;
-        };
-        PlayerListening: {
-            /** Format: double */
-            listening_hours: number;
-            /**
-             * Format: int64
-             * @description Sessions of the minimum length.
-             */
-            sessions: number;
-            /** @description As the player sends it. */
-            user_agent: string;
-        };
         /** @description Decks, queue and outputs of the engine. */
         PlayerState: {
             cued?: components["schemas"]["QueueEntry"] | null;
@@ -9751,13 +8354,11 @@ export interface components {
             artist?: string | null;
             /** @description Its cover, else the station's logo (docs/api.md#public-endpoints). */
             cover_url?: string | null;
-            dedication?: components["schemas"]["OnAirDedication"] | null;
             /**
              * Format: int64
              * @description From the cue-in to the cue-out.
              */
             duration_ms: number;
-            match?: components["schemas"]["OnAirMatch"] | null;
             /** Format: int64 */
             position_ms: number;
             /** Format: int64 */
@@ -9883,27 +8484,6 @@ export interface components {
             level: number;
             /** Format: int32 */
             start_ms: number;
-        };
-        /** @description A track in the week's ranking. */
-        RankedTrack: {
-            artist?: string | null;
-            /** Format: int64 */
-            dislikes: number;
-            /** Format: int64 */
-            likes: number;
-            /**
-             * Format: int64
-             * @description Its plays with votes.
-             */
-            plays: number;
-            /**
-             * Format: double
-             * @description The share of likes, 0 to 1.
-             */
-            share: number;
-            title?: string | null;
-            /** Format: int64 */
-            track_id: number;
         };
         /** @description What an import of ratios found, and did. */
         RatioImport: {
@@ -10046,9 +8626,6 @@ export interface components {
             /** @description Shown once. */
             recovery_codes: string[];
         };
-        RefuseDedication: {
-            reason?: components["schemas"]["DedicationReason"] | null;
-        };
         RefuseRequest: {
             album_key: string;
         };
@@ -10081,26 +8658,8 @@ export interface components {
             recording_id: string;
             release_id: string;
         };
-        /** @description A track taken out of a chart. */
-        Removed: {
-            artist?: string | null;
-            /** Format: int64 */
-            removed_at_unix_ms: number;
-            /** @description Who took it out; missing once the user is deleted. */
-            removed_by?: string | null;
-            title?: string | null;
-            /** Format: int64 */
-            track_id: number;
-        };
         RenderRequest: {
             parts: components["schemas"]["Part"][];
-        };
-        /** @description A track a listener can request. */
-        RequestableTrack: {
-            artist?: string | null;
-            title?: string | null;
-            /** Format: int64 */
-            track_id: number;
         };
         /** @description What a restore did. */
         RestoreReport: {
@@ -10562,111 +9121,53 @@ export interface components {
             /** @description Missing when the service was never seen or does not say. */
             version?: string | null;
         };
-        /** @description The show on now, or the next one. */
-        ShowPlan: {
-            /** @description Its programme is built: the one on air. Else what would be built now. */
-            built: boolean;
-            /** Format: int64 */
-            closes_at_unix_ms: number;
-            items: components["schemas"]["Item"][];
-            /** Format: int64 */
-            jingles_ms: number;
-            /** @description The ranks left out to fit the slot. */
-            left_out: number[];
-            /** Format: int64 */
-            music_ms: number;
-            /** Format: int64 */
-            new_release_ms: number;
-            /** Format: int64 */
-            opens_at_unix_ms: number;
-            /** Format: int64 */
-            total_ms: number;
-            /** @description The chart it plays; `null` without one. */
-            week?: string | null;
+        /** @description Sessions by length. */
+        SessionLengths: {
+            /** Format: int32 */
+            from_1_to_5_min: number;
+            /** Format: int32 */
+            from_30_min_to_2_h: number;
+            /** Format: int32 */
+            from_5_to_30_min: number;
+            /** Format: int32 */
+            over_2_h: number;
+            /** Format: int32 */
+            under_1_min: number;
         };
-        /** @description What the gateway and the widgets know of a show on a station. */
-        ShowPublic: {
-            closed: components["schemas"]["Closed"];
-            /** @description `null`: the widget's own sentence. */
-            closed_message?: string | null;
-            color: string;
-            /** @description Off: closed whatever its hours. */
-            enabled: boolean;
-            hours: components["schemas"]["HourRange"][];
-            module: components["schemas"]["Module"];
-            page_url?: string | null;
-            small_widget: boolean;
+        /** @description A country, device or player over a period. */
+        Share: {
+            kind: components["schemas"]["ShareKind"];
             /**
-             * @description The show's own live data (the current match, the day's dedications);
-             *     `null` until the show adds it.
+             * Format: double
+             * @description Its share of the listeners, 0 to 1.
              */
-            state: Record<string, never>;
-            /** @description The station's time zone (IANA). */
-            timezone: string;
+            listener_share: number;
             /**
-             * @description The title on the website; `null`: the show's name in the listener's
-             *     language.
+             * Format: int32
+             * @description Distinct listeners of each day, added up.
              */
-            title?: string | null;
+            listeners: number;
+            /**
+             * @description The country code (`FR`), the device (`mobile`, `desktop`,
+             *     `smart_speaker`, `car`, `tv`) or the player family; missing for
+             *     *Unknown* and *Other*.
+             */
+            name?: string | null;
+            /** Format: int32 */
+            sessions: number;
+            /**
+             * Format: double
+             * @description Time spent listening, in hours.
+             */
+            ttsl_hours: number;
+            /**
+             * Format: double
+             * @description Its share of the time spent listening, 0 to 1.
+             */
+            ttsl_share: number;
         };
-        /** @description A show's settings on a station. */
-        ShowSettings: {
-            /**
-             * @description Open during its hours; off, it stays closed.
-             * @default true
-             */
-            enabled: boolean;
-            /**
-             * @description In the station's time zone.
-             * @default []
-             */
-            hours: components["schemas"]["HourRange"][];
-            /**
-             * @default {
-             *       "events": {},
-             *       "language": "en",
-             *       "lead_minutes": 60,
-             *       "webhook_ids": []
-             *     }
-             */
-            notifications: components["schemas"]["NotificationSettings"];
-            /**
-             * @default {
-             *       "closed": "message",
-             *       "closed_message": "",
-             *       "color": "#c62828",
-             *       "page_url": null,
-             *       "small_widget": true,
-             *       "title": ""
-             *     }
-             */
-            website: components["schemas"]["WebsiteSettings"];
-        };
-        /** @description Whether a show is open now, and its next change. */
-        ShowStatus: {
-            /**
-             * Format: int64
-             * @description While open: when it closes.
-             */
-            closes_at_unix_ms?: number | null;
-            /**
-             * Format: int64
-             * @description When it opens next (after it closes, while open); none within a week.
-             */
-            next_opening_unix_ms?: number | null;
-            open: boolean;
-        };
-        /** @description A show on a station. */
-        ShowView: {
-            module: components["schemas"]["Module"];
-            settings: components["schemas"]["ShowSettings"];
-            /** @description Now. */
-            status: components["schemas"]["ShowStatus"];
-            /** @description The station's time zone (IANA), which the hours follow. */
-            timezone: string;
-            /** @description The station's webhooks, by name, to choose from. */
-            webhooks: components["schemas"]["WebhookChoice"][];
-        };
+        /** @enum {string} */
+        ShareKind: "named" | "unknown" | "other";
         /**
          * @description The engine's silence watchdog: after this long of silence on the master
          *     bus (below −50 dBFS), it skips to the next track, then to the fallback
@@ -11027,12 +9528,6 @@ export interface components {
         StationRoleName: "none" | "viewer" | "operator" | "admin";
         /** @description The station itself. */
         StationSettings: {
-            /**
-             * @description The address `heron-public`, the shows' gateway, is reached at from
-             *     the station's website (`https://public.radio.example.org`): the
-             *     lines of the shows' widgets start with it.
-             */
-            gateway_url?: string | null;
             /**
              * @description The address `heron-web` is reached at from outside
              *     (`https://radio.example.org`): cover addresses of the public
@@ -11433,54 +9928,6 @@ export interface components {
              */
             to_identify: number;
         };
-        /**
-         * @description A station's Top 30 settings (`station_settings`, `top30`). Its hours,
-         *     website and notifications are its show settings.
-         */
-        Top30Settings: {
-            /**
-             * @description The categories whose tracks can enter the chart; none: the
-             *     station's music.
-             * @default []
-             */
-            category_ids: number[];
-            /**
-             * Format: int32
-             * @description The day the week closes, 1 (Monday) to 7.
-             * @default 7
-             */
-            close_day: number;
-            /**
-             * Format: int32
-             * @description The hour it closes, 0 to 24.
-             * @default 17
-             */
-            close_hour: number;
-            /**
-             * Format: int64
-             * @description The jingles between the tracks of the show.
-             * @default null
-             */
-            jingle_category_id: number | null;
-            /**
-             * Format: int64
-             * @description Votes a track needs over the week to be ranked, 1 to 1000.
-             * @default 10
-             */
-            min_votes: number;
-            /**
-             * Format: int64
-             * @description Where the new release at the end of the show comes from.
-             * @default null
-             */
-            new_release_category_id: number | null;
-            /**
-             * Format: int32
-             * @description Tracks in the chart, 1 to 50.
-             * @default 30
-             */
-            size: number;
-        };
         /** @description An authenticator app to set up. */
         TotpSetup: {
             /** @description The QR code, as an SVG image. */
@@ -11656,21 +10103,6 @@ export interface components {
             id: number;
             title?: string | null;
         };
-        /** @description A track's votes on a station. */
-        TrackLikes: {
-            /** @description The last 30 days. */
-            days_30: components["schemas"]["Votes"];
-            /**
-             * Format: int64
-             * @description Votes a track needs to be ranked.
-             */
-            min_votes: number;
-            /** @description Its latest plays with votes, the latest first. */
-            plays: components["schemas"]["PlayVotes"][];
-            total: components["schemas"]["Votes"];
-            /** @description Since Monday 00:00, in the station's time zone. */
-            week: components["schemas"]["Votes"];
-        };
         /** @description A track's listeners over its plays of a period. */
         TrackListeners: {
             artist?: string | null;
@@ -11839,24 +10271,6 @@ export interface components {
             labels_none?: string | null;
             /**
              * Format: int32
-             * @description Tracks with at most this share of likes, in percent.
-             */
-            liked_max?: number | null;
-            /**
-             * Format: int32
-             * @description Tracks with at least this share of likes, in percent (0 to 100);
-             *     tracks without votes are left out.
-             */
-            liked_min?: number | null;
-            /**
-             * Format: int32
-             * @description The period of the likes, in days ending now: 1 to 3650, 30 by
-             *     default. On the station of `station_id`, else of `on_station_id`,
-             *     every station's when neither is given.
-             */
-            likes_days?: number | null;
-            /**
-             * Format: int32
              * @description 1 to 500, 50 by default.
              */
             limit?: number | null;
@@ -11908,11 +10322,6 @@ export interface components {
              *     left out.
              */
             station_id?: number | null;
-            /**
-             * Format: int32
-             * @description Tracks with at least this many votes (likes and dislikes).
-             */
-            votes_min?: number | null;
             /** Format: int32 */
             year_max?: number | null;
             /** Format: int32 */
@@ -11924,7 +10333,7 @@ export interface components {
             track_ids?: number[] | null;
         };
         /** @enum {string} */
-        TrackSort: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio" | "liked";
+        TrackSort: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio";
         TrackSummary: {
             /**
              * Format: int64
@@ -11978,8 +10387,6 @@ export interface components {
              *     deleted), while it is disabled.
              */
             disabled_by?: string | null;
-            /** Format: int64 */
-            dislikes: number;
             /** Format: int32 */
             duration_ms?: number | null;
             /** @description Disabled tracks are never picked by autofill or rotation. */
@@ -12004,12 +10411,6 @@ export interface components {
              *     that or below); none until computed from the waveform.
              */
             level_min_db?: number | null;
-            /**
-             * Format: int64
-             * @description Listeners' likes and dislikes over `likes_days`
-             *     (`docs/listener-interaction.md#likes`).
-             */
-            likes: number;
             missing: boolean;
             mood?: string | null;
             /** @description Relative to the library root. */
@@ -12289,35 +10690,6 @@ export interface components {
             /** Format: int64 */
             start_unix_ms: number;
         };
-        /**
-         * @description Like or dislike.
-         * @enum {string}
-         */
-        Vote: "like" | "dislike";
-        /** @description Each device's last vote since the last batch. */
-        VoteBatch: {
-            writes: components["schemas"]["DeviceVote"][];
-        };
-        /** @description Likes and dislikes. */
-        Votes: {
-            /** Format: int64 */
-            dislikes: number;
-            /** Format: int64 */
-            likes: number;
-        };
-        VotesTaken: {
-            /**
-             * Format: int64
-             * @description The votes counted.
-             */
-            counted: number;
-            /**
-             * Format: int64
-             * @description Those dropped: their play ended, is not music, or is another
-             *     station's.
-             */
-            dropped: number;
-        };
         Waveform: {
             /**
              * Format: float
@@ -12346,17 +10718,11 @@ export interface components {
         WebauthnOptions: {
             publicKey: unknown;
         };
-        /** @description A webhook a show can send to. */
-        WebhookChoice: {
-            /** Format: int64 */
-            id: number;
-            name: string;
-        };
         /**
          * @description What a delivery reports.
          * @enum {string}
          */
-        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping" | "show.upcoming" | "show.started" | "show.ended" | "top.published" | "top.rank" | "dedication.played" | "dedication.accepted" | "match.started" | "match.closed";
+        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping";
         WebhookInput: {
             /**
              * @description With `{{placeholders}}`: `event`, `delivery_id`, `at_unix_ms`,
@@ -12395,53 +10761,6 @@ export interface components {
             last_delivery?: components["schemas"]["DeliverySummary"] | null;
             name: string;
             url: string;
-        };
-        /** @description The page and the small widget on the station's website. */
-        WebsiteSettings: {
-            /** @default message */
-            closed: components["schemas"]["Closed"];
-            /**
-             * @description With `{day}` and `{hour}` for the next opening; empty: the widget's
-             *     own sentence.
-             * @default
-             */
-            closed_message: string;
-            /**
-             * @description `#rrggbb`.
-             * @default #c62828
-             */
-            color: string;
-            /**
-             * @description The website's page of the show, for `{link}`.
-             * @default null
-             */
-            page_url: string | null;
-            /**
-             * @description Whether the small widget shows (the dedicated page always does).
-             * @default true
-             */
-            small_widget: boolean;
-            /**
-             * @description The show's name on the website; empty: its name in the listener's
-             *     language.
-             * @default
-             */
-            title: string;
-        };
-        /** @description The week's most and least liked tracks. */
-        WeekLikes: {
-            /**
-             * Format: int64
-             * @description Monday 00:00, in the station's time zone.
-             */
-            from_unix_ms: number;
-            least_liked: components["schemas"]["RankedTrack"][];
-            /**
-             * Format: int64
-             * @description Votes a track needs to be ranked.
-             */
-            min_votes: number;
-            most_liked: components["schemas"]["RankedTrack"][];
         };
         /** @description Weights move with plays and requests (multiplied by these factors). */
         WeightSettings: {
@@ -14649,172 +12968,6 @@ export interface operations {
             };
         };
     };
-    list_dedications: {
-        parameters: {
-            query?: {
-                /** @description Only the requests of this status. */
-                status?: components["schemas"]["DedicationStatus"];
-                /** @description 1 to 200, 100 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DedicationList"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_dedication_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DedicationSettings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_dedication_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DedicationSettings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DedicationSettings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    accept_dedication: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The request's ID */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AcceptDedication"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Dedication"];
-                };
-            };
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    refuse_dedication: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The request's ID */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefuseDedication"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Dedication"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     list_profiles: {
         parameters: {
             query?: never;
@@ -15096,201 +13249,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    gateway_state: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GatewayState"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    gateway_submit: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's code */
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DedicationFields"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Followed"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    gateway_follow: {
-        parameters: {
-            query: {
-                /** @description The key of the follow link. */
-                id: string;
-            };
-            header?: never;
-            path: {
-                /** @description The station's code */
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Followed"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    gateway_search: {
-        parameters: {
-            query: {
-                /** @description 2 to 60 characters of the artist or the title. */
-                q: string;
-            };
-            header?: never;
-            path: {
-                /** @description The station's code */
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RequestableTrack"][];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    gateway_votes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's code */
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VoteBatch"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VotesTaken"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    gateway_match_votes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's code */
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MatchVoteBatch"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchVotesTaken"];
-                };
             };
             "4XX": {
                 headers: {
@@ -15986,9 +13944,19 @@ export interface operations {
             };
         };
     };
-    current: {
+    audience_route: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                format?: "json" | "csv";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16000,7 +13968,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LikesNow"];
+                    "application/json": components["schemas"]["AudienceComparison"];
                 };
             };
             "4XX": {
@@ -16013,39 +13981,21 @@ export interface operations {
             };
         };
     };
-    track_likes: {
+    breakdown_route: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The track's ID */
-                id: number;
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrackLikes"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    week: {
-        parameters: {
-            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -16057,7 +14007,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WeekLikes"];
+                    "application/json": components["schemas"]["Breakdown"];
                 };
             };
             "4XX": {
@@ -16079,6 +14029,11 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
                 /** @description Rows per hour, day (by default), week or month. */
                 group?: "hour" | "day" | "week" | "month";
                 format?: "json" | "csv";
@@ -16116,6 +14071,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 format?: "json" | "csv";
             };
             header?: never;
@@ -16157,42 +14114,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListenersNow"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    players: {
-        parameters: {
-            query: {
-                /** @description First day (`YYYY-MM-DD`, station time). */
-                from: string;
-                /** @description Last day, included. */
-                to: string;
-                /** @description Only this output; the whole station otherwise. */
-                output_id?: number;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlayerListening"][];
                 };
             };
             "4XX": {
@@ -16251,6 +14172,10 @@ export interface operations {
                 from: string;
                 /** @description Last day, included. */
                 to: string;
+                /** @description Only the listeners of this output; the whole station's otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description Tracks played fewer times are left out, 3 by default. */
                 min_plays?: number;
                 /** @description 1 to 500, 50 by default. */
@@ -16300,177 +14225,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveMessage"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    current_match: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchView"] | null;
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    cancel_match: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    close_match: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    match_history: {
-        parameters: {
-            query?: {
-                /** @description 1 to 200, 50 by default. */
-                limit?: number;
-                /** @description The matches before this ID: the next page. */
-                before?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchHistory"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_match_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchSettings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_match_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MatchSettings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchSettings"];
                 };
             };
             "4XX": {
@@ -19053,97 +16807,6 @@ export interface operations {
             };
         };
     };
-    list_shows: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowView"][];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_show: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description dedications, match, top30 or likes */
-                module: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_show: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description dedications, match, top30 or likes */
-                module: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ShowSettings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     get_buffer: {
         parameters: {
             query?: never;
@@ -19894,185 +17557,6 @@ export interface operations {
             };
         };
     };
-    list_dedications_on_station: {
-        parameters: {
-            query?: {
-                /** @description Only the requests of this status. */
-                status?: components["schemas"]["DedicationStatus"];
-                /** @description 1 to 200, 100 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DedicationList"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_dedication_settings_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DedicationSettings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_dedication_settings_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DedicationSettings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DedicationSettings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    accept_dedication_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description The request's ID */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AcceptDedication"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Dedication"];
-                };
-            };
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    refuse_dedication_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description The request's ID */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefuseDedication"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Dedication"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     engine_status_on_station: {
         parameters: {
             query?: never;
@@ -20144,9 +17628,19 @@ export interface operations {
             };
         };
     };
-    current_on_station: {
+    audience_route_on_station: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                format?: "json" | "csv";
+            };
             header?: never;
             path: {
                 /** @description The station's ID */
@@ -20161,7 +17655,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LikesNow"];
+                    "application/json": components["schemas"]["AudienceComparison"];
                 };
             };
             "4XX": {
@@ -20174,41 +17668,21 @@ export interface operations {
             };
         };
     };
-    track_likes_on_station: {
+    breakdown_route_on_station: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description The track's ID */
-                id: number;
+            query: {
+                /** @description First day (`YYYY-MM-DD`, station time). */
+                from: string;
+                /** @description Last day, included. */
+                to: string;
+                /** @description Only this output; the whole station otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
+                /** @description By country (by default), device or player. */
+                by?: "country" | "device" | "player";
+                format?: "json" | "csv";
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrackLikes"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    week_on_station: {
-        parameters: {
-            query?: never;
             header?: never;
             path: {
                 /** @description The station's ID */
@@ -20223,7 +17697,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WeekLikes"];
+                    "application/json": components["schemas"]["Breakdown"];
                 };
             };
             "4XX": {
@@ -20245,6 +17719,11 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /**
+                 * @description Only this server's part (the master or a relay); every server's
+                 *     otherwise.
+                 */
+                server_id?: number;
                 /** @description Rows per hour, day (by default), week or month. */
                 group?: "hour" | "day" | "week" | "month";
                 format?: "json" | "csv";
@@ -20285,6 +17764,8 @@ export interface operations {
                 to: string;
                 /** @description Only this output; the whole station otherwise. */
                 output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 format?: "json" | "csv";
             };
             header?: never;
@@ -20332,45 +17813,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListenersNow"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    players_on_station: {
-        parameters: {
-            query: {
-                /** @description First day (`YYYY-MM-DD`, station time). */
-                from: string;
-                /** @description Last day, included. */
-                to: string;
-                /** @description Only this output; the whole station otherwise. */
-                output_id?: number;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlayerListening"][];
                 };
             };
             "4XX": {
@@ -20432,6 +17874,10 @@ export interface operations {
                 from: string;
                 /** @description Last day, included. */
                 to: string;
+                /** @description Only the listeners of this output; the whole station's otherwise. */
+                output_id?: number;
+                /** @description Only this server's part; every server's otherwise. */
+                server_id?: number;
                 /** @description Tracks played fewer times are left out, 3 by default. */
                 min_plays?: number;
                 /** @description 1 to 500, 50 by default. */
@@ -20487,195 +17933,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveMessage"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    current_match_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchView"] | null;
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    cancel_match_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    close_match_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    match_history_on_station: {
-        parameters: {
-            query?: {
-                /** @description 1 to 200, 50 by default. */
-                limit?: number;
-                /** @description The matches before this ID: the next page. */
-                before?: number;
-            };
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchHistory"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_match_settings_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchSettings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_match_settings_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MatchSettings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MatchSettings"];
                 };
             };
             "4XX": {
@@ -22307,104 +19564,6 @@ export interface operations {
             };
         };
     };
-    list_shows_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowView"][];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_show_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description dedications, match, top30 or likes */
-                module: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_show_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description dedications, match, top30 or likes */
-                module: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ShowSettings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowView"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     list_servers_on_station: {
         parameters: {
             query?: never;
@@ -22553,272 +19712,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_top30_chart_on_station: {
-        parameters: {
-            query?: {
-                /** @description A week, by its Monday (`2026-11-02`); this week by default. */
-                week?: string;
-            };
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    list_top30_charts_on_station: {
-        parameters: {
-            query?: {
-                /** @description Weeks before this one (its Monday), for the next page. */
-                before?: string;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PastChart"][];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    choose_new_release_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description The week's Monday */
-                week: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NewReleaseChoice"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    remove_track_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description The week's Monday */
-                week: string;
-                /** @description The track */
-                track_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    restore_track_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-                /** @description The week's Monday */
-                week: string;
-                /** @description The track */
-                track_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_top30_settings_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_top30_settings_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Top30Settings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_top30_show_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowPlan"] | null;
-                };
             };
             "4XX": {
                 headers: {
@@ -23370,251 +20263,6 @@ export interface operations {
             };
         };
     };
-    get_top30_chart: {
-        parameters: {
-            query?: {
-                /** @description A week, by its Monday (`2026-11-02`); this week by default. */
-                week?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    list_top30_charts: {
-        parameters: {
-            query?: {
-                /** @description Weeks before this one (its Monday), for the next page. */
-                before?: string;
-                /** @description 1 to 100, 20 by default. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PastChart"][];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    choose_new_release: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The week's Monday */
-                week: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NewReleaseChoice"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    remove_track: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The week's Monday */
-                week: string;
-                /** @description The track */
-                track_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    restore_track: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The week's Monday */
-                week: string;
-                /** @description The track */
-                track_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chart"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_top30_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_top30_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Top30Settings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_top30_show: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShowPlan"] | null;
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     list_tracks: {
         parameters: {
             query?: {
@@ -23677,27 +20325,12 @@ export interface operations {
                  */
                 ratio_max?: number;
                 /**
-                 * @description The period of the likes, in days ending now: 1 to 3650, 30 by
-                 *     default. On the station of `station_id`, else of `on_station_id`,
-                 *     every station's when neither is given.
-                 */
-                likes_days?: number;
-                /**
-                 * @description Tracks with at least this share of likes, in percent (0 to 100);
-                 *     tracks without votes are left out.
-                 */
-                liked_min?: number;
-                /** @description Tracks with at most this share of likes, in percent. */
-                liked_max?: number;
-                /** @description Tracks with at least this many votes (likes and dislikes). */
-                votes_min?: number;
-                /**
                  * @description `true`: the tracks with their own daypart separation or same
                  *     daypart on the following days; `false`: those that follow their
                  *     categories'.
                  */
                 own_dayparts?: boolean;
-                sort?: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio" | "liked";
+                sort?: "artist" | "title" | "album" | "added" | "last_played" | "play_count" | "bitrate" | "duration" | "year" | "bpm" | "mood" | "sound_code" | "genre" | "level_min" | "level_max" | "play_ratio";
                 /** @description Reverses the order of `sort`. */
                 desc?: boolean;
                 /** @description 1 to 500, 50 by default. */
