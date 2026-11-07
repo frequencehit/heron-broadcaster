@@ -684,7 +684,7 @@ const en = {
   "plays.hoursHint": "Ticked: the track played at that hour on that day of the week; darker, more plays. Hover or focus a cell for its plays.",
   "track.neverPlayed": "Never played.",
   "track.editTags": "Edit tags",
-  "track.tagOverrides": "Tags edited in Heron, not in the file: {fields}.",
+  "track.fileTagsHelp": "Kept in Heron, not in the file: {fields}.",
   "track.fileTags": "Back to the file's tags",
   "track.fileTagsDone": "The file's tags are shown again",
   "track.programming": "Programming",

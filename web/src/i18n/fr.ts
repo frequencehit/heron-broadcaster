@@ -687,7 +687,7 @@ const fr = {
   "plays.hoursHint": "Coché : au moins une diffusion à cette heure ce jour de la semaine ; plus foncé, plus de diffusions. Survolez ou sélectionnez une case pour ses diffusions.",
   "track.neverPlayed": "Jamais diffusée.",
   "track.editTags": "Modifier les tags",
-  "track.tagOverrides": "Tags modifiés dans Heron, pas dans le fichier : {fields}.",
+  "track.fileTagsHelp": "Gardés dans Heron, pas dans le fichier : {fields}.",
   "track.fileTags": "Revenir aux tags du fichier",
   "track.fileTagsDone": "Les tags du fichier sont de nouveau affichés",
   "track.programming": "Programmation",

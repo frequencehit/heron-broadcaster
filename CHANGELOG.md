@@ -24,6 +24,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 ### Changed
 
 - **Least recently played slots draw among the oldest tracks** instead of always taking the oldest one, and so do hours without a clock: see *Draw depth* above. Random slots are unchanged.
+- **A track's page no longer warns** that its tags are kept in Heron rather than in the file: *Back to the file's tags* sits next to *Edit tags* instead, while there is something to go back from.
 - **Relaxation steps** are numbered 0 to 12: daypart separation comes in at steps 3 and 4, so artist, title, track and the fallback category moved two steps. The picks already logged were renumbered.
 - **A disabled track does not play at all** any more: it cannot be queued by hand, and the queue manager takes it out of the queue. Before, it was only left out of rotation.
 - **Cover images are files** on a new `covers` volume (`HERON_COVERS_DIR`) shared by `heron-api` and `heron-librarian`, not in the database: the database keeps what is known of each image (hash, size), and its dump no longer holds images. The API moves the images of an earlier edge build to the volume when it starts, once ([Upgrading – Edge](docs/upgrading.md#edge)). The configuration file still holds the covers set by hand and the station logos with their images, and older files restore as before.

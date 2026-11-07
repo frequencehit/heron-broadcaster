@@ -686,7 +686,7 @@ const de = {
   "plays.hoursHint": "Angehakt: Der Titel lief zu dieser Stunde an diesem Wochentag; dunkler, mehr Ausspielungen. Zeiger oder Fokus auf ein Feld zeigt seine Ausspielungen.",
   "track.neverPlayed": "Nie gespielt.",
   "track.editTags": "Tags bearbeiten",
-  "track.tagOverrides": "In Heron bearbeitete Tags, nicht in der Datei: {fields}.",
+  "track.fileTagsHelp": "In Heron gespeichert, nicht in der Datei: {fields}.",
   "track.fileTags": "Zurück zu den Tags der Datei",
   "track.fileTagsDone": "Die Tags der Datei werden wieder angezeigt",
   "track.programming": "Programmierung",

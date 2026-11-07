@@ -686,7 +686,7 @@ const es = {
   "plays.hoursHint": "Marcada: la pista sonó a esa hora ese día de la semana; más oscura, más emisiones. Pase el puntero o el foco por una casilla para ver sus emisiones.",
   "track.neverPlayed": "Nunca emitida.",
   "track.editTags": "Editar metadatos",
-  "track.tagOverrides": "Metadatos editados en Heron, no en el archivo: {fields}.",
+  "track.fileTagsHelp": "Guardadas en Heron, no en el archivo: {fields}.",
   "track.fileTags": "Volver a los metadatos del archivo",
   "track.fileTagsDone": "Se vuelven a mostrar los metadatos del archivo",
   "track.programming": "Programación",
