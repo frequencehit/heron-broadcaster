@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { type PlayoutSettings, type TrackSummary, api, errorMessage, unwrap } from "../api";
 import { FadeEditor } from "../components/FadeEditor";
 import { TrackSearch, useDebounced } from "../components/TrackSearch";
-import { TransitionGraph } from "../components/TransitionGraph";
+import { TransitionGraph, WAVEFORM_HEIGHT } from "../components/TransitionGraph";
 import { useWaveform } from "../components/Waveform";
 import {
   Card,
@@ -381,6 +381,7 @@ function Preview({ settings }: { settings: PlayoutSettings }) {
             outgoingWave={outgoingWave.data ?? null}
             incomingWave={incomingWave.data ?? null}
             playhead={listening.position}
+            height={WAVEFORM_HEIGHT}
           />
         ) : (
           <Loading />

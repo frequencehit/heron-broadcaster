@@ -17,7 +17,9 @@ const SONG = {
   album: "Album",
 } as TrackSummary;
 
-type TracksQuery = { params: { query: { filter: string; sort: string; desc: boolean; active_songs: boolean } } };
+type TracksQuery = {
+  params: { query: { filter: string; sort: string; desc: boolean; active_songs: boolean; category_id?: number } };
+};
 
 function show(coverArt = true) {
   chooseStation(1);
@@ -27,6 +29,10 @@ function show(coverArt = true) {
     "GET /api/v1/library/review": { items: [], total: 0 },
     "GET /api/v1/covers/candidates": [],
     "GET /api/v1/tracks": { items: [SONG], total: 1 },
+    "GET /api/v1/categories": [
+      { id: 1, name: "90s", color: "#2e7d32", type_id: 1, station_ids: [1] },
+      { id: 2, name: "Jingles", color: "#3366cc", type_id: 2, station_ids: [1] },
+    ],
   });
   renderApp(<ToDo />);
 }
@@ -55,11 +61,26 @@ describe("To do", () => {
     const query = (sent("GET /api/v1/tracks")[0]?.options as TracksQuery).params.query;
     expect(query).toMatchObject({ active_songs: true, filter: "no_intro", sort: "artist", desc: false });
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "title" } });
+    fireEvent.change(screen.getByRole("combobox", { name: t("library.sortLabel") }), { target: { value: "title" } });
     await waitFor(() =>
       expect(sent("GET /api/v1/tracks").some((call) => (call.options as TracksQuery).params.query.sort === "title")).toBe(
         true,
       ),
+    );
+  });
+
+  it("narrows the lists to a song category", async () => {
+    show();
+    fireEvent.click(tab("todo.tab.hooks"));
+    await screen.findByRole("link", { name: "Song" });
+    const categories = screen.getByRole("combobox", { name: t("library.categories") });
+    // Only the song categories.
+    expect(within(categories).queryByText("Jingles")).toBeNull();
+    fireEvent.change(categories, { target: { value: "1" } });
+    await waitFor(() =>
+      expect(
+        sent("GET /api/v1/tracks").some((call) => (call.options as TracksQuery).params.query.category_id === 1),
+      ).toBe(true),
     );
   });
 
