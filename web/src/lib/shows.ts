@@ -41,6 +41,33 @@ export const COMMON_EVENTS: { name: string; label: PlainKey }[] = [
 /** The placeholders of every show's messages. */
 export const PLACEHOLDERS = ["name", "link", "end", "next"];
 
+/** A show's own events, after the common ones. */
+export function ownEvents(key: string): { name: string; label: PlainKey }[] {
+  return key === "top30"
+    ? [
+        { name: "top.published", label: "top30.event.published" },
+        { name: "top.rank", label: "top30.event.rank" },
+      ]
+    : [];
+}
+
+/** A show's own placeholders. */
+export function ownPlaceholders(key: string): string[] {
+  return key === "top30" ? ["artist", "title", "top3", "rank"] : [];
+}
+
+/** Example values of a show's own placeholders, for the preview. */
+export function ownExample(key: string): Record<string, string> {
+  return key === "top30"
+    ? {
+        artist: "Mira Solano",
+        title: "Sunday Market",
+        top3: "1. Mira Solano – Sunday Market, 2. Cassia Bloom – Neon Orchard, 3. Saltwater Choir – Lighthouse Keeper",
+        rank: "12",
+      }
+    : {};
+}
+
 /** 7 days (0 is Monday) of 24 hours: whether each hour is in the ranges. */
 export function weekGrid(ranges: readonly HourRange[]): boolean[][] {
   const grid = Array.from({ length: 7 }, () => Array<boolean>(24).fill(false));

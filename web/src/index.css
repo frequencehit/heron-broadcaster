@@ -3143,3 +3143,31 @@ ul.held {
   padding: 1rem;
   text-align: center;
 }
+
+/* The Top 30: movements in the chart, the new release in the programme. */
+.top30-move {
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.top30-move.up {
+  color: var(--good);
+}
+
+.top30-move.down {
+  color: var(--bad);
+}
+
+.top30-move.word {
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.top30-programme tr.top30-release td {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.top30-programme .badge.warn {
+  margin-left: 0.5rem;
+}

@@ -26,6 +26,9 @@ import {
   fillMessage,
   hasHours,
   hourLabel,
+  ownEvents,
+  ownExample,
+  ownPlaceholders,
   pageUrl,
   showLabel,
   unknownPlaceholders,
@@ -37,7 +40,11 @@ import { here, useStation } from "../lib/station";
 
 type Update = (change: (draft: ShowSettings) => ShowSettings) => void;
 
-export function ShowPage({ module, tabs }: Readonly<{ module: ShowKey; tabs?: ReactNode }>) {
+export function ShowPage({
+  module,
+  tabs,
+  common = true,
+}: Readonly<{ module: ShowKey; tabs?: ReactNode; common?: boolean }>) {
   const canEdit = useCan("operator");
   const station = useStation();
   const show = useQuery({
@@ -75,7 +82,8 @@ export function ShowPage({ module, tabs }: Readonly<{ module: ShowKey; tabs?: Re
         title={title}
         description={hasHours(module) ? t("shows.help", { zone: show.data.timezone }) : t("shows.likesHelp")}
         actions={
-          canEdit && (
+          canEdit &&
+          common && (
             <>
               {dirty && (
                 <button type="button" className="btn" onClick={() => setDraft(show.data.settings)}>
@@ -97,8 +105,12 @@ export function ShowPage({ module, tabs }: Readonly<{ module: ShowKey; tabs?: Re
       {hasHours(module) ? (
         <>
           {tabs}
-          <Hours show={show.data} draft={draft} set={set} others={others} canEdit={canEdit} />
-          <Notifications show={show.data} draft={draft} set={set} canEdit={canEdit} />
+          {common && (
+            <>
+              <Hours show={show.data} draft={draft} set={set} others={others} canEdit={canEdit} />
+              <Notifications show={show.data} draft={draft} set={set} canEdit={canEdit} />
+            </>
+          )}
         </>
       ) : (
         <>
@@ -106,7 +118,9 @@ export function ShowPage({ module, tabs }: Readonly<{ module: ShowKey; tabs?: Re
           {tabs}
         </>
       )}
-      <Website module={module} title={title} show={show.data} draft={draft} set={set} canEdit={canEdit} station={station} />
+      {common && (
+        <Website module={module} title={title} show={show.data} draft={draft} set={set} canEdit={canEdit} station={station} />
+      )}
     </>
   );
 }
@@ -324,8 +338,10 @@ function Notifications({
     link: draft.website.page_url ?? "https://…",
     end: "18:00",
     next: t("shows.exampleNext"),
+    ...ownExample(show.module),
   };
-  const events = COMMON_EVENTS.filter((event) => notifications.events[event.name]);
+  const events = [...COMMON_EVENTS, ...ownEvents(show.module)].filter((event) => notifications.events[event.name]);
+  const placeholders = [...PLACEHOLDERS, ...ownPlaceholders(show.module)];
   return (
     <Card title={t("shows.notifications")}>
       <p className="muted small">
@@ -364,7 +380,7 @@ function Notifications({
           </Field>
           {events.map((event) => {
             const setting = notifications.events[event.name] ?? { enabled: false, message: "" };
-            const unknown = unknownPlaceholders(setting.message, PLACEHOLDERS);
+            const unknown = unknownPlaceholders(setting.message, placeholders);
             return (
               <div key={event.name} className="stack" style={{ gap: 4 }}>
                 <div className="row">
@@ -422,6 +438,11 @@ function Notifications({
             </select>
           </Field>
           <p className="muted small">{t("shows.placeholders", { name: "{name}", link: "{link}", end: "{end}", next: "{next}" })}</p>
+          {show.module === "top30" && (
+            <p className="muted small">
+              {t("top30.placeholders", { artist: "{artist}", title: "{title}", top3: "{top3}", rank: "{rank}" })}
+            </p>
+          )}
         </div>
         <div className="show-preview-messages" aria-label={t("shows.preview")}>
           <p className="muted small">{t("shows.preview")}</p>
