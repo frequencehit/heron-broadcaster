@@ -36,7 +36,7 @@ A write (a dedication, a vote) goes through, in order:
 2. **The show**: its module on for the station, the write one it takes, and the show open now (else `404` or `409`). A website not listed in `HERON_PUBLIC_ALLOWED_ORIGINS` is refused before anything (`403`).
 3. **The anti-robot proof**: a proof of work computed by the browser (below). Missing or wrong: `403`.
 4. **The fields**: each text field has a maximum size; unknown fields are refused (`422`).
-5. **The device's limit**: what one device may send, set by each show (one dedication per opening range, one vote per match). Over it: `429`.
+5. **The device's limit**: what one device may send, set by each show (a few dedications per opening range, one vote per match). Over it: `429`.
 6. **The API's limit**: writes sent on to the API per second, for every listener together. Over it: `429`, and the API sees nothing more.
 
 A show can also ask that a field be one of a few values (`like` or `dislike`), and that a field match its live state (`play_id`: the track playing, see [Likes](#likes)): else `422` or `409`.
@@ -123,7 +123,7 @@ Each show tells the team or the community what happens, through the station's [w
   - `show.upcoming`: a set time before it opens (60 minutes by default, 1 to 1440);
   - `show.started`, with the time it ends;
   - `show.ended`, with the next opening;
-  - and each show's own events (the [Top 30](#top-30)'s, #131, #132);
+  - and each show's own events (the [Dedications](#dedications)' and the [Top 30](#top-30)'s, #132);
 - **the language** of the dates in the messages (English, French, Spanish, German).
 
 Placeholders in the messages: `{name}` (the show's title on the website), `{link}` (the website's page of the show, else its page on the gateway), `{end}` (the time it closes, `18:00`), `{next}` (the next opening, `Monday 9 November 17:00`). An unknown placeholder is refused (`422`). A show adds its own (`{artist}`, `{title}`…).
@@ -219,6 +219,65 @@ The small widget shows the first five ranks (during the show: the rank on air an
 ### What is kept
 
 The charts (each rank with its track, its likes, dislikes and plays with votes, its movement), the tracks taken out, the new release chosen and the programme of each show, for good, in the database dump of the [backups](backups.md). The settings are in the configuration file. Nothing about listeners: the votes are the likes'.
+
+## Dedications
+
+*Dedications* (`dedications`) let listeners ask for a song with a message during the show's hours (17:00 to 18:00 on weekdays, say). An operator accepts or refuses each request; an accepted song goes into the queue, and its dedication shows on the website when it plays. Off until an admin turns the module on.
+
+### Asking
+
+- **A track the station can play**: the listener searches the station's requestable tracks by artist or title (`GET …/dedications/search?q=neon`, 2 to 60 characters, 8 tracks at most) and picks one. The requestable tracks are those of the **requestable categories** the station chooses; none chosen: every category of the station whose type sends metadata (its music). Only tracks the station can play now count: enabled, on file, analyzed, not a medley, not disabled on the station. No free text.
+- **The dedication**: the listener's **first name** or pseudonym (`from`, 40 characters at most), **who it is for** (`to`, 60 characters) and **a message** (140 characters by default, 20 to 500, set by the station; it may be empty). No email, no phone number.
+- Sent with `POST …/stations/{code}/dedications` and the proof of work: `{"track_id": 42, "from": "Marc", "to": "Julie", "message": "Happy birthday!"}`. The answer carries a **follow link**: the request waiting, accepted (planned at about 17:40), played, or refused.
+- **Limits**: requests **per device per opening range** (1 by default, 1 to 10), and **one waiting at a time** per device; requests **per opening range**, for every listener together (30 by default, 1 to 1000): past it, *full for today* (`409`). A track already waiting from another listener can be asked again: the operator sees both.
+- Outside the hours, the API refuses requests (`409`) and the search too.
+
+### Deciding
+
+On *Shows › Dedications*, for the station's operators, requests come in as they arrive, without reloading: the track, who it is from and for, the message, how long ago, and **what the rules say** about it now:
+
+- *rules kept*;
+- *artist played 12 min ago (separation: 20 min)*, *title played…*, *track played…*: the station's separation rules, against what played and what is queued;
+- *already in the queue, at 17:52*;
+- *held back by a restriction (not before 20:00)*;
+- *cannot play* (disabled, missing since it was asked).
+
+**Accept** puts the track in the queue, with the source `request`:
+
+- **next**: right after the track on air;
+- **within the hour**: at the end of the tracks queued now, before the show closes;
+- **at the best place**: the first place in the queue where the separation rules hold, else within the hour.
+
+An accepted request **may break the separation rules**: a person approved it, and the page said so before. **Restrictions always apply**: a request a restriction forbids at its planned time cannot be accepted (`409`), and *at the best place* looks for a place where none forbids it. The play ratio does not hold a request back. Nothing is read on air: the message shows on the *On air* page while the track plays, for a host who is there.
+
+**Refuse**, with a reason or none: *the track just played*, *the track is not available*, *inappropriate message*. The listener's follow link says *not this time*, with the reason (except an inappropriate message). **A refused request is never shown publicly.**
+
+Requests still waiting when the range closes are refused on their own, *the range closed*. Accepted ones not played yet stay in the queue.
+
+### Once accepted
+
+- The queue holds the track as any other: an operator can move it or take it out (the follow link then says *not played*).
+- **When the track plays**, the dedication goes with it: `dedication` (`from`, `to`, `message`) in the public `now-playing` and the gateway's state, in the `track.started` webhook (`{{dedication_from}}`, `{{dedication_to}}`, `{{dedication_message}}`), and on the *On air* page. The request is then *played*, with its play in the history, as long as it is kept.
+- The page and the small widget list **today's dedications**: those accepted or played since midnight, with the planned or played time, the track, *For Julie, from Marc* and the message. Waiting and refused requests never show.
+
+The message on the stream's metadata: no, the website only.
+
+### Notifications
+
+Besides `show.upcoming`, `show.started` and `show.ended`:
+
+- `dedication.played`, on by default: when an accepted dedication goes on air, with `{artist}`, `{title}`, `{from}`, `{to}`, `{message}` and `{time}`. Default message: *♥ {artist} – {title}, for {to} from {from}: « {message} »*.
+- `dedication.accepted`, off by default: when a request is accepted, with the same placeholders, `{time}` being when it is planned. Default message: *Dedication accepted for {to}, around {time}*.
+
+Only accepted dedications are sent, with the message as the operator read it. No email or message goes to the listener: the follow link is enough.
+
+### What is kept
+
+- **Each request**: the track, `from`, `to`, the message, the opening range it was sent in, its status (waiting, accepted, played, refused, with the reason, who decided and when), its place in the queue and its play: deleted **30 days** after it was sent by default (1 to 365, the station's *Keep first names and messages*), whether the module is on or not.
+- **The device's hash**, to count its requests in the range: deleted when the range closes. No IP address, no email.
+- **The follow link**'s key, random, with the request: deleted with it.
+
+The requests are in the database dump of the [backups](backups.md); the settings are in the configuration file.
 
 ## Personal data
 

@@ -101,6 +101,7 @@ What belongs to a station (its engine and decks, queue, history, clocks, schedul
 | Listener statistics | `GET /listeners/now`, `/listeners/samples`, `/listeners/days`, `/listeners/hours-of-day`, `/listeners/tracks`, `/listeners/players` (CSV with `format=csv` for days, hours and tracks); `GET`, `PUT /settings/statistics` (admins) — see [Listener statistics](statistics.md#api) |
 | Shows | `GET /shows` (each [show](listener-interaction.md) on for the station: its settings and whether it is open now); `GET`, `PUT /shows/{module}` (`dedications`, `match`, `top30`, `likes`: hours, website, notifications, see [below](#shows); operators change them; `GET` also lists the station's webhooks by name, to choose from) |
 | Likes | `GET /likes/current`, `/likes/week`, `/likes/tracks/{id}` — see [below](#likes) |
+| Dedications | `GET`, `PUT /dedications/settings`; `GET /dedications`; `POST /dedications/{id}/accept`, `/dedications/{id}/refuse` — see [below](#dedications) |
 | Top 30 | `GET`, `PUT /top30/settings`; `GET /top30/chart`, `/top30/charts`; `POST`, `DELETE /top30/charts/{week}/removals/{track_id}`; `PUT /top30/charts/{week}/new-release`; `GET /top30/show` — see [below](#top-30) |
 | Gateway | `GET /gateway/state`, and each show's writes under `/gateway/stations/{code}/{module}/…`: for `heron-public` only, with the gateway token, see [below](#the-public-gateway) |
 | Public | `GET /public/now-playing`, `GET /public/history` (`before`, `limit`), `GET /public/queue`, and the same per station under `/public/stations/{code}/…` — no sign-in, see [below](#public-endpoints) |
@@ -195,7 +196,7 @@ Each [show](listener-interaction.md) has its settings per station, `GET`, `PUT /
 
 For station websites, apps and displays: no sign-in, readable from any origin (`Access-Control-Allow-Origin: *`, `GET` only, no credentials), the music only (decks A and B, not the FX player, and not tracks that send no metadata: while a jingle is on air, now-playing shows the song before it), without IDs or paths.
 
-- `GET /api/v1/public/now-playing`: `now` (artist, title, album, `cover_url`, `started_at_unix_ms`, `duration_ms`, `position_ms`), `null` while nothing plays or the engine is unreachable, and `server_time_unix_ms`. Cached 5 seconds (`Cache-Control: public, max-age=5`).
+- `GET /api/v1/public/now-playing`: `now` (artist, title, album, `cover_url`, `started_at_unix_ms`, `duration_ms`, `position_ms`, and `dedication`: `from`, `to` and `message` of an accepted [dedication](#dedications), else `null`), `null` while nothing plays or the engine is unreachable, and `server_time_unix_ms`. Cached 5 seconds (`Cache-Control: public, max-age=5`).
 - `GET /api/v1/public/queue`: `upcoming`, the tracks waiting in airing order, as `queue.changed` sends them (at most 10, the music only, with `position` and `planned_start_unix_ms`), and `server_time_unix_ms`; empty while the engine is unreachable. Cached 5 seconds.
 - `GET /api/v1/public/history`: the latest plays, most recent first (artist, title, album, `cover_url`, `started_at_unix_ms`, `ended_at_unix_ms`); `limit` 1 to 50 (20), `before` for the next page. Cached 15 seconds.
 
@@ -219,12 +220,14 @@ Each station has its own, by its code: `/api/v1/public/stations/{code}/now-playi
 | `GET /api/v1/public/stations/{code}/{module}.html` | The show's page alone |
 | `GET /api/v1/public/challenge` | A proof-of-work challenge: `challenge`, `bits`, `expires_at_unix_ms` |
 | `POST /api/v1/public/stations/{code}/{module}[/{action}]` | A show's write (a dedication, a vote), with `X-Heron-Proof: <challenge>:<nonce>`; each show documents its own |
+| `GET /api/v1/public/stations/{code}/{module}/{read}` | A show's own reads, from the API, cached a few seconds per query: the [dedications](#dedications)' `search` and `follow` |
 
 Errors are those of the API: `403` (`forbidden`: no valid proof, or a website not allowed), `404` (unknown station or show, or a show turned off), `409` (`conflict`: the show is closed), `422` (`invalid`: a field too long or unknown), `429` (`too_many_requests`, with `Retry-After`), `503` (the API not reached, or no gateway token).
 
 Behind it, the gateway calls the API with `Authorization: Bearer <HERON_PUBLIC_TOKEN>`:
 
 - `GET /api/v1/gateway/state`: every enabled station (`code`, `name`, `timezone`, `now_playing` as the public endpoint gives it, `shows`: the shows on for it), and `server_time_unix_ms`. Read once a second.
+- `GET /api/v1/gateway/stations/{code}/{module}/…`: a show's own reads (the dedications' search and follow link), with the listener's query.
 - `POST /api/v1/gateway/stations/{code}/{module}/…`: a show's writes, with `X-Heron-Device` (the device's hash). The API checks again that the show is on (`404`) and open (`409`). A write the gateway adds up arrives as `{"counts": [{"fields": {…}, "count": 12}]}`; one it keeps per device as `{"writes": [{"device": "…", "fields": {…}}]}`, each device's last.
 
 These routes accept only the gateway token, and the gateway token reaches nothing else: it is not a user's, and `HERON_PUBLIC_TOKEN` unset refuses it (`401`).
@@ -246,6 +249,23 @@ On the track list, `GET /tracks` gives each track's `likes` and `dislikes` over 
 Each play of `GET /tracks/{id}/plays/grid` has its `likes` and `dislikes`.
 
 Votes are counted per play (`play_votes`: the play, its station, its track, when it started, likes and dislikes), kept as long as the history: a period's ranking adds up the plays that started in it, per track and per station.
+
+## Dedications
+
+[Dedications](listener-interaction.md#dedications) on a station (signed in; operators decide and change the settings; `404` while the `dedications` module is off):
+
+- `GET`, `PUT /stations/{id}/dedications/settings`: `max_per_range` (requests per opening range, everyone together, 1 to 1000, 30 by default), `per_device` (per device per range, 1 to 10, 1), `message_max` (characters, 20 to 500, 140), `retention_days` (1 to 365, 30), `category_ids` (the requestable categories, the station's; none: its music). The hours, website and notifications are the show's settings, [above](#shows).
+- `GET /stations/{id}/dedications` (`status`: `pending`, `accepted`, `played` or `refused`; `limit` 1 to 200, 100 by default): the requests of the opening range on now, else of the last one, the latest first: `id`, `track_id`, `artist`, `title`, `from`, `to`, `message`, `status`, `reason`, `submitted_at_unix_ms`, `decided_at_unix_ms`, `decided_by`, `planned_at_unix_ms`, `played_at_unix_ms`, `play_id`, and for a waiting one `checks` (what the rules say now: each `kind`, `rules_kept`, `artist_played`, `title_played`, `track_played`, `in_queue`, `restriction` or `unplayable`, with `minutes_ago`, `separation_min`, `at_unix_ms` or `restriction_id` as it applies, and `blocking`: a restriction or a track that cannot play). With them: `counts` (`pending`, `accepted`, `played`, `refused`, `received` in the range), `max_per_range`, the range's `opens_at_unix_ms` and `closes_at_unix_ms` (`null` without one), and `on_air`, the dedication of the track playing (`null` without one).
+- `POST /stations/{id}/dedications/{id}/accept` with `{"place": "next"}` (`next`, `hour` or `best`): queues the track (source `request`) and answers the request, `planned_at_unix_ms` filled. `409` for a request not waiting, a track a restriction forbids then or that cannot play; `503` while the engine is unreachable.
+- `POST /stations/{id}/dedications/{id}/refuse` with `{"reason": "just_played"}` (`null`, `just_played`, `unavailable` or `inappropriate`): `409` for a request not waiting.
+
+Through the gateway (`docs/listener-interaction.md#dedications`), with the proof of work for the write:
+
+- `GET /api/v1/public/stations/{code}/dedications/search?q=neon`: the requestable tracks whose artist or title has `q` (2 to 60 characters), 8 at most: `track_id`, `artist`, `title`. `409` while closed. Cached 30 seconds per query.
+- `POST /api/v1/public/stations/{code}/dedications`: `{"track_id": 42, "from": "Marc", "to": "Julie", "message": "Happy birthday!"}` (`from` 40 characters, `to` 60, `message` the station's maximum, 500 at most in the gateway). Answers `201` with the request as its follow link gives it, and `follow`, its key. `422` for a track that cannot be requested or a message too long, `409` while closed or once the range is full, `429` past the device's requests in the range or while one of its requests waits.
+- `GET /api/v1/public/stations/{code}/dedications/follow?id=<follow>`: `status` (`pending`, `accepted`, `played`, `refused`), `reason` (`closed`, `just_played`, `unavailable`, `removed`; `null` for no reason or an inappropriate message), `artist`, `title`, `from`, `to`, `message`, `submitted_at_unix_ms`, `decided_at_unix_ms`, `planned_at_unix_ms`, `played_at_unix_ms`. `404` once deleted. Cached 5 seconds.
+
+The show's own notification events are `dedication.played` and `dedication.accepted`. Its public state (`state` in the gateway's state): `remaining` (requests left in the range, `null` while closed), `message_max`, `retention_days` and `today` (the dedications accepted or played since midnight, in planned order: `artist`, `title`, `from`, `to`, `message`, `at_unix_ms`, `played`). `now-playing` and the `track.started` webhook carry the track's `dedication` (`from`, `to`, `message`), `null` without one; webhook templates have `{{dedication_from}}`, `{{dedication_to}}` and `{{dedication_message}}`.
 
 ## Top 30
 
