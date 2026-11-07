@@ -618,7 +618,7 @@ export function TagsDialog({
             {keep
               ? t("selection.keptHelp")
               : rich("selection.tagsUndo", {
-                  link: reviewOn ? <Link to="/to-organize">{t("nav.review")}</Link> : t("nav.review"),
+                  link: reviewOn ? <Link to="/to-do?tab=batches">{t("nav.review")}</Link> : t("nav.review"),
                 })}
           </p>
           <div className="form-grid">

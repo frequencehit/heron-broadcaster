@@ -67,9 +67,8 @@ pub fn module_of(path: &str) -> Option<Module> {
         ["settings", "eq"] | ["eq-presets", ..] => Module::Eq,
         ["settings", "agc"] | ["agc-presets", ..] => Module::Processing,
         ["library", "trash", ..] => Module::Trash,
-        ["library", "review" | "organize" | "batches", ..] | ["tracks", _, "review", ..] => {
-            Module::Review
-        }
+        ["library", "todo" | "review" | "organize" | "batches", ..]
+        | ["tracks", _, "review", ..] => Module::Review,
         // `GET /artists` is the search of the artist pickers: it answers.
         ["artists", _, ..] | ["artist-names" | "artist-suggestions", ..] => Module::Artists,
         ["labels", ..] | ["tracks", "labels"] => Module::Labels,
@@ -242,6 +241,7 @@ mod tests {
             ("/api/v1/settings/agc", Some(Module::Processing)),
             ("/api/v1/agc-presets", Some(Module::Processing)),
             ("/api/v1/library/trash/7/restore", Some(Module::Trash)),
+            ("/api/v1/library/todo", Some(Module::Review)),
             ("/api/v1/library/review", Some(Module::Review)),
             ("/api/v1/library/organize/3/apply", Some(Module::Review)),
             ("/api/v1/library/batches/3/undo", Some(Module::Review)),
