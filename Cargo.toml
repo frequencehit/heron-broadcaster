@@ -43,6 +43,8 @@ hound = "3.5.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "serde", "tzdb-bundle-always", "tzdb-zoneinfo", "tz-system"] }
 lofty = "0.25.5"
+# Listener countries from a local GeoIP country database (MaxMind DB format).
+maxminddb = { version = "0.32.0", default-features = false }
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
 mp3lame-encoder = "0.3.0"

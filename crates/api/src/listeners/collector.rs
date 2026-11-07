@@ -21,6 +21,7 @@ use tokio::sync::Notify;
 use tokio::task::JoinSet;
 use utoipa::ToSchema;
 
+use super::geoip::GeoIp;
 use super::icecast::{self, Client, ReadError};
 use super::sessions::{self, Changes, Known, Seen};
 use super::totals::{self, Sample, Span, Total};
@@ -81,6 +82,7 @@ pub struct Collector {
     http: reqwest::Client,
     last: RwLock<Vec<OutputListeners>>,
     recompute: Notify,
+    geoip: GeoIp,
 }
 
 fn now_ms() -> i64 {
@@ -164,7 +166,14 @@ pub(super) fn without_relays(
     (count.saturating_sub(subtract), kept)
 }
 impl Collector {
+    /// Without countries, for the tests.
+    #[cfg(test)]
     pub fn new(pool: MySqlPool) -> anyhow::Result<Arc<Self>> {
+        Self::with_geoip(pool, GeoIp::off())
+    }
+
+    /// With the listeners' countries from a GeoIP database.
+    pub fn with_geoip(pool: MySqlPool, geoip: GeoIp) -> anyhow::Result<Arc<Self>> {
         let http = reqwest::Client::builder()
             .user_agent(concat!("HeronBroadcaster/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(5))
@@ -175,6 +184,7 @@ impl Collector {
             http,
             last: RwLock::new(Vec::new()),
             recompute: Notify::new(),
+            geoip,
         }))
     }
 
@@ -186,6 +196,11 @@ impl Collector {
             .unwrap_or_default()
     }
 
+    /// The GeoIP database's type, when countries are on.
+    pub fn geoip_database(&self) -> Option<String> {
+        self.geoip.database()
+    }
+
     /// The statistics settings changed: recompute the totals the sessions
     /// kept still cover.
     pub fn settings_changed(&self) {
@@ -193,6 +208,12 @@ impl Collector {
     }
 
     pub async fn run(self: Arc<Self>) {
+        // Totals of an earlier build have no rows per server.
+        match self.lacks_server_totals().await {
+            Ok(true) => self.recompute_now(now_ms()).await,
+            Ok(false) => {}
+            Err(error) => tracing::warn!(%error, "cannot check the listener totals"),
+        }
         let mut next_purge = 0;
         loop {
             let now = now_ms();
@@ -228,6 +249,18 @@ impl Collector {
         if let Err(error) = self.recompute_kept(now_ms).await {
             tracing::warn!(%error, "cannot recompute the listener totals");
         }
+    }
+
+    /// Whether there are totals but none per server: the first start after
+    /// the upgrade that added them.
+    async fn lacks_server_totals(&self) -> ApiResult<bool> {
+        let (every, per_server): (bool, bool) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM listener_totals WHERE server_id IS NULL),
+                    EXISTS(SELECT 1 FROM listener_totals WHERE server_id IS NOT NULL)",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(every && !per_server)
     }
 
     /// The enabled Icecast outputs of a station, and its servers.
@@ -417,8 +450,19 @@ impl Collector {
                                     .saturating_mul(1_000),
                         })
                         .collect::<Vec<_>>();
+                    // For the country of the sessions opened, only.
+                    let addresses: HashMap<u64, &str> = list
+                        .iter()
+                        .map(|client| (client.id, client.address.as_str()))
+                        .collect();
                     let touched = self
-                        .track_sessions(target.id, server.id, &seen, now_ms, today, today_start)
+                        .track_sessions(
+                            (target.id, server.id),
+                            (&seen, &addresses),
+                            now_ms,
+                            today,
+                            today_start,
+                        )
                         .await?;
                     days.extend(touched);
                 }
@@ -480,6 +524,8 @@ impl Collector {
     pub async fn poll(&self, now_ms: i64) -> ApiResult<()> {
         let statistics: StatisticsSettings =
             settings::load(&self.pool, StatisticsSettings::SETTINGS_NAME).await?;
+        // A database replaced since the last minute is read again.
+        self.geoip.refresh();
         let mut last = Vec::new();
         let mut earliest_today: Option<Date> = None;
         for station_id in station_ids(&self.pool).await? {
@@ -534,9 +580,8 @@ impl Collector {
     /// Returns the days whose sessions were split at midnight.
     async fn track_sessions(
         &self,
-        output_id: u64,
-        server_id: u64,
-        seen: &[Seen],
+        (output_id, server_id): (u64, u64),
+        (seen, addresses): (&[Seen], &HashMap<u64, &str>),
         now_ms: i64,
         today: Date,
         today_start: i64,
@@ -579,19 +624,24 @@ impl Collector {
             .iter()
             .filter_map(|id| known.iter().find(|s| s.id == *id).map(|s| s.day))
             .collect();
-        self.apply(output_id, server_id, changes, now_ms, today, today_start)
-            .await?;
+        self.apply(
+            (output_id, server_id),
+            changes,
+            addresses,
+            now_ms,
+            (today, today_start),
+        )
+        .await?;
         Ok(split_days)
     }
 
     async fn apply(
         &self,
-        output_id: u64,
-        server_id: u64,
+        (output_id, server_id): (u64, u64),
         changes: Changes,
+        addresses: &HashMap<u64, &str>,
         now_ms: i64,
-        today: Date,
-        today_start: i64,
+        (today, today_start): (Date, i64),
     ) -> ApiResult<()> {
         let mut tx = self.pool.begin().await?;
         for (id, client_id) in changes.continued {
@@ -629,16 +679,21 @@ impl Collector {
             .await?;
         }
         for session in changes.opened {
+            // Looked up when the session starts; the address is not kept.
+            let country = addresses
+                .get(&session.client_id)
+                .and_then(|address| self.geoip.country(address));
             sqlx::query(
                 "INSERT INTO listener_sessions
-                     (output_id, server_id, listener_key, user_agent, client_id, day,
+                     (output_id, server_id, listener_key, user_agent, country, client_id, day,
                       started_at, last_seen_at, duration_s)
-                 VALUES (?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?)",
             )
             .bind(output_id)
             .bind(server_id)
             .bind(session.key.as_slice())
             .bind(&session.user_agent)
+            .bind(country)
             .bind(session.client_id)
             .bind(today.to_string())
             .bind(seconds(session.started_ms))
@@ -661,14 +716,13 @@ impl Collector {
         min_session_s: u32,
     ) -> ApiResult<()> {
         let (start, end) = totals::day_bounds(day, tz);
-        // An output's minute adds up its servers (master and relays).
-        let samples: Vec<(u64, i64, u32, bool)> = sqlx::query_as(
-            "SELECT s.output_id, CAST(UNIX_TIMESTAMP(s.sampled_at) * 1000 AS SIGNED),
-                    CAST(SUM(s.listeners) AS UNSIGNED), MAX(s.sessions)
+        // Each server's part; the totals add them up.
+        let samples: Vec<(u64, u64, i64, u32, bool)> = sqlx::query_as(
+            "SELECT s.output_id, s.server_id, CAST(UNIX_TIMESTAMP(s.sampled_at) * 1000 AS SIGNED),
+                    s.listeners, s.sessions
              FROM listener_samples s JOIN outputs o ON o.id = s.output_id
              WHERE o.station_id = ?
-               AND s.sampled_at >= FROM_UNIXTIME(?) AND s.sampled_at < FROM_UNIXTIME(?)
-             GROUP BY s.output_id, s.sampled_at",
+               AND s.sampled_at >= FROM_UNIXTIME(?) AND s.sampled_at < FROM_UNIXTIME(?)",
         )
         .bind(station_id)
         .bind(seconds(start))
@@ -680,15 +734,18 @@ impl Collector {
         }
         let samples: Vec<Sample> = samples
             .into_iter()
-            .map(|(output_id, minute_ms, listeners, sessions)| Sample {
-                output_id,
-                minute_ms,
-                listeners,
-                sessions,
-            })
+            .map(
+                |(output_id, server_id, minute_ms, listeners, sessions)| Sample {
+                    output_id,
+                    server_id,
+                    minute_ms,
+                    listeners,
+                    sessions,
+                },
+            )
             .collect();
-        let spans: Vec<(u64, Vec<u8>, i64, i64, u32)> = sqlx::query_as(
-            "SELECT s.output_id, s.listener_key,
+        let spans: Vec<(u64, u64, Vec<u8>, i64, i64, u32)> = sqlx::query_as(
+            "SELECT s.output_id, s.server_id, s.listener_key,
                     CAST(UNIX_TIMESTAMP(s.started_at) * 1000 AS SIGNED),
                     CAST(UNIX_TIMESTAMP(s.last_seen_at) * 1000 AS SIGNED), s.duration_s
              FROM listener_sessions s JOIN outputs o ON o.id = s.output_id
@@ -700,15 +757,18 @@ impl Collector {
         .await?;
         let spans: Vec<Span> = spans
             .into_iter()
-            .filter_map(|(output_id, key, started_ms, last_seen_ms, duration_s)| {
-                Some(Span {
-                    output_id,
-                    key: key.try_into().ok()?,
-                    started_ms,
-                    last_seen_ms,
-                    duration_s,
-                })
-            })
+            .filter_map(
+                |(output_id, server_id, key, started_ms, last_seen_ms, duration_s)| {
+                    Some(Span {
+                        output_id,
+                        server_id,
+                        key: key.try_into().ok()?,
+                        started_ms,
+                        last_seen_ms,
+                        duration_s,
+                    })
+                },
+            )
             .collect();
         let rows = totals::day_totals(&samples, &spans, tz, min_session_s);
         self.store(station_id, day, &rows).await
@@ -723,13 +783,14 @@ impl Collector {
             .await?;
         if !rows.is_empty() {
             let mut insert = sqlx::QueryBuilder::new(
-                "INSERT INTO listener_totals (station_id, output_id, day, hour, minutes, peak,
+                "INSERT INTO listener_totals (station_id, output_id, server_id, day, hour, minutes, peak,
                      average, listening_hours, sessions, session_s, distinct_listeners) ",
             );
             insert.push_values(rows, |mut values, row| {
                 values
                     .push_bind(station_id)
                     .push_bind(row.output_id)
+                    .push_bind(row.server_id)
                     .push_bind(day.to_string())
                     .push_bind(row.hour)
                     .push_bind(row.minutes)

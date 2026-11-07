@@ -129,6 +129,15 @@ struct Cli {
     )]
     covers_dir: PathBuf,
 
+    /// A GeoIP country database (MaxMind DB format) for the listeners'
+    /// countries; countries are off while the file is missing.
+    #[arg(
+        long,
+        env = "HERON_GEOIP_DB",
+        default_value = "/var/lib/heron/geoip/country.mmdb"
+    )]
+    geoip_db: PathBuf,
+
     /// Seconds between full library scans (file system events also trigger scans).
     #[arg(long, env = "HERON_SCAN_INTERVAL", default_value_t = 3600)]
     scan_interval: u64,
@@ -272,8 +281,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     .await
     .context("cannot start the stations")?;
     let station_count = stations.all().len();
-    let listeners =
-        listeners::Collector::new(pool.clone()).context("cannot set up listener statistics")?;
+    let geoip_db = cli.geoip_db.clone();
+    let geoip =
+        listeners::geoip::GeoIp::new((!geoip_db.as_os_str().is_empty()).then(|| geoip_db.clone()));
+    if geoip.database().is_none() {
+        tracing::info!(path = %geoip_db.display(), "no GeoIP country database: listener countries are off");
+    }
+    let listeners = listeners::Collector::with_geoip(pool.clone(), geoip)
+        .context("cannot set up listener statistics")?;
     let backup_dir = cli.backup_dir.clone();
     let backups =
         backups::Backups::new(cli.backup_dir.clone(), database_url.clone(), covers.clone());
@@ -317,6 +332,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             ConfigItem::text("HERON_STAGING_DIR", staging_dir.display()),
             ConfigItem::text("HERON_BACKUP_DIR", backup_dir.display()),
             ConfigItem::text("HERON_COVERS_DIR", cli.covers_dir.display()),
+            ConfigItem::text("HERON_GEOIP_DB", geoip_db.display()),
             ConfigItem::secret("HERON_DATABASE_URL", Some(&database_url)),
             ConfigItem::secret(
                 "HERON_PUBLIC_TOKEN",
