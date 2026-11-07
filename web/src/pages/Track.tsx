@@ -426,6 +426,24 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
                   <Icon name="edit" /> {t("track.editTags")}
                 </button>
               )}
+              {track.tag_overrides.length > 0 && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={fileTags.isPending}
+                  onClick={() => fileTags.mutate(undefined)}
+                  title={t("track.fileTagsHelp", {
+                    fields: track.tag_overrides
+                      .map((field) => {
+                        const known = TAG_FIELDS.find((tag) => tag.field === field);
+                        return known ? t(known.label) : field;
+                      })
+                      .join(", "),
+                  })}
+                >
+                  {t("track.fileTags")}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn"
@@ -469,28 +487,6 @@ function TrackView({ track, settings }: { track: TrackDetail; settings: PlayoutS
       {!track.enabled && (
         <Banner kind="warn">
           {t("track.disabled")} {disabledText(track.disabled_by, track.disabled_at_unix_ms)}
-        </Banner>
-      )}
-      {track.tag_overrides.length > 0 && (
-        <Banner kind="warn">
-          {t("track.tagOverrides", {
-            fields: track.tag_overrides
-              .map((field) => {
-                const known = TAG_FIELDS.find((tag) => tag.field === field);
-                return known ? t(known.label) : field;
-              })
-              .join(", "),
-          })}{" "}
-          {canEdit && (
-            <button
-              type="button"
-              className="btn small"
-              disabled={fileTags.isPending}
-              onClick={() => fileTags.mutate(undefined)}
-            >
-              {t("track.fileTags")}
-            </button>
-          )}
         </Banner>
       )}
       {track.identification?.status === "needs_review" && (
