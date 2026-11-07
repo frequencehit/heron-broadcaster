@@ -226,84 +226,34 @@ function RotationCard() {
       canEdit={canEdit}
     >
       {(draft, set) => (
-        <>
-          <div className="form-grid">
-            {WINDOW_FIELDS.map(([key]) => (
-              <Field key={key} label={t(WINDOW_LABELS[key])}>
-                <NumberInput
-                  value={draft.separation[key]}
-                  min={0}
-                  max={10_080}
-                  step={1}
-                  suffix={t("common.min")}
-                  disabled={!canEdit}
-                  onChange={(minutes) => set({ separation: { ...draft.separation, [key]: Math.round(minutes) } })}
-                />
-              </Field>
-            ))}
-          </div>
+        <div className="settings-sections">
+          <fieldset>
+            <legend>{t("settings.separationTitle")}</legend>
+            <p className="muted small">{t("settings.separationHelp")}</p>
+            <div className="form-grid">
+              {WINDOW_FIELDS.map(([key]) => (
+                <Field key={key} label={t(WINDOW_LABELS[key])}>
+                  <NumberInput
+                    value={draft.separation[key]}
+                    min={0}
+                    max={10_080}
+                    step={1}
+                    suffix={t("common.min")}
+                    disabled={!canEdit}
+                    onChange={(minutes) => set({ separation: { ...draft.separation, [key]: Math.round(minutes) } })}
+                  />
+                </Field>
+              ))}
+            </div>
+          </fieldset>
           <DaypartSettings
             count={draft.daypart_count}
             disabled={!canEdit}
             onChange={(daypart_count) => set({ daypart_count })}
           />
-          <div className="form-grid">
-            <Field label={t("settings.fallback")} hint={t("settings.fallbackHint")}>
-              <select
-                className="input"
-                value={draft.fallback_category_id ?? ""}
-                disabled={!canEdit}
-                onChange={(e) => set({ fallback_category_id: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">{t("settings.wholeLibrary")}</option>
-                {categories.data?.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t("settings.filler")} hint={t("settings.fillerHint")}>
-              <select
-                className="input"
-                value={draft.filler_category_id ?? ""}
-                disabled={!canEdit}
-                onChange={(e) => set({ filler_category_id: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">{t("settings.noFiller")}</option>
-                {categories.data?.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t("settings.playFactor")} hint={t("settings.playFactorHint")}>
-              <NumberInput
-                value={draft.weights.play_factor}
-                min={0.5}
-                max={1}
-                step={0.05}
-                disabled={!canEdit}
-                onChange={(play_factor) => set({ weights: { ...draft.weights, play_factor } })}
-              />
-            </Field>
-            <Field label={t("settings.requestFactor")} hint={t("settings.requestFactorHint")}>
-              <NumberInput
-                value={draft.weights.request_factor}
-                min={1}
-                max={2}
-                step={0.05}
-                disabled={!canEdit}
-                onChange={(request_factor) => set({ weights: { ...draft.weights, request_factor } })}
-              />
-            </Field>
-          </div>
           <fieldset>
             <legend>{t("draw.title")}</legend>
-            <p className="muted small" style={{ marginTop: 0 }}>
-              {t("settings.drawHelp")}
-            </p>
+            <p className="muted small">{t("settings.drawHelp")}</p>
             <div className="form-grid">
               <Field label={t("draw.start")}>
                 <NumberInput
@@ -328,31 +278,97 @@ function RotationCard() {
                 />
               </Field>
             </div>
-            <p className="muted small" style={{ marginBottom: 0 }}>
-              {t("draw.methods")}
-            </p>
+            <details className="small">
+              <summary>{t("settings.drawMethods")}</summary>
+              <p className="muted">{t("draw.methods")}</p>
+            </details>
           </fieldset>
-          <Field label={t("settings.keptOut")} hint={t("settings.keptOutHint")}>
-            <span className="station-checks">
-              {categories.data?.map((category) => (
-                <label key={category.id} className="check">
-                  <input
-                    type="checkbox"
-                    disabled={!canEdit}
-                    checked={draft.kept_out_category_ids.includes(category.id)}
-                    onChange={(event) =>
-                      set({
-                        kept_out_category_ids: event.target.checked
-                          ? [...draft.kept_out_category_ids, category.id]
-                          : draft.kept_out_category_ids.filter((id) => id !== category.id),
-                      })
-                    }
-                  />{" "}
-                  {category.name}
-                </label>
-              ))}
-            </span>
-          </Field>
+          <fieldset>
+            <legend>{t("settings.relaxTitle")}</legend>
+            <p className="muted small">{t("settings.relaxHelp")}</p>
+            <div className="form-grid">
+              <Field label={t("settings.fallback")} hint={t("settings.fallbackHint")}>
+                <select
+                  className="input"
+                  value={draft.fallback_category_id ?? ""}
+                  disabled={!canEdit}
+                  onChange={(e) => set({ fallback_category_id: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">{t("settings.wholeLibrary")}</option>
+                  {categories.data?.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t("settings.filler")} hint={t("settings.fillerHint")}>
+                <select
+                  className="input"
+                  value={draft.filler_category_id ?? ""}
+                  disabled={!canEdit}
+                  onChange={(e) => set({ filler_category_id: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">{t("settings.noFiller")}</option>
+                  {categories.data?.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>{t("settings.weightsTitle")}</legend>
+            <p className="muted small">{t("settings.weightsHelp")}</p>
+            <div className="form-grid">
+              <Field label={t("settings.playFactor")} hint={t("settings.playFactorHint")}>
+                <NumberInput
+                  value={draft.weights.play_factor}
+                  min={0.5}
+                  max={1}
+                  step={0.05}
+                  disabled={!canEdit}
+                  onChange={(play_factor) => set({ weights: { ...draft.weights, play_factor } })}
+                />
+              </Field>
+              <Field label={t("settings.requestFactor")} hint={t("settings.requestFactorHint")}>
+                <NumberInput
+                  value={draft.weights.request_factor}
+                  min={1}
+                  max={2}
+                  step={0.05}
+                  disabled={!canEdit}
+                  onChange={(request_factor) => set({ weights: { ...draft.weights, request_factor } })}
+                />
+              </Field>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>{t("settings.libraryTitle")}</legend>
+            <Field label={t("settings.keptOut")} hint={t("settings.keptOutHint")}>
+              <span className="station-checks">
+                {categories.data?.map((category) => (
+                  <label key={category.id} className="check">
+                    <input
+                      type="checkbox"
+                      disabled={!canEdit}
+                      checked={draft.kept_out_category_ids.includes(category.id)}
+                      onChange={(event) =>
+                        set({
+                          kept_out_category_ids: event.target.checked
+                            ? [...draft.kept_out_category_ids, category.id]
+                            : draft.kept_out_category_ids.filter((id) => id !== category.id),
+                        })
+                      }
+                    />{" "}
+                    {category.name}
+                  </label>
+                ))}
+              </span>
+            </Field>
+          </fieldset>
           {others.length > 0 && (
             <fieldset>
               <legend>{t("settings.across")}</legend>
@@ -406,7 +422,7 @@ function RotationCard() {
               </Field>
             </fieldset>
           )}
-        </>
+        </div>
       )}
     </SettingsCard>
   );
