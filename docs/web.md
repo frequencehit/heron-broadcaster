@@ -31,7 +31,7 @@
 | **Webhooks** | Webhooks on track changes: address, events, FX or not, the default JSON body or a template; the secret, shown once (and a new one); a test ping; each webhook's deliveries, with their status, attempts, what was sent and answered, and send again | admin |
 | **Stations** | The stations: add one with the address of its engine, rename, change its code, its engine or its position, enable or disable, delete ([Several stations](stations.md)) | admin |
 | **Users** | Users and roles, passwords, enable or disable; with several stations, a shared role and a role on each station; whether each user has a second factor (on, with the app and how many passkeys; *to set up* when their role requires it and they have none; off), and which roles require one ([Two-factor authentication](#two-factor-authentication)) | admin |
-| **Modules** | Under *Administration*: each [module](modules.md) (medleys, cover art, listener statistics, webhooks), what it does and what turning it off stops, with its switch for the whole installation | admin |
+| **Modules** | Under *Administration*: each [module](modules.md) (medleys, cover art, listener statistics, webhooks, restrictions, equalizer, processing, trash, to organize, artists, labels), what it does and what turning it off stops, with its switch for the whole installation | admin |
 | **Backups** | The backups, newest first (kind, time, the size of its two files, a failed dump), *Back up now*, download either file, restore a backup or an uploaded configuration file (with what it will replace, then its report; the key for an encrypted one), delete; the `backups` settings; encryption: encrypt backups (the key shown once, then typed back, or the admin's own public key), check the key, change it, turn encryption off, which backups need an earlier key, the public key each key typed must match ([Backups – Encryption](backups.md#encryption)); *Test* on a backup, the last test, damaged backups ([Testing backups](backups.md#testing-backups)) | admin |
 | **Account** | Theme, language, width, password, API tokens, [two-factor authentication](#two-factor-authentication) (the authenticator app, passkeys, recovery codes) | |
 | **About** | The build (version, commit, each service's version and whether it answers, web UI and API from the same build or not, links); for admins also the runtime (uptime, operating system, container, time zone and clock, CPU and memory), the dependencies (database, FFmpeg and stream servers versions) and the active configuration, read-only, with secrets only as *set* or *not set*; *Copy diagnostics* puts it all in the clipboard for a bug report. Linked at the bottom of the navigation | admin (all but the build) |
@@ -48,10 +48,17 @@ A [module](modules.md) turned off for the station shown disappears: its entries 
 | Cover art | Covers everywhere (On air, Queue, History, the track list with its column, *No cover* filter and *Find covers*, the track's page), the covers to check on *To organize*, the Cover Art Archive lookup in the library settings, the station logo |
 | Listener statistics | The Statistics page, the listeners of the status bar, On air and the Outputs page (with the stream servers' admin credentials and relays), the statistics settings |
 | Webhooks | The Webhooks page |
+| Restrictions | The Restrictions page, the restrictions link of an artist |
+| Equalizer | The EQ page |
+| Processing | The Processing page |
+| Trash | The Trash page, its links from the track list and a track's page |
+| To organize | The To organize page, the link from a track's page |
+| Artists | The Artists page, the links to it (restrictions, the track's page) |
+| Labels | The Labels page, the track list's labels column, filters and *Labels* action, the same in the import buffer, a track's labels, *Fill from a label* on the Categories page |
 
 An address of a page that is off (a bookmark, a link) shows *This module is turned off* instead, with a link to where an admin turns it on.
 
-**Administration › Modules** (admins) turns a module on or off for the installation; **Settings › Station › Modules** (admins of the station) for the station shown. A module off for the installation shows there as off, and cannot be turned on for one station.
+**Administration › Modules** (admins) turns a module on or off for the installation; **Settings › Station › Modules** (admins of the station) for the station shown. A module off for the installation shows there as off, and cannot be turned on for one station. The library modules (trash, to organize, artists, labels) are only on the installation's page.
 
 ## Several stations
 

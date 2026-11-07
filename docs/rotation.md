@@ -73,7 +73,7 @@ The same artist often appears under several names: solo name, band, side project
 
 ### Restrictions
 
-Restrictions are hard rules: unlike separation, **they are never relaxed**. They apply to a track, an artist or a category (every track in it):
+Restrictions are hard rules: unlike separation, **they are never relaxed**. With the [restrictions module](modules.md) turned off for a station, rotation applies none of them there; they are kept, and apply again once it is on. They apply to a track, an artist or a category (every track in it):
 
 - **dayparting:** allowed or banned on given days and hours (no explicit lyrics before 22:00, no long tracks during the morning show). Hours that run past midnight belong to the day they start on: Friday 22:00 to 02:00 covers Saturday 01:30;
 - **date ranges:** seasonal content only in its season (optionally every year, the range running over the new year if needed), or a track banned for a while;

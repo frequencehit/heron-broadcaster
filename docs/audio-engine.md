@@ -162,7 +162,7 @@ The filters run as trapezoidal state-variable filters (Andrew Simper's *bell* an
  "fx":    {"enabled": false, "gains_db": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}}
 ```
 
-Ten slider gains, from 60 Hz up, each from −12 to +12 dB. By default both EQs are flat and bypassed. The engine receives them over gRPC (`SetEqSettings`) and keeps them in `config.json` under `eq`: it restarts with them, and a new engine taking over ([Upgrades and handover](#upgrades-and-handover)) loads them before its first sample. Engines from before M9 ignore the key.
+Ten slider gains, from 60 Hz up, each from −12 to +12 dB. By default both EQs are flat and bypassed. While the [equalizer module](modules.md) is off for a station, the API pushes its EQs with `enabled` false and their gains kept: they glide to flat and stop, and come back with a glide once it is on. The engine receives them over gRPC (`SetEqSettings`) and keeps them in `config.json` under `eq`: it restarts with them, and a new engine taking over ([Upgrades and handover](#upgrades-and-handover)) loads them before its first sample. Engines from before M9 ignore the key.
 
 ## Master AGC chain
 
@@ -226,7 +226,7 @@ Both are followed by a hard clip at the ceiling, which only catches rounding. Th
 | Band settings | `mode`: `compressor`, `expander` or `limiter` (`compressor`); `threshold_db`: −60 to 0 (−20); `ratio`: 1 to 20 (3); `attack_ms`: 0.5 to 200 (20); `release_ms`: 10 to 2,000 (250); `hold_ms`: 0 to 500 (0); `gain_db`: −12 to +12 (0) |
 | `final_stage` | `enabled` (true); `mode`: `limiter` or `clipper` (`limiter`); `ceiling_db`: −6 to 0 dBFS (−1); `release_ms`: 10 to 1,000 (100) |
 
-By default the chain is bypassed, so a new or upgraded station sounds the same as before; turned on as it is, it is the final limiter alone. The engine receives the settings over gRPC (`SetAgcSettings`) and keeps them in `config.json` under `agc`: it restarts with them, and a new engine taking over loads them before its first sample. Engines from before M10 ignore the key, and play on without the chain. One that takes over from a newer engine (a rollback) saves its configuration without it: when a newer engine takes over again, the chain stays bypassed until the API pushes it back, as it does whenever an engine reconnects.
+By default the chain is bypassed, so a new or upgraded station sounds the same as before; turned on as it is, it is the final limiter alone. While the [processing module](modules.md) is off for a station, the API pushes its chain with `bypass_all` set and its blocks kept: it crossfades out, and back in once the module is on. The engine receives the settings over gRPC (`SetAgcSettings`) and keeps them in `config.json` under `agc`: it restarts with them, and a new engine taking over loads them before its first sample. Engines from before M10 ignore the key, and play on without the chain. One that takes over from a newer engine (a rollback) saves its configuration without it: when a newer engine takes over again, the chain stays bypassed until the API pushes it back, as it does whenever an engine reconnects.
 
 ### Switching and changes
 
