@@ -7,6 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { type Schemas, api, query, unwrap } from "../api";
+import { LikesWeekCard } from "../components/Likes";
 import { type Bar, BarChart, MinuteChart, type Point } from "../components/ListenerChart";
 import { Card, Empty, ErrorView, Loading, PageHead, Segmented } from "../components/ui";
 import { type PlainKey, locale, number, t } from "../i18n";
@@ -121,6 +122,7 @@ export function Statistics() {
           <OverTime zone={zone} output={output} />
           <HoursOfDay zone={zone} output={output} />
           <Departures zone={zone} />
+          <LikesWeekCard />
           <Players zone={zone} output={output} />
         </div>
       )}

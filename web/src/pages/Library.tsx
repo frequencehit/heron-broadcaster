@@ -7,6 +7,7 @@
 import { CoverThumb } from "../components/Cover";
 import { useModule } from "../lib/modules";
 import { StationFilter, useStationFilter, useStations } from "../components/Stations";
+import { LikedCell } from "../components/Likes";
 import { DisableDialog, EnableDialog, RatioDialog, RatioImportDialog } from "../components/Ratio";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -42,6 +43,7 @@ import { useAction, useCan } from "../lib/session";
 import { type Preview, usePreview } from "../lib/preview";
 import { here } from "../lib/station";
 import { levelText } from "../lib/level";
+import { DEFAULT_LIKE_PERIOD, LIKE_PERIODS, type LikedFilter, likedFilter } from "../lib/likes";
 import { type RatioFilter, disabledText, effectiveRatio, ratioFilter, ratioLabel, ratioSummary } from "../lib/ratio";
 
 const PAGE = 50;
@@ -76,6 +78,13 @@ const SORTS: { value: TrackSort; label: PlainKey }[] = [
   { value: "level_min", label: "library.sort.levelMin" },
   { value: "level_max", label: "library.sort.levelMax" },
   { value: "play_ratio", label: "library.sort.playRatio" },
+  { value: "liked", label: "likes.liked" },
+];
+
+const LIKED_CHOICES: { value: LikedFilter | ""; label: PlainKey }[] = [
+  { value: "", label: "library.filter.all" },
+  { value: "high", label: "likes.filter.high" },
+  { value: "low", label: "likes.filter.low" },
 ];
 
 const RATIO_CHOICES: { value: RatioFilter | ""; label: PlainKey }[] = [
@@ -102,6 +111,7 @@ type Column =
   | "level_min"
   | "level_max"
   | "ratio"
+  | "liked"
   | "labels";
 
 const COLUMNS: { value: Column; label: PlainKey }[] = [
@@ -121,6 +131,7 @@ const COLUMNS: { value: Column; label: PlainKey }[] = [
   { value: "level_min", label: "library.column.levelMin" },
   { value: "level_max", label: "library.column.levelMax" },
   { value: "ratio", label: "ratio.short" },
+  { value: "liked", label: "likes.liked" },
   { value: "labels", label: "library.column.labels" },
 ];
 
@@ -184,6 +195,7 @@ export function filtersOf(search: URLSearchParams, q: string, station: number | 
     sound_code: text("sound_code"),
     genre: text("genre"),
     ...ratioFilter(search.get("ratio")),
+    ...likedFilter(search.get("liked"), search.get("likes_days")),
   });
 }
 
@@ -215,6 +227,9 @@ export function Library() {
   const desc = search.get("desc") === "true";
   const category = search.get("category") ?? "";
   const ratio = search.get("ratio") ?? "";
+  const likesOn = useModule("likes");
+  const liked = search.get("liked") ?? "";
+  const likesDays = search.get("likes_days") ?? String(DEFAULT_LIKE_PERIOD);
   const page = Math.max(0, Number(search.get("page") ?? 0) || 0);
   const batch = search.get("batch");
   const [text, setText] = useState(search.get("q") ?? "");
@@ -367,7 +382,9 @@ export function Library() {
   };
   // The cover goes before the title; the others after the artist.
   const showCover = coverArt && columns.includes("cover");
-  const shown = COLUMNS.filter((c) => c.value !== "cover" && columns.includes(c.value));
+  const shown = COLUMNS.filter(
+    (c) => c.value !== "cover" && columns.includes(c.value) && (likesOn || c.value !== "liked"),
+  );
 
   return (
     <>
@@ -456,6 +473,43 @@ export function Library() {
                 ))}
               </select>
             </label>
+            {likesOn && (
+              <>
+                <label className="row small">
+                  <span className="muted">{t("likes.liked")}</span>
+                  <select
+                    className="input"
+                    value={liked}
+                    onChange={(event) => setSearch({ liked: event.target.value || undefined, page: undefined })}
+                  >
+                    {LIKED_CHOICES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {t(option.label)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="row small">
+                  <span className="muted">{t("likes.over")}</span>
+                  <select
+                    className="input"
+                    value={likesDays}
+                    onChange={(event) =>
+                      setSearch({
+                        likes_days: event.target.value === String(DEFAULT_LIKE_PERIOD) ? undefined : event.target.value,
+                        page: undefined,
+                      })
+                    }
+                  >
+                    {LIKE_PERIODS.map((days) => (
+                      <option key={days} value={days}>
+                        {t("likes.days", { count: days })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
             <span className="row" style={{ flexWrap: "nowrap" }}>
               <label>
                 <span className="visually-hidden">{t("library.sortBy")}</span>
@@ -464,7 +518,7 @@ export function Library() {
                   value={sort}
                   onChange={(event) => setSearch({ sort: event.target.value, page: undefined })}
                 >
-                  {SORTS.map((option) => (
+                  {SORTS.filter((option) => likesOn || option.value !== "liked").map((option) => (
                     <option key={option.value} value={option.value}>
                       {t("library.sortOption", { sort: t(option.label) })}
                     </option>
@@ -747,11 +801,14 @@ function sameRatio(tracks: TrackSummary[]): number | null {
 
 function ColumnsMenu({ columns, onToggle }: { columns: Column[]; onToggle: (column: Column, shown: boolean) => void }) {
   const coverArt = useModule("cover_art");
+  const likesOn = useModule("likes");
   return (
     <details className="menu">
       <summary className="btn ghost small">{t("library.columns")}</summary>
       <div className="menu-panel stack">
-        {COLUMNS.filter((column) => coverArt || column.value !== "cover").map((column) => (
+        {COLUMNS.filter(
+          (column) => (coverArt || column.value !== "cover") && (likesOn || column.value !== "liked"),
+        ).map((column) => (
           <label key={column.value} className="check">
             <input
               type="checkbox"
@@ -1002,6 +1059,7 @@ function Row({
     level_min: <span className="num small">{levelText(track.level_min_db)}</span>,
     level_max: <span className="num small">{levelText(track.level_max_db)}</span>,
     ratio: <RatioPill track={track} />,
+    liked: <LikedCell likes={track.likes} dislikes={track.dislikes} />,
     labels: (
       <span className="chips">
         {track.labels.map((label) => (
