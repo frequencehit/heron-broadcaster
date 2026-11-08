@@ -1299,7 +1299,10 @@ async fn listener_statistics_through_the_api() {
     // The other routes answer, and check their parameters.
     assert_eq!(
         viewer.get("/listeners/now").await,
-        json!({"outputs": [], "total": null, "servers": []})
+        // The record is the whole station's highest day, not an output's,
+        // a server's or an hour's.
+        json!({"outputs": [], "total": null, "servers": [],
+               "record": {"listeners": 20, "day": "2026-10-25"}})
     );
     assert_eq!(
         viewer

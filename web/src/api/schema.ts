@@ -2162,7 +2162,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Each output's listeners at the last minute, and the station's. */
+        /** Each output's listeners at the last minute, the station's total and record. */
         get: operations["now"];
         put?: never;
         post?: never;
@@ -4390,7 +4390,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Each output's listeners at the last minute, and the station's. */
+        /** Each output's listeners at the last minute, the station's total and record. */
         get: operations["now_on_station"];
         put?: never;
         post?: never;
@@ -9753,6 +9753,7 @@ export interface components {
         ListenersNow: {
             /** @description Each enabled output read at the last minute. */
             outputs: components["schemas"]["OutputListeners"][];
+            record?: components["schemas"]["ListenersRecord"] | null;
             /**
              * @description Each server's listeners (master and relays), its outputs' parts
              *     added up; missing when it could not be read.
@@ -9764,6 +9765,16 @@ export interface components {
              *     when no server could be read.
              */
             total?: number | null;
+        };
+        /** @description The highest peak of a station's days. */
+        ListenersRecord: {
+            /**
+             * @description The day it was reached (station time, `YYYY-MM-DD`), the first one
+             *     on a tie.
+             */
+            day: string;
+            /** Format: int32 */
+            listeners: number;
         };
         /** @description A message on the live WebSocket. */
         LiveMessage: {

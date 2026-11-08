@@ -241,11 +241,11 @@ The layout works from phone width up: below 760 px the navigation moves to a men
 
 A line one character high stays at the bottom of every page, in the monospace font. From left to right:
 
-- **Decks A and B:** the state (`▶` playing, `⏸` paused, `—` empty), then the artist and title with the elapsed time. The deck the listeners hear (on air) is brighter, with a red `▶`. Titles that do not fit are cut with an ellipsis. A line one pixel high along the bottom of each deck's part shows how far its track has played, in the deck's colour. A click on a deck opens the On air page. `engine ?` replaces both while the engine is unreachable.
-- **Listeners:** the total of the current station, read like the [Statistics](statistics.md) page's: at most a minute old, and `–` when no server could be read (never `0`). A click opens the Statistics page.
+- **Decks A and B:** the state (`▶` playing, `⏸` paused, `—` empty), a badge, then the artist and title with the elapsed time. The deck the listeners hear is marked `[ON AIR]` in red and is brighter, with a red `▶`; the other deck, when a track is loaded in it, is marked `[NEXT]`. Titles that do not fit are cut with an ellipsis. How far each deck's track has played fills its part from the left, behind the text, in a light shade of the deck's colour with a line of the full colour along the bottom. A click on a deck opens the On air page. `engine ?` replaces both while the engine is unreachable.
+- **Listeners:** the total of the current station, read like the [Statistics](statistics.md) page's: at most a minute old, and `–` when no server could be read (never `0`). Then the station's **record**: the highest peak of any day kept in its totals, today's included (`record 128`); hovering it gives the day. A click opens the Statistics page.
 - **System** (operators and admins): `cpu 12% mem 41% load 0.4 0.5 0.6`. The CPU and memory turn to the warning colour from 80 % and to the alert colour from 95 %. Viewers do not get this part.
 
-While the live connection is down the bar greys out and says `offline`. Below 760 px the system part goes first, then the titles shrink to the deck letter and its state. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
+While the live connection is down the bar greys out and says `offline`. Below 760 px the system part goes first, then the titles shrink to the deck letter, its state and its badge. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
 
 ### About
 
