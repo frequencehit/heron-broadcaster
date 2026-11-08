@@ -7,8 +7,10 @@ import {
   type AttemptEnding,
   type CalculationSummary,
   type ExactTimeOfDay,
+  attemptInUse,
   blocks,
   calculationResult,
+  cannotCalculate,
   chosenLabel,
   criteria,
   cutMs,
@@ -284,5 +286,28 @@ describe("attempts", () => {
     expect(chosenLabel({ ...track, chosen: "medley", parts_left_out: [3, 4] })).toBe(
       t("exactTimes.chosenMedleyShortened", { count: 2 }),
     );
+  });
+});
+
+describe("calculate now", () => {
+  it("only for the upcoming exact time, whose slot has not started", () => {
+    const past = exactTime({ at_unix_ms: AT - 60 * MIN, upcoming: false });
+    const next = exactTime({});
+    const later = exactTime({ at_unix_ms: AT + 30 * MIN });
+    const day = [past, next, later];
+    expect(cannotCalculate(next, day)).toBeNull();
+    expect(cannotCalculate(past, day)).toBe(t("exactTimes.calculateStarted"));
+    expect(cannotCalculate(later, day)).toBe(t("exactTimes.calculateNotNext"));
+    // Its slot queued, not started: still upcoming.
+    expect(cannotCalculate(exactTime({ planned: true }), [exactTime({ planned: true })])).toBeNull();
+  });
+
+  it("says who asked, and puts no attempt in use until one is chosen", () => {
+    const onDemand = calculation({ id: 9, trigger: "on_demand", requested_by: "ada", kept: 3 });
+    expect(triggerLabel(onDemand)).toBe(t("exactTimes.triggerOnDemand", { user: "ada" }));
+    expect(attemptInUse(onDemand, null)).toBeUndefined();
+    expect(attemptInUse(onDemand, { calculation_id: 9, attempt: 5 })).toBe(5);
+    expect(attemptInUse(calculation({ id: 1, kept: 3 }), null)).toBe(3);
+    expect(attemptInUse(calculation({ id: 1, kept: 3 }), { calculation_id: 9, attempt: 5 })).toBe(3);
   });
 });

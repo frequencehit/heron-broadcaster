@@ -1388,6 +1388,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exact-times/calculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * *Calculate now*: builds the fills of the upcoming exact time (the next
+         *     one whose slot has not started) from after what may not move, rotation's
+         *     own picks queued before the exact slot counted as not queued, and stores
+         *     them as a calculation. Nothing in the queue changes. Operators and
+         *     admins; `409` for another exact time.
+         */
+        post: operations["calculate_exact_now"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exact-times/calculations/{id}": {
         parameters: {
             query?: never;
@@ -4158,6 +4181,29 @@ export interface paths {
         get: operations["list_exact_times_on_station"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/exact-times/calculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * *Calculate now*: builds the fills of the upcoming exact time (the next
+         *     one whose slot has not started) from after what may not move, rotation's
+         *     own picks queued before the exact slot counted as not queued, and stores
+         *     them as a calculation. Nothing in the queue changes. Operators and
+         *     admins; `409` for another exact time.
+         */
+        post: operations["calculate_exact_now_on_station"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7207,6 +7253,24 @@ export interface components {
              */
             min_free_bytes: number;
         };
+        /** @description Which exact time to calculate now. */
+        CalculateRequest: {
+            /**
+             * Format: int64
+             * @description The upcoming exact time (Unix ms); the upcoming one when missing.
+             */
+            exact_at_unix_ms?: number | null;
+        };
+        /** @description A calculation made on demand. */
+        CalculatedNow: {
+            /** Format: int64 */
+            exact_at_unix_ms: number;
+            /**
+             * Format: int64
+             * @description The calculation's ID.
+             */
+            id: number;
+        };
         /** @description A calculation with its attempts. */
         CalculationDetail: components["schemas"]["CalculationSummary"] & {
             /**
@@ -7270,6 +7334,11 @@ export interface components {
              * @description The attempt kept, by its number.
              */
             kept?: number | null;
+            /**
+             * @description Who asked for it (*Calculate now*); missing once the user is
+             *     deleted.
+             */
+            requested_by?: string | null;
             stop: components["schemas"]["Stop"];
             trigger: components["schemas"]["Trigger"];
         };
@@ -13539,7 +13608,7 @@ export interface components {
          * @description Why fills were built, or that a pick followed the fill kept.
          * @enum {string}
          */
-        Trigger: "first" | "restart" | "queue_changed" | "hand_dropped" | "automatic" | "followed";
+        Trigger: "first" | "restart" | "queue_changed" | "hand_dropped" | "automatic" | "followed" | "on_demand";
         /**
          * @description Which roles require a second factor. With several stations, a user's
          *     highest role counts.
@@ -16945,6 +17014,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExactTimesDay"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    calculate_exact_now: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CalculateRequest"] | null;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalculatedNow"];
                 };
             };
             "4XX": {
@@ -22823,6 +22923,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExactTimesDay"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    calculate_exact_now_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CalculateRequest"] | null;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalculatedNow"];
                 };
             };
             "4XX": {

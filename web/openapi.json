@@ -3888,6 +3888,51 @@
         }
       }
     },
+    "/api/v1/exact-times/calculate": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "*Calculate now*: builds the fills of the upcoming exact time (the next\none whose slot has not started) from after what may not move, rotation's\nown picks queued before the exact slot counted as not queued, and stores\nthem as a calculation. Nothing in the queue changes. Operators and\nadmins; `409` for another exact time.",
+        "operationId": "calculate_exact_now",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CalculateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculatedNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/exact-times/calculations/{id}": {
       "get": {
         "tags": [
@@ -12113,6 +12158,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExactTimesDay"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/exact-times/calculate": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "*Calculate now*: builds the fills of the upcoming exact time (the next\none whose slot has not started) from after what may not move, rotation's\nown picks queued before the exact slot counted as not queued, and stores\nthem as a calculation. Nothing in the queue changes. Operators and\nadmins; `409` for another exact time.",
+        "operationId": "calculate_exact_now_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CalculateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculatedNow"
                 }
               }
             }
@@ -21677,6 +21778,41 @@
           }
         }
       },
+      "CalculateRequest": {
+        "type": "object",
+        "description": "Which exact time to calculate now.",
+        "properties": {
+          "exact_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The upcoming exact time (Unix ms); the upcoming one when missing."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CalculatedNow": {
+        "type": "object",
+        "description": "A calculation made on demand.",
+        "required": [
+          "id",
+          "exact_at_unix_ms"
+        ],
+        "properties": {
+          "exact_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The calculation's ID.",
+            "minimum": 0
+          }
+        }
+      },
       "CalculationDetail": {
         "allOf": [
           {
@@ -21837,6 +21973,13 @@
             "format": "int32",
             "description": "The attempt kept, by its number.",
             "minimum": 0
+          },
+          "requested_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who asked for it (*Calculate now*); missing once the user is\ndeleted."
           },
           "stop": {
             "$ref": "#/components/schemas/Stop"
@@ -37125,7 +37268,8 @@
           "queue_changed",
           "hand_dropped",
           "automatic",
-          "followed"
+          "followed",
+          "on_demand"
         ]
       },
       "TwoFactorSettings": {

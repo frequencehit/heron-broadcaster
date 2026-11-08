@@ -18,8 +18,10 @@ import {
   type ExactTimeOfDay,
   type ExactWindow,
   type Status,
+  attemptInUse,
   blocks,
   calculationResult,
+  cannotCalculate,
   chosenLabel,
   criteria,
   cutMs,
@@ -140,6 +142,7 @@ export function ExactTimes() {
             <ExactTime
               key={exact.at_unix_ms}
               exact={exact}
+              exactTimes={exactTimes}
               choice={days.data.choice?.exact_at_unix_ms === exact.at_unix_ms ? days.data.choice : null}
               askedCalculation={askedCalculation}
               askedAttempt={askedAttempt}
@@ -147,6 +150,11 @@ export function ExactTimes() {
           ) : (
             <Card>
               <Empty>{t("exactTimes.none")}</Empty>
+              {days.data.date === days.data.today && (
+                <div className="row" style={{ justifyContent: "center" }}>
+                  <CalculateNow reason={null} />
+                </div>
+              )}
             </Card>
           )}
         </div>
@@ -157,11 +165,13 @@ export function ExactTimes() {
 
 function ExactTime({
   exact,
+  exactTimes,
   choice,
   askedCalculation,
   askedAttempt,
 }: Readonly<{
   exact: ExactTimeOfDay;
+  exactTimes: readonly ExactTimeOfDay[];
   choice: Schemas["HandChoice"] | null;
   askedCalculation: number | null;
   askedAttempt: number | null;
@@ -180,6 +190,7 @@ function ExactTime({
       <div className="exact-columns">
         <Card title={t("exactTimes.calculationsFor", { time: shortTime(exact.at_unix_ms) })} className="exact-runs">
           <p className="muted small exact-help">{t("exactTimes.calculationsHelp")}</p>
+          <CalculateNow exactAt={exact.at_unix_ms} reason={cannotCalculate(exact, exactTimes)} />
           {exact.calculations.length === 0 && <Empty>{t("exactTimes.noCalculations")}</Empty>}
           <div className="stack exact-run-list">
             {exact.calculations.map((calculation) => (
@@ -210,9 +221,61 @@ function ExactTime({
   );
 }
 
+/**
+ * *Calculate now*: the fills of the upcoming exact time built on demand
+ * (`exactAt`, or the upcoming one when missing), then the new calculation
+ * shown. Disabled with `reason` for any other exact time.
+ */
+function CalculateNow({ exactAt, reason }: Readonly<{ exactAt?: number; reason: string | null }>) {
+  const canCalculate = useCan("operator");
+  const calculate = useAction(
+    () =>
+      unwrap(
+        api.POST("/api/v1/stations/{station_id}/exact-times/calculate", {
+          params: { path: here() },
+          body: exactAt === undefined ? {} : { exact_at_unix_ms: exactAt },
+        }),
+      ),
+    {
+      success: t("exactTimes.calculateDone"),
+      invalidate: [["exact-times"]],
+      onSuccess: (now) =>
+        setSearch({
+          day: renderDay(new Date(now.exact_at_unix_ms)),
+          at: now.exact_at_unix_ms,
+          calculation: now.id,
+          attempt: null,
+        }),
+    },
+  );
+  if (!canCalculate) {
+    return null;
+  }
+  return (
+    <div className="stack exact-calculate">
+      <button
+        type="button"
+        className="btn"
+        disabled={reason !== null || calculate.isPending}
+        title={reason ?? t("exactTimes.calculateHelp")}
+        onClick={() => calculate.mutate(undefined)}
+      >
+        {calculate.isPending ? (
+          <>
+            <span className="spinner" aria-hidden="true" /> {t("exactTimes.calculating")}
+          </>
+        ) : (
+          t("exactTimes.calculateNow")
+        )}
+      </button>
+      <span className="muted small">{reason ?? t("exactTimes.calculateHelp")}</span>
+    </div>
+  );
+}
+
 /** The attempt to show: the one asked for, else the one in use (chosen by hand, or kept). */
 function pickAttempt(detail: Detail, asked: number | null, choice: Schemas["HandChoice"] | null): Attempt | undefined {
-  const inUse = choice?.calculation_id === detail.id ? choice.attempt : detail.kept;
+  const inUse = attemptInUse(detail, choice) ?? detail.kept;
   return (
     detail.attempts.find((attempt) => attempt.number === asked) ??
     detail.attempts.find((attempt) => attempt.number === inUse) ??
@@ -448,7 +511,7 @@ function AttemptsCard({
   const visible = all ? shown : shown.slice(0, SHOWN);
   const span = spanOf(attempts, detail?.from_unix_ms ?? window.from, window);
   const current = detail ? pickAttempt(detail, askedAttempt, choice) : undefined;
-  const inUse = detail && (choice?.calculation_id === detail.id ? choice.attempt : detail.kept);
+  const inUse = detail && attemptInUse(detail, choice);
   const followed = selected.trigger === "followed";
   const title = followed
     ? t("exactTimes.followedOf", {
@@ -592,7 +655,7 @@ function AttemptDetail({
   }
   const kept = detail.attempts.find((other) => other.number === detail.kept) ?? detail.attempts[0] ?? attempt;
   const byHand = choice?.calculation_id === detail.id;
-  const inUse = byHand ? choice.attempt : detail.kept;
+  const inUse = attemptInUse(detail, choice);
   const status = endingStatus(attempt.ending, window);
   const isInUse = attempt.number === inUse && detail.can_choose;
   const canUse = canChoose && detail.can_choose && lands(attempt.ending) && attempt.number !== inUse;

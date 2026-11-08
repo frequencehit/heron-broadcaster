@@ -95,7 +95,14 @@ function detail(changes: Partial<Schemas["CalculationDetail"]> = {}): Schemas["C
   };
 }
 
-function show(options: { choice?: Schemas["HandChoice"] | null; role?: "viewer" | "admin"; calculation?: Partial<Schemas["CalculationDetail"]> } = {}) {
+function show(
+  options: {
+    choice?: Schemas["HandChoice"] | null;
+    role?: "viewer" | "admin";
+    calculation?: Partial<Schemas["CalculationDetail"]>;
+    past?: boolean;
+  } = {},
+) {
   chooseStation(1);
   navigate("/exact-times");
   answer({
@@ -113,7 +120,7 @@ function show(options: { choice?: Schemas["HandChoice"] | null; role?: "viewer" 
           slot: 0,
           met: null,
           planned: false,
-          upcoming: true,
+          upcoming: !options.past,
           calculations: [
             { ...SUMMARY, id: 39, trigger: "first", computed_at_unix_ms: AT - 30 * MIN },
             SUMMARY,
@@ -126,6 +133,7 @@ function show(options: { choice?: Schemas["HandChoice"] | null; role?: "viewer" 
     "GET /api/v1/stations/{station_id}/exact-times/calculations/{id}": detail(options.calculation),
     "POST /api/v1/stations/{station_id}/exact-times/calculations/{id}/attempts/{n}/use": undefined,
     "DELETE /api/v1/stations/{station_id}/exact-times/choice": undefined,
+    "POST /api/v1/stations/{station_id}/exact-times/calculate": { id: 42, exact_at_unix_ms: AT },
   });
   renderApp(<ExactTimes />, user(options.role ?? "admin"));
 }
@@ -205,5 +213,28 @@ describe("ExactTimes", () => {
     fireEvent.click(await screen.findByText("#3"));
     expect(await screen.findByText(t("exactTimes.outdated"))).toBeTruthy();
     expect(screen.queryByRole("button", { name: t("exactTimes.use") })).toBeNull();
+  });
+
+  it("calculates the upcoming exact time now, then shows its calculation", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: t("exactTimes.calculateNow") }));
+    await waitFor(() => expect(sent("POST /api/v1/stations/{station_id}/exact-times/calculate")).toHaveLength(1));
+    expect(sent("POST /api/v1/stations/{station_id}/exact-times/calculate")[0]?.options).toMatchObject({
+      body: { exact_at_unix_ms: AT },
+    });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("calculation")).toBe("42"));
+  });
+
+  it("does not calculate an exact time whose slot has started", async () => {
+    show({ past: true });
+    const button = await screen.findByRole("button", { name: t("exactTimes.calculateNow") });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(t("exactTimes.calculateStarted"))).toBeTruthy();
+  });
+
+  it("offers every attempt of a calculation made on demand, none being in use", async () => {
+    show({ calculation: { trigger: "on_demand", requested_by: "ada" } });
+    expect(await screen.findByRole("button", { name: t("exactTimes.use") })).toBeTruthy();
+    expect(screen.queryByText(t("exactTimes.playingAuto"))).toBeNull();
   });
 });

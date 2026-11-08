@@ -350,6 +350,8 @@ export function triggerLabel(calculation: CalculationSummary): string {
       return t("exactTimes.triggerHandDropped");
     case "automatic":
       return t("exactTimes.triggerAutomatic");
+    case "on_demand":
+      return t("exactTimes.triggerOnDemand", { user: calculation.requested_by ?? "?" });
     default:
       return calculation.by_hand ? t("exactTimes.triggerFollowedByHand") : t("exactTimes.triggerFollowed");
   }
@@ -405,4 +407,35 @@ export function chosenLabel(track: Schemas["AttemptTrack"]): string {
 /** The fit search's numbers in a row: `34 · 51 · 48`. */
 export function joined(values: readonly number[]): string {
   return values.map((value) => number(value)).join(" · ");
+}
+
+/**
+ * Whether *Calculate now* can build the fills of `exact`: only the upcoming
+ * exact time, the next one whose slot has not started; `null` when it can,
+ * else why not.
+ */
+export function cannotCalculate(exact: ExactTimeOfDay, exactTimes: readonly ExactTimeOfDay[]): string | null {
+  if (!exact.upcoming) {
+    return t("exactTimes.calculateStarted");
+  }
+  const next = exactTimes.find((other) => other.upcoming);
+  if (next && next.at_unix_ms !== exact.at_unix_ms) {
+    return t("exactTimes.calculateNotNext");
+  }
+  return null;
+}
+
+/**
+ * The attempt of a calculation in use: the one chosen by hand from it, else
+ * the one rotation kept; none for a calculation made on demand, which
+ * rotation does not follow until one of its attempts is used.
+ */
+export function attemptInUse(
+  calculation: { id: number; kept?: number | null; trigger: CalculationSummary["trigger"] },
+  choice: { calculation_id: number; attempt: number } | null | undefined,
+): number | undefined {
+  if (choice?.calculation_id === calculation.id) {
+    return choice.attempt;
+  }
+  return calculation.trigger === "on_demand" ? undefined : (calculation.kept ?? undefined);
 }
