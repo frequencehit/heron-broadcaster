@@ -3996,6 +3996,47 @@
         }
       }
     },
+    "/api/v1/exact-times/recalculate": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "*Recalculate now*: new fills for the next exact time at once, the picks\nqueued from the fill kept replaced as when the queue changes. Operators\nand admins; `409` when the queue follows no calculation for it, or\nnothing can be replaced.",
+        "operationId": "recalculate_exact_time",
+        "parameters": [
+          {
+            "name": "exact_at_unix_ms",
+            "in": "query",
+            "description": "The exact time (Unix ms): the next one the queue plans for by\ndefault.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recalculated"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gateway/state": {
       "get": {
         "tags": [
@@ -12254,6 +12295,56 @@
         ],
         "responses": {
           "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/exact-times/recalculate": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "*Recalculate now*: new fills for the next exact time at once, the picks\nqueued from the fill kept replaced as when the queue changes. Operators\nand admins; `409` when the queue follows no calculation for it, or\nnothing can be replaced.",
+        "operationId": "recalculate_exact_time_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "exact_at_unix_ms",
+            "in": "query",
+            "description": "The exact time (Unix ms): the next one the queue plans for by\ndefault.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recalculated"
+                }
+              }
+            }
+          },
           "4XX": {
             "content": {
               "application/json": {
@@ -31105,6 +31196,20 @@
           }
         }
       },
+      "Recalculated": {
+        "type": "object",
+        "description": "The calculation *Recalculate now* stored.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "Recipe": {
         "type": "object",
         "description": "How a medley is built.",
@@ -37155,6 +37260,7 @@
           "queue_changed",
           "hand_dropped",
           "automatic",
+          "by_hand",
           "followed"
         ]
       },
