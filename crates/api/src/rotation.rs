@@ -592,7 +592,7 @@ pub async fn load_elsewhere(
         let Some(state) = state else {
             continue;
         };
-        for (entry, at) in planned_starts(&state, now_ms).0 {
+        for (entry, at) in planned_starts(&state, now_ms, None).0 {
             origins.push((other.id(), true));
             recorded.push(Recorded {
                 track_id: entry.track.track_id,
@@ -674,7 +674,15 @@ fn known(length_ms: i64) -> i64 {
 /// When each waiting track should start, and when a track added after
 /// them would: what the decks still have to play up to where the next
 /// track starts, then the queue in order, each up to its transition.
-pub fn planned_starts(state: &PlayerState, now_ms: i64) -> (Vec<(&QueueEntry, i64)>, i64) {
+///
+/// `alternatives`: the entries of a match's two tracks, of which only one
+/// plays: both are planned at the same start, and the next track after
+/// the longer one (`docs/rotation.md#exact-times`).
+pub fn planned_starts(
+    state: &PlayerState,
+    now_ms: i64,
+    alternatives: Option<(u64, u64)>,
+) -> (Vec<(&QueueEntry, i64)>, i64) {
     let remaining = state
         .decks
         .iter()
@@ -694,9 +702,20 @@ pub fn planned_starts(state: &PlayerState, now_ms: i64) -> (Vec<(&QueueEntry, i6
         .unwrap_or(0);
     let mut at = now_ms + remaining;
     let mut planned = Vec::new();
+    // The first of a match's two tracks met: its start and length.
+    let mut first_of_two: Option<(i64, i64)> = None;
     for entry in state.waiting() {
         // A cued fallback track gives way to anything queued.
         if entry.track.source == PlaySource::Fallback {
+            continue;
+        }
+        let alternative =
+            alternatives.is_some_and(|(a, b)| entry.entry_id == a || entry.entry_id == b);
+        if alternative && let Some((start, next)) = first_of_two.take() {
+            // The other one plays instead: at the same time, and what
+            // follows after the longer.
+            planned.push((entry, start));
+            at = start + next.max(planned_next_ms(entry));
             continue;
         }
         // An exact time: the engine starts it then at the latest.
@@ -706,6 +725,9 @@ pub fn planned_starts(state: &PlayerState, now_ms: i64) -> (Vec<(&QueueEntry, i6
         planned.push((entry, at));
         // A jingle over the cued track's intro takes no time of its own.
         if state.cued_jingle.as_deref() != Some(entry) {
+            if alternative {
+                first_of_two = Some((at, planned_next_ms(entry)));
+            }
             at += planned_next_ms(entry);
         }
     }
@@ -1094,7 +1116,7 @@ mod planning_tests {
             u64::from(u32::MAX),
             vec![entry(2, 180_000, PlaySource::Rotation)],
         );
-        let (planned, at) = planned_starts(&state, 0);
+        let (planned, at) = planned_starts(&state, 0, None);
         // A usual track's length from where it is, then the queued one.
         assert_eq!(planned[0].1, UNKNOWN_LENGTH_MS - 10_000);
         assert_eq!(at, UNKNOWN_LENGTH_MS - 10_000 + 180_000);
@@ -1108,7 +1130,7 @@ mod planning_tests {
             200_000,
             vec![entry(2, u32::MAX, PlaySource::Fallback)],
         );
-        let (planned, at) = planned_starts(&state, 0);
+        let (planned, at) = planned_starts(&state, 0, None);
         assert!(planned.is_empty());
         assert_eq!(at, 190_000);
         // A track of unknown length in the queue counts as a usual one.

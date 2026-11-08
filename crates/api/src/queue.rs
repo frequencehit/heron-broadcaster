@@ -44,6 +44,9 @@ pub struct QueueManager {
     wake: Notify,
     /// Rotation could pick nothing: no new try before then.
     idle_until: Mutex<Option<Instant>>,
+    /// The best fill before the next exact time, followed by the next
+    /// picks while it still lands (`docs/rotation.md#exact-times`).
+    plan: Mutex<Option<heron_rotation::Plan>>,
 }
 
 /// A library track as the engine needs it.
@@ -293,6 +296,7 @@ impl QueueManager {
             stations,
             wake: Notify::new(),
             idle_until: Mutex::new(None),
+            plan: Mutex::new(None),
         })
     }
 
@@ -427,8 +431,10 @@ impl QueueManager {
             return Ok(());
         }
         let now = rotation::now_ms();
+        // A match's two tracks: one plays.
+        let alternatives = crate::matches::alternatives(&self.pool, self.station_id, state).await?;
         // A show on air (the Top 30) queues its programme in its hours.
-        let (_, planned_end) = rotation::planned_starts(state, now);
+        let (_, planned_end) = rotation::planned_starts(state, now, alternatives);
         if self.fill_show(planned_end, missing).await? {
             return Ok(());
         }
@@ -446,10 +452,17 @@ impl QueueManager {
             }
             None => history,
         };
-        let (planned, mut at) = rotation::planned_starts(state, now);
+        let (planned, mut at) = rotation::planned_starts(state, now, alternatives);
         let mut history = rotation::with_queue(&self.pool, &library, history, &planned).await?;
         let mut last = rotation::last_position(&self.pool, self.station_id).await?;
         let mut rng = Rng::new(rotation::seed());
+        // The best fill before an exact time, kept from a fill to the next
+        // while it still lands.
+        let mut plan = self
+            .plan
+            .lock()
+            .map(|mut plan| plan.take())
+            .unwrap_or_default();
         let mut picks = Vec::new();
         // Play ratio counters moved by these picks, saved once queued.
         let mut counters = Vec::new();
@@ -457,8 +470,14 @@ impl QueueManager {
         let mut planner = crate::matches::planner(&self.pool, self.station_id).await?;
         let mut planned_match = None;
         'picking: for _ in 0..missing {
-            let outcome =
-                heron_rotation::next_outcome(&library, &history, at, last.as_ref(), &mut rng);
+            let outcome = heron_rotation::next_planned(
+                &library,
+                &history,
+                at,
+                last.as_ref(),
+                &mut rng,
+                &mut plan,
+            );
             counters.extend(library.count_down(outcome.offered()));
             let Some(pick) = outcome.pick else {
                 break;
@@ -484,11 +503,15 @@ impl QueueManager {
                 picks.push(pick);
             }
             if let Some(planner) = planner.as_mut()
-                && let Some(planned) = planner.after(&library, &history, at, &mut picks, &mut rng)
+                && let Some(planned) =
+                    planner.after(&library, &history, at, last.as_ref(), &mut picks, &mut rng)
             {
                 planned_match = Some(planned);
                 break;
             }
+        }
+        if let Ok(mut kept) = self.plan.lock() {
+            *kept = plan;
         }
         if picks.is_empty() {
             // Tracks held back by their ratio moved: they play sooner.
@@ -602,7 +625,14 @@ impl QueueManager {
     /// it: they no longer fit. In hard mode the engine cuts them.
     async fn trim_before_exact(&self, state: &PlayerState) -> ApiResult<()> {
         let now = rotation::now_ms();
-        let (planned, _) = rotation::planned_starts(state, now);
+        if !state
+            .waiting()
+            .any(|entry| entry.track.start_at_unix_ms.is_some())
+        {
+            return Ok(());
+        }
+        let alternatives = crate::matches::alternatives(&self.pool, self.station_id, state).await?;
+        let (planned, _) = rotation::planned_starts(state, now, alternatives);
         let Some(timed) = planned
             .iter()
             .position(|(entry, _)| entry.track.start_at_unix_ms.is_some())

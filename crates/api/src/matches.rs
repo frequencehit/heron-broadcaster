@@ -23,7 +23,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use heron_core::Module;
 use heron_core::shows::{self as core_shows, Show, ShowSettings, Week};
-use heron_rotation::{History, Library, Pick, Play, Rng};
+use heron_rotation::{History, Library, Pick, Play, Position, Rng};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
@@ -365,13 +365,15 @@ impl Planner {
     }
 
     /// After rotation's last pick (the end of `picks`, planned to end at
-    /// `at`): when it carries a match, links the announcement to it and
-    /// adds the two tracks after it. Otherwise counts it.
+    /// `at`, the clock at `last`): when it carries a match, links the
+    /// announcement to it and adds the two tracks after it. Otherwise
+    /// counts it.
     pub fn after(
         &mut self,
         library: &Library,
         history: &History,
         at: i64,
+        last: Option<&Position>,
         picks: &mut Vec<Pick>,
         rng: &mut Rng,
     ) -> Option<Planned> {
@@ -402,15 +404,15 @@ impl Planner {
         }
         let mut excluded = self.excluded.clone();
         excluded.push(a.track);
-        let b = heron_rotation::from_category(
-            library,
-            &with_a,
-            at,
-            self.category,
-            &excluded,
-            true,
-            rng,
-        )?;
+        // Before an exact time, B lasts about as long as A: planning counts
+        // the longer, and either lands the hour in the window.
+        let b = match heron_rotation::exact_ahead(library, history, at, last) {
+            Some(window) => self.close_to(library, &with_a, at, &excluded, &a, window, rng),
+            None => None,
+        }
+        .or_else(|| {
+            heron_rotation::from_category(library, &with_a, at, self.category, &excluded, true, rng)
+        })?;
         // The announcement, in turn and without separation rules, takes the
         // place of a linked slot's jingle.
         let announcement = self.settings.jingle_category_id.and_then(|jingles| {
@@ -442,6 +444,46 @@ impl Planner {
             a: vote + 1,
             b: vote + 2,
             planned_at_ms: at,
+        })
+    }
+}
+
+impl Planner {
+    /// B, picked as usual among the tracks of the match's category whose
+    /// next track starts within the window's width of A's (its early
+    /// tolerance in hard mode), that width doubled up to three times when
+    /// none can be picked (`docs/rotation.md#exact-times`).
+    #[allow(clippy::too_many_arguments)]
+    fn close_to(
+        &self,
+        library: &Library,
+        history: &History,
+        at: i64,
+        excluded: &[u64],
+        a: &Pick,
+        window: heron_rotation::exact::Window,
+        rng: &mut Rng,
+    ) -> Option<Pick> {
+        let a_next = i64::from(a.next_ms(library));
+        let members: Vec<(u64, i64)> = library
+            .categories
+            .get(&self.category)
+            .into_iter()
+            .flat_map(|category| &category.members)
+            .filter_map(|member| library.tracks.get(&member.track))
+            .map(|track| (track.id, i64::from(track.next_ms())))
+            .collect();
+        let width = (window.cut_ms - window.from_ms).max(1_000);
+        (0..4).find_map(|doubled| {
+            let tolerance = width << doubled;
+            let mut out = excluded.to_vec();
+            out.extend(
+                members
+                    .iter()
+                    .filter(|(_, next)| (next - a_next).abs() > tolerance)
+                    .map(|(id, _)| *id),
+            );
+            heron_rotation::from_category(library, history, at, self.category, &out, true, rng)
         })
     }
 }
@@ -1219,6 +1261,23 @@ pub(crate) async fn lock(
     Ok(Some(Lock::new(&found, player)))
 }
 
+/// The queue entries of the two tracks of the station's match waiting or
+/// open, for the engine's state `player`: only one of them plays, so
+/// planning counts them as one ([`crate::rotation::planned_starts`]).
+pub(crate) async fn alternatives(
+    pool: &MySqlPool,
+    station_id: u64,
+    player: &PlayerState,
+) -> ApiResult<Option<(u64, u64)>> {
+    let Some(found) = pending(pool, station_id).await? else {
+        return Ok(None);
+    };
+    Ok(
+        (player.engine_started_at_unix_ms == found.engine_started_at)
+            .then_some((found.entry_a_id, found.entry_b_id)),
+    )
+}
+
 /// Before skipping the track on air: when it is the vote's track of an
 /// open vote, closes the vote with the votes so far, so that the winner
 /// starts.
@@ -1829,6 +1888,8 @@ pub async fn public_state(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     /// The waiting entries `order`, the match's being 10 (its announcement),
@@ -1973,5 +2034,178 @@ mod tests {
         assert!(!planner(4, 0, None).due(at("2026-11-10T18:10:00Z"), minutes(3)));
         assert!(!planner(4, 0, None).due(at("2026-11-09T18:58:00Z"), minutes(3)));
         assert!(!planner(4, 0, None).due(start, 59_000));
+    }
+
+    /// A station whose clock has a news flash at the top of each hour
+    /// (`mode`) and songs of 2:30 to 5:30 from the match's category.
+    fn station(mode: heron_rotation::ExactMode) -> Library {
+        use heron_rotation::{
+            Category, Clock, ExactTime, LibraryParts, Member, Method, RotationSettings, Schedule,
+            SeparationOverrides, Slot, Track,
+        };
+        let mut rng = Rng::new(42);
+        let track = |id: u64, length_ms: u32| Track {
+            id,
+            title_key: Some(format!("title {id}")),
+            album_key: Some(format!("album {id}")),
+            artists: vec![1_000 + id],
+            categories: vec![],
+            length_ms,
+            mix_ms: None,
+            ratio: 10,
+            dayparts: None,
+            daypart_days: None,
+        };
+        let mut tracks: Vec<Track> = (1..=300)
+            .map(|id| track(id, 150_000 + u32::try_from(rng.below(180_000)).unwrap()))
+            .collect();
+        tracks.push(track(500, 120_000));
+        tracks.extend((600..612).map(|id| track(id, 3_000 + (id as u32 - 600) * 450)));
+        let category = |id: u64, members: &[u64], separation: SeparationOverrides| Category {
+            id,
+            name: format!("C{id}"),
+            separation,
+            members: members
+                .iter()
+                .map(|&track| Member { track, weight: 1.0 })
+                .collect(),
+        };
+        let often = SeparationOverrides {
+            track_min: Some(10),
+            title_min: Some(10),
+            artist_min: Some(0),
+            album_min: Some(0),
+            ..SeparationOverrides::default()
+        };
+        let slot = |category: u64, exact: Option<ExactTime>| Slot {
+            category,
+            method: Method::LeastRecentlyPlayed,
+            enforce_rules: true,
+            separation: SeparationOverrides::default(),
+            linked_to_next: false,
+            exact,
+        };
+        let news = ExactTime {
+            at_s: 0,
+            mode,
+            before_s: 10,
+            after_s: 30,
+            medley_fill: false,
+            cut_live: false,
+        };
+        let mut slots = vec![slot(2, Some(news))];
+        slots.extend((0..16).map(|_| slot(1, None)));
+        Library::new(
+            LibraryParts {
+                tracks,
+                categories: vec![
+                    category(
+                        1,
+                        &(1..=300).collect::<Vec<_>>(),
+                        SeparationOverrides::default(),
+                    ),
+                    category(2, &[500], often),
+                    category(3, &(600..612).collect::<Vec<_>>(), often),
+                ],
+                clocks: vec![Clock {
+                    id: 1,
+                    name: "Hour".into(),
+                    looping: false,
+                    slots,
+                }],
+                schedule: Schedule {
+                    hours: HashMap::from_iter(
+                        (1..=7).flat_map(|day| (0..24).map(move |hour| ((day, hour), 1))),
+                    ),
+                    ..Schedule::default()
+                },
+                settings: RotationSettings {
+                    filler_category_id: Some(3),
+                    ..RotationSettings::default()
+                },
+                ..LibraryParts::default()
+            },
+            TimeZone::UTC,
+        )
+    }
+
+    #[test]
+    fn a_match_before_an_exact_time_lands_whichever_track_wins() {
+        use heron_rotation::ExactMode;
+        let top = at("2026-11-09T19:00:00Z");
+        for mode in [ExactMode::Soft, ExactMode::Hard] {
+            let library = station(mode);
+            for seed in 0..6 {
+                let mut rng = Rng::new(seed);
+                let mut history = History::default();
+                let mut plan = None;
+                let mut at = at("2026-11-09T18:36:00Z");
+                let mut last = None;
+                let pick = |history: &mut History,
+                            at: &mut i64,
+                            last: &mut Option<Position>,
+                            plan: &mut Option<heron_rotation::Plan>,
+                            rng: &mut Rng| {
+                    let pick = heron_rotation::next_planned(
+                        &library,
+                        history,
+                        *at,
+                        last.as_ref(),
+                        rng,
+                        plan,
+                    )
+                    .pick
+                    .unwrap();
+                    let track = &library.tracks[&pick.track];
+                    *at = pick.explanation.at_unix_ms;
+                    history.push(Play::of(track, *at));
+                    *at += i64::from(pick.next_ms(&library));
+                    if pick.position.is_some() {
+                        *last = pick.position;
+                    }
+                    pick
+                };
+                // The vote's track, then the match.
+                let vote = pick(&mut history, &mut at, &mut last, &mut plan, &mut rng);
+                let mut picks = vec![vote];
+                let mut planner = planner(4, 0, None);
+                let planned = planner
+                    .after(&library, &history, at, last.as_ref(), &mut picks, &mut rng)
+                    .expect("a match is due");
+                let next = |index: usize| i64::from(picks[index].next_ms(&library));
+                let (a, b) = (next(planned.a), next(planned.b));
+                let window = library.clocks[&1].slots[0].exact.unwrap().window(top);
+                assert!(
+                    (a - b).abs() <= window.cut_ms - window.from_ms,
+                    "{mode:?}, seed {seed}: {a} {b}"
+                );
+                // Planned with the longer: two more tracks queued after it.
+                for track in [picks[planned.a].track, picks[planned.b].track] {
+                    history.push(Play::of(&library.tracks[&track], at));
+                }
+                let after_match = at;
+                at += a.max(b);
+                let queued: Vec<i64> = (0..2)
+                    .map(|_| pick(&mut history, &mut at, &mut last, &mut plan, &mut rng))
+                    .map(|pick| i64::from(pick.next_ms(&library)))
+                    .collect();
+                for winner in [a, b] {
+                    // The loser goes at the close: what follows moves.
+                    let mut at = after_match + winner + queued.iter().sum::<i64>();
+                    let (mut history, mut last, mut plan, mut rng) =
+                        (history.clone(), last, plan.clone(), Rng::new(seed + 100));
+                    let exact = loop {
+                        let pick = pick(&mut history, &mut at, &mut last, &mut plan, &mut rng);
+                        if let Some(exact) = pick.explanation.exact {
+                            break exact;
+                        }
+                    };
+                    assert!(
+                        exact.in_window && !exact.faded,
+                        "{mode:?}, seed {seed}, winner {winner}: {exact:?}"
+                    );
+                }
+            }
+        }
     }
 }

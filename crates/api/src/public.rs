@@ -98,7 +98,7 @@ pub const MAX_UPCOMING: usize = 10;
 /// comes with its queue entry ID, to tell a change.
 pub fn upcoming(player: &PlayerState, now_ms: u64) -> Vec<(u64, UpcomingTrack)> {
     let now = i64::try_from(now_ms).unwrap_or(i64::MAX);
-    let (planned, _) = crate::rotation::planned_starts(player, now);
+    let (planned, _) = crate::rotation::planned_starts(player, now, None);
     planned
         .into_iter()
         .filter(|(entry, _)| !entry.track.no_metadata)
