@@ -1,6 +1,6 @@
 # Listener interaction
 
-Listeners take part from the station's website: they ask for a song with a dedication, choose the next song, say whether they like the track playing. Each of these is a **show module** (*Dedications*, *Match*, *Top 30*, and *Likes*), built on the common base described here: a public gateway, opening hours, a page and a widget for the website, and notifications. Built in [M18](roadmap/m18-listener-interaction.md); each show adds its own part on top.
+Listeners take part from the station's website: they ask for a song with a dedication, choose the next song, say whether they like the track playing. Each of these is a **show module** (*Dedications*, *Match*, *Tops*, and *Likes*), built on the common base described here: a public gateway, opening hours, a page and a widget for the website, and notifications. Built in [M18](roadmap/m18-listener-interaction.md); each show adds its own part on top.
 
 ## The pieces
 
@@ -78,11 +78,13 @@ Reads answer any origin (`Access-Control-Allow-Origin: *`), like the API's publi
 
 ## Shows and their hours
 
-The shows are [modules](modules.md): *Dedications* (`dedications`), *Match* (`match`), *Top 30* (`top30`), off until an admin turns them on, and *Likes* (`likes`), on by default. Each has, per station, its settings (`GET`, `PUT /stations/{id}/shows/{module}`, operators):
+The shows are [modules](modules.md): *Dedications* (`dedications`), *Match* (`match`), *Tops* (`top30`), off until an admin turns them on, and *Likes* (`likes`), on by default. Each has, per station, its settings (`GET`, `PUT /stations/{id}/shows/{module}`, operators):
 
 - **Opening hours**, in **whole hours**, in the station's time zone: ranges of days and hours (Monday to Friday, 17:00 to 18:00; up to 24:00). `enabled` off closes the show whatever its hours.
 - **An hour belongs to one show at most**, on a station: saving hours that another show of the station has is refused (`409`, saying which hours and which show). The hours of a show that is off or not enabled still count, so that turning it back on finds them free.
 - **Outside its hours**, a show's API refuses writes (`409`) and its widget says when it opens next.
+
+The [tops](#tops) are shows too, several per station, each with its own settings (`/stations/{id}/tops/…`) and its show as a recurrence with minutes (*every Sunday, 18:00 to 20:00*) instead of whole hours; a Match or Dedications hour a top's show touches is theirs as well.
 
 [Likes](#likes) have no hours: they are open all the time (while *enabled*), and do not take hours from the others. Saving hours for them is refused (`422`).
 
@@ -141,7 +143,7 @@ The website's styles do not reach inside the widget, but its own stylesheet can 
 | `now-playing`, `track`, `cover` | The track playing, a track's name, a cover |
 | `duel`, `question`, `choice`, `versus`, `percent`, `bar`, `countdown` | The match: the two tracks, the question above them, each track to vote for, *against* between them, its share, its bar, the countdown |
 | `votes`, `vote-button` | The likes' buttons |
-| `chart`, `rank`, `movement`, `tag`, `new-release` | The Top 30: the chart, a rank, its movement, a badge, the new release |
+| `chart`, `rank`, `movement`, `tag`, `new-release` | A top: the chart, a rank, its movement, a badge, the new release |
 | `field`, `input`, `results`, `result`, `send-button`, `quote`, `steps`, `today` | The dedications: a field, a text box, the tracks found, one of them, the button sending it, the message, the steps of a request, today's dedications |
 | `pill`, `link`, `error` | A small status badge, a link-like button, an error |
 
@@ -163,7 +165,7 @@ Each show tells the team or the community what happens, through the station's [w
   - `show.upcoming`: a set time before it opens (60 minutes by default, 1 to 1440);
   - `show.started`, with the time it ends;
   - `show.ended`, with the next opening;
-  - and each show's own events (the [Dedications](#dedications)', the [Match](#match)'s and the [Top 30](#top-30)'s);
+  - and each show's own events (the [Dedications](#dedications)', the [Match](#match)'s and the [Tops](#tops)');
 - **the language** of the dates in the messages (English, French, Spanish, German).
 
 Placeholders in the messages: `{name}` (the show's title on the website), `{link}` (the website's page of the show, else its page on the gateway), `{end}` (the time it closes, `18:00`), `{next}` (the next opening, `Monday 9 November 17:00`). An unknown placeholder is refused (`422`). A show adds its own (`{artist}`, `{title}`…).
@@ -174,7 +176,7 @@ Events are not sent while the webhooks or the show are turned off, nor for times
 
 ## Likes
 
-*Likes* (`likes`) let listeners say whether they like the track playing. A show with no hours, **on by default**: open all the time while the module is on and the show *enabled*. The weekly [Top 30](#top-30) ranks the tracks on these votes. Like every show, it reaches listeners through the gateway: nothing is voted on until `heron-public` runs.
+*Likes* (`likes`) let listeners say whether they like the track playing. A show with no hours, **on by default**: open all the time while the module is on and the show *enabled*. The [Tops](#tops) rank the tracks on these votes and their plays. Like every show, it reaches listeners through the gateway: nothing is voted on until `heron-public` runs.
 
 ### Voting
 
@@ -190,7 +192,7 @@ The **share of likes**, `likes / (likes + dislikes)`, shown with the number of v
 
 ### What is kept
 
-- **Per play**, the likes and dislikes of each play, with its station, its track and when it started, kept as long as the history. Heron adds them up per track and per station: over this week, 30 days or always, the week's most and least liked tracks, and the week the [Top 30](#top-30) ranks.
+- **Per play**, the likes and dislikes of each play, with its station, its track and when it started, kept as long as the history. Heron adds them up per track and per station: over this week, 30 days or always, the week's most and least liked tracks, and the periods the [Tops](#tops) rank.
 - **Per device**, the device's hash and its vote on a play, so that a device changes its vote instead of adding one: deleted an hour after the play ends, and a day after the vote at the latest. No IP address.
 
 The votes are in the database dump of the [backups](backups.md), with the history, not in the configuration file.
@@ -204,61 +206,116 @@ The votes are in the database dump of the [backups](backups.md), with the histor
 
 ### Notifications
 
-No notification per vote: there would be too many. Likes have no hours, so they send no `show.upcoming`, `show.started` or `show.ended` either. The week's results go out with the [Top 30](#top-30).
+No notification per vote: there would be too many. Likes have no hours, so they send no `show.upcoming`, `show.started` or `show.ended` either. The results go out with the [Tops](#tops).
 
 ### On the website
 
 The page and the small widget show the track playing with two buttons, *I like* and *I don't like*. The one chosen stays pressed until the track ends; another click changes the vote. While nothing can be voted on (a jingle, nothing on air), they say so. Nothing is kept in the browser.
 
-## Top 30
+## Tops
 
-*Top 30* (`top30`) is a weekly show: once a week, for two hours, the station plays the 30 tracks its listeners liked most that week, counting down from 30 to 1, then a new release. Heron builds the chart from the [likes](#likes) and plays the show on its own. Off until an admin turns the module on.
+*Tops* (`top30`) are the station's charts, played on air: each **top** ranks the tracks of a period by their plays and their [likes](#likes), freezes its chart when the period ends, and plays it in its show, counting down from its last rank to number 1, then a new release. A station has as many tops as it wants (*the Top 30 of the week*, *the Top 3 of the evening*, *the Top 50 of the month*), each with its own chart, period and show. Off until an admin turns the module on (its key stays `top30`).
+
+### A top
+
+Each top has, per station:
+
+- **a name** (60 characters, *Top 3 of the evening*), its title on the website unless *On the website* gives another;
+- **a size**: 3, 5, 10, 20, 30, 40 or 50, shown *Top 30*. With fewer ranked tracks the chart is shorter: 12 ranked tracks make a Top 12, and the show counts down from 12;
+- **a period**, **a score**, **eligible tracks**, **a show** and its jingles and new release, described below;
+- **On the website** and **notifications**, as every show has them, its own.
+
+*Enabled* off, a top plays nothing, its page and widget on the website stay closed and it sends nothing; its charts are still frozen. A top can be deleted, with its charts.
+
+### The period
+
+What the chart counts, in the station's time zone:
+
+- **The last 7 days** (`rolling_7_days`): frozen just before each show of the top, when its programme is built, over the 7 days before the show opens. A top without a show freezes nothing: its chart is the last 7 days, live.
+- **The week** (`week`): from a **reset**, a day of the week and a time (Sunday 17:00), to the next.
+- **The month** (`month`): from a reset, a day of the month (1 to 28) and a time (the 1st at 00:00), to the next.
+
+**The reset is the freeze**: the chart of a week or a month runs from one reset to the next, and is frozen at that moment, while the next one starts. Every play counts for one chart: there is no gap between two periods.
+
+A chart is named by the day it is frozen (`2026-11-08`, in the station's time zone): the reset that ends it, or the show it is frozen for.
+
+### The score
+
+```
+score = p × plays + (1 − p) × likes
+```
+
+- **`p`**, *plays or votes*, 0 to 100 % by steps of 10: at 100 %, the most played tracks; at 0 %, the most liked, as the Top 30 ranked them before.
+- **plays**: the track's plays in the period, divided by the plays of the most played eligible track (which counts 100 %). Plays during a top's show (its slot, from when it opens to when it closes, any top of the station) do not count: a top would feed itself.
+- **likes**: the share of likes, `likes / (likes + dislikes)`, of the plays in the period. A track without a vote counts 0.
+- **Minimum votes** to enter the chart (10 by default, 0 to 1000): 0, plays alone are enough. A track below it is listed apart, *not enough votes*, with the rank its score would give it.
+- **Ties** go to the track with the most votes, then the most plays, then the oldest track. A track scoring 0 is not ranked.
+- **Eligible tracks**: the tracks of the **eligible categories** of the top; none chosen: every category of the station whose type sends metadata (its music).
+
+The chart keeps each rank's plays, its share of the most played, its likes and dislikes, and its score: the page draws the score as two parts, the plays' and the likes'.
 
 ### The chart
 
-- **The week**: from Monday 00:00 to its **close**, a day and an hour of the week (Sunday 17:00 by default), in the station's time zone. The plays that started in it count. Votes on plays after the close and before Monday count for no chart.
-- **Ranked by the score of the likes**: the share of likes, among the tracks with at least the **minimum votes** (10 by default) over the week. Ties go to the track with the most votes, then the oldest track.
-- **Eligible tracks**: the tracks of the **eligible categories**, chosen by the station; none chosen: every category of the station whose type sends metadata (its music). Only music is voted on anyway.
-- **Its size**: 30 tracks by default, 1 to 50. With fewer ranked tracks the chart is shorter: 12 ranked tracks make a Top 12, and the show counts down from 12.
-- **Frozen at the close**: the chart is kept as it stands then, and does not change any more. Charts are kept for good, one per week, and can be browsed.
-- **Movements**, against the chart of the week before: up or down so many places, the same place, **new** (never in a chart before) or **re-entry** (in an earlier chart, not last week's). And the **weeks in the chart**, this one included.
-- **One chart per station**, from the votes on that station: stations that share their music still have their own listeners.
-- **No limit of weeks**: a track can stay at number 1 as long as listeners like it most. There is no *gold* list for now.
+- **Live** until it is frozen, then kept as it stood, for good. The page also shows the next ranks after the size, greyed, to see who is just behind, and the tracks without enough votes.
+- **Movements**, against the top's previous chart: up or down so many places, the same place, **new** (never in one of its charts before) or **re-entry** (in an earlier one, not the previous). And the **charts it was in**, this one included.
+- **One chart per top and per station**, from the plays and votes on that station: stations that share their music still have their own listeners.
+- **No limit**: a track can stay at number 1 as long as it scores the most. There is no *gold* list for now.
 
-**Taking a track out.** A programmer can take a track out of the chart of the week, or of a closed chart whose show has not started yet (a track removed from the library, a mistake). The tracks after it move up, and the chart keeps the tracks taken out, with who did it and when. It can be put back under the same condition. Once the show has started from a chart, the chart cannot change (`409`).
+**Taking a track out.** A programmer can take a track out of the live chart, or of a frozen chart whose show has not started yet (a track removed from the library, a mistake). The tracks after it move up, and the chart keeps the tracks taken out, with who did it and when. It can be put back under the same condition. Once a show has started from a chart, the chart cannot change (`409`).
 
 ### The show
 
-The show's **hours are its slot** in the schedule: Sunday 18:00 to 20:00, say. They are the show's [hours](#shows-and-their-hours), which no other show can take; outside them, the clocks play as usual.
+A top's show is **a recurrence and hours**, in the station's time zone:
 
-- **The programme is built when the show starts**: when the queue manager needs the first track planned in the slot (with the queue's depth, a few minutes before at most). It plays the **latest chart closed before the slot starts**: with a close at Sunday 17:00 and a show at 18:00, the chart of the week that just ended.
-- **The order**: a jingle, number 30, a jingle, number 29… number 1, a jingle, then **the new release**. The jingles come from the **jingle category** of the show: a jingle of a rank when the category has one (its title ends with the rank after a dash or `#`: *Top 30 – 12*, *Top 30 #12*), else the category's other jingles in turn, the least recently played first. Without a jingle category, the tracks follow one another.
-- **Fitted to the slot**: when the programme is longer than the slot, the lowest ranks are left out, with their jingles, until it fits (the new release stays). The show's page says so before the show. When it is shorter, rotation fills the rest of the slot, as the hour's clock says.
-- **Rules**: separation rules do not apply inside the show (a track at number 1 for weeks plays every week, and two tracks of the same artist can follow each other). **Restrictions do**: a track a restriction forbids at its planned time is passed over, with its jingle, and the show's page says why. So is a track that cannot play any more (disabled, missing, out of the station's library).
-- **In the queue**: the programme's tracks are queued in order as the queue needs them, like rotation's (`queue.min_queued` ahead), each jingle linked to its track. With autofill off, nothing is queued: the show does not play either. They are rotation's plays in the history, not in the rotation log: the show's page lists the programme. A programme started plays to its end, even when the slot is over, and is not built again.
+- **every day**, **every** Sunday (a day of the week), or **the 1st, 2nd, 3rd, 4th or last** Sunday of the month;
+- **from** a time **to** a time (18:00 to 20:00, minutes included; up to 24:00, not across midnight).
+
+No show: the top's charts are kept, and nothing plays.
+
+- **It plays the latest chart frozen before the show opens**: a weekly top reset on Sunday at 17:00 and played at 18:00 plays the week that just ended; a monthly top played on the 1st Sunday plays last month's. A top of the last 7 days freezes its chart for the show, when the programme is built.
+- **Two tops on the same slot** (their hours overlap on a day both play): the **rarer recurrence takes it that day**, a day of the month before a day of the week before every day. The other gives way for that day: it does not play at all then, and the list of tops says so. Two tops of the same rarity whose hours overlap (two every day, two on Sundays, the 1st Sunday and the 1st Sunday, the 4th and the last) are refused when saved (`422`), saying which. A top that is not enabled takes no slot from the others, but its hours still count for that check.
+- **Its hours are its own**, as every show's: a Match or Dedications hour (whole hours) that a top's show touches, on a day it can play, is refused when either is saved (`409`, saying which). Outside the tops' shows, the clocks play as usual.
+- **The programme is built when the show starts**: when the queue manager needs the first track planned in the slot (with the queue's depth, a few minutes before at most).
+- **The order**: a jingle, the last rank, a jingle… number 1, a jingle, then **the new release**. The jingles come from the **jingle category** of the top: a jingle of a rank when the category has one (its title ends with the rank after a dash or `#`: *Top 30 – 12*, *Top 30 #12*), else the category's other jingles in turn, the least recently played first. Without a jingle category, the tracks follow one another.
+- **Fitted to the slot**: when the programme is longer than the slot, the lowest ranks are left out, with their jingles, until it fits (the new release stays). The show's tab says so before the show. When it is shorter, rotation fills the rest of the slot, as the hour's clock says.
+- **Rules**: separation rules do not apply inside the show (a track at number 1 for weeks plays every week, and two tracks of the same artist can follow each other). **Restrictions do**: a track a restriction forbids at its planned time is passed over, with its jingle, and the show's tab says why. So is a track that cannot play any more (disabled, missing, out of the station's library, nothing audible).
+- **In the queue**: the programme's tracks are queued in order as the queue needs them, like rotation's (`queue.min_queued` ahead), each jingle linked to its track. With autofill off, nothing is queued: the show does not play either. They are rotation's plays in the history, not in the rotation log: the show's tab lists the programme. A programme started plays to its end, even when the slot is over, and is not built again.
 - Nothing is built while the chart is empty: rotation plays the slot.
 
-**The new release** comes from the **new release category** of the show. Proposed: the most liked track of that category over the chart's week, among those not in the chart (any number of votes; ties go to the most votes); none voted on: the track of the category added last to the library. A programmer can choose another track of the category before the show, on the show's page; the programme takes the choice it finds when it is built. Without a new release category, the show ends at number 1.
+**The new release** comes from the **new release category** of the top (optional). Proposed: the most liked track of that category over the chart's period, among those not in the chart (any number of votes; ties go to the most votes); none voted on: the track of the category added last to the library. A programmer can choose another track of the category before the show, on its tab; the programme takes the choice it finds when it is built. Without a new release category, the show ends at number 1.
+
+### Never off air
+
+A top runs inside the queue fill, so **nothing a top does may stop the music**:
+
+- A top that fails (a table it cannot read, settings it cannot parse after a restore or a downgrade) is logged as a warning and left out: rotation fills the queue as without it, and the other tops play.
+- An item of the programme that cannot play when it is queued (disabled, missing, nothing audible since its cue points changed) is passed over, with its jingle, and the programme goes on with the next one. The check is the one every queued track goes through.
 
 ### Notifications
 
-Besides `show.upcoming`, `show.started` and `show.ended`:
+Each top has its own notifications, as every show: `show.upcoming`, `show.started` and `show.ended` at its show's times (not on a day it gives way), and:
 
-- `top.published`, on by default: when the week closes, with `{artist}` and `{title}` (number 1) and `{top3}` (*1. Artist – Title, 2. …*). Default message: *This week's number 1: {artist} – {title}*. It tells the result before the show: turn it off to keep the suspense, or send it to the team's webhook only.
+- `top.published`, on by default: when a chart is frozen (the reset, or the show's opening for a top of the last 7 days), with `{artist}` and `{title}` (number 1) and `{top3}` (*1. Artist – Title, 2. …*). Default message: *{name}: number 1 is {artist} – {title}*. It tells the result before the show: turn it off to keep the suspense, or send it to the team's webhook only.
 - `top.rank`, off by default: each rank as it starts playing in the show, with `{rank}`, `{artist}` and `{title}`. Default message: *Number {rank}: {artist} – {title}*.
+
+`{name}` is the top's title on the website, else its name.
 
 ### On the website
 
-The page and the small widget show:
+Each top has its page and its small widget, by its key, `top-{id}`: `…/stations/main/top-4.js`, `top-4.html`. The first top of the list is also `top30` (`top30.js`, `top30.html`), so the lines already on a website keep working. They show:
 
-- **During the show**: the chart being played. The ranks still to come are **hidden** (*? ? ?, the answer on air*): the gateway's state does not hold their tracks, only their rank. A rank shows once it starts playing, or once a rank after it does (a rank passed over shows with the next). The rank on air is highlighted, and the new release shows when it plays.
-- **Outside the show**: the chart of the **last show that started**, with its movements and its new release, under the closed message (*Back Sunday at 18:00*). A chart that closed but has not been played yet is never shown. Before the first show, the closed message alone. With *nothing* outside the hours, nothing at all.
+- **During the show**: the chart being played. The ranks still to come are **hidden** (*? ? ?, the answer on air*), unless the top shows them (*hide the ranks not played yet* off): the gateway's state does not hold their tracks, only their rank. A rank shows once it starts playing, or once a rank after it does (a rank passed over shows with the next). The rank on air is highlighted, and the new release shows when it plays.
+- **Outside the show**: the chart of its **last show that started**, with its movements and its new release, under the closed message (*Back Sunday at 18:00*). A frozen chart that has not been played yet is never shown. Before the first show, the closed message alone. With *nothing* outside the hours, nothing at all.
 
-The small widget shows the first five ranks (during the show: the rank on air and the next one to come); the page shows them all. The [likes](#likes) widget says while a vote counts for the next Top 30 (*Your vote counts for Sunday's Top 30*), and the track's page in Heron gives the track's rank in the chart of the week as it stands.
+The small widget shows the first five ranks (during the show: the rank on air and the next one to come); the page shows them all. The [likes](#likes) widget says which top the votes of now count for next (*Your vote counts for Top 30, Sunday*): the top whose next show playing them comes first. The track's page in Heron gives the track's rank in each top's live chart.
 
 ### What is kept
 
-The charts (each rank with its track, its likes, dislikes and plays with votes, its movement), the tracks taken out, the new release chosen and the programme of each show, for good, in the database dump of the [backups](backups.md). The settings are in the configuration file. Nothing about listeners: the votes are the likes'.
+The tops' settings (the configuration file of the [backups](backups.md), with the website and notifications); their charts (each rank with its track, its likes, dislikes, plays and score, its movement), the tracks taken out, the new release chosen and the programme of each show, for good, in the database dump. Nothing about listeners: the votes are the likes'.
+
+### From the Top 30
+
+The single weekly Top 30 of earlier versions becomes the first top of each station that had set it up (its settings, its hours or a chart), with its history: charts, tracks taken out, new releases chosen, programmes, settings, website and notifications. Its period becomes the **week**, reset at its former close (Sunday 17:00 by default), and its score 100 % likes. Its show's hours become its show: the first range's first day every week (every day when the range has every day), from its first to its last hour. Its charts keep their dates as they were: from Monday 00:00 to the close. Votes are no longer lost between the close and Monday: they count for the next chart.
 
 ## Dedications
 
@@ -418,7 +475,7 @@ What a show module adds, and where:
 | `heron_core::Module` and `Modules` | Its key, and its default (off for a show, on for Likes) |
 | `heron_core::shows::Show` | Its entry: key, whether it has hours, its own notification events with their default messages, its own placeholders |
 | `heron-api`, `shows.rs` | Its part of the public state (`ShowPublic::state`, any JSON: the current match, the day's dedications), read once a second by the gateway |
-| `heron-api`, `queue.rs` | A show that plays on air (the [Top 30](#top-30)): the queue manager asks it for its programme before rotation picks (`top30::due`); a show that changes rotation's picks (the [Match](#match)) is asked as rotation fills the queue (`matches::plan`) |
+| `heron-api`, `queue.rs` | A show that plays on air (the [Tops](#tops)): the queue manager asks it for its programme before rotation picks (`top30::due`), and fills as without it when it fails; a show that changes rotation's picks (the [Match](#match)) is asked as rotation fills the queue (`matches::plan`) |
 | `heron-api`, gateway routes | Its writes, under `/api/v1/gateway/stations/{code}/{module}/…`, behind `GatewayClient` and `gateway::open_show`, which check the token, the module and the hours |
 | `heron-public`, `actions.rs` | Its writes as the gateway takes them: path, fields and their sizes (and their values, or the field of its state they must match), the device's limit, sent on, added up or kept per device |
 | `heron-public`, `widget.js` | Its renderer: what the page and the small widget show while it is open |
