@@ -112,6 +112,7 @@ function show(options: { choice?: Schemas["HandChoice"] | null; role?: "viewer" 
           clock_name: "Hour",
           slot: 0,
           met: null,
+          planned: false,
           upcoming: true,
           calculations: [
             { ...SUMMARY, id: 39, trigger: "first", computed_at_unix_ms: AT - 30 * MIN },

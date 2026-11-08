@@ -80,6 +80,10 @@ export function metStatus(exact: ExactTimeOfDay): Status {
     }
     return { label: t("exactTimes.notMet"), tone: "muted" };
   }
+  if (exact.planned) {
+    const planned = metStatus({ ...exact, planned: false });
+    return { label: t("exactTimes.plannedStatus", { status: planned.label }), tone: "muted" };
+  }
   if (met.faded) {
     // By how much: the last calculation's ending, when known.
     const last = exact.calculations.at(-1);

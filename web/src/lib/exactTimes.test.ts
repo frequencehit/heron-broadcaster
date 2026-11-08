@@ -90,11 +90,32 @@ function exactTime(changes: Partial<ExactTimeOfDay>): ExactTimeOfDay {
     clock_name: "Hour",
     slot: 0,
     met: null,
+    planned: false,
     upcoming: true,
     calculations: [],
     ...changes,
   };
 }
+
+describe("a planned exact time", () => {
+  it("says planned, not met, while its slot is only queued", () => {
+    const met = {
+      at_unix_ms: AT,
+      mode: "soft" as const,
+      before_s: 10,
+      after_s: 30,
+      met: "on_time" as const,
+      offset_ms: 3_000,
+      faded: false,
+      in_window: true,
+      cut_at_unix_ms: WINDOW.cut,
+    };
+    const planned = metStatus(exactTime({ met, planned: true, upcoming: true }));
+    expect(planned.tone).toBe("muted");
+    expect(planned.label).toBe(t("exactTimes.plannedStatus", { status: t("exactTimes.onTime") }));
+    expect(metStatus(exactTime({ met, planned: false, upcoming: false })).label).toBe(t("exactTimes.onTime"));
+  });
+});
 
 describe("signed seconds", () => {
   it("rounds and signs", () => {
