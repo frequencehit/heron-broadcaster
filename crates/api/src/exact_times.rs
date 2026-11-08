@@ -319,8 +319,11 @@ pub struct ExactTimeOfDay {
     /// Its clock and slot (from 0).
     pub clock_name: Option<String>,
     pub slot: Option<u32>,
-    /// How it was met, once its slot was picked.
+    /// How it was met, once its slot was picked: as planned while its
+    /// track has not started (`planned`).
     pub met: Option<ExactLog>,
+    /// Its slot is picked and queued, not played yet: `met` is the plan.
+    pub planned: bool,
     /// Not reached yet.
     pub upcoming: bool,
     /// Its calculations, in order.
@@ -489,6 +492,7 @@ async fn list_exact_times(
                 clock_name: row.clock_name.clone(),
                 slot: Some(row.exact_slot),
                 met: None,
+                planned: false,
                 upcoming: row.exact_at_ms > now,
                 calculations: Vec::new(),
             });
@@ -498,8 +502,8 @@ async fn list_exact_times(
     // How each was met: its slot's pick (the latest when picked again).
     // Its planned start is in its window, at most 5 minutes from it.
     let margin = 5 * 60_000;
-    let picks: Vec<(u64, String)> = sqlx::query_as(
-        "SELECT id, CAST(explanation AS CHAR) FROM rotation_picks
+    let picks: Vec<(u64, String, bool)> = sqlx::query_as(
+        "SELECT id, CAST(explanation AS CHAR), play_id IS NULL FROM rotation_picks
          WHERE station_id = ? AND planned_at >= FROM_UNIXTIME(?) AND planned_at < FROM_UNIXTIME(?)
            AND JSON_VALUE(explanation, '$.exact.at_unix_ms') IS NOT NULL
          ORDER BY id",
@@ -509,7 +513,7 @@ async fn list_exact_times(
     .bind((end + margin) as f64 / 1_000.0)
     .fetch_all(&state.pool)
     .await?;
-    for (id, explanation) in picks {
+    for (id, explanation, not_played) in picks {
         let explanation: Explanation = serde_json::from_str(&explanation)
             .map_err(|error| ApiError::Internal(format!("pick {id}: {error}")))?;
         let Some(exact) = explanation.exact else {
@@ -528,11 +532,14 @@ async fn list_exact_times(
                 clock_name: None,
                 slot: None,
                 met: None,
+                planned: false,
                 upcoming: false,
                 calculations: Vec::new(),
             });
         item.met = Some(exact);
-        item.upcoming = false;
+        // Queued, not started: still to come, as planned.
+        item.planned = not_played;
+        item.upcoming = not_played;
         item.clock_name = explanation.clock_name.clone().or(item.clock_name.take());
         item.slot = explanation.slot.or(item.slot);
     }
