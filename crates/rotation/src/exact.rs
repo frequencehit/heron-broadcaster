@@ -149,8 +149,8 @@ pub struct ExactLog {
     /// The exact time (Unix ms).
     pub at_unix_ms: i64,
     pub mode: ExactMode,
-    /// The window, in seconds: in hard mode, the early tolerance
-    /// ([`HARD_EARLY_S`]) and 0.
+    /// The window, in seconds: in hard mode, the early tolerance (10)
+    /// and 0.
     pub before_s: u32,
     pub after_s: u32,
     pub met: Met,
