@@ -239,6 +239,10 @@ code,
   background: var(--surface-2);
 }
 
+.nav a.sub {
+  padding-left: 1.6rem;
+}
+
 .nav a[aria-current="page"] {
   background: var(--accent-soft);
   color: var(--accent);
@@ -3725,4 +3729,331 @@ ul.held {
 /* A track page's tab: kept mounted (a preview keeps playing), hidden. */
 .track-tab[hidden] {
   display: none;
+}
+
+/* Exact times: the attempts page ----------------------------------------- */
+
+.exact-days {
+  gap: 0.5rem;
+}
+
+.exact-chip {
+  font: inherit;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  min-height: 2.25rem;
+  cursor: pointer;
+}
+
+.exact-chip[aria-pressed="true"] {
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  padding: calc(0.4rem - 1px) calc(0.85rem - 1px);
+}
+
+.exact-day-picker {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.exact-day-picker .input {
+  width: auto;
+}
+
+.tone-good {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.tone-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.tone-bad {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.tone-muted {
+  color: var(--muted);
+}
+
+.exact-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.exact-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+}
+
+.exact-tile strong {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.exact-result.tone-box-good {
+  background: color-mix(in srgb, var(--good) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--good) 35%, transparent);
+  color: var(--good);
+}
+
+.exact-result.tone-box-bad {
+  background: var(--bad-soft);
+  border-color: color-mix(in srgb, var(--bad) 35%, transparent);
+  color: var(--bad);
+}
+
+.exact-hand {
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.exact-hand > span {
+  max-width: 52rem;
+}
+
+.exact-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.exact-runs {
+  flex: 1 1 15rem;
+  max-width: 18rem;
+}
+
+.exact-attempts {
+  flex: 999 1 35rem;
+  min-width: 0;
+}
+
+.exact-help {
+  margin: 0 0 0.5rem;
+}
+
+.exact-link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.exact-run-list {
+  gap: 0.5rem;
+}
+
+.exact-run {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.exact-run[aria-pressed="true"],
+.exact-attempt[aria-pressed="true"] {
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface));
+}
+
+.exact-timeline {
+  min-width: 47rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.exact-row {
+  display: grid;
+  grid-template-columns: 2.75rem 4.4rem minmax(0, 1fr) 10rem;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.exact-axis {
+  align-items: end;
+}
+
+.exact-ticks {
+  position: relative;
+  height: 1.1rem;
+}
+
+.exact-tick {
+  position: absolute;
+  bottom: 0;
+  white-space: nowrap;
+}
+
+.exact-tick-exact {
+  color: var(--accent);
+  font-weight: 600;
+  transform: translateX(-50%);
+}
+
+.exact-attempt {
+  width: 100%;
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.exact-rank {
+  font-weight: 600;
+}
+
+.exact-rank.in-use {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 0.1rem 0.25rem;
+  text-align: center;
+}
+
+.exact-bar {
+  position: relative;
+  display: block;
+  height: 1.9rem;
+  background: var(--bg);
+  border-radius: 4px;
+}
+
+.exact-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent-soft);
+  border-left: 1px dashed var(--accent);
+  border-right: 1px dashed var(--accent);
+}
+
+.exact-line {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--accent);
+  z-index: 1;
+}
+
+.exact-block {
+  --category: var(--muted);
+  --tint: color-mix(in srgb, var(--category) 22%, var(--surface));
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  background: var(--tint);
+  color: var(--fg);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  line-height: 1.5rem;
+  padding: 0 0.35rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.92;
+}
+
+.exact-block.cut {
+  background: linear-gradient(
+    90deg,
+    var(--tint) var(--kept),
+    color-mix(in srgb, var(--bad) 35%, var(--surface)) var(--kept)
+  );
+}
+
+.exact-pill {
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  justify-self: start;
+}
+
+.exact-note {
+  margin: 0;
+}
+
+.exact-swatch {
+  background: var(--category, var(--muted));
+}
+
+.exact-tracks td {
+  vertical-align: top;
+}
+
+.exact-box {
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.exact-box h3 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.exact-criterion {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) 7.5rem 7.5rem;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.exact-verdict {
+  margin: 0.25rem 0 0;
+}
+
+@media (max-width: 1100px) {
+  .exact-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .exact-summary,
+  .exact-boxes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .exact-runs {
+    max-width: none;
+  }
 }

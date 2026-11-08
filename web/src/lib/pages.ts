@@ -18,6 +18,8 @@ export interface Page {
   station?: boolean;
   /** The page of a module: hidden while the module is off for the station shown (docs/modules.md). */
   module?: ModuleKey;
+  /** Listed under the page above it, indented. */
+  sub?: boolean;
 }
 
 export const PAGES: Page[] = [
@@ -39,6 +41,7 @@ export const PAGES: Page[] = [
   { path: "/categories", label: "nav.categories", icon: "tag" },
   { path: "/restrictions", label: "nav.restrictions", icon: "ban", module: "restrictions" },
   { path: "/rotation-log", label: "nav.rotation", icon: "log", station: true },
+  { path: "/exact-times", label: "nav.exactTimes", icon: "clock", station: true, sub: true },
   // The shows (docs/listener-interaction.md), each a module: each names its
   // section, so that it is listed under it while the others are off.
   { path: "/shows/dedications", label: "nav.dedications", icon: "mic", section: "nav.shows", station: true, module: "dedications" },

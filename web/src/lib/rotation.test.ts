@@ -163,6 +163,9 @@ describe("exact times", () => {
     expect(describeLookahead({ ...log, draws: 0, kept: true, search: true })).toMatch(
       /^best fill kept, fit search: ends at .*, nothing faded, no filling$/,
     );
+    expect(describeLookahead({ ...log, draws: 0, kept: true, by_hand: true })).toMatch(
+      /^attempt chosen by hand followed: ends at .*, nothing faded, no filling$/,
+    );
     expect(describeLookahead({ ...log, offset_ms: null })).toBe("best of 8 fills: none reaches the exact time");
   });
 

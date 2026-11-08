@@ -21,6 +21,13 @@ describe("placeOf", () => {
     expect(placeOf("/shows/top30")).toMatchObject({ section: "nav.shows", page: { module: "top30" } });
   });
 
+  it("lists the exact times under the rotation log", () => {
+    expect(placeOf("/exact-times")).toMatchObject({
+      section: "nav.programming",
+      page: { label: "nav.exactTimes", station: true, sub: true },
+    });
+  });
+
   it("knows a page inside a page", () => {
     expect(placeOf("/library/12")).toMatchObject({ page: { path: "/library" }, nested: true });
     expect(placeOf("/clocks/new")).toMatchObject({ section: "nav.programming", nested: true });
