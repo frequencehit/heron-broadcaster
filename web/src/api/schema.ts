@@ -8980,6 +8980,8 @@ export interface components {
             attempt: number;
             /** Format: int64 */
             calculation_id: number;
+            /** @description How the chosen attempt ends, as when it was chosen. */
+            ending: components["schemas"]["AttemptEnding"];
             /** Format: int64 */
             exact_at_unix_ms: number;
             /** Format: int64 */

@@ -319,13 +319,15 @@ function Result({
       </div>
     );
   }
-  const ending = last.ending;
-  const number = choice ? choice.attempt : latest.kept;
+  // Chosen by hand: the chosen attempt's ending, not the automatic best's.
+  const chosen = choice && choice.exact_at_unix_ms === window.at ? choice : null;
+  const ending = chosen ? chosen.ending : last.ending;
+  const number = chosen ? chosen.attempt : latest.kept;
   const tone = ending.faded || !ending.in_window ? "bad" : "good";
   const end = ending.offset_ms === null || ending.offset_ms === undefined ? null : window.at + ending.offset_ms;
   return (
     <div className={`card exact-tile exact-result tone-box-${tone}`}>
-      <span className="small">{choice ? t("exactTimes.resultByHand") : t("exactTimes.resultAuto")}</span>
+      <span className="small">{chosen ? t("exactTimes.resultByHand") : t("exactTimes.resultAuto")}</span>
       <strong>
         {t("exactTimes.resultTitle", {
           number: String(number ?? "?"),

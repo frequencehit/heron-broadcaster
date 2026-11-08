@@ -145,6 +145,8 @@ pub struct HandChoice {
     pub user_id: u64,
     pub username: String,
     pub at_unix_ms: i64,
+    /// How the chosen attempt ends, as when it was chosen.
+    pub ending: AttemptEnding,
 }
 
 /// The tracks of `attempt`, pick by pick.

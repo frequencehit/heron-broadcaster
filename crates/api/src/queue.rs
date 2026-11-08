@@ -811,6 +811,7 @@ impl QueueManager {
                 user_id: user.id,
                 username: user.username.clone(),
                 at_unix_ms: rotation::now_ms(),
+                ending: attempt.ending,
             });
             kept.next_trigger = None;
         }

@@ -181,10 +181,20 @@ describe("ExactTimes", () => {
 
   it("says when an attempt was chosen by hand, and goes back to automatic", async () => {
     show({
-      choice: { calculation_id: 40, attempt: 3, exact_at_unix_ms: AT, user_id: 1, username: "ada", at_unix_ms: AT - 8 * MIN },
+      choice: {
+        calculation_id: 40,
+        attempt: 3,
+        exact_at_unix_ms: AT,
+        user_id: 1,
+        username: "ada",
+        at_unix_ms: AT - 8 * MIN,
+        ending: { offset_ms: 22_000, in_window: true, faded: false, filling_ms: 0, relaxed_steps: 0, age_ms: 0 },
+      },
     });
     expect(await screen.findByText(t("exactTimes.byHandAttempt", { number: "3" }))).toBeTruthy();
     expect(screen.getByText(t("exactTimes.resultByHand"))).toBeTruthy();
+    // The chosen attempt's ending, not the automatic best's.
+    expect(screen.getByText(t("exactTimes.resultTitle", { number: "3", offset: "+22 s" }))).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: t("exactTimes.backToAutomatic") }));
     await waitFor(() => expect(sent("DELETE /api/v1/stations/{station_id}/exact-times/choice")).toHaveLength(1));
   });

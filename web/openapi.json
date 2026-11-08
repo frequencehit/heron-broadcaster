@@ -25813,7 +25813,8 @@
           "exact_at_unix_ms",
           "user_id",
           "username",
-          "at_unix_ms"
+          "at_unix_ms",
+          "ending"
         ],
         "properties": {
           "at_unix_ms": {
@@ -25830,6 +25831,10 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          },
+          "ending": {
+            "$ref": "#/components/schemas/AttemptEnding",
+            "description": "How the chosen attempt ends, as when it was chosen."
           },
           "exact_at_unix_ms": {
             "type": "integer",
