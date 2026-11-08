@@ -62,7 +62,7 @@ A day takes the sessions that **ended** that day, as the server logged them. Not
 
 ## Automatic delivery
 
-A **delivery** sends a day's export to a certification body by itself, every day at a set time: per body, server and optionally mount (the *Certification* page, admins). Presets per body come once each body's specification is obtained: until then, set the format, the file name and the schedule the body asks for.
+A **delivery** sends a day's export to a certification body by itself, every day at a set time, by FTPS: per body, server and optionally mount (the *Certification* page, admins). SFTP comes next (see [Limitations](#limitations)). Presets per body come once each body's specification is obtained: until then, set the format, the file name and the schedule the body asks for.
 
 ### What a delivery sets
 
@@ -70,11 +70,9 @@ A **delivery** sends a day's export to a certification body by itself, every day
 |---|---|
 | `name` | The body it sends to, as the page shows it |
 | `server_id`, `mount` | The server whose log is sent, and only this mount (`/live`), or every mount |
-| `protocol` | `sftp`, or `ftps`: FTP with explicit TLS (`AUTH TLS`), passive mode |
-| `host`, `port` | The body's server; 22 for SFTP and 21 for FTPS by default |
+| `protocol` | `ftps`: FTP with explicit TLS (`AUTH TLS`), passive mode |
+| `host`, `port` | The body's server; port 21 by default |
 | `username`, `password` | The login. The password is **write-only**, like the stream servers' passwords |
-| `private_key` | SFTP only, instead of a password or with it: an OpenSSH private key (`-----BEGIN OPENSSH PRIVATE KEY-----`, RSA, ECDSA or Ed25519, without a passphrase), write-only |
-| `host_key` | SFTP only: the fingerprint of the server's host key (`SHA256:…`), see [The host key](#the-host-key) |
 | `remote_dir` | The folder to write into, on the body's server (`/incoming`); empty, the login's folder |
 | `file_name` | The file's name, from a pattern, see [File names](#file-names) |
 | `format` | `raw`, `combined`, `csv` or `json`, as the [export](#export) gives them; `raw` by default |
@@ -98,11 +96,9 @@ The pattern is made of text and tokens: `{station}-{server}-{date}.{ext}` by def
 
 Values are written with letters, digits, `-` and `_` only. An unknown token, a `/` or an empty name is refused (`422`). The file is written as it is named, replacing one of the same name.
 
-### The host key
+### The server's certificate
 
-SFTP checks the server it talks to with its host key. Heron **trusts it on first use**: the first connection that logs in (a test or a delivery) keeps the key's fingerprint, shown on the page; from then on, a server with another key is refused, and the delivery fails with both fingerprints. When the body changes its key on purpose, check its new fingerprint with the body, then *Forget the host key* (or type the new one). A fingerprint can also be typed before the first connection, when the body gives it: then only that key is accepted. Changing the host or the port forgets the key.
-
-FTPS checks the server's certificate against the system's certificate authorities, with the host name, like the access logs' addresses.
+FTPS checks the server's certificate against the system's certificate authorities, with the host name (or the address), like the access logs' addresses; the files go over the encrypted connection only (`PROT P`). A server whose certificate is not signed by a known authority is refused.
 
 ### When it is sent
 
@@ -110,7 +106,7 @@ Every day at its time, Heron sends the day chosen: the lines that **ended** that
 
 A day with **gaps** is still sent: the delivery lists them in its log, as the export does, and the page shows them. A log that cannot be read at the time adds a gap from when it could not.
 
-**Retries:** an attempt that fails (no connection, a login refused, a folder that does not exist, a host key that changed) is tried again 5 minutes later, then 15 and 30 minutes and 1 hour later: **5 attempts over about 2 hours**. Then the delivery has **failed**:
+**Retries:** an attempt that fails (no connection, a certificate refused, a login refused, a folder that does not exist) is tried again 5 minutes later, then 15 and 30 minutes and 1 hour later: **5 attempts over about 2 hours**. Then the delivery has **failed**:
 
 - it shows on the *Certification* page, with its error;
 - a [webhook](api.md#webhooks) with the `certification.failed` event gets it, with its `message` (the delivery's name, the day and the error);
@@ -132,7 +128,7 @@ The access logs hold the listeners' **addresses** and players: personal data.
 - **Admins only** download exports. Each download is logged with who, which day and which server.
 - The access log's password is never sent back by the API.
 - What is sent to whom is the station's to say in its privacy notice: the certifier receives the exports, and nothing else leaves Heron. The deliveries name each body, and their log says which days went where.
-- The deliveries' passwords and private keys are never sent back by the API. Like the stream servers' passwords, they are kept in the database, and in its dump.
+- The deliveries' passwords are never sent back by the API. Like the stream servers' passwords, they are kept in the database, and in its dump.
 
 ## Module
 
@@ -147,8 +143,8 @@ Admins only, but `GET /settings/certification`:
 - `GET`, `PUT /settings/certification`: `retention_months` (1 to 25, 13).
 - `GET /certification/days?from&to` (62 days at most): per day and server, the lines, the sessions among them and the gaps.
 - `GET /certification/export?day=2026-11-07&server_id=3&mount=/live&format=raw|combined|csv|json`: the file, named `<station>-<server>-<day>.<ext>`; `X-Heron-Gaps` lists the gaps.
-- `GET`, `POST /certification/deliveries`; `GET`, `PUT`, `DELETE /certification/deliveries/{id}`: the [deliveries](#what-a-delivery-sets). `password` and `private_key` are write-only (`password_set`, `private_key_set` say whether one is kept; left out, it is kept; `null` removes it); `host_key` left out is kept, `null` forgets it. Each delivery comes with its `last` day sent.
-- `POST /certification/deliveries/{id}/test`: connects and logs in, answers `ok`, `error` and the `host_key` seen.
+- `GET`, `POST /certification/deliveries`; `GET`, `PUT`, `DELETE /certification/deliveries/{id}`: the [deliveries](#what-a-delivery-sets). `password` is write-only (`password_set` says whether one is kept; left out, it is kept). Each delivery comes with its `last` day sent.
+- `POST /certification/deliveries/{id}/test`: connects, logs in and opens the folder, answers `ok` and `error`.
 - `POST /certification/deliveries/{id}/send` with `{"day": "2026-11-07"}`: sends that day now (`202`, the day sent as `GET …/runs` gives it).
 - `GET /certification/deliveries/{id}/runs`: its last 30 days sent, newest first, each with its `attempts`.
 
@@ -157,4 +153,4 @@ Admins only, but `GET /settings/certification`:
 - Icecast only, like the stream servers. Shoutcast comes with its outputs ([M11](roadmap/m11-sinks-live-dj.md)).
 - HLS has no server session to log.
 - No log shipper is built in: a remote server needs a web server to serve its log.
-- Deliveries go by SFTP or FTPS only: no plain FTP (the logs hold personal data), no HTTPS upload until a body asks for one. Private keys with a passphrase are not taken.
+- Deliveries go by FTPS only for now: no plain FTP (the logs hold personal data), no HTTPS upload until a body asks for one. **SFTP comes next**: the pure Rust SSH library Heron would use needs a newer version of a cryptography crate than the one the backups' encryption library (age) is built with, and the two cannot be in the same build. It comes once age is released with it.

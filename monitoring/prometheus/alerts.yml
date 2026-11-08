@@ -205,3 +205,14 @@ groups:
         annotations:
           summary: Many failed sign-ins
           description: "{{ $value | humanize }} failed sign-ins in 10 minutes: someone may be guessing passwords."
+
+      - alert: HeronCertificationDeliveryFailed
+        expr: heron_api_certification_deliveries_failing > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} certification deliveries failed their last day"
+          description: >-
+            Every attempt failed: the Certification page gives the error (the
+            body's server, the login, the certificate). Send now sends the
+            day again.

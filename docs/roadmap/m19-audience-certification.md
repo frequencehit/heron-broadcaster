@@ -21,8 +21,9 @@ Part 1, collecting and exporting:
 
 Part 2, delivery (a second pull request):
 
-- **Per certification body, server and mount:** SFTP or FTPS (explicit TLS), host and port, credentials (a password, or an SSH private key for SFTP; write-only), folder, file name pattern (station, server, mount and date tokens), format, compression (none or gzip), time of day in the station's time zone, the day sent (the day before by default), enabled.
-- **SFTP host keys trusted on first use:** the first connection that logs in keeps the key's fingerprint, shown; a changed key is refused until it is forgotten. A fingerprint can be typed first. FTPS checks the certificate with the system's authorities.
+- **Per certification body, server and mount:** FTPS (explicit TLS), host and port, credentials (write-only), folder, file name pattern (station, server, mount and date tokens), format, compression (none or gzip), time of day in the station's time zone, the day sent (the day before by default), enabled.
+- FTPS checks the certificate with the system's authorities.
+- **SFTP comes after:** russh, the pure Rust SSH library, needs ml-kem 0.3 since 0.60, and age 0.12.1 (backups) needs ml-kem 0.2: both pin the same `kem` crate to versions that cannot be in one build. Once age is released with ml-kem 0.3, SFTP comes with a password or a private key and the host key trusted on first use, then pinned.
 - **Sent every day at its time**, a day with gaps too (the gaps in its log); **retried** 5 times over about 2 hours; **logged** (each attempt: when, result, error, file and size); a failure **alerted** through a `certification.failed` webhook event and a metric with its alert rule; the last 30 days sent listed with their state; *Send now* for a chosen day; *Test connection*.
 - No HTTPS upload: no body is known to ask for one yet.
 
@@ -35,7 +36,7 @@ Part 2, delivery (a second pull request):
 
 ## Deliverables
 
-- `heron-api`: the access log settings of the stream servers, the reader (file and address, positions, rotation, gaps), the storage and its retention, the export routes, the module; the deliveries, their schedule, the SFTP and FTPS senders, retries, their log and the alerts.
+- `heron-api`: the access log settings of the stream servers, the reader (file and address, positions, rotation, gaps), the storage and its retention, the export routes, the module; the deliveries, their schedule, the FTPS sender, retries, their log and the alerts.
 - `heron-web`: a *Certification* page after Statistics (admins): each server's access log, its state, the days and the downloads, the retention; the deliveries, their form, their log, *Send now* and *Test connection*.
 - Migrations: the access log settings and positions, the sessions and their lines, the gaps, the download log; the deliveries, the days sent and their attempts.
 - Docker Compose: the access logs folder, read-only.
@@ -56,11 +57,12 @@ Part 1:
 
 Part 2:
 
-- [ ] A delivery sends the day's file by SFTP at the set time, retries, and its failures are visible and alerted.
+- [ ] A delivery sends the day's file by SFTP at the set time, retries, and its failures are visible and alerted. *(By FTPS for now; SFTP once age is released with ml-kem 0.3, see Scope.)*
+- [ ] A delivery sends the day's file by FTPS at the set time, retries, and its failures are visible and alerted.
 - [ ] The file sent is the day's export, named from its pattern, compressed when asked; a day with gaps is sent with its gaps in the log.
-- [ ] The SFTP host key is kept on the first connection and a changed one is refused; passwords and keys are never sent back.
+- [ ] Passwords are never sent back; the server's certificate is checked.
 - [ ] The last 30 days sent are listed with their attempts; *Send now* and *Test connection* work; only admins, and off, the module sends nothing.
-- [ ] An end-to-end test delivers by SFTP to a server in the test (the bytes received, a refused login retried, the alert, the 30 days kept); FTPS is tested the same way against a server in the test.
+- [ ] An end-to-end test delivers by FTPS to a server in the test (the bytes received, a refused login retried, the alert, the 30 days kept).
 - [ ] Docs, translations (all catalogs) and the CHANGELOG are up to date.
 
 ## References
