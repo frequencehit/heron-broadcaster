@@ -475,10 +475,12 @@ impl QueueManager {
         let mut planned_match = None;
         // The best fill before an exact time, kept from a fill to the next
         // while it still lands, and the calculation it comes from.
+        // A copy, written back once the picks are made: the attempts page
+        // reads the state as it was meanwhile.
         let mut kept = self
             .kept
             .lock()
-            .map(|mut kept| std::mem::take(&mut *kept))
+            .map(|kept| kept.clone())
             .unwrap_or_default();
         let mut plan = kept.plan.take();
         'picking: for _ in 0..missing {
@@ -541,14 +543,17 @@ impl QueueManager {
             }
             ahead.clear();
         }
-        kept.plan = plan;
-        if !kept
-            .plan
-            .as_ref()
-            .is_some_and(heron_rotation::Plan::chosen_by_hand)
-        {
+        // The choice by hand holds until its exact time, its fill followed
+        // to the end, unless rotation built fills of its own for it.
+        if kept.choice.as_ref().is_some_and(|choice| {
+            choice.exact_at_unix_ms <= now
+                || plan.as_ref().is_some_and(|plan| {
+                    plan.exact_at_unix_ms() == choice.exact_at_unix_ms && !plan.chosen_by_hand()
+                })
+        }) {
             kept.choice = None;
         }
+        kept.plan = plan;
         if let Ok(mut slot) = self.kept.lock() {
             *slot = kept;
         }
@@ -725,7 +730,12 @@ impl QueueManager {
 
     /// The attempt chosen by hand the queue follows.
     pub fn choice(&self) -> Option<HandChoice> {
-        self.kept.lock().ok().and_then(|kept| kept.choice.clone())
+        let now = rotation::now_ms();
+        self.kept
+            .lock()
+            .ok()
+            .and_then(|kept| kept.choice.clone())
+            .filter(|choice| choice.exact_at_unix_ms > now)
     }
 
     /// Uses `attempt` of calculation `id` (before the exact time at
@@ -824,18 +834,21 @@ impl QueueManager {
     pub async fn back_to_automatic(&self) -> bool {
         let _busy = self.busy.lock().await;
         let dropped = match self.kept.lock() {
-            Ok(mut kept)
-                if kept
+            Ok(mut kept) => {
+                let by_hand = kept
                     .plan
                     .as_ref()
-                    .is_some_and(heron_rotation::Plan::chosen_by_hand) =>
-            {
-                kept.plan = None;
+                    .is_some_and(heron_rotation::Plan::chosen_by_hand);
+                // Followed to its end, the choice may have no fill left.
+                let dropped = by_hand || kept.choice.is_some();
+                if by_hand {
+                    kept.plan = None;
+                    kept.next_trigger = Some(Trigger::Automatic);
+                }
                 kept.choice = None;
-                kept.next_trigger = Some(Trigger::Automatic);
-                true
+                dropped
             }
-            _ => false,
+            Err(_) => false,
         };
         if dropped {
             self.wake();

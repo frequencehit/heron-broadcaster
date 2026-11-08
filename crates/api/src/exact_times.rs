@@ -106,7 +106,7 @@ fn mode_str(mode: ExactMode) -> &'static str {
 /// What the queue manager keeps between two fills of the queue before an
 /// exact time: the fill kept, the calculation it comes from with the
 /// picks queued from it, and the attempt chosen by hand.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Kept {
     pub plan: Option<heron_rotation::Plan>,
     pub calculation: Option<KeptCalculation>,
@@ -117,6 +117,7 @@ pub struct Kept {
 }
 
 /// The calculation whose fill the queue follows.
+#[derive(Clone)]
 pub struct KeptCalculation {
     pub id: u64,
     pub exact_at_ms: i64,
