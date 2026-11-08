@@ -42,6 +42,7 @@ import { Restrictions } from "./pages/Restrictions";
 import { Import } from "./pages/Import";
 import { ToDo } from "./pages/ToDo";
 import { Rotation } from "./pages/Rotation";
+import { ExactTimes } from "./pages/ExactTimes";
 import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
 import { LikesWeekCard } from "./components/Likes";
@@ -183,6 +184,8 @@ function pageAt(pathname: string): ReactNode {
       return <Restrictions />;
     case "/rotation-log":
       return <Rotation />;
+    case "/exact-times":
+      return <ExactTimes />;
     case "/to-do":
       return <ToDo />;
     case "/to-organize":
@@ -324,6 +327,7 @@ function Shell() {
                 {heading && page.section && <div className="nav-section">{t(page.section)}</div>}
                 <Link
                   to={page.path}
+                  className={page.sub ? "sub" : undefined}
                   aria-current={isCurrent(page.path, pathname) ? "page" : undefined}
                 >
                   <Icon name={page.icon} /> {t(page.label)}

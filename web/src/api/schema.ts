@@ -1368,6 +1368,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exact-times": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The station's exact times of a day, each with how it was met and its
+         *     calculations. Every role.
+         */
+        get: operations["list_exact_times"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exact-times/calculations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A calculation's attempts, best first, with their tracks and endings.
+         *     Every role.
+         */
+        get: operations["get_exact_calculation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exact-times/calculations/{id}/attempts/{n}/use": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Uses an attempt instead of the fill kept: the tracks rotation queued
+         *     from the calculation that are not in it are taken out, and the next
+         *     picks follow it while it lands. Operators and admins; `409` unless the
+         *     calculation is the latest of the upcoming exact time, the queue still
+         *     follows it, and the attempt lands in its window, fading nothing out.
+         */
+        post: operations["use_exact_attempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exact-times/choice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Back to automatic: the attempt chosen by hand is dropped, and the next
+         *     pick builds new fills. Operators and admins.
+         */
+        delete: operations["drop_exact_choice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gateway/state": {
         parameters: {
             query?: never;
@@ -4061,6 +4144,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stations/{station_id}/exact-times": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The station's exact times of a day, each with how it was met and its
+         *     calculations. Every role.
+         */
+        get: operations["list_exact_times_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/exact-times/calculations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A calculation's attempts, best first, with their tracks and endings.
+         *     Every role.
+         */
+        get: operations["get_exact_calculation_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/exact-times/calculations/{id}/attempts/{n}/use": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Uses an attempt instead of the fill kept: the tracks rotation queued
+         *     from the calculation that are not in it are taken out, and the next
+         *     picks follow it while it lands. Operators and admins; `409` unless the
+         *     calculation is the latest of the upcoming exact time, the queue still
+         *     follows it, and the attempt lands in its window, fading nothing out.
+         */
+        post: operations["use_exact_attempt_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/exact-times/choice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Back to automatic: the attempt chosen by hand is dropped, and the next
+         *     pick builds new fills. Operators and admins.
+         */
+        delete: operations["drop_exact_choice_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stations/{station_id}/history": {
         parameters: {
             query?: never;
@@ -6659,6 +6825,93 @@ export interface components {
             /** @description `names` or `musicbrainz`. */
             source: string;
         };
+        /** @description A fill built before an exact time, as the attempts page shows it. */
+        Attempt: {
+            /**
+             * Format: int32
+             * @description Its batch of 10, from 1; 0 for the fill kept, played again.
+             */
+            batch: number;
+            ending: components["schemas"]["AttemptEnding"];
+            /**
+             * Format: int32
+             * @description From 1, in the order built.
+             */
+            number: number;
+            /**
+             * @description The fill kept by an earlier pick, played again: it competes with
+             *     the new ones.
+             */
+            previous?: boolean;
+            /**
+             * Format: int32
+             * @description Its rank among the calculation's attempts, from 1 (the best).
+             */
+            rank: number;
+            search?: components["schemas"]["SearchStats"] | null;
+            /** @description Its seed: the same seed builds the same fill. */
+            seed: string;
+            tracks: components["schemas"]["AttemptTrack"][];
+        };
+        /** @description How an attempt meets the exact time: the criteria fills are ranked by. */
+        AttemptEnding: {
+            /**
+             * Format: int64
+             * @description Ages of the tracks' last plays, added up (30 days at most each).
+             */
+            age_ms: number;
+            /** @description They end after the cut: the last one is faded out. */
+            faded: boolean;
+            /** Format: int32 */
+            filling_ms: number;
+            in_window: boolean;
+            /**
+             * Format: int64
+             * @description Where the tracks before the exact slot end, from the exact time;
+             *     negative when early. Missing when the fill did not reach it.
+             */
+            offset_ms?: number | null;
+            /** Format: int32 */
+            relaxed_steps: number;
+        };
+        /** @description A track of an attempt, from the end of the queue to the exact slot. */
+        AttemptTrack: {
+            category_id?: components["schemas"]["u64"] | null;
+            chosen: components["schemas"]["Chosen"];
+            /**
+             * Format: int32
+             * @description A medley: hooks left out (0: whole), and the parts left out by
+             *     their position in it.
+             */
+            hooks_left_out?: number;
+            /**
+             * Format: int32
+             * @description From its start to the next track's (its mix point).
+             */
+            next_ms: number;
+            parts_left_out?: number[];
+            /**
+             * Format: int32
+             * @description Its pick in the fill, from 0: a linked slot's two tracks share one.
+             */
+            pick: number;
+            /**
+             * Format: int32
+             * @description Its clock slot, from 0; missing for a gap fill or without a clock.
+             */
+            slot?: number | null;
+            /**
+             * Format: int64
+             * @description Its planned start (Unix ms).
+             */
+            start_unix_ms: number;
+            /**
+             * Format: int32
+             * @description Relaxation step of its pick, 0 (none) to 12.
+             */
+            step: number;
+            track_id: components["schemas"]["u64"];
+        };
         /**
          * @description The audience figures of a period. Those from sessions are missing
          *     without listener lists.
@@ -6954,6 +7207,72 @@ export interface components {
              */
             min_free_bytes: number;
         };
+        /** @description A calculation with its attempts. */
+        CalculationDetail: components["schemas"]["CalculationSummary"] & {
+            /**
+             * @description Its attempts, best first; none for a pick that followed the fill
+             *     kept (see `follows_id`).
+             */
+            attempts: components["schemas"]["Attempt"][];
+            /**
+             * @description Its attempts landing in the window can be chosen by hand: it is the
+             *     latest of the upcoming exact time, and the queue follows it.
+             */
+            can_choose: boolean;
+            categories: components["schemas"]["CategoryLabel"][];
+            clock_name?: string | null;
+            /** Format: int64 */
+            exact_at_unix_ms: number;
+            /** Format: int32 */
+            exact_slot: number;
+            /**
+             * Format: int64
+             * @description Where the fills start: the end of the queue (Unix ms).
+             */
+            from_unix_ms: number;
+            /** @description The latest calculation of its exact time (followed picks aside). */
+            latest: boolean;
+            mode: components["schemas"]["ExactMode"];
+            /** @description The tracks and categories of the attempts. */
+            tracks: components["schemas"]["TrackLabel"][];
+            /** Format: int64 */
+            window_cut_unix_ms: number;
+            /** Format: int64 */
+            window_from_unix_ms: number;
+        };
+        /** @description A calculation, in the list of an exact time's. */
+        CalculationSummary: {
+            /** Format: int32 */
+            batches: number;
+            /** @description The fill followed was chosen by hand. */
+            by_hand: boolean;
+            chosen?: components["schemas"]["ChosenAttempt"] | null;
+            /** Format: int64 */
+            computed_at_unix_ms: number;
+            /** Format: int32 */
+            duration_ms: number;
+            /** @description How the fill kept (or followed) ends. */
+            ending: components["schemas"]["AttemptEnding"];
+            /**
+             * Format: int32
+             * @description New fills built, in batches of 10, and why building stopped.
+             */
+            fills: number;
+            /**
+             * Format: int64
+             * @description The calculation a followed pick follows.
+             */
+            follows_id?: number | null;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int32
+             * @description The attempt kept, by its number.
+             */
+            kept?: number | null;
+            stop: components["schemas"]["Stop"];
+            trigger: components["schemas"]["Trigger"];
+        };
         /** @description An album whose search was unsure. */
         CandidateAlbum: {
             album?: string | null;
@@ -7043,6 +7362,13 @@ export interface components {
              * @description A category type; none by default.
              */
             type_id?: number | null;
+        };
+        /** @description A category of an attempt's tracks. */
+        CategoryLabel: {
+            color?: string | null;
+            /** Format: int64 */
+            id: number;
+            name: string;
         };
         /** @description A category, as the decks and the queue show it. */
         CategoryRef: {
@@ -7264,6 +7590,20 @@ export interface components {
         } | {
             /** @enum {string} */
             kind: "own";
+        };
+        /**
+         * @description How a track of an attempt was chosen.
+         * @enum {string}
+         */
+        Chosen: "slot" | "fit_search" | "kept" | "filler" | "medley";
+        /** @description An attempt chosen by hand, as kept with its calculation. */
+        ChosenAttempt: {
+            /** Format: int64 */
+            at_unix_ms: number;
+            /** Format: int32 */
+            attempt: number;
+            /** @description Missing once the user is deleted. */
+            username?: string | null;
         };
         ClockInput: {
             /** @description Off by default: the clock starts over at each hour. */
@@ -8243,6 +8583,37 @@ export interface components {
             medley_fill?: boolean;
             mode?: components["schemas"]["ExactMode"];
         };
+        /** @description An exact time of the day. */
+        ExactTimeOfDay: {
+            /** Format: int64 */
+            at_unix_ms: number;
+            /** @description Its calculations, in order. */
+            calculations: components["schemas"]["CalculationSummary"][];
+            /** @description Its clock and slot (from 0). */
+            clock_name?: string | null;
+            met?: components["schemas"]["ExactLog"] | null;
+            mode: components["schemas"]["ExactMode"];
+            /** Format: int32 */
+            slot?: number | null;
+            /** @description Not reached yet. */
+            upcoming: boolean;
+            /** Format: int64 */
+            window_cut_unix_ms: number;
+            /**
+             * Format: int64
+             * @description Its window (Unix ms): the earliest start, and the cut.
+             */
+            window_from_unix_ms: number;
+        };
+        /** @description The station's exact times of a day. */
+        ExactTimesDay: {
+            choice?: components["schemas"]["HandChoice"] | null;
+            /** @description `2026-11-08`, in the station's time zone. */
+            date: string;
+            exact_times: components["schemas"]["ExactTimeOfDay"][];
+            time_zone: string;
+            today: string;
+        };
         /** @description Why a track was picked: the rotation log. */
         Explanation: {
             /** @description Windows across stations applied at this step. */
@@ -8647,6 +9018,25 @@ export interface components {
         };
         /** @enum {string} */
         GroupSource: "upload" | "incoming";
+        /** @description An attempt chosen by hand that the queue follows. */
+        HandChoice: {
+            /** Format: int64 */
+            at_unix_ms: number;
+            /**
+             * Format: int32
+             * @description The attempt's number.
+             */
+            attempt: number;
+            /** Format: int64 */
+            calculation_id: number;
+            /** @description How the chosen attempt ends, as when it was chosen. */
+            ending: components["schemas"]["AttemptEnding"];
+            /** Format: int64 */
+            exact_at_unix_ms: number;
+            /** Format: int64 */
+            user_id: number;
+            username: string;
+        };
         /** @description A track rotation offered and its ratio held back. */
         HeldByRatio: {
             /**
@@ -9412,6 +9802,14 @@ export interface components {
         };
         /** @description How a pick's fill was chosen before an exact time, in the rotation log. */
         LookaheadLog: {
+            /** @description The fill it follows was chosen by hand on the attempts page. */
+            by_hand?: boolean;
+            /**
+             * Format: int64
+             * @description The calculation it comes from, on the attempts page: set by the
+             *     queue manager once stored.
+             */
+            calculation_id?: number | null;
             /**
              * Format: int32
              * @description Fills built for this pick: 0 when it follows the fill kept.
@@ -11312,6 +11710,34 @@ export interface components {
             /** @description The default schedule first, then the others by name. */
             schedules: components["schemas"]["ScheduleSummary"][];
         };
+        /** @description What the fit search did at the end of an attempt. */
+        SearchStats: {
+            /**
+             * @description Too many combinations (over 200 000): only the first tracks of
+             *     each slot were tried.
+             */
+            capped: boolean;
+            /**
+             * Format: int64
+             * @description Combinations tried, and of them those landing in the window.
+             */
+            combinations: number;
+            /** @description One of them replaced the attempt's ending. */
+            found: boolean;
+            /** Format: int64 */
+            landing: number;
+            options: number[];
+            /**
+             * Format: int32
+             * @description The best combinations played again with the real rules.
+             */
+            played_again: number;
+            /**
+             * @description The slots searched (from 0, in their clock), and the tracks each
+             *     could play.
+             */
+            slots: number[];
+        };
         /**
          * @description A way to finish signing in.
          * @enum {string}
@@ -12149,6 +12575,11 @@ export interface components {
              */
             threshold_db: number;
         };
+        /**
+         * @description Why building fills stopped.
+         * @enum {string}
+         */
+        Stop: "followed" | "landed" | "max_fills" | "time";
         /** @description How many stopped workers `DELETE /about/stopped` took off the list. */
         StoppedCleared: {
             /** Format: int64 */
@@ -13102,6 +13533,11 @@ export interface components {
              */
             trash_days: number;
         };
+        /**
+         * @description Why fills were built, or that a pick followed the fill kept.
+         * @enum {string}
+         */
+        Trigger: "first" | "restart" | "queue_changed" | "hand_dropped" | "automatic" | "followed";
         /**
          * @description Which roles require a second factor. With several stations, a user's
          *     highest role counts.
@@ -16469,6 +16905,121 @@ export interface operations {
             path: {
                 id: number;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_exact_times: {
+        parameters: {
+            query?: {
+                /** @description `2026-11-08`; today, in the station's time zone, by default. */
+                day?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExactTimesDay"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_exact_calculation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calculation's ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalculationDetail"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    use_exact_attempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calculation's ID */
+                id: number;
+                /** @description The attempt's number */
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    drop_exact_choice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -22238,6 +22789,131 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EngineStatus"];
                 };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_exact_times_on_station: {
+        parameters: {
+            query?: {
+                /** @description `2026-11-08`; today, in the station's time zone, by default. */
+                day?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExactTimesDay"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_exact_calculation_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The calculation's ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalculationDetail"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    use_exact_attempt_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The calculation's ID */
+                id: number;
+                /** @description The attempt's number */
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    drop_exact_choice_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": {
                 headers: {

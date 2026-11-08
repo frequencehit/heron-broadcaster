@@ -948,7 +948,7 @@ async fn list_picks(
 }
 
 /// The artist and title of `ids` (those that still exist), by ID.
-async fn track_labels(pool: &MySqlPool, ids: &[u64]) -> ApiResult<Vec<TrackLabel>> {
+pub(crate) async fn track_labels(pool: &MySqlPool, ids: &[u64]) -> ApiResult<Vec<TrackLabel>> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }

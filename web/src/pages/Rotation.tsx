@@ -175,6 +175,14 @@ function Where({ explanation }: { explanation: Explanation }) {
       {explanation.lookahead && (
         <div className={explanation.lookahead.faded ? "small warn" : "muted small"}>
           {describeLookahead(explanation.lookahead)}
+          {explanation.lookahead.calculation_id != null && (
+            <>
+              {" · "}
+              <Link to={`/exact-times?calculation=${explanation.lookahead.calculation_id}`}>
+                {t("exactTimes.seeAttempts")}
+              </Link>
+            </>
+          )}
         </div>
       )}
       {explanation.exact && (

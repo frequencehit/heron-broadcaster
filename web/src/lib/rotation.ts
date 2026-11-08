@@ -286,7 +286,10 @@ export function describeLookahead(log: Schemas["LookaheadLog"]): string {
     time: clockTime(log.exact_at_unix_ms + log.offset_ms),
     result,
   };
-  return log.kept ? t("exact.lookaheadKept", values) : t("exact.lookahead", values);
+  if (log.kept) {
+    return log.by_hand ? t("exact.lookaheadByHand", values) : t("exact.lookaheadKept", values);
+  }
+  return t("exact.lookahead", values);
 }
 
 /** A gap filled before an exact time: `medley 7, 1 hook left out`, `a filler`. */

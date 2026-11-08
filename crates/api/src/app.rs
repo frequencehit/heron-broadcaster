@@ -149,6 +149,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(schedules::router())
         .merge(restrictions::router())
         .merge(rotation::router())
+        .merge(crate::exact_times::router())
         .merge(history::router())
         .merge(settings::router())
         .merge(eq::router())

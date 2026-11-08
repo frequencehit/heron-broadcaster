@@ -3848,6 +3848,154 @@
         }
       }
     },
+    "/api/v1/exact-times": {
+      "get": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "The station's exact times of a day, each with how it was met and its\ncalculations. Every role.",
+        "operationId": "list_exact_times",
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "description": "`2026-11-08`; today, in the station's time zone, by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExactTimesDay"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exact-times/calculations/{id}": {
+      "get": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "A calculation's attempts, best first, with their tracks and endings.\nEvery role.",
+        "operationId": "get_exact_calculation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The calculation's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculationDetail"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exact-times/calculations/{id}/attempts/{n}/use": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Uses an attempt instead of the fill kept: the tracks rotation queued\nfrom the calculation that are not in it are taken out, and the next\npicks follow it while it lands. Operators and admins; `409` unless the\ncalculation is the latest of the upcoming exact time, the queue still\nfollows it, and the attempt lands in its window, fading nothing out.",
+        "operationId": "use_exact_attempt",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The calculation's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "The attempt's number",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exact-times/choice": {
+      "delete": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Back to automatic: the attempt chosen by hand is dropped, and the next\npick builds new fills. Operators and admins.",
+        "operationId": "drop_exact_choice",
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gateway/state": {
       "get": {
         "tags": [
@@ -11920,6 +12068,192 @@
               }
             }
           },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/exact-times": {
+      "get": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "The station's exact times of a day, each with how it was met and its\ncalculations. Every role.",
+        "operationId": "list_exact_times_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "description": "`2026-11-08`; today, in the station's time zone, by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExactTimesDay"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/exact-times/calculations/{id}": {
+      "get": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "A calculation's attempts, best first, with their tracks and endings.\nEvery role.",
+        "operationId": "get_exact_calculation_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The calculation's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculationDetail"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/exact-times/calculations/{id}/attempts/{n}/use": {
+      "post": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Uses an attempt instead of the fill kept: the tracks rotation queued\nfrom the calculation that are not in it are taken out, and the next\npicks follow it while it lands. Operators and admins; `409` unless the\ncalculation is the latest of the upcoming exact time, the queue still\nfollows it, and the attempt lands in its window, fading nothing out.",
+        "operationId": "use_exact_attempt_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The calculation's ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "The attempt's number",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/exact-times/choice": {
+      "delete": {
+        "tags": [
+          "rotation"
+        ],
+        "summary": "Back to automatic: the attempt chosen by hand is dropped, and the next\npick builds new fills. Operators and admins.",
+        "operationId": "drop_exact_choice_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
           "4XX": {
             "content": {
               "application/json": {
@@ -20599,6 +20933,185 @@
           }
         }
       },
+      "Attempt": {
+        "type": "object",
+        "description": "A fill built before an exact time, as the attempts page shows it.",
+        "required": [
+          "number",
+          "batch",
+          "seed",
+          "rank",
+          "tracks",
+          "ending"
+        ],
+        "properties": {
+          "batch": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its batch of 10, from 1; 0 for the fill kept, played again.",
+            "minimum": 0
+          },
+          "ending": {
+            "$ref": "#/components/schemas/AttemptEnding"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int32",
+            "description": "From 1, in the order built.",
+            "minimum": 0
+          },
+          "previous": {
+            "type": "boolean",
+            "description": "The fill kept by an earlier pick, played again: it competes with\nthe new ones."
+          },
+          "rank": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its rank among the calculation's attempts, from 1 (the best).",
+            "minimum": 0
+          },
+          "search": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SearchStats",
+                "description": "Missing when its end was not searched (it landed close enough, or\nanother one did)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seed": {
+            "type": "string",
+            "description": "Its seed: the same seed builds the same fill."
+          },
+          "tracks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttemptTrack"
+            }
+          }
+        }
+      },
+      "AttemptEnding": {
+        "type": "object",
+        "description": "How an attempt meets the exact time: the criteria fills are ranked by.",
+        "required": [
+          "in_window",
+          "faded",
+          "filling_ms",
+          "relaxed_steps",
+          "age_ms"
+        ],
+        "properties": {
+          "age_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Ages of the tracks' last plays, added up (30 days at most each)."
+          },
+          "faded": {
+            "type": "boolean",
+            "description": "They end after the cut: the last one is faded out."
+          },
+          "filling_ms": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "in_window": {
+            "type": "boolean"
+          },
+          "offset_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where the tracks before the exact slot end, from the exact time;\nnegative when early. Missing when the fill did not reach it."
+          },
+          "relaxed_steps": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "AttemptTrack": {
+        "type": "object",
+        "description": "A track of an attempt, from the end of the queue to the exact slot.",
+        "required": [
+          "track_id",
+          "pick",
+          "start_unix_ms",
+          "next_ms",
+          "chosen",
+          "step"
+        ],
+        "properties": {
+          "category_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/u64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chosen": {
+            "$ref": "#/components/schemas/Chosen"
+          },
+          "hooks_left_out": {
+            "type": "integer",
+            "format": "int32",
+            "description": "A medley: hooks left out (0: whole), and the parts left out by\ntheir position in it.",
+            "minimum": 0
+          },
+          "next_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "From its start to the next track's (its mix point).",
+            "minimum": 0
+          },
+          "parts_left_out": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "pick": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its pick in the fill, from 0: a linked slot's two tracks share one.",
+            "minimum": 0
+          },
+          "slot": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its clock slot, from 0; missing for a gap fill or without a clock.",
+            "minimum": 0
+          },
+          "start_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its planned start (Unix ms)."
+          },
+          "step": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Relaxation step of its pick, 0 (none) to 12.",
+            "minimum": 0
+          },
+          "track_id": {
+            "$ref": "#/components/schemas/u64"
+          }
+        }
+      },
       "Audience": {
         "type": "object",
         "description": "The audience figures of a period. Those from sessions are missing\nwithout listener lists.",
@@ -21164,6 +21677,175 @@
           }
         }
       },
+      "CalculationDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CalculationSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "exact_at_unix_ms",
+              "mode",
+              "window_from_unix_ms",
+              "window_cut_unix_ms",
+              "exact_slot",
+              "from_unix_ms",
+              "latest",
+              "can_choose",
+              "attempts",
+              "tracks",
+              "categories"
+            ],
+            "properties": {
+              "attempts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Attempt"
+                },
+                "description": "Its attempts, best first; none for a pick that followed the fill\nkept (see `follows_id`)."
+              },
+              "can_choose": {
+                "type": "boolean",
+                "description": "Its attempts landing in the window can be chosen by hand: it is the\nlatest of the upcoming exact time, and the queue follows it."
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryLabel"
+                }
+              },
+              "clock_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "exact_at_unix_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "exact_slot": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "from_unix_ms": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Where the fills start: the end of the queue (Unix ms)."
+              },
+              "latest": {
+                "type": "boolean",
+                "description": "The latest calculation of its exact time (followed picks aside)."
+              },
+              "mode": {
+                "$ref": "#/components/schemas/ExactMode"
+              },
+              "tracks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TrackLabel"
+                },
+                "description": "The tracks and categories of the attempts."
+              },
+              "window_cut_unix_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "window_from_unix_ms": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          }
+        ],
+        "description": "A calculation with its attempts."
+      },
+      "CalculationSummary": {
+        "type": "object",
+        "description": "A calculation, in the list of an exact time's.",
+        "required": [
+          "id",
+          "computed_at_unix_ms",
+          "trigger",
+          "fills",
+          "batches",
+          "stop",
+          "duration_ms",
+          "ending",
+          "by_hand"
+        ],
+        "properties": {
+          "batches": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "by_hand": {
+            "type": "boolean",
+            "description": "The fill followed was chosen by hand."
+          },
+          "chosen": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChosenAttempt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "computed_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "ending": {
+            "$ref": "#/components/schemas/AttemptEnding",
+            "description": "How the fill kept (or followed) ends."
+          },
+          "fills": {
+            "type": "integer",
+            "format": "int32",
+            "description": "New fills built, in batches of 10, and why building stopped.",
+            "minimum": 0
+          },
+          "follows_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The calculation a followed pick follows.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "kept": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The attempt kept, by its number.",
+            "minimum": 0
+          },
+          "stop": {
+            "$ref": "#/components/schemas/Stop"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/Trigger"
+          }
+        }
+      },
       "CandidateAlbum": {
         "type": "object",
         "description": "An album whose search was unsure.",
@@ -21374,6 +22056,30 @@
           }
         },
         "additionalProperties": false
+      },
+      "CategoryLabel": {
+        "type": "object",
+        "description": "A category of an attempt's tracks.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        }
       },
       "CategoryRef": {
         "type": "object",
@@ -21982,6 +22688,43 @@
             }
           }
         ]
+      },
+      "Chosen": {
+        "type": "string",
+        "description": "How a track of an attempt was chosen.",
+        "enum": [
+          "slot",
+          "fit_search",
+          "kept",
+          "filler",
+          "medley"
+        ]
+      },
+      "ChosenAttempt": {
+        "type": "object",
+        "description": "An attempt chosen by hand, as kept with its calculation.",
+        "required": [
+          "attempt",
+          "at_unix_ms"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Missing once the user is deleted."
+          }
+        }
       },
       "ClockInput": {
         "type": "object",
@@ -24197,6 +24940,112 @@
         },
         "additionalProperties": false
       },
+      "ExactTimeOfDay": {
+        "type": "object",
+        "description": "An exact time of the day.",
+        "required": [
+          "at_unix_ms",
+          "mode",
+          "window_from_unix_ms",
+          "window_cut_unix_ms",
+          "upcoming",
+          "calculations"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "calculations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalculationSummary"
+            },
+            "description": "Its calculations, in order."
+          },
+          "clock_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its clock and slot (from 0)."
+          },
+          "met": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExactLog",
+                "description": "How it was met, once its slot was picked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ExactMode"
+          },
+          "slot": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "upcoming": {
+            "type": "boolean",
+            "description": "Not reached yet."
+          },
+          "window_cut_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "window_from_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its window (Unix ms): the earliest start, and the cut."
+          }
+        }
+      },
+      "ExactTimesDay": {
+        "type": "object",
+        "description": "The station's exact times of a day.",
+        "required": [
+          "date",
+          "today",
+          "time_zone",
+          "exact_times"
+        ],
+        "properties": {
+          "choice": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HandChoice",
+                "description": "The attempt chosen by hand the queue follows now, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date": {
+            "type": "string",
+            "description": "`2026-11-08`, in the station's time zone."
+          },
+          "exact_times": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExactTimeOfDay"
+            }
+          },
+          "time_zone": {
+            "type": "string"
+          },
+          "today": {
+            "type": "string"
+          }
+        }
+      },
       "Explanation": {
         "type": "object",
         "description": "Why a track was picked: the rotation log.",
@@ -25085,6 +25934,52 @@
           "upload",
           "incoming"
         ]
+      },
+      "HandChoice": {
+        "type": "object",
+        "description": "An attempt chosen by hand that the queue follows.",
+        "required": [
+          "calculation_id",
+          "attempt",
+          "exact_at_unix_ms",
+          "user_id",
+          "username",
+          "at_unix_ms",
+          "ending"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The attempt's number.",
+            "minimum": 0
+          },
+          "calculation_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "ending": {
+            "$ref": "#/components/schemas/AttemptEnding",
+            "description": "How the chosen attempt ends, as when it was chosen."
+          },
+          "exact_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "username": {
+            "type": "string"
+          }
+        }
       },
       "HeldByRatio": {
         "type": "object",
@@ -26987,6 +27882,19 @@
           "relaxed_steps"
         ],
         "properties": {
+          "by_hand": {
+            "type": "boolean",
+            "description": "The fill it follows was chosen by hand on the attempts page."
+          },
+          "calculation_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The calculation it comes from, on the attempts page: set by the\nqueue manager once stored.",
+            "minimum": 0
+          },
           "draws": {
             "type": "integer",
             "format": "int32",
@@ -31306,6 +32214,63 @@
           }
         }
       },
+      "SearchStats": {
+        "type": "object",
+        "description": "What the fit search did at the end of an attempt.",
+        "required": [
+          "slots",
+          "options",
+          "capped",
+          "combinations",
+          "landing",
+          "played_again",
+          "found"
+        ],
+        "properties": {
+          "capped": {
+            "type": "boolean",
+            "description": "Too many combinations (over 200 000): only the first tracks of\neach slot were tried."
+          },
+          "combinations": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Combinations tried, and of them those landing in the window.",
+            "minimum": 0
+          },
+          "found": {
+            "type": "boolean",
+            "description": "One of them replaced the attempt's ending."
+          },
+          "landing": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "played_again": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The best combinations played again with the real rules.",
+            "minimum": 0
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "The slots searched (from 0, in their clock), and the tracks each\ncould play."
+          }
+        }
+      },
       "SecondFactor": {
         "type": "string",
         "description": "A way to finish signing in.",
@@ -33448,6 +34413,16 @@
           }
         },
         "additionalProperties": false
+      },
+      "Stop": {
+        "type": "string",
+        "description": "Why building fills stopped.",
+        "enum": [
+          "followed",
+          "landed",
+          "max_fills",
+          "time"
+        ]
       },
       "StoppedCleared": {
         "type": "object",
@@ -36135,6 +37110,18 @@
             "minimum": 0
           }
         }
+      },
+      "Trigger": {
+        "type": "string",
+        "description": "Why fills were built, or that a pick followed the fill kept.",
+        "enum": [
+          "first",
+          "restart",
+          "queue_changed",
+          "hand_dropped",
+          "automatic",
+          "followed"
+        ]
       },
       "TwoFactorSettings": {
         "type": "object",
