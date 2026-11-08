@@ -276,18 +276,22 @@ function Editor({ clock }: { clock: ClockView | null }) {
     [clock],
   );
   const plain = slots.map(({ key: _key, ...slot }) => slot);
-  const dirty = JSON.stringify({ name, looping, slots: plain }) !== saved;
+  // A clock with an exact time never loops across hours: its exact times
+  // are minutes of the hour (docs/rotation.md#clockwheel).
+  const hasExact = plain.some((slot) => slot.exact);
+  const loops = looping && !hasExact;
+  const dirty = JSON.stringify({ name, looping: loops, slots: plain }) !== saved;
 
   const settled = useDebounced(plain, 300);
   const preview = useQuery({
-    queryKey: ["clock-preview", settled, looping],
-    queryFn: () => unwrap(api.POST("/api/v1/stations/{station_id}/clocks/preview", { params: { path: here() }, body: { slots: settled, looping } })),
+    queryKey: ["clock-preview", settled, loops],
+    queryFn: () => unwrap(api.POST("/api/v1/stations/{station_id}/clocks/preview", { params: { path: here() }, body: { slots: settled, looping: loops } })),
     placeholderData: keepPreviousData,
   });
 
   // A new clock is created with its button; an existing one saves itself
   // a moment after each change.
-  const body = { name, looping, slots: plain };
+  const body = { name, looping: loops, slots: plain };
   const client = useQueryClient();
   const create = useAction(
     () => unwrap(api.POST("/api/v1/stations/{station_id}/clocks", { params: { path: here() }, body })),
@@ -425,16 +429,14 @@ function Editor({ clock }: { clock: ClockView | null }) {
               <label className="check" style={{ marginTop: "0.75rem" }}>
                 <input
                   type="checkbox"
-                  checked={looping}
-                  disabled={!canEdit}
+                  checked={loops}
+                  disabled={!canEdit || hasExact}
                   onChange={(event) => setLooping(event.target.checked)}
                 />
                 {t("clocks.loop")}
               </label>
               <p className="muted small" style={{ margin: "0.25rem 0 0" }}>
-                {looping
-                  ? t("clocks.loopHelp")
-                  : t("clocks.noLoopHelp")}
+                {hasExact ? t("clocks.loopExact") : loops ? t("clocks.loopHelp") : t("clocks.noLoopHelp")}
               </p>
             </div>
             {categories.data?.length === 0 && (

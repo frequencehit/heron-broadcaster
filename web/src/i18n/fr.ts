@@ -1136,6 +1136,7 @@ const fr = {
   "clocks.loop": "Boucler d'une heure à l'autre",
   "clocks.loopHelp": "L'horloge reprend après son dernier créneau quelle que soit l'heure, comme une clockwheel de SAM Broadcaster : elle peut durer plus d'une heure.",
   "clocks.noLoopHelp": "Chaque heure relance l'horloge depuis son premier créneau ; les créneaux qui ne tiennent pas dans l'heure sont abandonnés.",
+  "clocks.loopExact": "Une horloge avec une heure exacte repart de son premier créneau à chaque heure : ses heures exactes sont des minutes de l'heure, elle ne peut donc pas boucler d'une heure sur l'autre.",
   "clocks.needCategories": "Les créneaux appellent des catégories : {link} d'abord.",
   "clocks.createSome": "créez-en",
   "clocks.noSlot": "Pas encore de créneau.",

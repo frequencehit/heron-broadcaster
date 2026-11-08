@@ -1129,6 +1129,7 @@ const de = {
   "clocks.loop": "Über Stunden hinweg wiederholen",
   "clocks.loopHelp": "Die Uhr läuft unabhängig von der Stunde ab ihrem letzten Slot weiter, wie ein Clockwheel in SAM Broadcaster: Sie kann länger als eine Stunde sein.",
   "clocks.noLoopHelp": "Jede Stunde startet die Uhr ab ihrem ersten Slot; Slots, die nicht in die Stunde passen, entfallen.",
+  "clocks.loopExact": "Eine Stundenuhr mit fester Uhrzeit beginnt jede Stunde neu: Ihre festen Zeiten sind Minuten der Stunde, deshalb kann sie nicht stundenübergreifend weiterlaufen.",
   "clocks.needCategories": "Slots rufen Kategorien auf: {link} zuerst.",
   "clocks.createSome": "erstellen Sie welche",
   "clocks.noSlot": "Noch kein Slot.",

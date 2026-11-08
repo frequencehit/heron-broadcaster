@@ -631,3 +631,31 @@ fn a_hard_exact_time_draws_wider_before_cutting_a_track() {
         assert!(pick.track > 3, "{}", pick.track);
     }
 }
+
+#[test]
+fn a_clock_with_an_exact_time_never_loops() {
+    let clock = |id, slots: Vec<Slot>| Clock {
+        id,
+        name: format!("Clock {id}"),
+        looping: true,
+        slots,
+    };
+    let library = Library::new(
+        LibraryParts {
+            clocks: vec![
+                clock(
+                    1,
+                    vec![with_exact(NEWS, exact(0, ExactMode::Soft)), slot(SONGS)],
+                ),
+                clock(2, vec![slot(SONGS), slot(SONGS)]),
+            ],
+            ..LibraryParts::default()
+        },
+        TimeZone::UTC,
+    );
+    // Stored looping with an exact time: it starts over at each hour.
+    assert!(!library.clocks[&1].looping);
+    assert!(!library.clocks[&1].loops());
+    // Without one, it loops as stored.
+    assert!(library.clocks[&2].looping);
+}

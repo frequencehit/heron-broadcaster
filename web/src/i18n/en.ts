@@ -1127,6 +1127,7 @@ const en = {
   "clocks.loop": "Loop across hours",
   "clocks.loopHelp": "The clock carries on from its last slot whatever the hour, like a SAM Broadcaster clockwheel: it can be longer than an hour.",
   "clocks.noLoopHelp": "Each hour starts the clock from its first slot; slots that do not fit in the hour are dropped.",
+  "clocks.loopExact": "A clock with an exact time starts over at each hour: its exact times are minutes of the hour, so it cannot loop across hours.",
   "clocks.needCategories": "Slots call categories: {link} first.",
   "clocks.createSome": "create some",
   "clocks.noSlot": "No slot yet.",
