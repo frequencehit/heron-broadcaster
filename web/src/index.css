@@ -3878,6 +3878,15 @@ ul.held {
   gap: 0.5rem;
 }
 
+.exact-recalculate {
+  gap: 0.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.exact-earlier {
+  align-self: flex-start;
+}
+
 .exact-run {
   display: flex;
   flex-direction: column;

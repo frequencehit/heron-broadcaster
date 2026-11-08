@@ -3,8 +3,9 @@
 // The attempts page (docs/rotation.md#the-attempts-page): the exact times of
 // a day and how each was met; for one, its calculations, their attempts best
 // first on a timeline up to the window, and an attempt's tracks, ranking and
-// fit search. An operator can use another attempt of the latest calculation
-// that lands in the window, and go back to automatic.
+// fit search. An operator can calculate the next exact time again, use
+// another attempt of the latest calculation that lands in the window, and go
+// back to automatic.
 
 import { useQuery } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useState } from "react";
@@ -17,6 +18,7 @@ import {
   type CalculationSummary,
   type ExactTimeOfDay,
   type ExactWindow,
+  type Run as RunOf,
   type Status,
   blocks,
   calculationResult,
@@ -31,6 +33,8 @@ import {
   latestBuilt,
   metStatus,
   position,
+  runHolds,
+  runsOf,
   signedSeconds,
   spanOf,
   stopLabel,
@@ -141,6 +145,7 @@ export function ExactTimes() {
               key={exact.at_unix_ms}
               exact={exact}
               choice={days.data.choice?.exact_at_unix_ms === exact.at_unix_ms ? days.data.choice : null}
+              next={exactTimes.find((item) => item.upcoming)?.at_unix_ms === exact.at_unix_ms}
               askedCalculation={askedCalculation}
               askedAttempt={askedAttempt}
             />
@@ -158,11 +163,14 @@ export function ExactTimes() {
 function ExactTime({
   exact,
   choice,
+  next,
   askedCalculation,
   askedAttempt,
 }: Readonly<{
   exact: ExactTimeOfDay;
   choice: Schemas["HandChoice"] | null;
+  /** The next exact time ahead: the one rotation plans for. */
+  next: boolean;
   askedCalculation: number | null;
   askedAttempt: number | null;
 }>) {
@@ -180,12 +188,9 @@ function ExactTime({
       <div className="exact-columns">
         <Card title={t("exactTimes.calculationsFor", { time: shortTime(exact.at_unix_ms) })} className="exact-runs">
           <p className="muted small exact-help">{t("exactTimes.calculationsHelp")}</p>
+          {exact.upcoming && <Recalculate exact={exact} next={next} />}
           {exact.calculations.length === 0 && <Empty>{t("exactTimes.noCalculations")}</Empty>}
-          <div className="stack exact-run-list">
-            {exact.calculations.map((calculation) => (
-              <Run key={calculation.id} calculation={calculation} selected={calculation.id === selected?.id} />
-            ))}
-          </div>
+          <Runs exact={exact} selected={selected?.id ?? null} asked={askedCalculation} />
         </Card>
         {selected && (
           <AttemptsCard
@@ -377,8 +382,90 @@ function HandChosen({ choice }: Readonly<{ choice: Schemas["HandChoice"] }>) {
   );
 }
 
-function Run({ calculation, selected }: Readonly<{ calculation: CalculationSummary; selected: boolean }>) {
-  const result = calculationResult(calculation);
+/** *Recalculate now*: new fills for the next exact time, the picks queued from the fill kept replaced. */
+function Recalculate({ exact, next }: Readonly<{ exact: ExactTimeOfDay; next: boolean }>) {
+  const canRecalculate = useCan("operator");
+  const recalculate = useAction(
+    () =>
+      unwrap(
+        api.POST("/api/v1/stations/{station_id}/exact-times/recalculate", {
+          params: { path: here(), query: { exact_at_unix_ms: exact.at_unix_ms } },
+        }),
+      ),
+    {
+      success: t("exactTimes.recalculateDone"),
+      invalidate: [["exact-times"], ["exact-calculation"], ["queue"]],
+      onSuccess: (result) => setSearch({ calculation: result.id, attempt: null }),
+    },
+  );
+  if (!canRecalculate) {
+    return null;
+  }
+  return (
+    <div className="stack exact-recalculate">
+      <button
+        type="button"
+        className="btn"
+        disabled={!next || recalculate.isPending}
+        onClick={() => recalculate.mutate(undefined)}
+      >
+        {recalculate.isPending ? t("exactTimes.recalculating") : t("exactTimes.recalculate")}
+      </button>
+      {!next && <span className="muted small">{t("exactTimes.recalculateNextOnly")}</span>}
+    </div>
+  );
+}
+
+/** The calculations, newest first: the latest card, the earlier ones behind a button above it. */
+function Runs({
+  exact,
+  selected,
+  asked,
+}: Readonly<{ exact: ExactTimeOfDay; selected: number | null; asked: number | null }>) {
+  const runs = runsOf(exact.calculations);
+  const [latest, ...earlier] = runs;
+  // A link to an earlier calculation shows it.
+  const linkedEarlier = asked !== null && earlier.some((run) => runHolds(run, asked));
+  const [open, setOpen] = useState(linkedEarlier);
+  useEffect(() => {
+    if (linkedEarlier) {
+      setOpen(true);
+    }
+  }, [linkedEarlier]);
+  if (!latest) {
+    return null;
+  }
+  const window = windowOf(exact);
+  return (
+    <div className="stack exact-run-list">
+      {earlier.length > 0 && (
+        <button
+          type="button"
+          className="btn small exact-earlier"
+          aria-expanded={open}
+          aria-controls="exact-earlier-runs"
+          onClick={() => setOpen(!open)}
+        >
+          {open ? t("exactTimes.hideEarlier") : t("exactTimes.earlier", { count: earlier.length })}
+        </button>
+      )}
+      <Run run={latest} window={window} selected={runHolds(latest, selected)} />
+      {open && (
+        <div id="exact-earlier-runs" className="stack exact-run-list">
+          {earlier.map((run) => (
+            <Run key={run.calculation.id} run={run} window={window} selected={runHolds(run, selected)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Run({ run, window, selected }: Readonly<{ run: RunOf; window: ExactWindow; selected: boolean }>) {
+  const { calculation, followed } = run;
+  const result = calculationResult(calculation, window);
+  const isFollowed = calculation.trigger === "followed";
+  const last = followed.at(-1);
   return (
     <button
       type="button"
@@ -386,17 +473,26 @@ function Run({ calculation, selected }: Readonly<{ calculation: CalculationSumma
       aria-pressed={selected}
       onClick={() => setSearch({ calculation: calculation.id, attempt: null })}
     >
-      <span className="row between">
-        <strong>{clockTime(calculation.computed_at_unix_ms)}</strong>
-        <span className={`tone-${result.tone}`}>{result.label}</span>
-      </span>
+      <strong>
+        {isFollowed
+          ? t("exactTimes.followedAt", { time: clockTime(calculation.computed_at_unix_ms) })
+          : t("exactTimes.calculatedAt", { time: clockTime(calculation.computed_at_unix_ms) })}
+      </strong>
+      <span className={`tone-${result.tone}`}>{result.label}</span>
       <span className="muted small">{triggerLabel(calculation)}</span>
-      <span className="muted small">
-        {t("exactTimes.calculationDetail", {
-          count: calculation.fills,
-          ms: number(calculation.duration_ms),
-        })}
-      </span>
+      {!isFollowed && (
+        <span className="muted small">
+          {t("exactTimes.calculationDetail", {
+            count: calculation.fills,
+            ms: number(calculation.duration_ms),
+          })}
+        </span>
+      )}
+      {last && (
+        <span className="muted small">
+          {t("exactTimes.followedFor", { count: followed.length, time: clockTime(last.computed_at_unix_ms) })}
+        </span>
+      )}
       {calculation.chosen && (
         <span className="small tone-good">
           {t("exactTimes.chosenByHandBy", {

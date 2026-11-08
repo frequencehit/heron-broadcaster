@@ -5,6 +5,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../api";
 import { t } from "../i18n";
+import { clockTime } from "../lib/format";
 import { navigate } from "../lib/router";
 import { chooseStation } from "../lib/station";
 import { answer, renderApp, sent, user } from "../test/render";
@@ -95,9 +96,16 @@ function detail(changes: Partial<Schemas["CalculationDetail"]> = {}): Schemas["C
   };
 }
 
-function show(options: { choice?: Schemas["HandChoice"] | null; role?: "viewer" | "admin"; calculation?: Partial<Schemas["CalculationDetail"]> } = {}) {
+function show(
+  options: {
+    choice?: Schemas["HandChoice"] | null;
+    role?: "viewer" | "admin";
+    calculation?: Partial<Schemas["CalculationDetail"]>;
+    path?: string;
+  } = {},
+) {
   chooseStation(1);
-  navigate("/exact-times");
+  navigate(options.path ?? "/exact-times");
   answer({
     "GET /api/v1/stations/{station_id}/exact-times": {
       date: "2026-11-08",
@@ -126,6 +134,7 @@ function show(options: { choice?: Schemas["HandChoice"] | null; role?: "viewer" 
     "GET /api/v1/stations/{station_id}/exact-times/calculations/{id}": detail(options.calculation),
     "POST /api/v1/stations/{station_id}/exact-times/calculations/{id}/attempts/{n}/use": undefined,
     "DELETE /api/v1/stations/{station_id}/exact-times/choice": undefined,
+    "POST /api/v1/stations/{station_id}/exact-times/recalculate": { id: 42 },
   });
   renderApp(<ExactTimes />, user(options.role ?? "admin"));
 }
@@ -139,10 +148,15 @@ describe("ExactTimes", () => {
     expect(await within(card).findByText(t("exactTimes.kept"))).toBeTruthy();
     expect(within(card).getByText("#3")).toBeTruthy();
     expect(within(card).getByText(t("exactTimes.endsFaded", { seconds: 28 }))).toBeTruthy();
-    // The calculations, why each was made.
-    expect(screen.getByText(t("exactTimes.triggerFirst"))).toBeTruthy();
+    // The latest calculation, why it was made, how it ends, and the pick
+    // that followed it on its card.
     expect(screen.getAllByText(t("exactTimes.triggerQueueChanged")).length).toBeGreaterThan(0);
-    expect(screen.getByText(t("exactTimes.triggerFollowed"))).toBeTruthy();
+    expect(screen.getByText(t("exactTimes.calculatedAt", { time: clockTime(SUMMARY.computed_at_unix_ms) }))).toBeTruthy();
+    expect(screen.getAllByText(t("exactTimes.resultEarly", { seconds: 4 })).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(t("exactTimes.followedFor", { count: 1, time: clockTime(SUMMARY.computed_at_unix_ms) })),
+    ).toBeTruthy();
+    expect(screen.queryByText(t("exactTimes.triggerFollowed"))).toBeNull();
     // The detail of the one kept: its tracks and fit search.
     expect(await screen.findByRole("heading", { name: t("exactTimes.attemptTitle", { number: "12", rank: 1 }) })).toBeTruthy();
     expect(screen.getAllByText("What Is Love").length).toBeGreaterThan(0);
@@ -150,6 +164,35 @@ describe("ExactTimes", () => {
     expect(screen.getByText(t("exactTimes.verdictKept"))).toBeTruthy();
     expect(screen.getByText(t("exactTimes.playingAuto"))).toBeTruthy();
     expect(screen.queryByRole("button", { name: t("exactTimes.use") })).toBeNull();
+  });
+
+  it("shows the latest calculation only, the earlier ones behind a button above it", async () => {
+    show();
+    const earlier = await screen.findByRole("button", { name: t("exactTimes.earlier", { count: 1 }) });
+    expect(earlier.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText(t("exactTimes.triggerFirst"))).toBeNull();
+    fireEvent.click(earlier);
+    expect(earlier.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText(t("exactTimes.triggerFirst"))).toBeTruthy();
+    expect(earlier.textContent).toBe(t("exactTimes.hideEarlier"));
+  });
+
+  it("shows an earlier calculation a link asks for", async () => {
+    show({ path: `/exact-times?at=${AT}&calculation=39` });
+    expect(await screen.findByText(t("exactTimes.triggerFirst"))).toBeTruthy();
+    const earlier = screen.getByRole("button", { name: t("exactTimes.hideEarlier") });
+    expect(earlier.getAttribute("aria-expanded")).toBe("true");
+    const card = screen.getByText(t("exactTimes.triggerFirst")).closest("button") as HTMLElement;
+    expect(card.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("recalculates the next exact time by hand", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: t("exactTimes.recalculate") }));
+    await waitFor(() => expect(sent("POST /api/v1/stations/{station_id}/exact-times/recalculate")).toHaveLength(1));
+    expect(sent("POST /api/v1/stations/{station_id}/exact-times/recalculate")[0]?.options).toMatchObject({
+      params: { path: { station_id: 1 }, query: { exact_at_unix_ms: AT } },
+    });
   });
 
   it("uses another attempt that lands in the window", async () => {
@@ -178,6 +221,7 @@ describe("ExactTimes", () => {
     fireEvent.click(await screen.findByText("#3"));
     await screen.findByRole("heading", { name: t("exactTimes.attemptTitle", { number: "3", rank: 2 }) });
     expect(screen.queryByRole("button", { name: t("exactTimes.use") })).toBeNull();
+    expect(screen.queryByRole("button", { name: t("exactTimes.recalculate") })).toBeNull();
   });
 
   it("says when an attempt was chosen by hand, and goes back to automatic", async () => {
