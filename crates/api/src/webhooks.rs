@@ -100,6 +100,10 @@ pub enum WebhookEvent {
     /// A match's vote closes, with its result.
     #[serde(rename = "match.closed")]
     MatchClosed,
+    /// A certification delivery failed its last attempt
+    /// (docs/certification.md#when-it-is-sent), with what failed in `message`.
+    #[serde(rename = "certification.failed")]
+    CertificationFailed,
 }
 
 impl WebhookEvent {
@@ -119,6 +123,7 @@ impl WebhookEvent {
             Self::DedicationAccepted => "dedication.accepted",
             Self::MatchStarted => "match.started",
             Self::MatchClosed => "match.closed",
+            Self::CertificationFailed => "certification.failed",
         }
     }
 
@@ -330,6 +335,23 @@ impl Payload {
             reason: None,
             upcoming: None,
             show: Some(show),
+            message: Some(message),
+            dedication: None,
+        }
+    }
+
+    /// An event that only says something, in `message`.
+    pub fn message(event: WebhookEvent, message: String) -> Self {
+        Self {
+            event,
+            station: String::new(),
+            delivery_id: 0,
+            at_unix_ms: unix_ms(SystemTime::now()),
+            track: None,
+            played_ms: None,
+            reason: None,
+            upcoming: None,
+            show: None,
             message: Some(message),
             dedication: None,
         }
@@ -787,7 +809,7 @@ impl Webhooks {
 
     /// Queues `payload` for every enabled webhook of a station that asks
     /// for its event.
-    async fn queue_for(&self, station_id: u64, payload: Payload) -> ApiResult<()> {
+    pub async fn queue_for(&self, station_id: u64, payload: Payload) -> ApiResult<()> {
         if !self.on(station_id).await? {
             return Ok(());
         }

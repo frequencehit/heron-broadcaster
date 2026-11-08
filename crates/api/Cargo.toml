@@ -46,12 +46,16 @@ qrcode.workspace = true
 rustix = { workspace = true, features = ["termios", "process"] }
 # Sends webhook deliveries.
 reqwest.workspace = true
+# Checks FTPS certificates with the system's authorities.
+rustls-platform-verifier.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # Authenticator app codes (TOTP, RFC 6238: HMAC-SHA-1).
 sha1.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
+# Certification deliveries by FTPS.
+suppaftp.workspace = true
 # Reads the CPU, memory and load average for the status bar.
 sysinfo.workspace = true
 # The backups' option file.
@@ -81,6 +85,11 @@ heron-service = { workspace = true, features = ["test-util"] }
 hound.workspace = true
 # Images for the cover tests.
 image.workspace = true
+# An FTPS server for the certification delivery test.
+async-trait.workspace = true
+libunftp.workspace = true
+unftp-core.workspace = true
+unftp-sbe-fs.workspace = true
 tokio-tungstenite.workspace = true
 
 [lints]

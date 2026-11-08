@@ -334,6 +334,12 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         pool.clone(),
         cli.access_logs_dir.clone(),
     )));
+    match certification::DeliverySender::new() {
+        Ok(sender) => tasks.push(tokio::spawn(
+            certification::DeliveryWorker::new(pool.clone(), Arc::clone(&webhooks), sender).run(),
+        )),
+        Err(error) => tracing::error!(%error, "cannot set up the certification deliveries"),
+    }
     tasks.push(tokio::spawn(dedications::run(
         pool.clone(),
         Arc::clone(&stations),
