@@ -25,6 +25,8 @@ use crate::auth::{Passwords, Role};
 use crate::library::Library;
 use crate::{engine, stations, users, webhooks};
 
+mod never_off_air;
+
 /// Tracks short enough to see several play during a test.
 const TRACK_SECONDS: f64 = 3.0;
 /// The gateway token the test API accepts.
