@@ -48,7 +48,7 @@ import { Settings } from "./pages/Settings";
 import { LikesWeekCard } from "./components/Likes";
 import { DedicationsPage } from "./components/Dedications";
 import { MatchPage } from "./components/Match";
-import { Top30Page } from "./components/Top30";
+import { TopPage, TopsPage } from "./components/Tops";
 import { ShowPage } from "./pages/Show";
 import { Stations } from "./pages/Stations";
 import { Statistics } from "./pages/Statistics";
@@ -132,12 +132,16 @@ function pageAt(pathname: string): ReactNode {
   if (medley) {
     return <MedleyEditor id={medley.id === "new" ? null : Number(medley.id)} />;
   }
+  const top = match("/shows/top30/:id", pathname);
+  if (top) {
+    return <TopPage id={Number(top.id)} />;
+  }
   const show = match("/shows/:module", pathname);
   if (show?.module === "match") {
     return <MatchPage />;
   }
   if (show?.module === "top30") {
-    return <Top30Page />;
+    return <TopsPage />;
   }
   if (show?.module === "dedications") {
     return <DedicationsPage />;

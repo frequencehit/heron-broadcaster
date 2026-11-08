@@ -3365,7 +3365,7 @@ ul.held {
   text-align: center;
 }
 
-/* The Top 30: movements in the chart, the new release in the programme. */
+/* The tops: movements in the chart, the new release in the programme. */
 .top30-move {
   font-size: 0.8rem;
   font-weight: 650;
@@ -3391,6 +3391,149 @@ ul.held {
 
 .top30-programme .badge.warn {
   margin-left: 0.5rem;
+}
+
+/* The tops: the list, the score in two parts, the ranks after the size. */
+.top-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+}
+
+.top-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.top-size {
+  width: 84px;
+  height: 84px;
+  flex: none;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.top-size strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.top-card-main {
+  flex: 999 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.top-card-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+}
+
+.top-card-facts dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.top-card-facts dd {
+  margin: 0;
+}
+
+.top-card-next {
+  flex: 1 1 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.top-warning {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--fg);
+}
+
+.top-chart tr.top-outside td {
+  color: var(--muted);
+}
+
+.top-score {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 180px;
+}
+
+.top-score strong {
+  width: 2rem;
+  text-align: right;
+}
+
+.top-score-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  display: flex;
+  overflow: hidden;
+}
+
+.top-score-bar .plays,
+.top-key.plays {
+  background: var(--deck-a);
+}
+
+.top-score-bar .likes,
+.top-key.likes {
+  background: var(--warn);
+}
+
+.top-key {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.top-not-enough {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.top-ratio input[type="range"] {
+  flex: 1 1 240px;
+  accent-color: var(--accent);
+}
+
+.top-formula {
+  display: block;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-family: var(--mono);
+}
+
+.top-period {
+  border: 0;
+  margin: 0;
+  padding: 0;
 }
 
 /* Dedications: the requests, their message, their actions. */

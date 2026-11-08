@@ -9638,7 +9638,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match, top30 or likes",
+            "description": "dedications, match or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -9670,13 +9670,13 @@
         "tags": [
           "shows"
         ],
-        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has are refused (`409`). Operators.",
+        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has, or a top's show, are refused (`409`). Operators.",
         "operationId": "put_show",
         "parameters": [
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match, top30 or likes",
+            "description": "dedications, match or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -15892,7 +15892,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match, top30 or likes",
+            "description": "dedications, match or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -15924,7 +15924,7 @@
         "tags": [
           "shows"
         ],
-        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has are refused (`409`). Operators.",
+        "summary": "Replaces a show's settings on the station. Hours another show of the\nstation has, or a top's show, are refused (`409`). Operators.",
         "operationId": "put_show_on_station",
         "parameters": [
           {
@@ -15939,7 +15939,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match, top30 or likes",
+            "description": "dedications, match or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -16371,13 +16371,104 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/top30/chart": {
+    "/api/v1/stations/{station_id}/tops": {
       "get": {
         "tags": [
           "top30"
         ],
-        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
-        "operationId": "get_top30_chart_on_station",
+        "summary": "The station's tops, in order.",
+        "operationId": "list_tops_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TopView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Creates a top, at the end of the list. Operators.",
+        "operationId": "create_top_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/tops/{top_id}": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A top of the station.",
+        "operationId": "get_top_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -16389,9 +16480,171 @@
             }
           },
           {
-            "name": "week",
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Replaces a top's settings. Operators.",
+        "operationId": "put_top_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Deletes a top with its charts. Operators.",
+        "operationId": "delete_top_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/tops/{top_id}/chart": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A top's chart: the live one by default, a frozen one by its key.",
+        "operationId": "get_top_chart_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
             "in": "query",
-            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
+            "description": "A chart, by the day it is frozen (`2026-11-08`); the live one by\ndefault.",
             "required": false,
             "schema": {
               "type": "string"
@@ -16420,13 +16673,13 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/top30/charts": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/charts": {
       "get": {
         "tags": [
           "top30"
         ],
-        "summary": "The frozen charts, the latest first.",
-        "operationId": "list_top30_charts_on_station",
+        "summary": "A top's frozen charts, the latest first.",
+        "operationId": "list_top_charts_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -16438,9 +16691,20 @@
             }
           },
           {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
             "name": "before",
             "in": "query",
-            "description": "Weeks before this one (its Monday), for the next page.",
+            "description": "Charts before this one (its key), for the next page.",
             "required": false,
             "schema": {
               "type": "string"
@@ -16483,13 +16747,13 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/top30/charts/{week}/new-release": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/charts/{key}/new-release": {
       "put": {
         "tags": [
           "top30"
         ],
-        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
-        "operationId": "choose_new_release_on_station",
+        "summary": "Chooses a chart's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "choose_top_new_release_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -16501,9 +16765,20 @@
             }
           },
           {
-            "name": "week",
+            "name": "top_id",
             "in": "path",
-            "description": "The week's Monday",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The chart: the day it is frozen",
             "required": true,
             "schema": {
               "type": "string"
@@ -16542,13 +16817,13 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/top30/charts/{week}/removals/{track_id}": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/charts/{key}/removals/{track_id}": {
       "post": {
         "tags": [
           "top30"
         ],
-        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
-        "operationId": "remove_track_on_station",
+        "summary": "Takes a track out of a chart: the tracks after it move up. `409` once a\nshow was built from the chart. Operators.",
+        "operationId": "remove_top_track_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -16560,9 +16835,20 @@
             }
           },
           {
-            "name": "week",
+            "name": "top_id",
             "in": "path",
-            "description": "The week's Monday",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The chart: the day it is frozen",
             "required": true,
             "schema": {
               "type": "string"
@@ -16605,8 +16891,8 @@
         "tags": [
           "top30"
         ],
-        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
-        "operationId": "restore_track_on_station",
+        "summary": "Puts back a track taken out of a chart. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "restore_top_track_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -16618,9 +16904,20 @@
             }
           },
           {
-            "name": "week",
+            "name": "top_id",
             "in": "path",
-            "description": "The week's Monday",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The chart: the day it is frozen",
             "required": true,
             "schema": {
               "type": "string"
@@ -16660,13 +16957,13 @@
         }
       }
     },
-    "/api/v1/stations/{station_id}/top30/settings": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/show": {
       "get": {
         "tags": [
           "top30"
         ],
-        "summary": "The station's Top 30 settings.",
-        "operationId": "get_top30_settings_on_station",
+        "summary": "A top's show on now, else its next one within 62 days, with its\nprogramme: the one built, or what would be built now. `null` without\none.",
+        "operationId": "get_top_show_on_station",
         "parameters": [
           {
             "name": "station_id",
@@ -16676,93 +16973,16 @@
             "schema": {
               "type": "integer"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
           },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
-        "operationId": "put_top30_settings_on_station",
-        "parameters": [
           {
-            "name": "station_id",
+            "name": "top_id",
             "in": "path",
-            "description": "The station's ID",
+            "description": "The top",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Top30Settings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stations/{station_id}/top30/show": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
-        "operationId": "get_top30_show_on_station",
-        "parameters": [
-          {
-            "name": "station_id",
-            "in": "path",
-            "description": "The station's ID",
-            "required": true,
-            "schema": {
-              "type": "integer"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
             }
           }
         ],
@@ -17708,18 +17928,222 @@
         }
       }
     },
-    "/api/v1/top30/chart": {
+    "/api/v1/tops": {
       "get": {
         "tags": [
           "top30"
         ],
-        "summary": "A week's chart: this week's as it stands now by default, frozen once\nthe week closed.",
-        "operationId": "get_top30_chart",
+        "summary": "The station's tops, in order.",
+        "operationId": "list_tops",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TopView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Creates a top, at the end of the list. Operators.",
+        "operationId": "create_top",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tops/{top_id}": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A top of the station.",
+        "operationId": "get_top",
         "parameters": [
           {
-            "name": "week",
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Replaces a top's settings. Operators.",
+        "operationId": "put_top",
+        "parameters": [
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "Deletes a top with its charts. Operators.",
+        "operationId": "delete_top",
+        "parameters": [
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tops/{top_id}/chart": {
+      "get": {
+        "tags": [
+          "top30"
+        ],
+        "summary": "A top's chart: the live one by default, a frozen one by its key.",
+        "operationId": "get_top_chart",
+        "parameters": [
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
             "in": "query",
-            "description": "A week, by its Monday (`2026-11-02`); this week by default.",
+            "description": "A chart, by the day it is frozen (`2026-11-08`); the live one by\ndefault.",
             "required": false,
             "schema": {
               "type": "string"
@@ -17748,18 +18172,29 @@
         }
       }
     },
-    "/api/v1/top30/charts": {
+    "/api/v1/tops/{top_id}/charts": {
       "get": {
         "tags": [
           "top30"
         ],
-        "summary": "The frozen charts, the latest first.",
-        "operationId": "list_top30_charts",
+        "summary": "A top's frozen charts, the latest first.",
+        "operationId": "list_top_charts",
         "parameters": [
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
           {
             "name": "before",
             "in": "query",
-            "description": "Weeks before this one (its Monday), for the next page.",
+            "description": "Charts before this one (its key), for the next page.",
             "required": false,
             "schema": {
               "type": "string"
@@ -17802,18 +18237,29 @@
         }
       }
     },
-    "/api/v1/top30/charts/{week}/new-release": {
+    "/api/v1/tops/{top_id}/charts/{key}/new-release": {
       "put": {
         "tags": [
           "top30"
         ],
-        "summary": "Chooses a week's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
-        "operationId": "choose_new_release",
+        "summary": "Chooses a chart's new release among the tracks of the new release\ncategory, or goes back to the proposed one. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "choose_top_new_release",
         "parameters": [
           {
-            "name": "week",
+            "name": "top_id",
             "in": "path",
-            "description": "The week's Monday",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The chart: the day it is frozen",
             "required": true,
             "schema": {
               "type": "string"
@@ -17852,18 +18298,29 @@
         }
       }
     },
-    "/api/v1/top30/charts/{week}/removals/{track_id}": {
+    "/api/v1/tops/{top_id}/charts/{key}/removals/{track_id}": {
       "post": {
         "tags": [
           "top30"
         ],
-        "summary": "Takes a track out of a week's chart: the tracks after it move up. `409`\nonce a show was built from the chart. Operators.",
-        "operationId": "remove_track",
+        "summary": "Takes a track out of a chart: the tracks after it move up. `409` once a\nshow was built from the chart. Operators.",
+        "operationId": "remove_top_track",
         "parameters": [
           {
-            "name": "week",
+            "name": "top_id",
             "in": "path",
-            "description": "The week's Monday",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The chart: the day it is frozen",
             "required": true,
             "schema": {
               "type": "string"
@@ -17906,13 +18363,24 @@
         "tags": [
           "top30"
         ],
-        "summary": "Puts back a track taken out of a week's chart. `409` once a show was\nbuilt from the chart. Operators.",
-        "operationId": "restore_track",
+        "summary": "Puts back a track taken out of a chart. `409` once a show was built\nfrom the chart. Operators.",
+        "operationId": "restore_top_track",
         "parameters": [
           {
-            "name": "week",
+            "name": "top_id",
             "in": "path",
-            "description": "The week's Monday",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The chart: the day it is frozen",
             "required": true,
             "schema": {
               "type": "string"
@@ -17952,79 +18420,26 @@
         }
       }
     },
-    "/api/v1/top30/settings": {
+    "/api/v1/tops/{top_id}/show": {
       "get": {
         "tags": [
           "top30"
         ],
-        "summary": "The station's Top 30 settings.",
-        "operationId": "get_top30_settings",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
+        "summary": "A top's show on now, else its next one within 62 days, with its\nprogramme: the one built, or what would be built now. `null` without\none.",
+        "operationId": "get_top_show",
+        "parameters": [
+          {
+            "name": "top_id",
+            "in": "path",
+            "description": "The top",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
             }
           }
-        }
-      },
-      "put": {
-        "tags": [
-          "top30"
         ],
-        "summary": "Replaces the station's Top 30 settings. The categories must be the\nstation's (`422`). Operators.",
-        "operationId": "put_top30_settings",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Top30Settings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Top30Settings"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/top30/show": {
-      "get": {
-        "tags": [
-          "top30"
-        ],
-        "summary": "The show on now, else the next one within a week, with its programme:\nthe one built, or what would be built now. `null` without hours.",
-        "operationId": "get_top30_show",
         "responses": {
           "200": {
             "content": {
@@ -22575,22 +22990,24 @@
       },
       "Chart": {
         "type": "object",
-        "description": "A week's chart.",
+        "description": "A top's chart.",
         "required": [
-          "week",
+          "key",
           "from_unix_ms",
-          "closes_at_unix_ms",
+          "to_unix_ms",
           "frozen",
           "locked",
           "votes",
+          "max_plays",
+          "plays_percent",
+          "min_votes",
+          "size",
           "entries",
+          "runners_up",
+          "not_enough_votes",
           "removed"
         ],
         "properties": {
-          "closes_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
           "entries": {
             "type": "array",
             "items": {
@@ -22603,11 +23020,26 @@
           },
           "frozen": {
             "type": "boolean",
-            "description": "Closed and kept; else the chart as it stands now."
+            "description": "Frozen and kept; else the chart as it stands now."
+          },
+          "key": {
+            "type": "string",
+            "description": "The day it is frozen: `2026-11-08`."
           },
           "locked": {
             "type": "boolean",
             "description": "A show was built from it: it does not change any more."
+          },
+          "max_plays": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The most played eligible track's plays.",
+            "minimum": 0
+          },
+          "min_votes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           },
           "new_release": {
             "oneOf": [
@@ -22620,21 +23052,46 @@
               }
             ]
           },
+          "not_enough_votes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotRanked"
+            },
+            "description": "The tracks below the minimum votes, the best first (the live chart\nonly)."
+          },
+          "plays_percent": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
           "removed": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Removed"
             }
           },
+          "runners_up": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChartEntry"
+            },
+            "description": "The next ranks after the size (the live chart only)."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "to_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it is frozen."
+          },
           "votes": {
             "type": "integer",
             "format": "int64",
-            "description": "The votes on the eligible tracks over the week.",
+            "description": "The votes on the eligible tracks over the period.",
             "minimum": 0
-          },
-          "week": {
-            "type": "string",
-            "description": "Its Monday: `2026-11-02`."
           }
         }
       },
@@ -22643,12 +23100,13 @@
         "description": "A rank of a chart.",
         "required": [
           "rank",
+          "plays",
           "likes",
           "dislikes",
           "share",
-          "plays",
+          "score",
           "movement",
-          "weeks"
+          "charts"
         ],
         "properties": {
           "artist": {
@@ -22656,6 +23114,12 @@
               "string",
               "null"
             ]
+          },
+          "charts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The top's charts it was in, this one included.",
+            "minimum": 0
           },
           "dislikes": {
             "type": "integer",
@@ -22673,8 +23137,16 @@
           "plays": {
             "type": "integer",
             "format": "int64",
-            "description": "Its plays with votes over the week.",
+            "description": "Its plays over the period, outside the tops' shows (for the Top 30's\ncharts: its plays with votes).",
             "minimum": 0
+          },
+          "plays_share": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Its plays against the most played's, 0 to 1; `null` for the Top\n30's charts."
           },
           "previous_rank": {
             "type": [
@@ -22682,13 +23154,18 @@
               "null"
             ],
             "format": "int32",
-            "description": "Its rank in last week's chart.",
+            "description": "Its rank in the top's previous chart.",
             "minimum": 0
           },
           "rank": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "score": {
+            "type": "number",
+            "format": "double",
+            "description": "0 to 1."
           },
           "share": {
             "type": "number",
@@ -22708,12 +23185,6 @@
             ],
             "format": "int64",
             "description": "Missing once the track is deleted.",
-            "minimum": 0
-          },
-          "weeks": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The charts it was in, this one included.",
             "minimum": 0
           }
         }
@@ -25909,6 +26380,28 @@
           }
         }
       },
+      "GivesWay": {
+        "type": "object",
+        "description": "A top that takes this one's slot on some days.",
+        "required": [
+          "top_id",
+          "name",
+          "slot"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slot": {
+            "$ref": "#/components/schemas/TopSlot"
+          },
+          "top_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "GridDay": {
         "type": "object",
         "description": "A day of the last 30.",
@@ -29023,7 +29516,7 @@
       },
       "Movement": {
         "type": "string",
-        "description": "How a track moved against the chart of the week before.",
+        "description": "How a track moved against the top's previous chart.",
         "enum": [
           "up",
           "down",
@@ -29274,6 +29767,89 @@
           }
         }
       },
+      "NextShow": {
+        "type": "object",
+        "description": "The next show of a top.",
+        "required": [
+          "opens_at_unix_ms",
+          "closes_at_unix_ms"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "opens_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "NotRanked": {
+        "type": "object",
+        "description": "A track below the minimum votes, with the rank its score would give it.",
+        "required": [
+          "track_id",
+          "plays",
+          "plays_share",
+          "likes",
+          "dislikes",
+          "share",
+          "score",
+          "would_rank"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dislikes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "likes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "plays": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "plays_share": {
+            "type": "number",
+            "format": "double"
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          },
+          "share": {
+            "type": "number",
+            "format": "double"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "would_rank": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "NotificationSettings": {
         "type": "object",
         "description": "Notifications through the station's webhooks.",
@@ -29382,6 +29958,24 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "Opening": {
+        "type": "object",
+        "description": "An opening of a show set by dates rather than weekly hours (a top's\nshow).",
+        "required": [
+          "opens_at_unix_ms",
+          "closes_at_unix_ms"
+        ],
+        "properties": {
+          "closes_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "opens_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -29854,21 +30448,20 @@
       },
       "PastChart": {
         "type": "object",
-        "description": "A frozen chart in the list of past weeks.",
+        "description": "A frozen chart in the list of past charts.",
         "required": [
-          "week",
+          "key",
           "from_unix_ms",
-          "closes_at_unix_ms",
+          "to_unix_ms",
           "size"
         ],
         "properties": {
-          "closes_at_unix_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
           "from_unix_ms": {
             "type": "integer",
             "format": "int64"
+          },
+          "key": {
+            "type": "string"
           },
           "number_one": {
             "oneOf": [
@@ -29886,8 +30479,9 @@
             "description": "Its tracks.",
             "minimum": 0
           },
-          "week": {
-            "type": "string"
+          "to_unix_ms": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -32906,7 +33500,7 @@
       },
       "ShowPlan": {
         "type": "object",
-        "description": "The show on now, or the next one.",
+        "description": "A top's show on now, or its next one.",
         "required": [
           "opens_at_unix_ms",
           "closes_at_unix_ms",
@@ -32937,6 +33531,13 @@
             "type": "integer",
             "format": "int64"
           },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The chart it plays; `null` without one."
+          },
           "left_out": {
             "type": "array",
             "items": {
@@ -32961,13 +33562,6 @@
           "total_ms": {
             "type": "integer",
             "format": "int64"
-          },
-          "week": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The chart it plays; `null` without one."
           }
         }
       },
@@ -33008,8 +33602,22 @@
               "$ref": "#/components/schemas/HourRange"
             }
           },
+          "key": {
+            "type": "string",
+            "description": "Its name in the gateway's routes: the module's key, or `top-{id}`\nfor a top. Empty from an older API: the module's key."
+          },
           "module": {
             "$ref": "#/components/schemas/Module"
+          },
+          "openings": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Opening"
+            },
+            "description": "Its openings, for a show set by dates (a top): they replace\n`hours`."
           },
           "page_url": {
             "type": [
@@ -33346,6 +33954,26 @@
             "minimum": 0
           }
         }
+      },
+      "SlotEvery": {
+        "type": "string",
+        "description": "How often a top's show comes.",
+        "enum": [
+          "day",
+          "week",
+          "month"
+        ]
+      },
+      "SlotNth": {
+        "type": "string",
+        "description": "Which of the month's days: the 1st Sunday, the last.",
+        "enum": [
+          "first",
+          "second",
+          "third",
+          "fourth",
+          "last"
+        ]
       },
       "SlotPreview": {
         "type": "object",
@@ -35564,9 +36192,18 @@
           }
         }
       },
-      "Top30Settings": {
+      "TopPeriod": {
+        "type": "string",
+        "description": "What a top's chart counts.",
+        "enum": [
+          "rolling_7_days",
+          "week",
+          "month"
+        ]
+      },
+      "TopSettings": {
         "type": "object",
-        "description": "A station's Top 30 settings (`station_settings`, `top30`). Its hours,\nwebsite and notifications are its show settings.",
+        "description": "A top's settings.",
         "properties": {
           "category_ids": {
             "type": "array",
@@ -35578,19 +36215,15 @@
             "description": "The categories whose tracks can enter the chart; none: the\nstation's music.",
             "default": []
           },
-          "close_day": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The day the week closes, 1 (Monday) to 7.",
-            "default": 7,
-            "minimum": 0
+          "enabled": {
+            "type": "boolean",
+            "description": "Off: it plays nothing, its page on the website stays closed and it\nsends nothing; its charts are still frozen.",
+            "default": true
           },
-          "close_hour": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The hour it closes, 0 to 24.",
-            "default": 17,
-            "minimum": 0
+          "hide_unplayed": {
+            "type": "boolean",
+            "description": "The ranks still to come hidden on the website during the show.",
+            "default": true
           },
           "jingle_category_id": {
             "type": [
@@ -35605,9 +36238,14 @@
           "min_votes": {
             "type": "integer",
             "format": "int64",
-            "description": "Votes a track needs over the week to be ranked, 1 to 1000.",
+            "description": "Votes a track needs over the period to be ranked, 0 to 1000.",
             "default": 10,
             "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "1 to 60 characters: its title on the website unless the website\ngives another.",
+            "default": "Top 30"
           },
           "new_release_category_id": {
             "type": [
@@ -35619,15 +36257,192 @@
             "default": null,
             "minimum": 0
           },
+          "notifications": {
+            "$ref": "#/components/schemas/NotificationSettings",
+            "default": {
+              "events": {},
+              "language": "en",
+              "lead_minutes": 60,
+              "webhook_ids": []
+            }
+          },
+          "period": {
+            "$ref": "#/components/schemas/TopPeriod",
+            "default": "week"
+          },
+          "plays_percent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The score's share of plays, 0 to 100 by steps of 10; the rest is\nthe share of likes.",
+            "default": 0,
+            "minimum": 0
+          },
+          "reset_day": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The reset of a month, 1 to 28.",
+            "default": 1,
+            "minimum": 0
+          },
+          "reset_time": {
+            "type": "string",
+            "description": "`HH:MM`, 00:00 to 23:59.",
+            "default": "17:00"
+          },
+          "reset_weekday": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The reset of a week, 1 (Monday) to 7.",
+            "default": 7,
+            "minimum": 0
+          },
           "size": {
             "type": "integer",
             "format": "int32",
-            "description": "Tracks in the chart, 1 to 50.",
+            "description": "3, 5, 10, 20, 30, 40 or 50.",
             "default": 30,
+            "minimum": 0
+          },
+          "slot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TopSlot",
+                "description": "Its show; none: nothing plays."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "website": {
+            "$ref": "#/components/schemas/WebsiteSettings",
+            "default": {
+              "closed": "message",
+              "closed_message": "",
+              "color": "#c62828",
+              "page_url": null,
+              "small_widget": true,
+              "title": ""
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "TopSlot": {
+        "type": "object",
+        "description": "A top's show: a recurrence and hours, in the station's time zone.",
+        "required": [
+          "every",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "string",
+            "description": "`HH:MM`, after `start`, up to `24:00`."
+          },
+          "every": {
+            "$ref": "#/components/schemas/SlotEvery"
+          },
+          "nth": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SlotNth",
+                "description": "For `month`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "type": "string",
+            "description": "`HH:MM`."
+          },
+          "weekday": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "1 (Monday) to 7, for `week` and `month`.",
             "minimum": 0
           }
         },
         "additionalProperties": false
+      },
+      "TopView": {
+        "type": "object",
+        "description": "A top, as the pages show it.",
+        "required": [
+          "id",
+          "position",
+          "key",
+          "settings",
+          "status",
+          "gives_way",
+          "timezone",
+          "webhooks"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why its stored settings cannot be read (they are shown as the\ndefaults); `null` when they can."
+          },
+          "gives_way": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GivesWay"
+            },
+            "description": "The tops that take its slot on some days."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string",
+            "description": "Its page and widget on the website: `top-{id}`."
+          },
+          "next_show": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NextShow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "settings": {
+            "$ref": "#/components/schemas/TopSettings"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShowStatus",
+            "description": "Whether its show is on now, when it closes, and when the next opens."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The station's time zone (IANA), which its times follow."
+          },
+          "webhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookChoice"
+            },
+            "description": "The station's webhooks, by name, to choose from."
+          }
+        }
       },
       "TotpSetup": {
         "type": "object",
@@ -38470,7 +39285,7 @@
     },
     {
       "name": "top30",
-      "description": "The weekly chart of the most liked tracks, and its show on air"
+      "description": "The tops: the charts of the most played and liked tracks, each played on air in its show"
     },
     {
       "name": "gateway",

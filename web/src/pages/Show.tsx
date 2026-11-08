@@ -38,7 +38,7 @@ import {
 } from "../lib/shows";
 import { here, useStation } from "../lib/station";
 
-type Update = (change: (draft: ShowSettings) => ShowSettings) => void;
+export type Update = (change: (draft: ShowSettings) => ShowSettings) => void;
 
 export function ShowPage({
   module,
@@ -321,12 +321,13 @@ function Hours({
   );
 }
 
-function Notifications({
+export function Notifications({
   show,
   draft,
   set,
   canEdit,
-}: Readonly<{ show: ShowView; draft: ShowSettings; set: Update; canEdit: boolean }>) {
+  title,
+}: Readonly<{ show: ShowView; draft: ShowSettings; set: Update; canEdit: boolean; title?: string }>) {
   const webhooksOn = useModule("webhooks");
   if (!webhooksOn) {
     return null;
@@ -341,7 +342,7 @@ function Notifications({
       };
     });
   const example = {
-    name: draft.website.title || t(showLabel(show.module)),
+    name: draft.website.title || (title ?? t(showLabel(show.module))),
     link: draft.website.page_url ?? "https://…",
     end: "18:00",
     next: t("shows.exampleNext"),
@@ -447,7 +448,7 @@ function Notifications({
           <p className="muted small">{t("shows.placeholders", { name: "{name}", link: "{link}", end: "{end}", next: "{next}" })}</p>
           {show.module === "top30" && (
             <p className="muted small">
-              {t("top30.placeholders", { artist: "{artist}", title: "{title}", top3: "{top3}", rank: "{rank}" })}
+              {t("tops.placeholders", { artist: "{artist}", title: "{title}", top3: "{top3}", rank: "{rank}" })}
             </p>
           )}
           {show.module === "match" && (
@@ -494,7 +495,7 @@ function Notifications({
   );
 }
 
-function Website({
+export function Website({
   module,
   title,
   show,
@@ -503,7 +504,8 @@ function Website({
   canEdit,
   station,
 }: Readonly<{
-  module: ShowKey;
+  /** Its key in the gateway's routes: a module's, or a top's (`top-4`). */
+  module: ShowKey | string;
   title: string;
   show: ShowView;
   draft: ShowSettings;
