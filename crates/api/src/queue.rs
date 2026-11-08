@@ -1219,6 +1219,33 @@ impl QueueManager {
                 "the picks queued from the fill kept are on air or cued: none to replace",
             ));
         }
+        let refill = picks.len() + usize::from(exact.is_some());
+        let previous = calculation.id;
+        // From now on the queue no longer follows it: none of its attempts
+        // can be chosen while the new fills are built.
+        if let Ok(mut kept) = self.kept.lock() {
+            let by_hand = kept.choice.is_some()
+                || kept
+                    .plan
+                    .as_ref()
+                    .is_some_and(heron_rotation::Plan::chosen_by_hand);
+            if by_hand && trigger == Trigger::QueueChanged {
+                tracing::warn!(
+                    station = self.station_id,
+                    exact_at = calculation.exact_at_ms,
+                    "the queue changed: the attempt chosen by hand is dropped, \
+                     rotation chooses by itself again"
+                );
+            }
+            kept.plan = None;
+            kept.choice = None;
+            kept.calculation = None;
+            kept.next_trigger = Some(if by_hand && trigger == Trigger::QueueChanged {
+                Trigger::HandDropped
+            } else {
+                trigger
+            });
+        }
         // From the end: a track first, its linked jingle goes with it.
         let mut removed = Vec::new();
         for entry in out.iter().rev() {
@@ -1244,35 +1271,6 @@ impl QueueManager {
             }
             forget.push(")");
             forget.build().execute(&self.pool).await?;
-        }
-        let refill = picks.len() + usize::from(exact.is_some());
-        let previous = calculation.id;
-        if let Ok(mut kept) = self.kept.lock() {
-            let by_hand = kept.choice.is_some()
-                || kept
-                    .plan
-                    .as_ref()
-                    .is_some_and(heron_rotation::Plan::chosen_by_hand);
-            if by_hand && trigger == Trigger::QueueChanged {
-                tracing::warn!(
-                    station = self.station_id,
-                    exact_at = calculation.exact_at_ms,
-                    "the queue changed: the attempt chosen by hand is dropped, \
-                     rotation chooses by itself again"
-                );
-            }
-            kept.plan = None;
-            kept.choice = None;
-            kept.next_trigger = Some(if by_hand && trigger == Trigger::QueueChanged {
-                Trigger::HandDropped
-            } else {
-                trigger
-            });
-            if let Some(calculation) = kept.calculation.as_mut() {
-                calculation
-                    .queued
-                    .retain(|pick| !pick.entries.iter().any(|entry| removed.contains(entry)));
-            }
         }
         tracing::info!(
             station = self.station_id,
