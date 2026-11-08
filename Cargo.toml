@@ -25,6 +25,8 @@ heron-engine = { path = "crates/engine" }
 age = "0.12.1"
 anyhow = "1.0.104"
 argon2 = "0.6.0"
+# The FTPS test server's authenticator.
+async-trait = "0.1.92"
 audioadapter-buffers = "5.2.0"
 axum = "0.8.9"
 base64 = "0.23.1"
@@ -42,6 +44,8 @@ hound = "3.5.1"
 # Cover art: decoded and re-encoded in pure Rust (the images stay as they are).
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "serde", "tzdb-bundle-always", "tzdb-zoneinfo", "tz-system"] }
+# An FTPS server for the certification delivery tests.
+libunftp = { version = "0.24.0", default-features = false, features = ["aws_lc_rs"] }
 lofty = "0.25.5"
 # Listener countries from a local GeoIP country database (MaxMind DB format).
 maxminddb = { version = "0.32.0", default-features = false }
@@ -60,6 +64,8 @@ realfft = "3.5.0"
 rtrb = "0.4.0"
 rubato = "5.0.1"
 rusty-chromaprint = "0.3.0"
+# Checks FTPS certificates with the system's authorities, as reqwest does.
+rustls-platform-verifier = "0.7.1"
 rustix = { version = "1.1.5", features = ["fs"] }
 # Error reporting, off unless HERON_SENTRY_DSN is set. rustls: no OpenSSL in the images.
 sentry = { version = "0.49.3", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "tracing"] }
@@ -69,6 +75,8 @@ sha1 = "0.11.0"
 sha2 = "0.11.1"
 snap = "1.1.2"
 symphonia = { version = "0.6.1", default-features = false, features = ["opt-simd", "all-meta", "mp1", "mp2", "mp3", "aac", "isomp4", "alac", "aiff", "flac", "ogg", "vorbis", "wav", "pcm", "adpcm"] }
+# Certification deliveries by FTPS (explicit TLS), on tokio and rustls.
+suppaftp = { version = "12.2.1", default-features = false, features = ["tokio-rustls-aws-lc-rs"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "mysql", "migrate", "macros"] }
 sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
 tempfile = "3.27.0"
@@ -83,6 +91,8 @@ tower = "0.5.3"
 tower-http = { version = "0.7.1", features = ["fs"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+unftp-core = "0.1.1"
+unftp-sbe-fs = "0.4.1"
 unicode-normalization = "0.1.25"
 utoipa = "6.0.0"
 utoipa-axum = "0.3.0"

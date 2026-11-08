@@ -32,6 +32,12 @@ use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::settings::{self, StationSettings, some_or_null};
 use crate::stations::Station;
 
+mod delivery;
+mod send;
+
+pub use delivery::Worker as DeliveryWorker;
+pub use send::Sender as DeliverySender;
+
 /// How often the logs are read.
 const READ_EVERY: Duration = Duration::from_secs(60);
 /// The most read from a log at once; the rest waits for the next reading.
@@ -51,6 +57,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(list_certification_sources))
         .routes(routes!(certification_days))
         .routes(routes!(export_day))
+        .merge(delivery::router())
 }
 
 fn seconds(ms: i64) -> f64 {
@@ -367,7 +374,11 @@ fn check_url(url: Option<String>) -> ApiResult<String> {
 }
 
 /// The server's name, when it is one of the station's.
-async fn server_name(pool: &MySqlPool, station_id: u64, server_id: u64) -> ApiResult<String> {
+pub(crate) async fn server_name(
+    pool: &MySqlPool,
+    station_id: u64,
+    server_id: u64,
+) -> ApiResult<String> {
     sqlx::query_scalar("SELECT name FROM stream_servers WHERE id = ? AND station_id = ?")
         .bind(server_id)
         .bind(station_id)
@@ -903,7 +914,7 @@ pub async fn purge(pool: &MySqlPool) -> ApiResult<u64> {
 // ---------------------------------------------------------------------------
 
 /// The start and end of a day of the station.
-fn day_range(day: Date, tz: &TimeZone) -> ApiResult<(i64, i64)> {
+pub(crate) fn day_range(day: Date, tz: &TimeZone) -> ApiResult<(i64, i64)> {
     let start = day
         .to_zoned(tz.clone())
         .map_err(|error| ApiError::Invalid(error.to_string()))?;
@@ -917,12 +928,12 @@ fn day_range(day: Date, tz: &TimeZone) -> ApiResult<(i64, i64)> {
     ))
 }
 
-fn parse_day(day: &str) -> ApiResult<Date> {
+pub(crate) fn parse_day(day: &str) -> ApiResult<Date> {
     day.parse()
         .map_err(|_| ApiError::Invalid(format!("a day is YYYY-MM-DD (got {day:?})")))
 }
 
-async fn time_zone(pool: &MySqlPool, station_id: u64) -> ApiResult<TimeZone> {
+pub(crate) async fn time_zone(pool: &MySqlPool, station_id: u64) -> ApiResult<TimeZone> {
     let station: StationSettings =
         settings::load_for(pool, station_id, StationSettings::SETTINGS_NAME).await?;
     Ok(station.time_zone())
@@ -1070,7 +1081,7 @@ fn day_row(out: &mut Vec<CertificationDay>, day: String, server_id: u64) -> &mut
     &mut out[at]
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, ToSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportFormat {
     /// The server's lines, unchanged.
@@ -1082,7 +1093,7 @@ pub enum ExportFormat {
 }
 
 impl ExportFormat {
-    fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             Self::Raw => "raw",
             Self::Combined => "combined",
@@ -1091,7 +1102,16 @@ impl ExportFormat {
         }
     }
 
-    fn extension(self) -> &'static str {
+    pub(crate) fn of(key: &str) -> Self {
+        match key {
+            "combined" => Self::Combined,
+            "csv" => Self::Csv,
+            "json" => Self::Json,
+            _ => Self::Raw,
+        }
+    }
+
+    pub(crate) fn extension(self) -> &'static str {
         match self {
             Self::Raw | Self::Combined => "log",
             Self::Csv => "csv",
@@ -1148,7 +1168,7 @@ type LineRow = (
     i64,
 );
 
-fn iso(ms: i64) -> String {
+pub(crate) fn iso(ms: i64) -> String {
     Timestamp::from_millisecond(ms)
         .map(|at| at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string())
         .unwrap_or_default()
@@ -1208,68 +1228,23 @@ async fn export_day(
     let server = server_name(&state.pool, station.id(), query.server_id).await?;
     let day = parse_day(&query.day)?;
     let tz = time_zone(&state.pool, station.id()).await?;
-    let (from, to) = day_range(day, &tz)?;
     let mount = query
         .mount
         .map(|mount| mount.trim().to_owned())
         .filter(|mount| !mount.is_empty());
-    let rows: Vec<LineRow> = sqlx::query_as(
-        "SELECT line, session, address, mount, status, bytes, referer, user_agent, duration_s,
-                CAST(UNIX_TIMESTAMP(logged_at) * 1000 AS SIGNED)
-         FROM access_log_lines
-         WHERE server_id = ? AND station_id = ?
-           AND logged_at >= FROM_UNIXTIME(?) AND logged_at < FROM_UNIXTIME(?)
-           AND (? IS NULL OR mount = ?)
-           AND (? OR session)
-         ORDER BY id",
+    let (body, gaps) = export(
+        &state.pool,
+        station.id(),
+        query.server_id,
+        &server,
+        day,
+        &tz,
+        mount.as_deref(),
+        query.format,
     )
-    .bind(query.server_id)
-    .bind(station.id())
-    .bind(seconds(from))
-    .bind(seconds(to))
-    .bind(&mount)
-    .bind(&mount)
-    .bind(query.format == ExportFormat::Raw)
-    .fetch_all(&state.pool)
     .await?;
-    let sessions = || {
-        rows.iter()
-            .map(|row| SessionRow {
-                server: server.clone(),
-                mount: row.3.clone(),
-                address: row.2.clone(),
-                user_agent: row.7.clone(),
-                referer: row.6.clone(),
-                status: row.4,
-                bytes: row.5,
-                started_at: row
-                    .8
-                    .map(|duration| iso(row.9 - i64::from(duration) * 1_000)),
-                ended_at: iso(row.9),
-                duration_s: row.8,
-            })
-            .collect::<Vec<_>>()
-    };
-    let body = match query.format {
-        ExportFormat::Raw | ExportFormat::Combined => {
-            let mut text = rows
-                .iter()
-                .map(|row| row.0.as_str())
-                .collect::<Vec<_>>()
-                .join("\n");
-            if !text.is_empty() {
-                text.push('\n');
-            }
-            text
-        }
-        ExportFormat::Csv => csv(&sessions()),
-        ExportFormat::Json => serde_json::to_string(&sessions())
-            .map_err(|error| ApiError::Internal(error.to_string()))?,
-    };
-    let gaps: Vec<String> = gaps(&state.pool, station.id(), from, to)
-        .await?
-        .into_iter()
-        .filter(|gap| gap.server_id == query.server_id)
+    let gaps: Vec<String> = gaps
+        .iter()
         .map(|gap| format!("{}/{}", iso(gap.from_unix_ms), iso(gap.to_unix_ms)))
         .collect();
     sqlx::query(
@@ -1314,8 +1289,82 @@ async fn export_day(
     Ok((StatusCode::OK, headers, body).into_response())
 }
 
+/// A day of a server's log in a format, and the gaps of the day.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn export(
+    pool: &MySqlPool,
+    station_id: u64,
+    server_id: u64,
+    server: &str,
+    day: Date,
+    tz: &TimeZone,
+    mount: Option<&str>,
+    format: ExportFormat,
+) -> ApiResult<(String, Vec<GapView>)> {
+    let (from, to) = day_range(day, tz)?;
+    let rows: Vec<LineRow> = sqlx::query_as(
+        "SELECT line, session, address, mount, status, bytes, referer, user_agent, duration_s,
+                CAST(UNIX_TIMESTAMP(logged_at) * 1000 AS SIGNED)
+         FROM access_log_lines
+         WHERE server_id = ? AND station_id = ?
+           AND logged_at >= FROM_UNIXTIME(?) AND logged_at < FROM_UNIXTIME(?)
+           AND (? IS NULL OR mount = ?)
+           AND (? OR session)
+         ORDER BY id",
+    )
+    .bind(server_id)
+    .bind(station_id)
+    .bind(seconds(from))
+    .bind(seconds(to))
+    .bind(mount)
+    .bind(mount)
+    .bind(format == ExportFormat::Raw)
+    .fetch_all(pool)
+    .await?;
+    let sessions = || {
+        rows.iter()
+            .map(|row| SessionRow {
+                server: server.to_owned(),
+                mount: row.3.clone(),
+                address: row.2.clone(),
+                user_agent: row.7.clone(),
+                referer: row.6.clone(),
+                status: row.4,
+                bytes: row.5,
+                started_at: row
+                    .8
+                    .map(|duration| iso(row.9 - i64::from(duration) * 1_000)),
+                ended_at: iso(row.9),
+                duration_s: row.8,
+            })
+            .collect::<Vec<_>>()
+    };
+    let body = match format {
+        ExportFormat::Raw | ExportFormat::Combined => {
+            let mut text = rows
+                .iter()
+                .map(|row| row.0.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text
+        }
+        ExportFormat::Csv => csv(&sessions()),
+        ExportFormat::Json => serde_json::to_string(&sessions())
+            .map_err(|error| ApiError::Internal(error.to_string()))?,
+    };
+    let gaps: Vec<GapView> = gaps(pool, station_id, from, to)
+        .await?
+        .into_iter()
+        .filter(|gap| gap.server_id == server_id)
+        .collect();
+    Ok((body, gaps))
+}
+
 /// A name for a file: letters, digits, `-` and `_`.
-fn safe_name(name: &str) -> String {
+pub(crate) fn safe_name(name: &str) -> String {
     let safe: String = name
         .chars()
         .map(|c| {

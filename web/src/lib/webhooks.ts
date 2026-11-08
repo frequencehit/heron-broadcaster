@@ -10,6 +10,7 @@ export const EVENTS: { value: WebhookEvent; label: PlainKey }[] = [
   { value: "track.ended", label: "webhooks.event.ended" },
   { value: "track.skipped", label: "webhooks.event.skipped" },
   { value: "queue.changed", label: "webhooks.event.queueChanged" },
+  { value: "certification.failed", label: "webhooks.event.certificationFailed" },
 ];
 
 /** What a body template may hold, as `{{name}}`. */
@@ -34,6 +35,7 @@ export const PLACEHOLDERS = [
   "dedication_from",
   "dedication_to",
   "dedication_message",
+  "message",
 ];
 
 export const DEFAULT_TEMPLATE = '{"text": "Now playing: {{artist}} – {{title}}"}';

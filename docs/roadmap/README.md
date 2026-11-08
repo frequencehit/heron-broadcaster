@@ -31,7 +31,7 @@ Progress is tracked here: the status column below and the acceptance checklists 
 | M16 | [Status bar](m16-status-bar.md) | M5, M7b, M13 | Done ([#58](https://github.com/dehy/heron-broadcaster/pull/58)) |
 | M17 | [About page](m17-about-page.md) | M5, M13, M16 | Done ([#62](https://github.com/dehy/heron-broadcaster/pull/62)) |
 | M18 | [Listener interaction](m18-listener-interaction.md) | M7, M13, modules | In progress |
-| M19 | [Audience certification](m19-audience-certification.md) | M7b, M13, modules | In progress (part 1: collecting and exporting) |
+| M19 | [Audience certification](m19-audience-certification.md) | M7b, M13, modules | In progress (part 2: delivery by FTPS done, SFTP waits for age) |
 
 ## Dependency graph
 
