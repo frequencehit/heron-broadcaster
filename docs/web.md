@@ -43,6 +43,8 @@ Viewers see every page (except users and webhooks) without the controls. Pages, 
 
 ## Modules
 
+In the menu, a page that belongs to another (*Exact times*, under *Rotation log*) hangs from it with an elbow. Some pages have a shorter name there so it holds on one line (*Import*, *Rotation*, *Crossfades*); the page keeps its full name as its title, also shown on hovering the link.
+
 A [module](modules.md) turned off for the station shown disappears: its entries in the menu, its pages, its cards on the Settings page and its widgets elsewhere. The web interface reads what is on from `GET /stations/{id}/modules`, so it never shows a page that answers `404`.
 
 | Module | Hidden when it is off |

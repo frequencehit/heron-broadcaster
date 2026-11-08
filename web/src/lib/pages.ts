@@ -10,6 +10,8 @@ import type { ModuleKey } from "./modules";
 export interface Page {
   path: string;
   label: PlainKey;
+  /** A shorter name for the sidebar, so it holds on one line: the page keeps `label` as its title. */
+  menu?: PlainKey;
   icon: IconName;
   section?: PlainKey;
   /** Admins only: of the station shown for a station's page, shared admins otherwise. */
@@ -29,7 +31,7 @@ export const PAGES: Page[] = [
   { path: "/statistics", label: "nav.statistics", icon: "chart", station: true, module: "listener_statistics" },
   { path: "/certification", label: "nav.certification", icon: "shield", admin: true, station: true, module: "certification" },
   { path: "/library", label: "nav.tracks", icon: "library", section: "nav.library" },
-  { path: "/import-music", label: "nav.buffer", icon: "upload" },
+  { path: "/import-music", label: "nav.buffer", menu: "nav.menu.buffer", icon: "upload" },
   { path: "/labels", label: "nav.labels", icon: "label", module: "labels" },
   { path: "/medleys", label: "nav.medleys", icon: "queue", module: "medleys" },
   { path: "/artists", label: "nav.artists", icon: "mic", module: "artists" },
@@ -40,7 +42,7 @@ export const PAGES: Page[] = [
   { path: "/schedule", label: "nav.schedule", icon: "calendar", station: true },
   { path: "/categories", label: "nav.categories", icon: "tag" },
   { path: "/restrictions", label: "nav.restrictions", icon: "ban", module: "restrictions" },
-  { path: "/rotation-log", label: "nav.rotation", icon: "log", station: true },
+  { path: "/rotation-log", label: "nav.rotation", menu: "nav.menu.rotation", icon: "log", station: true },
   { path: "/exact-times", label: "nav.exactTimes", icon: "clock", station: true, sub: true },
   // The shows (docs/listener-interaction.md), each a module: each names its
   // section, so that it is listed under it while the others are off.
@@ -48,7 +50,14 @@ export const PAGES: Page[] = [
   { path: "/shows/match", label: "nav.match", icon: "bolt", section: "nav.shows", station: true, module: "match" },
   { path: "/shows/top30", label: "nav.top30", icon: "chart", section: "nav.shows", station: true, module: "top30" },
   { path: "/shows/likes", label: "nav.likes", icon: "like", section: "nav.shows", station: true, module: "likes" },
-  { path: "/playout", label: "nav.playout", icon: "fade", section: "nav.station", station: true },
+  {
+    path: "/playout",
+    label: "nav.playout",
+    menu: "nav.menu.playout",
+    icon: "fade",
+    section: "nav.station",
+    station: true,
+  },
   { path: "/eq", label: "nav.eq", icon: "eq", station: true, module: "eq" },
   { path: "/processing", label: "nav.agc", icon: "agc", station: true, module: "processing" },
   { path: "/outputs", label: "nav.outputs", icon: "output", station: true },

@@ -328,9 +328,10 @@ function Shell() {
                 <Link
                   to={page.path}
                   className={page.sub ? "sub" : undefined}
+                  title={page.menu ? t(page.label) : undefined}
                   aria-current={isCurrent(page.path, pathname) ? "page" : undefined}
                 >
-                  <Icon name={page.icon} /> {t(page.label)}
+                  <Icon name={page.icon} /> {t(page.menu ?? page.label)}
                   {page.path === "/to-do" && reviewCount > 0 && (
                     <span className="count" title={t("nav.reviewCount")}>
                       {reviewCount}
