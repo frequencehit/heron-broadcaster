@@ -898,6 +898,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/certification/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's deliveries, each with its last day sent. Admins only. */
+        get: operations["list_certification_deliveries"];
+        put?: never;
+        /** Adds a delivery. Admins only. */
+        post: operations["create_certification_delivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certification/deliveries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A delivery. Admins only. */
+        get: operations["get_certification_delivery"];
+        /** Replaces a delivery; the secrets left out are kept. Admins only. */
+        put: operations["update_certification_delivery"];
+        post?: never;
+        /** Deletes a delivery and its log. Admins only. */
+        delete: operations["delete_certification_delivery"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certification/deliveries/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A delivery's last 30 days sent, newest first, with their attempts.
+         *     Admins only.
+         */
+        get: operations["list_certification_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certification/deliveries/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sends a day now, with the same retries, even when the delivery is off.
+         *     Admins only.
+         */
+        post: operations["send_certification_day"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certification/deliveries/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connects, logs in and opens the folder, writing nothing. Admins only. */
+        post: operations["test_certification_delivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/certification/export": {
         parameters: {
             query?: never;
@@ -3631,6 +3725,100 @@ export interface paths {
         get: operations["certification_days_on_station"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's deliveries, each with its last day sent. Admins only. */
+        get: operations["list_certification_deliveries_on_station"];
+        put?: never;
+        /** Adds a delivery. Admins only. */
+        post: operations["create_certification_delivery_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A delivery. Admins only. */
+        get: operations["get_certification_delivery_on_station"];
+        /** Replaces a delivery; the secrets left out are kept. Admins only. */
+        put: operations["update_certification_delivery_on_station"];
+        post?: never;
+        /** Deletes a delivery and its log. Admins only. */
+        delete: operations["delete_certification_delivery_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A delivery's last 30 days sent, newest first, with their attempts.
+         *     Admins only.
+         */
+        get: operations["list_certification_runs_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sends a day now, with the same retries, even when the delivery is off.
+         *     Admins only.
+         */
+        post: operations["send_certification_day_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connects, logs in and opens the folder, writing nothing. Admins only. */
+        post: operations["test_certification_delivery_on_station"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6878,6 +7066,67 @@ export interface components {
             /** Format: int64 */
             sessions: number;
         };
+        /** @description A delivery to a certification body, its secrets never sent back. */
+        CertificationDelivery: {
+            compression: components["schemas"]["DeliveryCompression"];
+            /**
+             * Format: int32
+             * @description The day sent: 1 the day before, up to 7.
+             */
+            days_back: number;
+            enabled: boolean;
+            /** @description The file name's pattern (`{station}-{server}-{date}.{ext}`). */
+            file_name: string;
+            format: components["schemas"]["ExportFormat"];
+            host: string;
+            /** Format: int64 */
+            id: number;
+            last?: components["schemas"]["DeliveryRun"] | null;
+            /** @description Only this mount; `null` for every mount. */
+            mount?: string | null;
+            /** @description The body it sends to. */
+            name: string;
+            password_set: boolean;
+            /** Format: int32 */
+            port: number;
+            protocol: components["schemas"]["DeliveryProtocol"];
+            /** @description Empty: the login's folder. */
+            remote_dir: string;
+            /** @description `HH:MM`, in the station's time zone. */
+            send_at: string;
+            /** Format: int64 */
+            server_id: number;
+            server_name: string;
+            username: string;
+        };
+        CertificationDeliveryInput: {
+            compression?: components["schemas"]["DeliveryCompression"] | null;
+            /**
+             * Format: int32
+             * @description 1 (the day before, when left out) to 7.
+             */
+            days_back?: number | null;
+            enabled?: boolean;
+            file_name?: string | null;
+            format?: components["schemas"]["ExportFormat"] | null;
+            host: string;
+            mount?: string | null;
+            name: string;
+            /** @description Left out, the stored one is kept; `null` removes it. */
+            password?: string | null;
+            /**
+             * Format: int32
+             * @description 21 when left out.
+             */
+            port?: number | null;
+            protocol: components["schemas"]["DeliveryProtocol"];
+            remote_dir?: string | null;
+            /** @description `HH:MM`, `04:00` when left out. */
+            send_at?: string | null;
+            /** Format: int64 */
+            server_id: number;
+            username: string;
+        };
         /** @description How long the access logs' lines are kept. */
         CertificationSettings: {
             /**
@@ -7468,6 +7717,50 @@ export interface components {
          * @enum {string}
          */
         DedicationStatus: "pending" | "accepted" | "played" | "refused";
+        /** @description An attempt to send a day. */
+        DeliveryAttempt: {
+            /** Format: int64 */
+            at_unix_ms: number;
+            /** Format: int64 */
+            bytes?: number | null;
+            error?: string | null;
+            file_name?: string | null;
+            ok: boolean;
+        };
+        /** @enum {string} */
+        DeliveryCompression: "none" | "gzip";
+        /** @enum {string} */
+        DeliveryProtocol: "ftps";
+        /** @description A day sent, at its time or by *Send now*. */
+        DeliveryRun: {
+            /** @description Oldest first. */
+            attempts: components["schemas"]["DeliveryAttempt"][];
+            /** Format: int64 */
+            bytes?: number | null;
+            /** Format: int64 */
+            created_at_unix_ms: number;
+            /** @description `YYYY-MM-DD`, in the station's time zone. */
+            day: string;
+            /** @description The last attempt's error. */
+            error?: string | null;
+            file_name?: string | null;
+            /** Format: int64 */
+            finished_at_unix_ms?: number | null;
+            /** @description The day's gaps, ISO 8601 intervals in UTC: the day was sent with them. */
+            gaps: string[];
+            /** Format: int64 */
+            id: number;
+            /** @description Sent by *Send now*, not at its time. */
+            manual: boolean;
+            /**
+             * Format: int64
+             * @description While pending: when the next attempt is.
+             */
+            next_attempt_unix_ms?: number | null;
+            state: components["schemas"]["DeliveryRunState"];
+        };
+        /** @enum {string} */
+        DeliveryRunState: "pending" | "sending" | "delivered" | "failed";
         /** @enum {string} */
         DeliveryStatus: "pending" | "delivered" | "failed";
         DeliverySummary: {
@@ -7476,6 +7769,11 @@ export interface components {
             /** Format: int32 */
             last_status_code?: number | null;
             status: components["schemas"]["DeliveryStatus"];
+        };
+        /** @description What *Test connection* found. */
+        DeliveryTest: {
+            error?: string | null;
+            ok: boolean;
         };
         DeliveryView: {
             /** Format: int32 */
@@ -7990,6 +8288,8 @@ export interface components {
             /** @description Separation windows applied at this step. */
             windows: components["schemas"]["Windows"];
         };
+        /** @enum {string} */
+        ExportFormat: "raw" | "combined" | "csv" | "json";
         /** @description A factor set up. */
         FactorAdded: {
             /** @description The 10 recovery codes, shown once: when this is your first factor. */
@@ -10986,6 +11286,10 @@ export interface components {
              */
             tracks: number;
         };
+        SendDay: {
+            /** @description `YYYY-MM-DD`, in the station's time zone, today at the latest. */
+            day: string;
+        };
         /**
          * @description Separation windows overridden by a category or a clock slot; missing
          *     ones are inherited.
@@ -13021,7 +13325,7 @@ export interface components {
          * @description What a delivery reports.
          * @enum {string}
          */
-        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping" | "show.upcoming" | "show.started" | "show.ended" | "top.published" | "top.rank" | "dedication.played" | "dedication.accepted" | "match.started" | "match.closed";
+        WebhookEvent: "track.started" | "track.ended" | "track.skipped" | "queue.changed" | "ping" | "show.upcoming" | "show.started" | "show.ended" | "top.published" | "top.rank" | "dedication.played" | "dedication.accepted" | "match.started" | "match.closed" | "certification.failed";
         WebhookInput: {
             /**
              * @description With `{{placeholders}}`: `event`, `delivery_id`, `at_unix_ms`,
@@ -15036,6 +15340,244 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CertificationDay"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_certification_deliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_certification_delivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificationDeliveryInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_certification_delivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_certification_delivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificationDeliveryInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_certification_delivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_certification_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryRun"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_certification_day: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendDay"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryRun"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    test_certification_delivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryTest"];
                 };
             };
             "4XX": {
@@ -20853,6 +21395,262 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CertificationDay"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_certification_deliveries_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_certification_delivery_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificationDeliveryInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_certification_delivery_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_certification_delivery_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificationDeliveryInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificationDelivery"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_certification_delivery_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_certification_runs_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryRun"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_certification_day_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendDay"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryRun"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    test_certification_delivery_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryTest"];
                 };
             };
             "4XX": {

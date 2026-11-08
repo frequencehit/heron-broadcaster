@@ -47,11 +47,18 @@ pub const DEFAULT_FILE_NAME: &str = "{station}-{server}-{date}.{ext}";
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
-        .routes(routes!(list_deliveries, create_delivery))
-        .routes(routes!(get_delivery, update_delivery, delete_delivery))
-        .routes(routes!(test_delivery))
-        .routes(routes!(send_day))
-        .routes(routes!(list_runs))
+        .routes(routes!(
+            list_certification_deliveries,
+            create_certification_delivery
+        ))
+        .routes(routes!(
+            get_certification_delivery,
+            update_certification_delivery,
+            delete_certification_delivery
+        ))
+        .routes(routes!(test_certification_delivery))
+        .routes(routes!(send_certification_day))
+        .routes(routes!(list_certification_runs))
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +107,11 @@ impl DeliveryCompression {
     }
 
     fn of(key: &str) -> Self {
-        if key == "gzip" { Self::Gzip } else { Self::None }
+        if key == "gzip" {
+            Self::Gzip
+        } else {
+            Self::None
+        }
     }
 }
 
@@ -137,7 +148,10 @@ impl Stored {
             host: self.host.clone(),
             port: self.port,
             username: self.username.clone(),
-            password: self.password.clone().filter(|password| !password.is_empty()),
+            password: self
+                .password
+                .clone()
+                .filter(|password| !password.is_empty()),
             remote_dir: self.remote_dir.clone(),
         }
     }
@@ -367,7 +381,10 @@ fn check(input: CertificationDeliveryInput, before: Option<&Stored>) -> Result<C
         None => old,
     };
     let password = keep(input.password, before.and_then(|d| d.password.clone()));
-    if password.as_ref().is_some_and(|password| password.len() > 255) {
+    if password
+        .as_ref()
+        .is_some_and(|password| password.len() > 255)
+    {
         return Err("the password is 255 characters at most".to_owned());
     }
     if password.is_none() {
@@ -442,7 +459,7 @@ async fn view(pool: &MySqlPool, stored: Stored) -> ApiResult<CertificationDelive
 /// The station's deliveries, each with its last day sent. Admins only.
 #[utoipa::path(get, path = "/certification/deliveries", tag = "certification",
     responses((status = 200, body = Vec<CertificationDelivery>), (status = "4XX", body = ErrorBody)))]
-async fn list_deliveries(
+async fn list_certification_deliveries(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -465,7 +482,7 @@ async fn list_deliveries(
 #[utoipa::path(get, path = "/certification/deliveries/{id}", tag = "certification",
     params(("id" = u64, Path)),
     responses((status = 200, body = CertificationDelivery), (status = "4XX", body = ErrorBody)))]
-async fn get_delivery(
+async fn get_certification_delivery(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -525,7 +542,7 @@ async fn save(
 #[utoipa::path(post, path = "/certification/deliveries", tag = "certification",
     request_body = CertificationDeliveryInput,
     responses((status = 201, body = CertificationDelivery), (status = "4XX", body = ErrorBody)))]
-async fn create_delivery(
+async fn create_certification_delivery(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -544,7 +561,7 @@ async fn create_delivery(
 #[utoipa::path(put, path = "/certification/deliveries/{id}", tag = "certification",
     params(("id" = u64, Path)), request_body = CertificationDeliveryInput,
     responses((status = 200, body = CertificationDelivery), (status = "4XX", body = ErrorBody)))]
-async fn update_delivery(
+async fn update_certification_delivery(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -565,7 +582,7 @@ async fn update_delivery(
 #[utoipa::path(delete, path = "/certification/deliveries/{id}", tag = "certification",
     params(("id" = u64, Path)),
     responses((status = 204), (status = "4XX", body = ErrorBody)))]
-async fn delete_delivery(
+async fn delete_certification_delivery(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -592,7 +609,7 @@ pub struct DeliveryTest {
 #[utoipa::path(post, path = "/certification/deliveries/{id}/test", tag = "certification",
     params(("id" = u64, Path)),
     responses((status = 200, body = DeliveryTest), (status = "4XX", body = ErrorBody)))]
-async fn test_delivery(
+async fn test_certification_delivery(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -773,7 +790,7 @@ async fn runs(pool: &MySqlPool, delivery_id: u64, limit: u32) -> ApiResult<Vec<D
 #[utoipa::path(get, path = "/certification/deliveries/{id}/runs", tag = "certification",
     params(("id" = u64, Path)),
     responses((status = 200, body = Vec<DeliveryRun>), (status = "4XX", body = ErrorBody)))]
-async fn list_runs(
+async fn list_certification_runs(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -811,7 +828,7 @@ async fn prune(pool: &MySqlPool, delivery_id: u64) -> ApiResult<()> {
 #[utoipa::path(post, path = "/certification/deliveries/{id}/send", tag = "certification",
     params(("id" = u64, Path)), request_body = SendDay,
     responses((status = 202, body = DeliveryRun), (status = "4XX", body = ErrorBody)))]
-async fn send_day(
+async fn send_certification_day(
     user: CurrentUser,
     State(state): State<AppState>,
     station: Station,
@@ -823,7 +840,9 @@ async fn send_day(
     let day = parse_day(&input.day)?;
     let tz = time_zone(&state.pool, station.id()).await?;
     if day > Timestamp::now().to_zoned(tz).date() {
-        return Err(ApiError::Invalid("the day is today at the latest".to_owned()));
+        return Err(ApiError::Invalid(
+            "the day is today at the latest".to_owned(),
+        ));
     }
     let run = sqlx::query(
         "INSERT INTO certification_delivery_runs (delivery_id, day, next_attempt_at)
@@ -1086,10 +1105,11 @@ impl Worker {
         .bind(run_id)
         .fetch_one(&self.pool)
         .await?;
-        let delivery: Stored = sqlx::query_as(sqlx::AssertSqlSafe(format!("{STORED} WHERE id = ?")))
-            .bind(delivery_id)
-            .fetch_one(&self.pool)
-            .await?;
+        let delivery: Stored =
+            sqlx::query_as(sqlx::AssertSqlSafe(format!("{STORED} WHERE id = ?")))
+                .bind(delivery_id)
+                .fetch_one(&self.pool)
+                .await?;
         let day = parse_day(&day)?;
         let file = self.prepare(&delivery, day).await;
         let (name, bytes, gaps) = match &file {

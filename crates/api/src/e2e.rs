@@ -13380,9 +13380,9 @@ async fn ftps_server(root: &Path, refuse: Arc<std::sync::atomic::AtomicBool>) ->
 
 /// A sender that trusts the test authority only.
 fn test_sender() -> crate::certification::DeliverySender {
-    use suppaftp::tokio_rustls::rustls;
     use rustls::pki_types::CertificateDer;
     use rustls::pki_types::pem::PemObject;
+    use suppaftp::tokio_rustls::rustls;
     let ca = include_bytes!("../testdata/ftps/ca.pem");
     let mut roots = rustls::RootCertStore::empty();
     roots
@@ -13426,13 +13426,14 @@ async fn certification_days_are_delivered_by_ftps() {
         .await;
     assert_eq!(status, StatusCode::CREATED, "{server}");
     let server_id = server["id"].as_u64().unwrap();
-    let (station_id, code): (u64, String) =
-        sqlx::query_as("SELECT station_id, (SELECT code FROM stations s WHERE s.id = station_id)
-                        FROM stream_servers WHERE id = ?")
-            .bind(server_id)
-            .fetch_one(pool)
-            .await
-            .unwrap();
+    let (station_id, code): (u64, String) = sqlx::query_as(
+        "SELECT station_id, (SELECT code FROM stations s WHERE s.id = station_id)
+                        FROM stream_servers WHERE id = ?",
+    )
+    .bind(server_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
 
     // Yesterday's lines, as the reader keeps them, and a gap.
     let today = jiff::Timestamp::now()
@@ -13441,9 +13442,21 @@ async fn certification_days_are_delivered_by_ftps() {
     let yesterday = today.yesterday().unwrap();
     let at = |time: &str| format!("{yesterday} {time}");
     let lines = [
-        ("10:00:00", true, r#"203.0.113.7 - - [x] "GET /live HTTP/1.1" 200 1000 "-" "VLC/3.0" 600"#),
-        ("10:05:00", false, r#"198.51.100.2 - source [x] "SOURCE /live HTTP/1.0" 200 0 "-" "heron" 3600"#),
-        ("11:00:00", true, r#"203.0.113.8 - - [x] "GET /aac HTTP/1.1" 200 2000 "-" "Mozilla/5.0" 120"#),
+        (
+            "10:00:00",
+            true,
+            r#"203.0.113.7 - - [x] "GET /live HTTP/1.1" 200 1000 "-" "VLC/3.0" 600"#,
+        ),
+        (
+            "10:05:00",
+            false,
+            r#"198.51.100.2 - source [x] "SOURCE /live HTTP/1.0" 200 0 "-" "heron" 3600"#,
+        ),
+        (
+            "11:00:00",
+            true,
+            r#"203.0.113.8 - - [x] "GET /aac HTTP/1.1" 200 2000 "-" "Mozilla/5.0" 120"#,
+        ),
     ];
     for (time, session, line) in lines {
         sqlx::query(
@@ -13515,7 +13528,11 @@ async fn certification_days_are_delivered_by_ftps() {
     let mut changed = delivery.clone();
     changed.as_object_mut().unwrap().remove("password");
     let (status, updated) = admin
-        .send(Method::PUT, &format!("/certification/deliveries/{id}"), changed)
+        .send(
+            Method::PUT,
+            &format!("/certification/deliveries/{id}"),
+            changed,
+        )
         .await;
     assert_eq!(status, StatusCode::OK, "{updated}");
     assert_eq!(updated["password_set"], true);
@@ -13538,7 +13555,11 @@ async fn certification_days_are_delivered_by_ftps() {
     };
     let runs = |id: u64| {
         let admin = &admin;
-        async move { admin.get(&format!("/certification/deliveries/{id}/runs")).await }
+        async move {
+            admin
+                .get(&format!("/certification/deliveries/{id}/runs"))
+                .await
+        }
     };
 
     // Not before its time.
@@ -13552,7 +13573,10 @@ async fn certification_days_are_delivered_by_ftps() {
     assert_eq!(log[0]["day"], yesterday.to_string());
     assert_eq!(log[0]["state"], "pending", "{log}");
     assert_eq!(log[0]["manual"], false);
-    assert!(log[0]["error"].as_str().unwrap().contains("login refused"), "{log}");
+    assert!(
+        log[0]["error"].as_str().unwrap().contains("login refused"),
+        "{log}"
+    );
     refuse.store(false, Ordering::SeqCst);
     worker.tick(today_at("01:01:00")).await.unwrap();
     let log = runs(id).await;
@@ -13573,8 +13597,11 @@ async fn certification_days_are_delivered_by_ftps() {
     let sent = std::fs::read(root.path().join("incoming").join(&name)).unwrap();
     assert_eq!(log[0]["bytes"], sent.len());
     let mut text = String::new();
-    std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(sent.as_slice()), &mut text)
-        .unwrap();
+    std::io::Read::read_to_string(
+        &mut flate2::read::GzDecoder::new(sent.as_slice()),
+        &mut text,
+    )
+    .unwrap();
     let export = admin
         .get_bytes(&format!(
             "/certification/export?day={yesterday}&server_id={server_id}&format=raw"
@@ -13600,17 +13627,18 @@ async fn certification_days_are_delivered_by_ftps() {
     let log = runs(id).await;
     assert_eq!(log[0]["state"], "failed", "{log}");
     assert_eq!(log[0]["attempts"].as_array().unwrap().len(), 5);
-    let (_, path, headers, body) =
-        tokio::time::timeout(Duration::from_secs(10), received.recv())
-            .await
-            .unwrap()
-            .unwrap();
+    let (_, path, headers, body) = tokio::time::timeout(Duration::from_secs(10), received.recv())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(path, "alerts");
     assert_eq!(headers["x-heron-event"], "certification.failed");
     let body: Value = serde_json::from_str(&body).unwrap();
     let message = body["message"].as_str().unwrap();
     assert!(
-        message.starts_with(&format!("Certifier: the delivery of {yesterday} failed after 5 attempts")),
+        message.starts_with(&format!(
+            "Certifier: the delivery of {yesterday} failed after 5 attempts"
+        )),
         "{message}"
     );
     let listed = admin.get("/certification/deliveries").await;
@@ -13632,7 +13660,12 @@ async fn certification_days_are_delivered_by_ftps() {
     }
     let log = runs(id).await;
     assert_eq!(log.as_array().unwrap().len(), 30);
-    assert!(log.as_array().unwrap().iter().all(|run| run["manual"] == true));
+    assert!(
+        log.as_array()
+            .unwrap()
+            .iter()
+            .all(|run| run["manual"] == true)
+    );
     let (status, _) = admin
         .send(
             Method::POST,
@@ -13640,7 +13673,11 @@ async fn certification_days_are_delivered_by_ftps() {
             json!({"day": today.tomorrow().unwrap().to_string()}),
         )
         .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "not a day to come");
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "not a day to come"
+    );
 
     // Test connection checks the certificate with the system's
     // authorities: the test's own is refused.
@@ -13674,7 +13711,11 @@ async fn certification_days_are_delivered_by_ftps() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = admin
-        .request(Method::DELETE, &format!("/certification/deliveries/{id}"), None)
+        .request(
+            Method::DELETE,
+            &format!("/certification/deliveries/{id}"),
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     station.stop().await;

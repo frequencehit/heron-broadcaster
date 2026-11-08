@@ -7,10 +7,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
 use suppaftp::tokio_rustls::TlsConnector;
 use suppaftp::tokio_rustls::rustls::ClientConfig;
 use suppaftp::types::FileType;
-use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
 
 /// The longest a connection, a login and a transfer take together.
 const TIMEOUT: Duration = Duration::from_secs(120);
@@ -55,19 +55,11 @@ impl Sender {
     }
 
     /// Writes `data` to the file `name` of the folder, replacing it.
-    pub async fn upload(
-        &self,
-        target: &Target,
-        name: &str,
-        data: &[u8],
-    ) -> Result<(), String> {
+    pub async fn upload(&self, target: &Target, name: &str, data: &[u8]) -> Result<(), String> {
         self.within(self.ftps(target, Some((name, data)))).await
     }
 
-    async fn within(
-        &self,
-        work: impl Future<Output = Result<(), String>>,
-    ) -> Result<(), String> {
+    async fn within(&self, work: impl Future<Output = Result<(), String>>) -> Result<(), String> {
         tokio::time::timeout(self.timeout, work)
             .await
             .unwrap_or_else(|_| {
@@ -101,9 +93,9 @@ impl Sender {
             .await
             .map_err(|error| error.to_string())?;
         if !target.remote_dir.is_empty() {
-            ftp.cwd(&target.remote_dir)
-                .await
-                .map_err(|error| format!("cannot open the folder {}: {error}", target.remote_dir))?;
+            ftp.cwd(&target.remote_dir).await.map_err(|error| {
+                format!("cannot open the folder {}: {error}", target.remote_dir)
+            })?;
         }
         if let Some((name, data)) = file {
             let mut reader = data;

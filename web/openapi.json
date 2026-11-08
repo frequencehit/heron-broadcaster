@@ -2389,6 +2389,332 @@
         }
       }
     },
+    "/api/v1/certification/deliveries": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "The station's deliveries, each with its last day sent. Admins only.",
+        "operationId": "list_certification_deliveries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CertificationDelivery"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Adds a delivery. Admins only.",
+        "operationId": "create_certification_delivery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CertificationDeliveryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDelivery"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certification/deliveries/{id}": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A delivery. Admins only.",
+        "operationId": "get_certification_delivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDelivery"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Replaces a delivery; the secrets left out are kept. Admins only.",
+        "operationId": "update_certification_delivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CertificationDeliveryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDelivery"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Deletes a delivery and its log. Admins only.",
+        "operationId": "delete_certification_delivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certification/deliveries/{id}/runs": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A delivery's last 30 days sent, newest first, with their attempts.\nAdmins only.",
+        "operationId": "list_certification_runs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryRun"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certification/deliveries/{id}/send": {
+      "post": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Sends a day now, with the same retries, even when the delivery is off.\nAdmins only.",
+        "operationId": "send_certification_day",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendDay"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryRun"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certification/deliveries/{id}/test": {
+      "post": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Connects, logs in and opens the folder, writing nothing. Admins only.",
+        "operationId": "test_certification_delivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryTest"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/certification/export": {
       "get": {
         "tags": [
@@ -10347,6 +10673,408 @@
                   "items": {
                     "$ref": "#/components/schemas/CertificationDay"
                   }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/deliveries": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "The station's deliveries, each with its last day sent. Admins only.",
+        "operationId": "list_certification_deliveries_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CertificationDelivery"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Adds a delivery. Admins only.",
+        "operationId": "create_certification_delivery_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CertificationDeliveryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDelivery"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A delivery. Admins only.",
+        "operationId": "get_certification_delivery_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDelivery"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Replaces a delivery; the secrets left out are kept. Admins only.",
+        "operationId": "update_certification_delivery_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CertificationDeliveryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationDelivery"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Deletes a delivery and its log. Admins only.",
+        "operationId": "delete_certification_delivery_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}/runs": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A delivery's last 30 days sent, newest first, with their attempts.\nAdmins only.",
+        "operationId": "list_certification_runs_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryRun"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}/send": {
+      "post": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Sends a day now, with the same retries, even when the delivery is off.\nAdmins only.",
+        "operationId": "send_certification_day_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendDay"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryRun"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/deliveries/{id}/test": {
+      "post": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Connects, logs in and opens the folder, writing nothing. Admins only.",
+        "operationId": "test_certification_delivery_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryTest"
                 }
               }
             }
@@ -20689,6 +21417,212 @@
           }
         }
       },
+      "CertificationDelivery": {
+        "type": "object",
+        "description": "A delivery to a certification body, its secrets never sent back.",
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "server_id",
+          "server_name",
+          "protocol",
+          "host",
+          "port",
+          "username",
+          "password_set",
+          "remote_dir",
+          "file_name",
+          "format",
+          "compression",
+          "send_at",
+          "days_back"
+        ],
+        "properties": {
+          "compression": {
+            "$ref": "#/components/schemas/DeliveryCompression"
+          },
+          "days_back": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The day sent: 1 the day before, up to 7.",
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "file_name": {
+            "type": "string",
+            "description": "The file name's pattern (`{station}-{server}-{date}.{ext}`)."
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "last": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryRun",
+                "description": "The last day sent."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only this mount; `null` for every mount."
+          },
+          "name": {
+            "type": "string",
+            "description": "The body it sends to."
+          },
+          "password_set": {
+            "type": "boolean"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/DeliveryProtocol"
+          },
+          "remote_dir": {
+            "type": "string",
+            "description": "Empty: the login's folder."
+          },
+          "send_at": {
+            "type": "string",
+            "description": "`HH:MM`, in the station's time zone."
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "CertificationDeliveryInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "server_id",
+          "protocol",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "compression": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryCompression"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "days_back": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "1 (the day before, when left out) to 7.",
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "file_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExportFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "mount": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Left out, the stored one is kept; `null` removes it."
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "21 when left out.",
+            "minimum": 0
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/DeliveryProtocol"
+          },
+          "remote_dir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "send_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`HH:MM`, `04:00` when left out."
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CertificationSettings": {
         "type": "object",
         "description": "How long the access logs' lines are kept.",
@@ -22076,6 +23010,150 @@
           "refused"
         ]
       },
+      "DeliveryAttempt": {
+        "type": "object",
+        "description": "An attempt to send a day.",
+        "required": [
+          "at_unix_ms",
+          "ok"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DeliveryCompression": {
+        "type": "string",
+        "enum": [
+          "none",
+          "gzip"
+        ]
+      },
+      "DeliveryProtocol": {
+        "type": "string",
+        "enum": [
+          "ftps"
+        ]
+      },
+      "DeliveryRun": {
+        "type": "object",
+        "description": "A day sent, at its time or by *Send now*.",
+        "required": [
+          "id",
+          "day",
+          "manual",
+          "state",
+          "gaps",
+          "created_at_unix_ms",
+          "attempts"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryAttempt"
+            },
+            "description": "Oldest first."
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "created_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "day": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`, in the station's time zone."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last attempt's error."
+          },
+          "file_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The day's gaps, ISO 8601 intervals in UTC: the day was sent with them."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "manual": {
+            "type": "boolean",
+            "description": "Sent by *Send now*, not at its time."
+          },
+          "next_attempt_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "While pending: when the next attempt is."
+          },
+          "state": {
+            "$ref": "#/components/schemas/DeliveryRunState"
+          }
+        }
+      },
+      "DeliveryRunState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "sending",
+          "delivered",
+          "failed"
+        ]
+      },
       "DeliveryStatus": {
         "type": "string",
         "enum": [
@@ -22105,6 +23183,24 @@
           },
           "status": {
             "$ref": "#/components/schemas/DeliveryStatus"
+          }
+        }
+      },
+      "DeliveryTest": {
+        "type": "object",
+        "description": "What *Test connection* found.",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
           }
         }
       },
@@ -23226,6 +24322,15 @@
             "description": "Separation windows applied at this step."
           }
         }
+      },
+      "ExportFormat": {
+        "type": "string",
+        "enum": [
+          "raw",
+          "combined",
+          "csv",
+          "json"
+        ]
       },
       "FactorAdded": {
         "type": "object",
@@ -30117,6 +31222,19 @@
           }
         }
       },
+      "SendDay": {
+        "type": "object",
+        "required": [
+          "day"
+        ],
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`, in the station's time zone, today at the latest."
+          }
+        },
+        "additionalProperties": false
+      },
       "SeparationOverrides": {
         "type": "object",
         "description": "Separation windows overridden by a category or a clock slot; missing\nones are inherited.",
@@ -35643,7 +36761,8 @@
           "dedication.played",
           "dedication.accepted",
           "match.started",
-          "match.closed"
+          "match.closed",
+          "certification.failed"
         ]
       },
       "WebhookInput": {

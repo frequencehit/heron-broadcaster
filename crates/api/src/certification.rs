@@ -374,7 +374,11 @@ fn check_url(url: Option<String>) -> ApiResult<String> {
 }
 
 /// The server's name, when it is one of the station's.
-pub(crate) async fn server_name(pool: &MySqlPool, station_id: u64, server_id: u64) -> ApiResult<String> {
+pub(crate) async fn server_name(
+    pool: &MySqlPool,
+    station_id: u64,
+    server_id: u64,
+) -> ApiResult<String> {
     sqlx::query_scalar("SELECT name FROM stream_servers WHERE id = ? AND station_id = ?")
         .bind(server_id)
         .bind(station_id)
