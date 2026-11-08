@@ -563,6 +563,6 @@ function skippedSlot(slot: Schemas["SkippedSlot"]): string {
     case "exact_time_passed":
       return t("rotationPage.slotExactPassed", { slot: number });
     default:
-      return t("rotationPage.slot", { slot: number });
+      return t("rotationPage.slotRestricted", { slot: number });
   }
 }

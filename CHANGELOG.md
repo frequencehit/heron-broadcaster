@@ -70,6 +70,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 
 ### Fixed
 
+- **Rotation log: each skipped slot says its own reason.** The list ended with *restrictions left nothing* whatever the reason, even for slots skipped because the exact time was due.
 - **Shows: the week grid's hours are all the same width**, labelled every three hours or not (they were wider at 0, 3, 6…).
 - The shared routes that take a station to look at (`GET /tracks?station_id=`, `GET /categories?station_id=`, `GET /medleys?station_id=`, `GET /tracks/{id}/plays/grid?station_id=`, and a selection's filters) answer `404` for a station the user does not see, as that station's routes do.
 - Backups have their database dump again after MariaDB moves to a new version: the Compose file has MariaDB upgrade its own tables when it starts (`MARIADB_AUTO_UPGRADE`). `mariadb-dump` failed on them before (*Column count of mysql.proc is wrong*).
