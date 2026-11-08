@@ -61,6 +61,31 @@ pub struct ListenersNow {
     /// Each server's listeners (master and relays), its outputs' parts
     /// added up; missing when it could not be read.
     pub servers: Vec<ServerListeners>,
+    /// The station's highest daily peak, today's included; missing before
+    /// any day was measured.
+    pub record: Option<ListenersRecord>,
+}
+
+/// The highest peak of a station's days.
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct ListenersRecord {
+    pub listeners: u32,
+    /// The day it was reached (station time, `YYYY-MM-DD`), the first one
+    /// on a tie.
+    pub day: String,
+}
+
+/// A station's record, from the whole station's totals of each day.
+async fn record_of(state: &AppState, station_id: u64) -> ApiResult<Option<ListenersRecord>> {
+    let row: Option<(u32, String)> = sqlx::query_as(
+        "SELECT peak, CAST(day AS CHAR) FROM listener_totals
+         WHERE station_id = ? AND output_id IS NULL AND server_id IS NULL AND hour IS NULL
+         ORDER BY peak DESC, day LIMIT 1",
+    )
+    .bind(station_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(row.map(|(listeners, day)| ListenersRecord { listeners, day }))
 }
 
 /// A stream server's listeners at the last minute.
@@ -98,7 +123,7 @@ fn servers_of(outputs: &[OutputListeners]) -> Vec<ServerListeners> {
     servers
 }
 
-/// Each output's listeners at the last minute, and the station's.
+/// Each output's listeners at the last minute, the station's total and record.
 #[utoipa::path(get, path = "/listeners/now", tag = "listeners",
     responses((status = 200, body = ListenersNow), (status = "4XX", body = ErrorBody)))]
 async fn now(
@@ -121,6 +146,7 @@ async fn now(
         total: (!read.is_empty()).then(|| read.iter().sum()),
         servers: servers_of(&outputs),
         outputs,
+        record: record_of(&state, station.id()).await?,
     }))
 }
 

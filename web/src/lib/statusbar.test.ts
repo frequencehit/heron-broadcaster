@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { DeckState } from "../api";
-import { levelOf, listenersText, summarizeDeck, summarizeSystem } from "./statusbar";
+import { levelOf, listenersText, recordOf, summarizeDeck, summarizeSystem } from "./statusbar";
 
 const deck = (over: Partial<DeckState> = {}, title = "Space Cowboy"): DeckState =>
   ({
@@ -22,6 +22,7 @@ describe("summarizeDeck", () => {
       symbol: "▶",
       text: "Jamiroquai – Space Cowboy 2:31",
       onAir: true,
+      badge: "on_air",
       progress: 151_000 / 240_000,
     });
   });
@@ -41,8 +42,13 @@ describe("summarizeDeck", () => {
     expect([summary.status, summary.symbol, summary.onAir]).toEqual(["paused", "⏸", false]);
   });
 
+  it("marks the deck listeners hear on air, and the other loaded one next", () => {
+    expect(summarizeDeck("A", deck(), false, null).badge).toBe("on_air");
+    expect(summarizeDeck("B", deck({ on_air: false, position_ms: 0 }), false, null).badge).toBe("next");
+  });
+
   it("is empty without a track, or when the player does not list the deck", () => {
-    const empty = { letter: "B", status: "empty", symbol: "—", text: "", onAir: false, progress: null };
+    const empty = { letter: "B", status: "empty", symbol: "—", text: "", onAir: false, badge: null, progress: null };
     expect(summarizeDeck("B", deck({ entry: null }), false, null)).toEqual(empty);
     expect(summarizeDeck("B", undefined, false, null)).toEqual(empty);
   });
@@ -85,5 +91,16 @@ describe("summarizeSystem", () => {
     expect(busy(16).loadLevel).toBe("ok");
     expect(busy(0).loadLevel).toBe("bad");
     expect([busy(4).cpuLevel, busy(4).memLevel]).toEqual(["bad", "warn"]);
+  });
+});
+
+describe("recordOf", () => {
+  it("gives the record's listeners and its day, and nothing before any", () => {
+    expect(recordOf({ listeners: 1280, day: "2026-10-25" })).toEqual({
+      listeners: (1280).toLocaleString("en"),
+      day: "Oct 25, 2026",
+    });
+    expect(recordOf(null)).toBeNull();
+    expect(recordOf(undefined)).toBeNull();
   });
 });

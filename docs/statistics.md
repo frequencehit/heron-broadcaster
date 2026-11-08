@@ -172,7 +172,7 @@ Viewers can read every statistic; the routes are under `/api/v1/listeners`. Peri
 
 | Route | Answer |
 |---|---|
-| `GET /listeners/now` | Each enabled output's listeners at the last minute, when that was, whether its sessions are available, the error if a server could not be read, and its part on each server (`servers`); each server's listeners (`servers`: master and relays, `null` when it could not be read); the station's total |
+| `GET /listeners/now` | Each enabled output's listeners at the last minute, when that was, whether its sessions are available, the error if a server could not be read, and its part on each server (`servers`); each server's listeners (`servers`: master and relays, `null` when it could not be read); the station's total; the station's **record** (`record`: the highest daily peak of its totals, today's included, and its day; `null` before any) |
 | `GET /listeners/samples` (`from_unix_ms`, `to_unix_ms`, at most 8 days; `output_id`; `server_id`) | Concurrent listeners minute by minute, gaps as missing minutes |
 | `GET /listeners/audience` (`from`, `to`, `output_id`, `server_id`) | The [audience figures](#audience-figures) of the period and of the previous period of the same length: days measured, peak and when, sessions and their lengths, TTSL, ATSL, median session, cume, listener-days, AQH |
 | `GET /listeners/days` (`from`, `to`, `output_id`, `server_id`, `group`: `hour`, `day` (by default), `week`, `month`) | Per period: days and minutes measured, peak, average, listening hours, sessions, average session, distinct listeners (for weeks and months, the average per day) and listener-days |
