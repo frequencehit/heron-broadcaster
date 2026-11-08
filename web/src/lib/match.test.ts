@@ -17,6 +17,7 @@ function match(change: Partial<MatchView>): MatchView {
       { choice: "b", track_id: 3, artist: "Echo Parade", title: "Running Lights", votes: 33, percent: 42 },
     ],
     entry_ids: [21, 22, 23],
+    locked_entry_ids: [],
     votes: 79,
     opened_at_unix_ms: 0,
     closes_at_unix_ms: 50_000,
@@ -70,6 +71,12 @@ describe("locked entries", () => {
     ]);
     expect([...lockedEntries(match({ status: "queued" }), queue)].sort()).toEqual([20, 21, 22, 23]);
     expect([...lockedEntries(match({ status: "open" }), queue)].sort()).toEqual([20, 21, 22, 23]);
+  });
+
+  it("locks what the clock put between the vote's track and the winner", () => {
+    const queue = waiting([[19, null], [21, null], [30, null], [31, null], [22, null], [23, null]]);
+    const between = match({ status: "open", locked_entry_ids: [19, 30, 31] });
+    expect([...lockedEntries(between, queue)].sort((a, b) => a - b)).toEqual([19, 21, 22, 23, 30, 31]);
   });
 
   it("locks nothing without a match in progress", () => {

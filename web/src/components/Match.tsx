@@ -67,7 +67,7 @@ function trackName(track: { artist?: string | null; title?: string | null }): st
 /** The match in progress; with `empty`, says so when there is none. */
 export function CurrentMatch({ empty = false, compact = false }: Readonly<{ empty?: boolean; compact?: boolean }>) {
   const current = useCurrent();
-  const settings = useSettings(empty);
+  const settings = useSettings();
   if (current.isPending) {
     return empty ? <Loading /> : null;
   }
@@ -82,7 +82,10 @@ export function CurrentMatch({ empty = false, compact = false }: Readonly<{ empt
     return (
       <Card>
         <Empty>
-          {t("match.none")} {settings.data && !settings.data.category_id ? t("match.noCategory") : t("match.noneNext")}
+          {t("match.none")}{" "}
+          {settings.data && settings.data.tracks_from !== "clock" && !settings.data.category_id
+            ? t("match.noCategory")
+            : t("match.noneNext")}
         </Empty>
       </Card>
     );
@@ -276,7 +279,8 @@ export function History() {
   );
 }
 
-function SettingsCard() {
+/** The match's own settings (the settings every show has aside). */
+export function SettingsCard() {
   const settings = useSettings();
   if (settings.isPending) {
     return <Loading />;
@@ -331,10 +335,25 @@ function SettingsForm({ initial }: Readonly<{ initial: MatchSettings }>) {
       }
     >
       <div className="form-grid">
-        <Field label={t("match.everyTracks")}>
+        {/* Not a <label>: its buttons keep their own names. */}
+        <div className="field">
+          <span>{t("match.tracksFrom")}</span>
+          <Segmented
+            label={t("match.tracksFrom")}
+            value={draft.tracks_from ?? "category"}
+            disabled={!canEdit}
+            options={[
+              { value: "clock", label: t("match.fromClock") },
+              { value: "category", label: t("match.fromCategory") },
+            ]}
+            onChange={(tracks_from) => set({ tracks_from })}
+          />
+          {draft.tracks_from === "clock" && <span className="hint">{t("match.fromClockHint")}</span>}
+        </div>
+        <Field label={t("match.everyTracks")} hint={t("match.everyTracksHint")}>
           <NumberInput
             value={draft.every_tracks}
-            min={2}
+            min={1}
             max={20}
             step={1}
             disabled={!canEdit}
@@ -343,9 +362,20 @@ function SettingsForm({ initial }: Readonly<{ initial: MatchSettings }>) {
             onChange={(every_tracks) => set({ every_tracks })}
           />
         </Field>
-        <Field label={t("match.categoryLabel")} hint={t("match.categoryHint")}>
-          {category(draft.category_id, (category_id) => set({ category_id }), t("match.noCategoryOption"), t("match.categoryLabel"))}
-        </Field>
+        {draft.tracks_from === "clock" ? (
+          <Field label={t("match.categoryClockLabel")} hint={t("match.categoryHint")}>
+            {category(
+              draft.category_id,
+              (category_id) => set({ category_id }),
+              t("match.noCategoryClockOption"),
+              t("match.categoryClockLabel"),
+            )}
+          </Field>
+        ) : (
+          <Field label={t("match.categoryLabel")} hint={t("match.categoryHint")}>
+            {category(draft.category_id, (category_id) => set({ category_id }), t("match.noCategoryOption"), t("match.categoryLabel"))}
+          </Field>
+        )}
         <Field label={t("match.jingle")} hint={t("match.jingleHint")}>
           {category(
             draft.jingle_category_id,
@@ -353,6 +383,18 @@ function SettingsForm({ initial }: Readonly<{ initial: MatchSettings }>) {
             t("match.noJingle"),
             t("match.jingle"),
           )}
+        </Field>
+        <Field label={t("match.announceEvery")}>
+          <NumberInput
+            value={draft.announce_every ?? 1}
+            min={1}
+            max={20}
+            step={1}
+            disabled={!canEdit}
+            label={t("match.announceEvery")}
+            suffix={t("match.matchesUnit")}
+            onChange={(announce_every) => set({ announce_every })}
+          />
         </Field>
         <Field label={t("match.closeBefore")}>
           <NumberInput
