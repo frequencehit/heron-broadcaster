@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // What the status bar says (docs/web.md#status-bar): the decks, the
-// listeners and the machine's load, as short texts.
+// listeners and their record, and the machine's load, as short texts.
 
-import type { DeckState, SystemLoad } from "../api";
-import { number } from "../i18n";
+import type { DeckState, Schemas, SystemLoad } from "../api";
+import { locale, number } from "../i18n";
 import { duration, trackName } from "./format";
 
 export type Level = "ok" | "warn" | "bad";
@@ -22,6 +22,9 @@ export function levelOf(percent: number): Level {
 
 export type DeckStatus = "playing" | "paused" | "empty";
 
+/** `on_air` for the deck listeners hear, `next` for the other one with a track loaded. */
+export type DeckBadge = "on_air" | "next";
+
 export interface DeckSummary {
   /** `A` or `B`. */
   letter: string;
@@ -31,6 +34,8 @@ export interface DeckSummary {
   /** The track, with its elapsed time while one is loaded; empty for an empty deck. */
   text: string;
   onAir: boolean;
+  /** `null` for an empty deck. */
+  badge: DeckBadge | null;
   /** How far the track has played, from 0 to 1; `null` for an empty deck or an unknown length. */
   progress: number | null;
 }
@@ -46,7 +51,7 @@ export function summarizeDeck(
 ): DeckSummary {
   const track = deck?.entry?.track;
   if (!deck || !track) {
-    return { letter, status: "empty", symbol: SYMBOLS.empty, text: "", onAir: false, progress: null };
+    return { letter, status: "empty", symbol: SYMBOLS.empty, text: "", onAir: false, badge: null, progress: null };
   }
   const status: DeckStatus = paused ? "paused" : "playing";
   const position = positionMs ?? deck.position_ms;
@@ -58,6 +63,7 @@ export function summarizeDeck(
     symbol: SYMBOLS[status],
     text: `${trackName(track)} ${elapsed}`,
     onAir: deck.on_air,
+    badge: deck.on_air ? "on_air" : "next",
     progress,
   };
 }
@@ -65,6 +71,21 @@ export function summarizeDeck(
 /** The listeners' total; a gap (`–`) when no server could be read, never 0. */
 export function listenersText(total: number | null | undefined): string {
   return total === null || total === undefined ? "–" : number(total);
+}
+
+/** The station's record: its listeners, and its day for people (`25 Oct 2026`); `null` before any. */
+export function recordOf(
+  record: Schemas["ListenersRecord"] | null | undefined,
+): { listeners: string; day: string } | null {
+  if (!record) {
+    return null;
+  }
+  // The day is a station day already: shown as it is, not moved to another zone.
+  const parsed = new Date(`${record.day}T00:00:00Z`);
+  const day = Number.isNaN(parsed.getTime())
+    ? record.day
+    : new Intl.DateTimeFormat(locale(), { dateStyle: "medium", timeZone: "UTC" }).format(parsed);
+  return { listeners: number(record.listeners), day };
 }
 
 export interface SystemSummary {

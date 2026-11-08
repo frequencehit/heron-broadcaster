@@ -10,7 +10,7 @@ import { t } from "../i18n";
 import { useListenersNow } from "../lib/listeners";
 import { positionNow, useLive } from "../lib/live";
 import { Link } from "../lib/router";
-import { type DeckSummary, listenersText, summarizeDeck, summarizeSystem } from "../lib/statusbar";
+import { type DeckSummary, listenersText, recordOf, summarizeDeck, summarizeSystem } from "../lib/statusbar";
 
 /** The time now, in the clock `positionNow` uses, moved on once a second. */
 function useNow() {
@@ -24,31 +24,38 @@ function useNow() {
 
 function Deck({ summary }: Readonly<{ summary: DeckSummary }>) {
   const state = t(`statusbar.${summary.status}`);
-  const spoken = t("statusbar.deck", { deck: summary.letter, state });
+  const badge = summary.badge && t(`statusbar.${summary.badge}`);
+  const spoken = [t("statusbar.deck", { deck: summary.letter, state }), badge, summary.text].filter(Boolean).join(", ");
   return (
     <Link
       to="/"
       className={`statusbar-deck statusbar-deck-${summary.letter.toLowerCase()}${summary.onAir ? " statusbar-on-air" : ""}`}
     >
       {/* What the symbols and the cut title say, for screen readers. */}
-      <span className="visually-hidden">{summary.text ? `${spoken}, ${summary.text}` : spoken}</span>
-      <span className="statusbar-deck-letter" aria-hidden="true">
-        {summary.letter}
-      </span>
-      <span className="statusbar-deck-symbol" aria-hidden="true">
-        {summary.symbol}
-      </span>
-      {summary.text && (
-        <span className="statusbar-deck-text" aria-hidden="true">
-          {summary.text}
-        </span>
-      )}
+      <span className="visually-hidden">{spoken}</span>
+      {/* How far the track has played, behind the text. */}
       {summary.progress !== null && (
         <span
           className="statusbar-deck-progress"
           aria-hidden="true"
           style={{ width: `${(summary.progress * 100).toFixed(2)}%` }}
         />
+      )}
+      <span className="statusbar-deck-letter" aria-hidden="true">
+        {summary.letter}
+      </span>
+      <span className="statusbar-deck-symbol" aria-hidden="true">
+        {summary.symbol}
+      </span>
+      {badge && (
+        <span className={`statusbar-badge statusbar-badge-${summary.badge}`} aria-hidden="true">
+          [{badge}]
+        </span>
+      )}
+      {summary.text && (
+        <span className="statusbar-deck-text" aria-hidden="true">
+          {summary.text}
+        </span>
       )}
     </Link>
   );
@@ -71,6 +78,7 @@ export function StatusBar() {
     return summarizeDeck(letter, deck, paused, position?.position_ms ?? null);
   };
   const summary = system ? summarizeSystem(system) : null;
+  const record = recordOf(listeners.data?.record);
 
   return (
     <div className={`statusbar${connected ? "" : " statusbar-offline"}`} role="status" aria-live="off" aria-label={t("statusbar.label")}>
@@ -84,7 +92,14 @@ export function StatusBar() {
       )}
       {statistics && (
         <Link to="/statistics" className="statusbar-part statusbar-link">
-          {t("statusbar.listeners")} {listenersText(listeners.data?.total)}
+          <span>
+            {t("statusbar.listeners")} {listenersText(listeners.data?.total)}
+          </span>
+          {record && (
+            <span className="statusbar-record" title={t("statusbar.recordOn", { day: record.day })}>
+              {t("statusbar.record")} {record.listeners}
+            </span>
+          )}
         </Link>
       )}
       {summary && (

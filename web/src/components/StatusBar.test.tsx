@@ -40,7 +40,13 @@ describe("StatusBar", () => {
   beforeEach(() => {
     vi.stubGlobal("WebSocket", FakeSocket);
     chooseStation(1);
-    answer({ "GET /api/v1/stations/{station_id}/listeners/now": { outputs: [], total: 42 } });
+    answer({
+      "GET /api/v1/stations/{station_id}/listeners/now": {
+        outputs: [],
+        total: 42,
+        record: { listeners: 128, day: "2026-10-25" },
+      },
+    });
   });
   afterEach(() => {
     stopLive();
@@ -57,7 +63,9 @@ describe("StatusBar", () => {
       ]),
     );
     expect(screen.getByText("Jamiroquai – Space Cowboy 2:31")).toBeTruthy();
-    // A line along the bottom of deck A shows how far the track has played; empty deck B has none.
+    expect(screen.getByText("[ON AIR]")).toBeTruthy();
+    expect(screen.queryByText("[NEXT]")).toBeNull();
+    // Deck A fills as its track plays; empty deck B has no fill.
     const lines = document.querySelectorAll<HTMLElement>(".statusbar-deck-progress");
     expect([...lines].map((line) => line.style.width)).toEqual(["62.92%"]);
     // The decks open the On air page, the listeners the Statistics page.
@@ -65,8 +73,23 @@ describe("StatusBar", () => {
     expect(links.map((link) => link.getAttribute("href"))).toEqual(["/", "/", "/statistics"]);
     // What a screen reader gets, in place of the symbols.
     expect(screen.getByText("Deck B: empty")).toBeTruthy();
-    expect(screen.getByText("Deck A: playing, Jamiroquai – Space Cowboy 2:31")).toBeTruthy();
+    expect(screen.getByText("Deck A: playing, ON AIR, Jamiroquai – Space Cowboy 2:31")).toBeTruthy();
     await waitFor(() => expect(screen.getByText("listeners 42")).toBeTruthy());
+    // The record, its day on hovering.
+    expect(screen.getByText("record 128").getAttribute("title")).toBe("Record reached on Oct 25, 2026");
+  });
+
+  it("marks the deck loaded next", () => {
+    renderApp(<StatusBar />);
+    open().receive(
+      state([
+        { deck: "a", on_air: true, position_ms: 151_000, length_ms: 240_000, entry: track("Jamiroquai", "Space Cowboy") },
+        { deck: "b", on_air: false, position_ms: 0, length_ms: 200_000, entry: track("Daft Punk", "Da Funk") },
+      ]),
+    );
+    expect(screen.getByText("[NEXT]")).toBeTruthy();
+    expect(screen.getByText("Daft Punk – Da Funk 0:00")).toBeTruthy();
+    expect(screen.getByText("Deck B: playing, NEXT, Daft Punk – Da Funk 0:00")).toBeTruthy();
   });
 
   it("shows a gap, not zero, when no server could be read", async () => {
