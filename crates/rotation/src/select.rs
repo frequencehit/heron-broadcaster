@@ -1738,10 +1738,16 @@ pub(crate) fn pick(
             }
         }
         // Nothing fitted in this run before the next hour's exact time:
-        // fill the gap, else play on, cut at the end of its window.
+        // fill the gap, else the exact slot starts early, as one of this
+        // run does. A song is never chosen to be cut for it; only when the
+        // exact slot itself has nothing to play, play on, cut at the end of
+        // its window.
         match upcoming.as_ref().filter(|_| fitting) {
             Some(ahead) if ahead.offset.is_none() => {
                 if let Some(pick) = picker.gap(ahead, at_ms) {
+                    return done(pick, skipped);
+                }
+                if let Ok(pick) = picker.exact(ahead, at_ms, false) {
                     return done(pick, skipped);
                 }
                 fitting = false;
