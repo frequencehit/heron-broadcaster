@@ -715,7 +715,8 @@ impl Context {
         let past = history.plays().to_vec();
         let (planned, end_ms) = match state {
             Some(state) => {
-                let (planned, end) = crate::rotation::planned_starts(state, now_ms);
+                let alternatives = crate::matches::alternatives(pool, station_id, state).await?;
+                let (planned, end) = crate::rotation::planned_starts(state, now_ms, alternatives);
                 let history =
                     crate::rotation::with_queue(pool, &library, history.clone(), &planned).await?;
                 let planned = planned

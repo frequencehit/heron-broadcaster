@@ -22895,7 +22895,7 @@
           "before_s": {
             "type": "integer",
             "format": "int32",
-            "description": "The soft window, in seconds; 0 in hard mode.",
+            "description": "The window, in seconds: in hard mode, the early tolerance (10)\nand 0.",
             "minimum": 0
           },
           "cut_at_unix_ms": {
@@ -25741,7 +25741,7 @@
       },
       "LookaheadLog": {
         "type": "object",
-        "description": "How a pick looked ahead, in the rotation log.",
+        "description": "How a pick's fill was chosen before an exact time, in the rotation log.",
         "required": [
           "exact_at_unix_ms",
           "draws",
@@ -25754,17 +25754,17 @@
           "draws": {
             "type": "integer",
             "format": "int32",
-            "description": "Endings simulated.",
+            "description": "Fills built for this pick: 0 when it follows the fill kept.",
             "minimum": 0
           },
           "exact_at_unix_ms": {
             "type": "integer",
             "format": "int64",
-            "description": "The exact time looked ahead to (Unix ms)."
+            "description": "The exact time ahead (Unix ms)."
           },
           "faded": {
             "type": "boolean",
-            "description": "The best ending fades out the track before the exact slot: it ends\nafter the cut (the end of the window, the exact time in hard mode).\nFading nothing comes first: every ending simulated did."
+            "description": "The best fill fades out the track before the exact slot: it ends\nafter the cut (the end of the window, the exact time in hard mode).\nFading nothing comes first: every fill did."
           },
           "filling_ms": {
             "type": "integer",
@@ -25774,7 +25774,11 @@
           },
           "in_window": {
             "type": "boolean",
-            "description": "The best ending: the tracks before the exact slot end inside its\nwindow (at the exact time in hard mode)."
+            "description": "The best fill: the tracks before the exact slot end inside its\nwindow (the 10 s before the exact time in hard mode)."
+          },
+          "kept": {
+            "type": "boolean",
+            "description": "The pick follows the best fill of an earlier pick, played again."
           },
           "offset_ms": {
             "type": [
@@ -25782,13 +25786,17 @@
               "null"
             ],
             "format": "int64",
-            "description": "Where they end, from the exact time; negative when early. Missing\nwhen no ending reached the exact slot."
+            "description": "Where they end, from the exact time; negative when early. Missing\nwhen no fill reached the exact slot."
           },
           "relaxed_steps": {
             "type": "integer",
             "format": "int32",
             "description": "Relaxation steps of its picks, added up.",
             "minimum": 0
+          },
+          "search": {
+            "type": "boolean",
+            "description": "The fit search found the best fill's ending."
           }
         }
       },

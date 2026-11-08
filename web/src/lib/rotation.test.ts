@@ -152,16 +152,18 @@ describe("exact times", () => {
       filling_ms: 0,
       relaxed_steps: 0,
     };
-    expect(describeLookahead(log)).toMatch(/^8 endings simulated, the best ends at .*: no filling$/);
+    expect(describeLookahead(log)).toMatch(/^best of 8 fills: ends at .*, nothing faded, no filling$/);
     expect(describeLookahead({ ...log, filling_ms: 4_200, relaxed_steps: 2 })).toMatch(
-      /: 4 s filled, 2 relaxation steps$/,
+      /, nothing faded, 4 s filled, 2 relaxation steps$/,
     );
     expect(describeLookahead({ ...log, faded: true, in_window: false })).toMatch(
-      /: no filling, the track before faded out$/,
+      /, the track before faded out, no filling$/,
     );
-    expect(describeLookahead({ ...log, offset_ms: null })).toBe(
-      "8 endings simulated, none reaches the exact time",
+    expect(describeLookahead({ ...log, search: true })).toMatch(/^best of 8 fills, fit search: ends at /);
+    expect(describeLookahead({ ...log, draws: 0, kept: true, search: true })).toMatch(
+      /^best fill kept, fit search: ends at .*, nothing faded, no filling$/,
     );
+    expect(describeLookahead({ ...log, offset_ms: null })).toBe("best of 8 fills: none reaches the exact time");
   });
 
   it("says what filled the gap", () => {

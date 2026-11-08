@@ -7843,7 +7843,8 @@ export interface components {
             at_unix_ms: number;
             /**
              * Format: int32
-             * @description The soft window, in seconds; 0 in hard mode.
+             * @description The window, in seconds: in hard mode, the early tolerance (10)
+             *     and 0.
              */
             before_s: number;
             /**
@@ -9060,22 +9061,22 @@ export interface components {
             password: string;
             username: string;
         };
-        /** @description How a pick looked ahead, in the rotation log. */
+        /** @description How a pick's fill was chosen before an exact time, in the rotation log. */
         LookaheadLog: {
             /**
              * Format: int32
-             * @description Endings simulated.
+             * @description Fills built for this pick: 0 when it follows the fill kept.
              */
             draws: number;
             /**
              * Format: int64
-             * @description The exact time looked ahead to (Unix ms).
+             * @description The exact time ahead (Unix ms).
              */
             exact_at_unix_ms: number;
             /**
-             * @description The best ending fades out the track before the exact slot: it ends
+             * @description The best fill fades out the track before the exact slot: it ends
              *     after the cut (the end of the window, the exact time in hard mode).
-             *     Fading nothing comes first: every ending simulated did.
+             *     Fading nothing comes first: every fill did.
              */
             faded: boolean;
             /**
@@ -9084,14 +9085,16 @@ export interface components {
              */
             filling_ms: number;
             /**
-             * @description The best ending: the tracks before the exact slot end inside its
-             *     window (at the exact time in hard mode).
+             * @description The best fill: the tracks before the exact slot end inside its
+             *     window (the 10 s before the exact time in hard mode).
              */
             in_window: boolean;
+            /** @description The pick follows the best fill of an earlier pick, played again. */
+            kept?: boolean;
             /**
              * Format: int64
              * @description Where they end, from the exact time; negative when early. Missing
-             *     when no ending reached the exact slot.
+             *     when no fill reached the exact slot.
              */
             offset_ms?: number | null;
             /**
@@ -9099,6 +9102,8 @@ export interface components {
              * @description Relaxation steps of its picks, added up.
              */
             relaxed_steps: number;
+            /** @description The fit search found the best fill's ending. */
+            search?: boolean;
         };
         /** @description Loudness normalization from the analyzed integrated loudness (EBU R128). */
         LoudnessSettings: {

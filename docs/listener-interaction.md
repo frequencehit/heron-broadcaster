@@ -343,6 +343,8 @@ Where they come from is the station's choice (*the tracks of the match*):
 
 Either way: separation, restrictions and the play ratio at the time the winner should start, the least recently played first, relaxed step by step if needed (the fallback category does not count: a match needs two tracks of its category). The second is picked with the first counted as played then: two different tracks, of two different artists while the separation rules allow it.
 - **The loser of a match does not come back the same day** (in the station's time zone), unless the station allows it (*the loser can come back the same day*). A track that won can, as the rules allow.
+- **One play in the plan:** the two tracks are planned at the same start, and what follows after the longer one, since only one of them plays: the hour is never late, whichever wins. Before an exact time, the second is chosen with a length close to the first's, so that either lands the hour in the exact time's window ([Rotation – Exact times](rotation.md#exact-times)).
+- **Never a queued track again:** the tracks in the queue count as played at their planned times, so the separation rules keep them out of the match like any recent play. The rules may be relaxed step by step down to title separation dropped (step 8), so the second can be another version of a title, or an artist, already queued when nothing else is left; a track itself is kept out by track separation until step 9 (halved), and the fallback category never gives one.
 - Without two tracks, no match: rotation plays on, and tries again for the next track.
 
 ### On air

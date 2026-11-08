@@ -12633,7 +12633,7 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
 /// slot starts then; soft, a track queued by hand that would end after the
 /// window is taken out.
 #[tokio::test(flavor = "multi_thread")]
-async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
+async fn exact_times_start_on_time_and_take_out_what_no_longer_fits() {
     let Some(station) = Station::start().await else {
         return;
     };
@@ -12728,7 +12728,8 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
     // the news among them, do not count.
     let cleared_at = rotation_now();
 
-    // Hard: queued with its start time, started then, the track before cut.
+    // Hard: queued with its start time, started then at the latest, or
+    // up to 10 s early when the track before ends then: nothing is cut.
     let hard_at = hour_start + hard_s * 1_000;
     let queued = |at: i64| {
         let admin = &admin;
@@ -12762,7 +12763,7 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
     })
     .await;
     let started = play["started_at_unix_ms"].as_i64().unwrap();
-    if (started - hard_at).abs() >= 1_500 {
+    if !(-11_500..1_500).contains(&(started - hard_at)) {
         let picks = admin.get("/rotation/picks?limit=30").await;
         let picks: Vec<Value> = picks
             .as_array()
@@ -12788,18 +12789,6 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
             serde_json::to_string(&history).unwrap()
         );
     }
-    // The track before fades out over 1.5 s, skipped.
-    eventually("the track before cut", Duration::from_secs(10), || async {
-        let history = admin.get("/history").await;
-        let before = history
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|other| other["started_at_unix_ms"].as_i64() < Some(started))
-            .cloned()?;
-        (before["end_reason"] == "skipped").then_some(())
-    })
-    .await;
     let picks = admin.get("/rotation/picks?limit=100").await;
     let exact = picks
         .as_array()
@@ -12808,8 +12797,9 @@ async fn exact_times_cut_on_time_and_take_out_what_no_longer_fits() {
         .find(|pick| pick["explanation"]["exact"]["at_unix_ms"] == hard_at)
         .map(|pick| pick["explanation"]["exact"].clone())
         .unwrap();
-    assert_eq!(exact["met"], "on_time", "{exact}");
-    assert_eq!(exact["faded"], true, "{exact}");
+    assert_ne!(exact["met"], "late", "{exact}");
+    assert_eq!(exact["in_window"], true, "{exact}");
+    assert_eq!(exact["faded"], false, "{exact}");
 
     // Soft: a track queued by hand right before it, which would end after
     // the window, is taken out.

@@ -144,8 +144,18 @@ pub(crate) fn simulate_with(
     // Tracks held back by their ratio while nothing could be picked: their
     // counters moved, and the next pick lists them for the audit.
     let mut held_in_gaps = Vec::new();
+    // The best fill before an exact time, kept from a pick to the next.
+    let mut plan = None;
     'run: while at < end {
-        let outcome = select::outcome(&working, &history, at, last.as_ref(), &mut rng, lookahead);
+        let outcome = select::outcome(
+            &working,
+            &history,
+            at,
+            last.as_ref(),
+            &mut rng,
+            lookahead,
+            &mut plan,
+        );
         working.count_down(outcome.offered());
         let Some(mut pick) = outcome.pick else {
             held_in_gaps.extend(outcome.held_by_ratio);

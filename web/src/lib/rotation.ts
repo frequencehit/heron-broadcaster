@@ -264,27 +264,29 @@ export function describeMet(log: Schemas["ExactLog"]): string {
 }
 
 /**
- * How a pick looked ahead before an exact time: `8 endings simulated, the
- * best ends at 09:59:56: no filling`.
+ * How a pick's fill was chosen before an exact time: `best of 10 fills, fit
+ * search: ends at 09:59:58, nothing faded, no filling`.
  */
 export function describeLookahead(log: Schemas["LookaheadLog"]): string {
   if (log.offset_ms === null || log.offset_ms === undefined) {
     return t("exact.lookaheadNone", { count: log.draws });
   }
   const result = [
+    log.faded ? t("exact.lookaheadFaded") : t("exact.lookaheadNothingFaded"),
     log.filling_ms > 0
       ? t("exact.lookaheadFilled", { seconds: Math.round(log.filling_ms / 1000) })
       : t("exact.lookaheadNoFilling"),
-    log.faded && t("exact.lookaheadFaded"),
     log.relaxed_steps > 0 && t("exact.lookaheadRelaxed", { count: log.relaxed_steps }),
   ]
     .filter(Boolean)
     .join(", ");
-  return t("exact.lookahead", {
+  const values = {
     count: log.draws,
+    search: log.search ? t("exact.lookaheadSearch") : "",
     time: clockTime(log.exact_at_unix_ms + log.offset_ms),
     result,
-  });
+  };
+  return log.kept ? t("exact.lookaheadKept", values) : t("exact.lookahead", values);
 }
 
 /** A gap filled before an exact time: `medley 7, 1 hook left out`, `a filler`. */

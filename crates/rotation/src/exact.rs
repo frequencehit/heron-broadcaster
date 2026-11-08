@@ -14,6 +14,9 @@ use crate::{CategoryId, TrackId};
 pub const CUT_FADE_MS: u32 = 1_500;
 /// The longest a soft window reaches before or after its exact time.
 pub const MAX_WINDOW_S: u32 = 300;
+/// Hard mode's early tolerance: the tracks before a hard exact time may end
+/// this long before it, the slot then starting early, without a cut.
+pub const HARD_EARLY_S: u32 = 10;
 /// The shortest crossfade between the two spans of a shortened medley.
 pub const MIN_MEDLEY_CROSSFADE_MS: u32 = 100;
 
@@ -76,12 +79,13 @@ impl ExactTime {
     }
 
     /// The window for an exact time at `at_ms`: from when the slot may
-    /// start to when what plays is cut. Both are `at_ms` in hard mode.
+    /// start to when what plays is cut. In hard mode, from
+    /// [`HARD_EARLY_S`] before `at_ms` to `at_ms`.
     pub fn window(&self, at_ms: i64) -> Window {
         match self.mode {
             ExactMode::Hard => Window {
                 at_ms,
-                from_ms: at_ms,
+                from_ms: at_ms - i64::from(HARD_EARLY_S) * 1_000,
                 cut_ms: at_ms,
             },
             ExactMode::Soft => Window {
@@ -145,7 +149,8 @@ pub struct ExactLog {
     /// The exact time (Unix ms).
     pub at_unix_ms: i64,
     pub mode: ExactMode,
-    /// The soft window, in seconds; 0 in hard mode.
+    /// The window, in seconds: in hard mode, the early tolerance (10)
+    /// and 0.
     pub before_s: u32,
     pub after_s: u32,
     pub met: Met,
@@ -164,7 +169,7 @@ impl ExactLog {
     pub(crate) fn new(exact: &ExactTime, window: Window, start_ms: i64, faded: bool) -> Self {
         let offset_ms = start_ms - window.at_ms;
         let (before_s, after_s) = match exact.mode {
-            ExactMode::Hard => (0, 0),
+            ExactMode::Hard => (HARD_EARLY_S, 0),
             ExactMode::Soft => (exact.before_s, exact.after_s),
         };
         Self {
@@ -251,6 +256,22 @@ pub(crate) struct Fit<'a> {
     pub window: Window,
     pub mode: FitMode,
     pub medleys: Option<&'a std::collections::HashMap<TrackId, Medley>>,
+    /// A fill played again: the track it chose here, taken when the pick
+    /// may play it ([`Fit::wanted`]).
+    pub want: Option<TrackId>,
+    /// The fit search: where the pick records the tracks it may play.
+    pub options: Option<&'a std::cell::RefCell<Option<Vec<Choice>>>>,
+    /// The pick is never logged: [`crate::select`] leaves out what only
+    /// the log needs.
+    pub quick: bool,
+}
+
+/// A track a pick may play, for the fit search: its ID and where the next
+/// track starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Choice {
+    pub track: TrackId,
+    pub next_ms: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -332,9 +353,68 @@ impl Fit<'_> {
 }
 
 impl Fit<'_> {
-    /// A track crossing the window may be kept, and cut (hard mode).
+    /// A track crossing the window may be kept, and cut (a filler in hard
+    /// mode).
     pub(crate) fn cuts(&self) -> bool {
         self.mode == FitMode::Prefer { late_ok: true }
+    }
+
+    /// Whether a track ending at `end_ms` may be played: not after the cut,
+    /// unless cutting is allowed in this pass.
+    fn allows(&self, end_ms: i64, late_ok: bool) -> bool {
+        match self.mode {
+            FitMode::Prefer {
+                late_ok: mode_late_ok,
+            } => self.window.landing(end_ms) != Landing::Late || (late_ok && mode_late_ok),
+            FitMode::Medley => false,
+        }
+    }
+
+    /// The track wanted, if it is among `candidates` and may be played from
+    /// `start_ms`, whatever its class: the fill played again chose it.
+    pub(crate) fn wanted<'l>(
+        &self,
+        candidates: &[(&'l crate::Track, f64)],
+        start_ms: i64,
+        late_ok: bool,
+    ) -> Option<(&'l crate::Track, f64)> {
+        let want = self.want?;
+        candidates
+            .iter()
+            .find(|(track, _)| track.id == want)
+            .filter(|(track, _)| self.allows(start_ms + i64::from(track.next_ms()), late_ok))
+            .copied()
+    }
+
+    /// Records the tracks among `candidates` that may be played from
+    /// `start_ms`, in their order, for the fit search: the first time only,
+    /// where the method chooses.
+    pub(crate) fn record(
+        &self,
+        candidates: &[(&crate::Track, f64)],
+        start_ms: i64,
+        late_ok: bool,
+        plays: impl Fn(&crate::Track) -> bool,
+    ) {
+        let Some(options) = self.options else {
+            return;
+        };
+        let mut options = options.borrow_mut();
+        if options.is_some() {
+            return;
+        }
+        *options = Some(
+            candidates
+                .iter()
+                .filter(|(track, _)| {
+                    self.allows(start_ms + i64::from(track.next_ms()), late_ok) && plays(track)
+                })
+                .map(|(track, _)| Choice {
+                    track: track.id,
+                    next_ms: track.next_ms(),
+                })
+                .collect(),
+        );
     }
 }
 
@@ -362,7 +442,8 @@ mod tests {
             ..exact
         };
         let window = hard.window(100_000);
-        assert_eq!((window.from_ms, window.cut_ms), (100_000, 100_000));
+        assert_eq!((window.from_ms, window.cut_ms), (90_000, 100_000));
+        assert_eq!(hard.window(100_000).at_ms, 100_000);
         assert!(
             ExactTime {
                 at_s: 3_600,
