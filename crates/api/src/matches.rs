@@ -946,7 +946,8 @@ pub async fn chained(
     }
     let last: Option<LastMatch> = sqlx::query_as(
         "SELECT id, CAST(status AS CHAR), engine_started_at, entry_a_id, entry_b_id,
-                IF(winner = 'a', track_a_id, track_b_id), IF(winner = 'a', 1, IF(winner = 'b', 2, NULL))
+                IF(winner = 'a', track_a_id, track_b_id),
+                CAST(IF(winner = 'a', 1, IF(winner = 'b', 2, NULL)) AS UNSIGNED)
          FROM matches WHERE station_id = ? ORDER BY id DESC LIMIT 1",
     )
     .bind(station_id)

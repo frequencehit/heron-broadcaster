@@ -445,19 +445,36 @@ impl QueueManager {
         // Every track: the winner of the match just closed carries the next
         // vote, whatever the queue's depth.
         let tried = self.chain_tried.lock().ok().and_then(|tried| *tried);
+        // A match that fails never stops the music: the queue fills as
+        // without one.
         let chained = crate::matches::chained(&self.pool, self.station_id, state)
-            .await?
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "cannot read the last match: the queue fills without it");
+                None
+            })
             .filter(|(id, _, _)| tried != Some(*id));
         if missing == 0 && chained.is_none() {
             return Ok(());
         }
         // Every track: nothing goes behind the match waiting or open.
-        if chained.is_none() && crate::matches::holds_queue(&self.pool, self.station_id).await? {
+        let holds = crate::matches::holds_queue(&self.pool, self.station_id)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "cannot read the match waiting: the queue fills without it");
+                false
+            });
+        if chained.is_none() && holds {
             return Ok(());
         }
         let now = rotation::now_ms();
         // A match's two tracks: one plays.
-        let alternatives = crate::matches::alternatives(&self.pool, self.station_id, state).await?;
+        let alternatives = crate::matches::alternatives(&self.pool, self.station_id, state)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "cannot read the match's tracks: the queue fills without it");
+                None
+            });
         // A show on air (the Top 30) queues its programme in its hours.
         let (_, planned_end) = rotation::planned_starts(state, now, alternatives);
         if self.fill_show(planned_end, missing).await? {
@@ -488,7 +505,12 @@ impl QueueManager {
         // Play ratio counters moved by these picks, saved once queued.
         let mut counters = Vec::new();
         // A match in the show's hours: its tracks after one of the picks.
-        let mut planner = crate::matches::planner(&self.pool, self.station_id).await?;
+        let mut planner = crate::matches::planner(&self.pool, self.station_id)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "cannot plan the match: the queue fills without it");
+                None
+            });
         let mut planned_match = None;
         // The best fill before an exact time, kept from a fill to the next
         // while it still lands, and the calculation it comes from.
@@ -672,8 +694,8 @@ impl QueueManager {
             log_ids
                 .push(rotation::record_pick(&self.pool, self.station_id, pick, Some(entry)).await?);
         }
-        if let Some(planned) = planned_match {
-            crate::matches::queued(
+        if let Some(planned) = planned_match
+            && let Err(error) = crate::matches::queued(
                 &self.pool,
                 self.station_id,
                 &planned,
@@ -683,7 +705,10 @@ impl QueueManager {
                 &log_ids,
                 jingle_entry,
             )
-            .await?;
+            .await
+        {
+            // Its tracks stay queued, as ordinary tracks.
+            tracing::warn!(%error, "cannot record the match queued");
         }
         rotation::save_counters(&self.pool, self.station_id, &counters).await?;
         tracing::info!(

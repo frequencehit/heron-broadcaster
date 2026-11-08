@@ -12633,11 +12633,8 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
         .await;
     assert_eq!(status, StatusCode::OK, "{settings}");
     assert_eq!(settings["tracks_from"], "clock");
-    let first_chained: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) FROM matches")
-        .fetch_one(pool)
-        .await
-        .unwrap();
     let mut open = open_next().await;
+    let first_open = open["id"].as_u64().unwrap();
     for chained in 0..3 {
         assert_eq!(open["category_id"], hits, "{open}");
         let id = open["id"].clone();
@@ -12688,15 +12685,20 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
         })
         .await;
     }
-    // Announced every 2 matches, the first of them.
+    // Announced every 2 matches, counted from the last one announced
+    // (the match open first was queued with the settings before).
     let announced: Vec<bool> = sqlx::query_scalar(
-        "SELECT jingle_track_id IS NOT NULL FROM matches WHERE id > ? ORDER BY id LIMIT 4",
+        "SELECT jingle_track_id IS NOT NULL FROM matches WHERE id >= ? ORDER BY id LIMIT 4",
     )
-    .bind(first_chained)
+    .bind(first_open)
     .fetch_all(pool)
     .await
     .unwrap();
-    assert_eq!(announced, vec![true, false, true, false]);
+    assert_eq!(announced.len(), 4, "{announced:?}");
+    assert!(
+        announced.windows(2).all(|pair| pair[0] != pair[1]),
+        "{announced:?}"
+    );
     let (status, _) = admin
         .request(Method::POST, "/match/current/cancel", None)
         .await;
