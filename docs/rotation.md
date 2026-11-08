@@ -194,7 +194,7 @@ The rotation log says how each exact time was met (`exact` in the explanation of
 Every fill built before an exact time is an **attempt**, kept with what it would play, so that what rotation tried and why it chose can be read, and another attempt chosen by hand. The *Exact times* page (under Rotation in the menu) shows:
 
 - **The exact times of a day** (today by default), each with how it was met: on time, early, late, faded and by how much. Choosing one shows its calculations.
-- **Its calculations**: one each time fills were built (the first pick after the exact time before it, a change of the queue, a restart, an attempt chosen by hand that no longer landed, *Back to automatic*) and each pick that followed the fill kept, with when, why, how many attempts, the time it took and the result.
+- **Its calculations**: one each time fills were built (the first pick after the exact time before it, a change of the queue, a restart, an attempt chosen by hand that no longer landed, *Back to automatic*, *Calculate now*) and each pick that followed the fill kept, with when, why, how many attempts, the time it took and the result.
 - **The attempts of a calculation**, best first, each on a timeline up to the end of the window: its tracks from the end of the queue, the window and the exact time, the part a fade would cut. Filters: in the window, faded.
 - **An attempt's detail**: each track with its slot, category, length to its mix point, planned start and end, how it was chosen (its slot's order, the fit search, a filler track, a medley and how it was shortened) and the rules relaxed; how it ranks against the attempt kept, criterion by criterion; its fit search (the tracks each of its last slots could play, the combinations tried, how many landed, how many were played again) and its seed.
 
@@ -206,7 +206,13 @@ Every fill built before an exact time is an **attempt**, kept with what it would
 - *Back to automatic* drops the choice: the next pick builds new fills.
 - The choice, who made it and when are kept with the calculation.
 
-Attempts are kept **7 days**, then deleted. Every role can read the page; choosing an attempt takes the operator role, as changing the queue does.
+**Calculating now:** when nothing was calculated for the upcoming exact time (its tracks were queued before, a deep queue reaching it already), an operator or an admin can have its fills built on demand with *Calculate now*, for the **upcoming** exact time only: the next one whose slot has not started (`409` for any other).
+
+- The fills start **after what may not move**: the track on air and the one cued, tracks queued by hand, dedications and a match's tracks stay where they are; **rotation's own picks queued before the exact slot are counted as not queued yet**, so the attempts can replace them. When the exact slot is queued already, the fills go up to it, and it stays.
+- It is a calculation like the others (why: *on demand*, and who asked), with its attempts, built with the same budget (200 fills or 3 seconds), off the queue manager's way. **Nothing in the queue changes**, and the fill rotation follows does not either.
+- Its attempts that land in the window can be used as above, while it is the latest calculation of the exact time and **the queue has not changed since** (a track added, removed or moved, or one that started: `409`, calculate again). Rotation's picks queued before the exact slot are then taken out: when the exact slot is not queued, the attempt is the fill kept, followed as the queue's depth asks; when it is queued, the attempt's tracks are queued at once before it, played again with the real rules first (`409` if it no longer lands). The picks taken out leave the rotation log, as they will not play.
+
+Attempts are kept **7 days**, then deleted. Every role can read the page; choosing an attempt, and calculating now, take the operator role, as changing the queue does.
 
 **Planned starts** count the transitions: the next track starts at the track's **mix point**, where the engine starts it (the analysis' point, or the fixed crossfade, with the station's crossfade settings and the track's overrides, see [Audio engine](audio-engine.md)), else at its end. Rotation plans with each track's mix point into a full-length track; the queue manager and the queue's expected starts use the engine's own transition into the next waiting track (a jingle after a song plays back to back, for instance). A track that lands is one whose mix point falls in the window. Hard times are met by the engine whatever the plan.
 
