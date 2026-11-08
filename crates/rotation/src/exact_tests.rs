@@ -223,22 +223,22 @@ fn a_soft_slot_that_no_longer_fits_gives_way_to_the_filler() {
 }
 
 #[test]
-fn without_a_filler_a_soft_slot_plays_on_and_is_faded_at_the_end_of_the_window() {
+fn without_a_filler_the_exact_slot_starts_early_rather_than_cut_a_song() {
     let library = top_of_hour(ExactMode::Soft, &[120_000, 180_000]);
-    let first = pick(&library, &History::default(), 59 * MIN, at(1, 0), 1);
-    // Nothing fits: the song plays, and the news follows at 00:30, faded.
+    // At 59:00 no song ends by 00:30 and there is no filler: the news
+    // starts now, a minute early, and no song is cut.
     assert_eq!(library.categories[&SONGS].members.len(), 2);
-    assert!(first.explanation.fill.is_none() && first.explanation.exact.is_none());
-    let song = &library.tracks[&first.track];
-    let history = History::new(vec![Play::of(song, 59 * MIN)], HashMap::new());
-    let end = 59 * MIN + i64::from(song.length_ms);
-    let news = pick(&library, &history, end, first.position.unwrap(), 1);
+    let news = pick(&library, &History::default(), 59 * MIN, at(1, 0), 1);
     assert_eq!(news.track, 50);
     let log = news.explanation.exact.unwrap();
-    assert_eq!(news.explanation.at_unix_ms, HOUR + 30 * SEC);
-    assert_eq!(news.start_at_ms, Some(HOUR + 30 * SEC));
-    assert!(log.faded && log.in_window);
-    assert_eq!((log.met, log.offset_ms), (Met::Late, 30 * SEC));
+    assert_eq!(news.explanation.at_unix_ms, 59 * MIN);
+    assert!(!log.faded && !log.in_window);
+    assert_eq!((log.met, log.offset_ms), (Met::Early, -MIN));
+    // The next hour's clock goes on from there.
+    assert_eq!(
+        news.position.map(|p| (p.hour_start_unix_ms, p.slot)),
+        Some((HOUR, 0))
+    );
 }
 
 #[test]
@@ -268,9 +268,18 @@ fn hard_cuts_what_plays_at_the_exact_time() {
     assert!(log.faded && log.in_window);
     // Its window is the early tolerance.
     assert_eq!((log.met, log.before_s, log.after_s), (Met::OnTime, 10, 0));
-    // In hard mode a track crossing the exact time still plays: it is cut.
+    // A song that would cross the exact time is never chosen, in hard mode
+    // either: without a filler, the news starts early instead.
     let first = pick(&library, &History::default(), 58 * MIN, at(1, 0), 1);
-    assert_eq!(first.track, 1);
+    assert_eq!(first.track, 50);
+    let log = first.explanation.exact.unwrap();
+    assert_eq!(first.explanation.at_unix_ms, 58 * MIN);
+    assert!(!log.faded);
+    assert_eq!((log.met, log.offset_ms), (Met::Early, -2 * MIN));
+    assert_eq!(
+        first.position.map(|p| (p.hour_start_unix_ms, p.slot)),
+        Some((HOUR, 0))
+    );
 }
 
 #[test]
@@ -316,9 +325,10 @@ fn the_gap_before_the_window_is_filled_with_a_medley_whole_or_shortened() {
         (fill.hooks_left_out, fill.parts_left_out.clone()),
         (1, vec![4, 5])
     );
-    // At 59:00 neither lands, and there is no filler: the song plays on.
+    // At 59:00 neither lands, and there is no filler: the news starts early
+    // rather than a song being cut.
     let none = pick(&library, &History::default(), 59 * MIN, at(1, 0), 1);
-    assert_eq!(none.track, 1);
+    assert_eq!(none.track, 50);
     // Medleys turned off: no medley.
     let mut off = library.clone();
     off.modules_off.insert(MEDLEYS);

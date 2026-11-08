@@ -74,6 +74,7 @@ What `main` has since the last release: it is published as the `edge` images. Re
 
 ### Fixed
 
+- **Exact times: no song is cut before the next hour's top any more.** When every song of the hour's last slots would cross the exact time and no filler fits, rotation played one on and cut it (hard), or faded it at the end of the window (soft). The next hour's exact slot now starts early instead, as an exact slot of the same hour already did.
 - **Rotation log: each skipped slot says its own reason.** The list ended with *restrictions left nothing* whatever the reason, even for slots skipped because the exact time was due.
 - **Shows: the week grid's hours are all the same width**, labelled every three hours or not (they were wider at 0, 3, 6…).
 - The shared routes that take a station to look at (`GET /tracks?station_id=`, `GET /categories?station_id=`, `GET /medleys?station_id=`, `GET /tracks/{id}/plays/grid?station_id=`, and a selection's filters) answer `404` for a station the user does not see, as that station's routes do.
