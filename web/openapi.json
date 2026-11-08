@@ -2337,6 +2337,163 @@
         }
       }
     },
+    "/api/v1/certification/days": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Per day and server: the lines kept, the sessions among them, and the\ngaps. Admins only.",
+        "operationId": "certification_days",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The first day, `YYYY-MM-DD` in the station's time zone.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The last day, included; 62 days at most.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CertificationDay"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certification/export": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A day of a server's log, as a file. Admins only; each download is\nlogged. `X-Heron-Gaps` lists the gaps of the day (ISO 8601 intervals,\nUTC).",
+        "operationId": "export_day",
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "description": "`YYYY-MM-DD`, in the station's time zone: the lines logged that day.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "mount",
+            "in": "query",
+            "description": "Only this mount (`/live`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "combined",
+                "csv",
+                "json"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certification/sources": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "The station's servers with an access log, and how their reading goes.",
+        "operationId": "list_certification_sources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccessLogView"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clocks": {
       "get": {
         "tags": [
@@ -7961,6 +8118,72 @@
         }
       }
     },
+    "/api/v1/settings/certification": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "How long the access logs' lines are kept.",
+        "operationId": "get_certification_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Replaces the certification settings. Admins only.",
+        "operationId": "put_certification_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CertificationSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings/eq": {
       "get": {
         "tags": [
@@ -10063,6 +10286,192 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StationModules"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/days": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Per day and server: the lines kept, the sessions among them, and the\ngaps. Admins only.",
+        "operationId": "certification_days_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The first day, `YYYY-MM-DD` in the station's time zone.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The last day, included; 62 days at most.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CertificationDay"
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/export": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A day of a server's log, as a file. Admins only; each download is\nlogged. `X-Heron-Gaps` lists the gaps of the day (ISO 8601 intervals,\nUTC).",
+        "operationId": "export_day_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "description": "`YYYY-MM-DD`, in the station's time zone: the lines logged that day.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "mount",
+            "in": "query",
+            "description": "Only this mount (`/live`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "combined",
+                "csv",
+                "json"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/sources": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "The station's servers with an access log, and how their reading goes.",
+        "operationId": "list_certification_sources_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccessLogView"
+                  }
                 }
               }
             }
@@ -14543,6 +14952,161 @@
         }
       }
     },
+    "/api/v1/stations/{station_id}/stream-servers/{server_id}/access-log": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A server's access log and how its reading goes; `null` without one.",
+        "operationId": "get_access_log_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AccessLogView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Sets where a server's access log is read from. A new place starts from\nthe beginning of the file. Admins only.",
+        "operationId": "put_access_log_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessLogInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessLogView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Stops reading a server's access log. The lines kept stay until their\nretention. Admins only.",
+        "operationId": "delete_access_log_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stations/{station_id}/top30/chart": {
       "get": {
         "tags": [
@@ -15627,6 +16191,134 @@
         "parameters": [
           {
             "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stream-servers/{server_id}/access-log": {
+      "get": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "A server's access log and how its reading goes; `null` without one.",
+        "operationId": "get_access_log",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AccessLogView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Sets where a server's access log is read from. A new place starts from\nthe beginning of the file. Admins only.",
+        "operationId": "put_access_log",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessLogInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessLogView"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Stops reading a server's access log. The lines kept stay until their\nretention. Admins only.",
+        "operationId": "delete_access_log",
+        "parameters": [
+          {
+            "name": "server_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -18244,6 +18936,124 @@
         },
         "additionalProperties": false
       },
+      "AccessLogInput": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Left out, the stored one is kept; `null` removes it."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For a file: relative to the access logs folder (`main/access.log`)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/LogSource"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For an address: `https://…`."
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AccessLogView": {
+        "type": "object",
+        "description": "A server's access log, its password never sent back, and how its\nreading goes.",
+        "required": [
+          "server_id",
+          "server_name",
+          "source",
+          "password_set",
+          "position"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last reading failed, and since when it does."
+          },
+          "error_since_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "password_set": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes of the current file read.",
+            "minimum": 0
+          },
+          "read_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "read_ok_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LogSource"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "AcrossStations": {
         "type": "object",
         "description": "What a station keeps apart from the other stations' plays and queues.",
@@ -19837,6 +20647,58 @@
               "null"
             ],
             "description": "Kept as it is when missing (on for a new type)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CertificationDay": {
+        "type": "object",
+        "description": "A day of a server's log.",
+        "required": [
+          "day",
+          "server_id",
+          "lines",
+          "sessions",
+          "gaps"
+        ],
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`, in the station's time zone."
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapView"
+            }
+          },
+          "lines": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CertificationSettings": {
+        "type": "object",
+        "description": "How long the access logs' lines are kept.",
+        "properties": {
+          "retention_months": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 to 25 months, 13 by default.",
+            "default": 13,
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -22760,6 +23622,34 @@
           }
         }
       },
+      "GapView": {
+        "type": "object",
+        "description": "When a log could not be read.",
+        "required": [
+          "server_id",
+          "from_unix_ms",
+          "to_unix_ms",
+          "reason"
+        ],
+        "properties": {
+          "from_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "server_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "to_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "GatedAgcSettings": {
         "type": "object",
         "description": "The gated AGC: a slow gain to the station's loudness target.",
@@ -24826,6 +25716,13 @@
         ],
         "description": "A message on the live WebSocket."
       },
+      "LogSource": {
+        "type": "string",
+        "enum": [
+          "file",
+          "url"
+        ]
+      },
       "LoginRequest": {
         "type": "object",
         "required": [
@@ -25728,16 +26625,21 @@
           "dedications",
           "match",
           "top30",
-          "likes"
+          "likes",
+          "certification"
         ]
       },
       "Modules": {
         "type": "object",
-        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: for the installation, the\nmodules that existed before they could be turned off are on, and the\nshows off but Likes; for a station, everything is on ([`Modules::ALL_ON`]), so a\nstation only turns off what the installation has on.",
+        "description": "Which modules are on. Stored as the `modules` settings (the\ninstallation) and the `station_modules` settings of each station; a\nmodule never stored takes its default: for the installation, the\nmodules that existed before they could be turned off are on, and the\nshows off but Likes, and certification off; for a station, everything is on ([`Modules::ALL_ON`]), so a\nstation only turns off what the installation has on.",
         "properties": {
           "artists": {
             "type": "boolean",
             "default": true
+          },
+          "certification": {
+            "type": "boolean",
+            "default": false
           },
           "cover_art": {
             "type": "boolean",
@@ -35153,6 +36055,10 @@
     {
       "name": "match",
       "description": "Listeners vote for the next track between two, every few tracks"
+    },
+    {
+      "name": "certification",
+      "description": "The stream servers' access logs, kept and exported for audience certification"
     },
     {
       "name": "top30",

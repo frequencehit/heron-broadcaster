@@ -49,11 +49,17 @@ export const MODULES: ModuleEntry[] = [
   { key: "match", label: "nav.match", help: "modules.matchHelp", off: "modules.showOff" },
   { key: "top30", label: "nav.top30", help: "modules.top30Help", off: "modules.showOff" },
   { key: "likes", label: "nav.likes", help: "modules.likesHelp", off: "modules.likesOff" },
+  {
+    key: "certification",
+    label: "modules.certification",
+    help: "modules.certificationHelp",
+    off: "modules.certificationOff",
+  },
 ];
 
 /**
  * What is shown until the station's modules are known: their defaults,
- * everything on but the shows, Likes aside (docs/modules.md).
+ * everything on but the shows, Likes aside, and certification (docs/modules.md).
  */
 export const ALL_ON: Modules = {
   medleys: true,
@@ -71,6 +77,7 @@ export const ALL_ON: Modules = {
   match: false,
   top30: false,
   likes: true,
+  certification: false,
 };
 
 export function moduleKey(station: number | null): readonly unknown[] {

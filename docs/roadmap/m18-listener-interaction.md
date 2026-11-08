@@ -51,3 +51,15 @@ Listeners want to take part: ask for a song with a dedication, choose the next s
 - [Listener interaction](../listener-interaction.md)
 - [Modules](../modules.md)
 - [API – Webhooks](../api.md#webhooks)
+
+## Match every track, from the clock
+
+Asked after the first evenings on air: a match on every track of the hours, and the two tracks taken from the hour's clock rather than one category, so that the matches keep the clock's balance, jingles and exact times ([Match](../listener-interaction.md#match)).
+
+- [ ] `every_tracks` accepts 1: each winner carries the next vote; the next match is queued behind the winner at the close, and its vote opens when the winner starts; a match that cannot run lets its slot's track carry the next vote.
+- [ ] `tracks_from: clock` picks both tracks as the next music slot of the hour's clock would, twice; the winner counts as that slot's pick; jingle and exact-time slots play between the vote's track and the winner, the vote closing 10 seconds before the first of them; an hour without a clock takes the match's category.
+- [ ] `announce_every` plays the announcement every X matches.
+- [ ] The queue lock covers what the clock put between the vote's track and the winner.
+- [ ] The settings form: *the tracks of the match* (the clock or a category), every track, the announcement every X matches; the On air panel says *every track*.
+- [ ] Unit tests for the planner (every track, the clock's slots, a jingle and an exact time between, a slot without two tracks, an hour without a clock); the match e2e test runs a chain of three matches from a clock.
+

@@ -221,6 +221,7 @@ See [Data model – Listener statistics](data-model.md#listener-statistics). Eve
 
 ## Limitations
 
+- These figures are Heron's, rebuilt from the listener lists. For figures a recognized body certifies, from the servers' own access logs, see [Audience certification](certification.md).
 - The totals per server start with this feature: days whose samples were already purged have the totals of all servers only.
 - A relay is recognized in the master's list by the address its `host` resolves to: give its address as the master sees it, or set `relay_subtract_one`.
 - A country is only as right as the GeoIP database: country-level free databases are right for most addresses, less for mobile networks and VPNs.

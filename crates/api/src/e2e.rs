@@ -10162,11 +10162,13 @@ async fn modules_are_turned_off_and_on_again() {
     let all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
-                        "dedications": false, "match": false, "top30": false, "likes": true});
+                        "dedications": false, "match": false, "top30": false, "likes": true,
+                        "certification": false});
     let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
-                        "dedications": true, "match": true, "top30": true, "likes": true});
+                        "dedications": true, "match": true, "top30": true, "likes": true,
+                        "certification": true});
 
     // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);
@@ -11514,6 +11516,14 @@ async fn dedications_are_asked_accepted_into_the_queue_and_followed() {
         (open == 0).then_some(())
     })
     .await;
+    // What rotation played while the station started is not the test's:
+    // a request's checks (track played lately) start from an empty history,
+    // whichever tracks were drawn first.
+    sqlx::query("DELETE FROM play_history WHERE station_id = ?")
+        .bind(station.state.stations.first().id())
+        .execute(pool)
+        .await
+        .unwrap();
 
     // Off by default: nothing answers.
     let (status, body) = viewer.request(Method::GET, "/dedications", None).await;
@@ -13096,5 +13106,215 @@ async fn listener_statistics_of_several_stations() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["error"], "module_off", "{body}");
+    station.stop().await;
+}
+
+/// Audience certification (docs/certification.md): a server's access log
+/// read from a file once, across a partial line and a rotation, kept
+/// unchanged and exported in each format; a rotation without its previous
+/// file leaves a gap; admins only, each download logged; off, nothing
+/// answers.
+#[tokio::test(flavor = "multi_thread")]
+async fn access_logs_are_read_once_and_exported() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let pool = &station.db.pool;
+    let (status, _) = admin
+        .request(Method::GET, "/certification/sources", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "off by default");
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"certification": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, server) = admin
+        .send(
+            Method::POST,
+            "/stream-servers",
+            json!({"name": "Main", "host": "127.0.0.1", "port": 9, "source_password": "hackme"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{server}");
+    let server_id = server["id"].as_u64().unwrap();
+    let log_path = format!("/stream-servers/{server_id}/access-log");
+
+    // Inside the access logs folder only, set by an admin.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &log_path,
+            json!({"source": "file", "path": "../etc/passwd"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = viewer
+        .send(
+            Method::PUT,
+            &log_path,
+            json!({"source": "file", "path": "main/access.log"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, log) = admin
+        .send(
+            Method::PUT,
+            &log_path,
+            json!({"source": "file", "path": "main/access.log"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{log}");
+    assert_eq!(log["position"], 0);
+
+    let dir = std::env::temp_dir().join(format!("heron-e2e-access-logs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("main")).unwrap();
+    let file = dir.join("main/access.log");
+    let previous = dir.join("main/access.log.1");
+    let l1 = r#"203.0.113.7 - - [07/Nov/2026:10:00:00 +0000] "GET /live HTTP/1.1" 200 1000 "-" "VLC/3.0" 600"#;
+    let l2 = r#"198.51.100.2 - source [07/Nov/2026:10:05:00 +0000] "SOURCE /live HTTP/1.0" 200 0 "-" "heron" 3600"#;
+    let l3 = r#"203.0.113.8 - - [07/Nov/2026:11:00:00 +0000] "GET /aac HTTP/1.1" 200 2000 "https://radio.example.org/" "Mozilla/5.0" 120"#;
+    let l5 = r#"203.0.113.10 - - [07/Nov/2026:11:30:00 +0000] "GET /live HTTP/1.1" 200 500 "-" "VLC/3.0" 60"#;
+    let l4 = r#"203.0.113.9 - - [07/Nov/2026:12:00:00 +0000] "GET /live HTTP/1.1" 200 3000 "-" "Lavf/60" 30"#;
+    let client = reqwest::Client::new();
+    let read = || async {
+        crate::certification::read_all(pool, &client, &dir)
+            .await
+            .unwrap();
+    };
+    let count = |query: &'static str| async move {
+        sqlx::query_scalar::<_, i64>(query)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    };
+
+    // Read twice: nothing twice. A line still being written waits.
+    std::fs::write(&file, format!("{l1}\n{l2}\n")).unwrap();
+    read().await;
+    read().await;
+    assert_eq!(count("SELECT COUNT(*) FROM access_log_lines").await, 2);
+    std::fs::write(&file, format!("{l1}\n{l2}\n{l3}\n{}", &l5[..20])).unwrap();
+    read().await;
+    assert_eq!(count("SELECT COUNT(*) FROM access_log_lines").await, 3);
+    // Rotated: the end of the previous file, then the new one.
+    std::fs::write(&previous, format!("{l1}\n{l2}\n{l3}\n{l5}\n")).unwrap();
+    std::fs::write(&file, format!("{l4}\n")).unwrap();
+    read().await;
+    assert_eq!(count("SELECT COUNT(*) FROM access_log_lines").await, 5);
+    assert_eq!(
+        count("SELECT COUNT(*) FROM access_log_lines WHERE session").await,
+        4
+    );
+    assert_eq!(count("SELECT COUNT(*) FROM access_log_gaps").await, 0);
+    let sources = admin.get("/certification/sources").await;
+    assert_eq!(sources[0]["server_id"], server_id);
+    assert_eq!(sources[0]["error"], Value::Null);
+
+    // The exports of the day.
+    let download = |query: String| {
+        let http = admin.http.clone();
+        let url = format!("{}/certification/export?{query}", admin.base);
+        let cookie = admin.cookie.clone().unwrap();
+        async move {
+            let response = http.get(url).header("cookie", cookie).send().await.unwrap();
+            let status = response.status();
+            let headers = response.headers().clone();
+            (status, headers, response.text().await.unwrap())
+        }
+    };
+    let day = format!("day=2026-11-07&server_id={server_id}");
+    let (status, headers, raw) = download(format!("{day}&format=raw")).await;
+    assert_eq!(status, StatusCode::OK, "{raw}");
+    assert_eq!(
+        raw,
+        format!("{l1}\n{l2}\n{l3}\n{l5}\n{l4}\n"),
+        "the server's lines, unchanged"
+    );
+    assert!(
+        headers["content-disposition"]
+            .to_str()
+            .unwrap()
+            .ends_with("-Main-2026-11-07.log\"")
+    );
+    let (_, _, combined) = download(format!("{day}&format=combined")).await;
+    assert_eq!(
+        combined,
+        format!("{l1}\n{l3}\n{l5}\n{l4}\n"),
+        "the sessions only"
+    );
+    let (_, _, aac) = download(format!("{day}&format=combined&mount=/aac")).await;
+    assert_eq!(aac, format!("{l3}\n"));
+    let (_, headers, csv) = download(format!("{day}&format=csv")).await;
+    assert_eq!(headers["content-type"], "text/csv; charset=utf-8");
+    let rows: Vec<&str> = csv.lines().collect();
+    assert_eq!(rows.len(), 5, "{csv}");
+    assert_eq!(
+        rows[1],
+        "Main,/live,203.0.113.7,VLC/3.0,,200,1000,2026-11-07T09:50:00Z,2026-11-07T10:00:00Z,600"
+    );
+    let (_, _, json_text) = download(format!("{day}&format=json")).await;
+    let sessions: Value = serde_json::from_str(&json_text).unwrap();
+    assert_eq!(sessions.as_array().unwrap().len(), 4);
+    assert_eq!(sessions[1]["referer"], "https://radio.example.org/");
+    assert_eq!(
+        count("SELECT COUNT(*) FROM certification_downloads").await,
+        5
+    );
+    let days = admin
+        .get("/certification/days?from=2026-11-01&to=2026-11-07")
+        .await;
+    assert_eq!(
+        (&days[0]["day"], &days[0]["lines"], &days[0]["sessions"]),
+        (&json!("2026-11-07"), &json!(5), &json!(4))
+    );
+
+    // Rotated without the previous file: the lines since are lost, a gap.
+    std::fs::remove_file(&previous).unwrap();
+    std::fs::write(&file, "").unwrap();
+    read().await;
+    assert_eq!(count("SELECT COUNT(*) FROM access_log_gaps").await, 1);
+    let today = jiff::Timestamp::now()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date()
+        .to_string();
+    let days = admin
+        .get(&format!("/certification/days?from={today}&to={today}"))
+        .await;
+    assert_eq!(days[0]["gaps"].as_array().map(Vec::len), Some(1), "{days}");
+    // A file that cannot be read: its error, since when.
+    std::fs::remove_file(&file).unwrap();
+    read().await;
+    let sources = admin.get("/certification/sources").await;
+    assert!(
+        sources[0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("main/access.log")
+    );
+    assert!(sources[0]["error_since_unix_ms"].is_i64());
+
+    // Admins only; off, nothing answers.
+    let (status, _) = viewer
+        .request(
+            Method::GET,
+            &format!("/certification/export?{day}&format=raw"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"certification": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = download(format!("{day}&format=raw")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let _ = std::fs::remove_dir_all(&dir);
     station.stop().await;
 }

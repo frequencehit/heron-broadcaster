@@ -321,20 +321,27 @@ The requests are in the database dump of the [backups](backups.md); the settings
 
 ## Match
 
-*Match* (`match`) lets listeners choose the next song between two. During the show's hours, every few tracks, two tracks of one category face each other: listeners vote on the website while the track before them plays, and the one with the most votes plays next. Off until an admin turns the module on.
+*Match* (`match`) lets listeners choose the next song between two. During the show's hours, every few tracks or every track, two tracks face each other: listeners vote on the website while the track before them plays, and the one with the most votes plays next. The two tracks come from the slot of the hour's clock the winner takes, or from one category. Off until an admin turns the module on.
 
 ### When a match runs
 
 - **During the show's hours** (18:00 to 19:00 on weekdays, say), which no other show of the station has.
-- **Every N tracks** (4 by default, 2 to 20): the winner of a match is every Nth track. The vote runs during the track before it, so with 4: *winner, track, track, the vote's track, winner…* Only the tracks rotation queues count; a dedication or a track queued by hand is not counted. The first match of a range votes during the first track rotation queues in the hours.
+- **Every N tracks** (4 by default, 1 to 20): the winner of a match is every Nth track. The vote runs during the track before it, so with 4: *winner, track, track, the vote's track, winner…* Only the tracks rotation queues count; a dedication or a track queued by hand is not counted. The first match of a range votes during the first track rotation queues in the hours.
+- **Every track** (N = 1): each winner is the vote's track of the next match, so every track of the hours is chosen by the listeners: *the first track, winner 1 (the vote for 2 open), winner 2 (the vote for 3 open)…* The next match's two tracks are queued behind the winner when its vote closes, and the next vote opens when the winner starts. When a match cannot run (a slot without two tracks, say), its slot plays the track rotation picks, which carries the next vote: the chain goes on.
+- **What the clock puts between** the vote's track and the winner (a jingle slot, a jingle [linked](rotation.md#linked-slots) to the winner's slot, a slot with an [exact time](rotation.md#exact-times)) plays between them, as the clock says: the vote closes 10 seconds before the first of them starts, and the winner follows them.
 - **The vote's track** is the track rotation picks there, as usual: music (a category whose type sends its metadata) of 60 seconds or more, long enough for a vote of 30 seconds at least. A jingle, or a track too short to vote during, does not carry a vote: the match waits for the next track.
 - **The whole match in the hours**: a match whose vote's track would end after the range closes does not start; rotation plays on.
-- **One match at a time**, and **none without a category**: the station chooses the category the two tracks come from (*Hits*, say). Without one, no match runs, and the show's page says so.
+- **One match at a time**, and **none without somewhere to take the tracks from**: the hour's clock (with *the tracks from the clock*), or the match's category. Without either, no match runs, and the show's page says so.
 - **With autofill only**, like any pick of rotation: with autofill off, no match runs.
 
 ### The two tracks
 
-- **From the match's category, chosen by rotation** with the station's rules, as a slot calling that category would: separation, restrictions and the play ratio at the time the winner should start, the least recently played first, relaxed step by step if needed (the fallback category does not count: a match needs two tracks of its category). The second is picked with the first counted as played then: two different tracks, of two different artists while the separation rules allow it.
+Where they come from is the station's choice (*the tracks of the match*):
+
+- **From the clock** (`clock`): the winner takes the place of the **next music slot of the hour's clock**, and both tracks are picked **as that slot would pick its track, twice**: its category, its selection method, its *enforce rules*, its separation overrides and its draw depth. A clock of *90s, Hits, jingle 90s + 90s, New releases* makes a match of two 90s tracks, then of two hits, then the jingle and a match of two 90s, then of two new releases: the matches follow the hour's balance, its jingles and its exact times. The winner counts as the slot's pick: the clock goes on with the slot after it. A slot that is not music (a jingle, an ad: a category whose type sends no metadata) never makes a match: it plays as the clock says. An hour without a clock, which rotates the station's library, takes the match's category; without one, no match runs in that hour.
+- **From one category** (`category`, the default, as until now): the match's category (*Hits*, say), chosen with the station's rules as a slot calling that category would.
+
+Either way: separation, restrictions and the play ratio at the time the winner should start, the least recently played first, relaxed step by step if needed (the fallback category does not count: a match needs two tracks of its category). The second is picked with the first counted as played then: two different tracks, of two different artists while the separation rules allow it.
 - **The loser of a match does not come back the same day** (in the station's time zone), unless the station allows it (*the loser can come back the same day*). A track that won can, as the rules allow.
 - **Before an exact time**, the two tracks are planned as one play, the longer one, since only one of them plays: the hour is never late, whichever wins. The second is chosen with a length close to the first's, so that either lands the hour in the exact time's window ([Rotation – Exact times](rotation.md#exact-times)).
 - **Never a queued track again:** the tracks in the queue count as played at their planned times, so the separation rules keep them out of the match like any recent play. The rules may be relaxed step by step down to title separation dropped (step 8), so the second can be another version of a title, or an artist, already queued when nothing else is left; a track itself is kept out by track separation until step 9 (halved), and the fallback category never gives one.
@@ -342,17 +349,17 @@ The requests are in the database dump of the [backups](backups.md); the settings
 
 ### On air
 
-- **An announcement**: a jingle of the station's **announcement category** (*Jingles "vote on the website"*, say) plays over the intro of the vote's track, linked to it as the jingle of a [linked slot](rotation.md#linked-slots) is (it takes the place of the slot's own linked jingle, if any). The category's type plays over the intro, so it plays on the FX player. Its jingles are picked in turn, the least recently played first, whatever played before: over the intro, it is not two jingles in a row. Without an announcement category, no jingle.
+- **An announcement**, every match or every few (*announce every X matches*, 1 to 20, 1 by default: with 2 and every track, one vote out of two is announced): a jingle of the station's **announcement category** (*Jingles "vote on the website"*, say) plays over the intro of the vote's track, linked to it as the jingle of a [linked slot](rotation.md#linked-slots) is (it takes the place of the slot's own linked jingle, if any). The category's type plays over the intro, so it plays on the FX player. Its jingles are picked in turn, the least recently played first, whatever played before: over the intro, it is not two jingles in a row. Without an announcement category, no jingle.
 - **In the queue**: the announcement, the vote's track, then **both tracks**, one after the other. They are both read ahead by the engine, so whichever wins starts without a gap.
 - **The vote opens** when the vote's track starts on air, and **closes 10 seconds before the next transition** (5 to 60, set by the station): where the next track starts mixing in, the vote's track's mix point, else its end.
 - **At the close**, the loser is taken out of the queue: the winner is next. The engine had both ready, and the 10 seconds leave it time to cue the winner.
 - **A tie, or no vote**: the least recently played of the two on the station wins, else one at random.
 - **The loser** never plays: it is not counted as played, and goes back to its category (out of matches for the rest of the day, by default).
-- In the **rotation log**, both tracks are logged as picks of the match's category when they are queued; the loser's pick is deleted at the close, the winner's stays with its play.
+- In the **rotation log**, both tracks are logged as picks of their slot (from the clock) or of the match's category when they are queued; the loser's pick is deleted at the close, the winner's stays with its play.
 
 What an operator can do (*Shows › Match*, and *On air*): **close the vote now**, which decides with the votes so far, and **cancel the match**, which keeps the first track in the queue, as an ordinary track, and takes the second out. A new engine cancels the match the same way.
 
-**The match's tracks are locked in the queue** while it waits or its vote is open: the announcement, the vote's track and the two tracks. Only the match takes one out (the loser, at the close) or the operator's *cancel the match*:
+**The match's tracks are locked in the queue** while it waits or its vote is open: the announcement, the vote's track, what the clock put between it and the winner, and the two tracks. Only the match takes one out (the loser, at the close) or the operator's *cancel the match*:
 
 - **Removing, moving or playing next** one of them is refused (`409`, *this track belongs to the match in progress: cancel the match first*). The Queue page and On air mark them *Match*, without their handle, *play next* or *remove*.
 - **Nothing goes between them**: queueing or moving a track to a place among them is refused the same way. Before them, or after the second track, is free.
@@ -381,7 +388,7 @@ The page and the small widget show, during the hours:
 
 - **While a vote is open**: *Choose the next track*, the two tracks (cover, title, artist) one against the other, each a button to vote for it, and a **countdown** to the close. The countdown says nothing else: no sentence about when the vote closes. With live results, each track's share of the votes as a bar and a percentage, and the votes in all. The track chosen stays marked; another click changes the vote.
 - **In the last 5 seconds**, the countdown and the two choices **blink**, so that listeners who have not voted do it now. When the browser asks for reduced motion, they do not blink: a strong outline shows instead.
-- **Between two votes**: the last result, and *the next vote is coming in a few tracks*.
+- **Between two votes**: the last result, and *the next vote is coming in a few tracks*. Every track, a vote is always open: the last result shows above it while the winner plays.
 - The page also lists **today's results**: the time, the winner with its share, against the loser.
 
 Outside the hours, the closed message or nothing, as every show.
@@ -390,7 +397,7 @@ When the winner plays, the public `now-playing` (and the gateway's state) says s
 
 ### What is kept
 
-- **Each match**, for good: its station, its category, the vote's track, the two tracks, when it opened and closed, the votes of each, the winner and how it was decided (votes, a tie, no vote, closed early), or that it was cancelled. They are shown on the show's *History* tab, with the week's matches and votes.
+- **Each match**, for good: its station, its category (the slot's, from the clock), the vote's track, the two tracks, when it opened and closed, the votes of each, the winner and how it was decided (votes, a tie, no vote, closed early), or that it was cancelled. They are shown on the show's *History* tab, with the week's matches and votes.
 - **Per device**, the device's hash and its vote on a match, so that a device changes its vote instead of adding one: deleted an hour after the match closes, and a day after the vote at the latest. No IP address.
 
 The matches are in the database dump of the [backups](backups.md); the settings are in the configuration file.
