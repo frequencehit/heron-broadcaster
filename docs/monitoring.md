@@ -168,6 +168,7 @@ Every rule works with pushed and scraped metrics, and alerts name the station.
 | `HeronAnalysisFailing` | warning | More than 10 analyses failed in an hour | Library page, heron-analyzer's logs. |
 | `HeronLibraryScanFailing` | warning | A library scan failed in the last 2 h | Is the music directory mounted and readable? |
 | `HeronLoginFailures` | warning | More than 20 failed sign-ins in 10 min | Someone may be guessing passwords. |
+| `HeronCertificationDeliveryFailed` | warning | A certification delivery failed its last day, after its retries | The *Certification* page gives the error: the body's server, the login or its host key. *Send now* sends the day again ([Audience certification](certification.md#when-it-is-sent)). |
 
 Thresholds are starting points: edit them to suit the station. `HeronEngineDown` and `HeronServiceDown` only know a station that has sent metrics in the last 10 minutes: a station that never started is not reported.
 
@@ -220,6 +221,8 @@ Every service also exports `heron_build_info{service, version}` (always 1), and,
 | `heron_api_backup_last_success_timestamp_seconds` | gauge | | When the last backup that passed its checks was taken |
 | `heron_api_backup_last_test_success_timestamp_seconds` | gauge | | When a backup last passed a [test read](backups.md#testing-backups) |
 | `heron_api_backups_damaged` | gauge | | Backups whose files failed the daily checksum check |
+| `heron_api_certification_deliveries_total` | counter | `result` (`delivered`, `retrying`, `failed`) | [Certification delivery](certification.md#automatic-delivery) attempts |
+| `heron_api_certification_deliveries_failing` | gauge | | Enabled certification deliveries whose last day sent failed |
 | `heron_library_files` | gauge | | Audio files found by the last library scan |
 | `heron_library_scan_duration_seconds` | gauge | | Duration of the last scan |
 | `heron_library_scans_total` | counter | `result` (`ok`, `error`) | Library scans |
