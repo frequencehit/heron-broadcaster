@@ -16,15 +16,18 @@
 
   var script = document.currentScript;
   if (!script) return;
-  var match = /^(.*\/api\/v1\/public\/stations\/([^/]+))\/([a-z0-9_]+)\.js(?:\?.*)?$/.exec(script.src);
+  var match = /^(.*\/api\/v1\/public\/stations\/([^/]+))\/([a-z0-9_-]+)\.js(?:\?.*)?$/.exec(script.src);
   if (!match) return;
   var base = match[1];
-  var module = match[3];
+  // The show's key: its module's (`match`), or a top's (`top-4`; `top30`
+  // is the first top).
+  var key = match[3];
+  var module = /^top-[0-9]+$/.test(key) ? "top30" : key;
   var mode = script.getAttribute("data-mode") === "page" ? "page" : "widget";
 
   var TEXT = {
     en: {
-      names: { dedications: "Dedications", match: "The match", top30: "Top 30", likes: "Do you like it?" },
+      names: { dedications: "Dedications", match: "The match", top30: "Top", likes: "Do you like it?" },
       until: "Until {hour}",
       likes: {
         sub: "Only the track playing can be voted on",
@@ -104,20 +107,20 @@
       },
       top30: {
         live: "Live: the places to come are revealed on air",
-        week: "Week of {date}",
+        week: "Chart of {date}",
         hidden: "? ? ?",
         answer: "The answer on air",
         onAir: "ON AIR",
         isNew: "NEW",
         reentry: "RE-ENTRY",
-        weeks: "{n} wk",
+        weeks: "{n} charts",
         newRelease: "New release",
         none: "No chart yet.",
-        votesFor: "Your vote counts for {day}'s Top 30.",
+        votesFor: "Your vote counts for {name}, {day}.",
       },
     },
     fr: {
-      names: { dedications: "Dédicaces", match: "Le match", top30: "Top 30", likes: "Vous aimez ?" },
+      names: { dedications: "Dédicaces", match: "Le match", top30: "Top", likes: "Vous aimez ?" },
       until: "Jusqu'à {hour}",
       likes: {
         sub: "On ne vote que pour le titre en cours",
@@ -197,20 +200,20 @@
       },
       top30: {
         live: "En direct : les places à venir se découvrent à l'antenne",
-        week: "Semaine du {date}",
+        week: "Classement du {date}",
         hidden: "? ? ?",
         answer: "Réponse à l'antenne",
         onAir: "EN ONDE",
         isNew: "NOUVEAU",
         reentry: "RETOUR",
-        weeks: "{n} sem.",
+        weeks: "{n} classements",
         newRelease: "La nouveauté",
         none: "Pas encore de classement.",
-        votesFor: "Votre vote compte pour le Top 30 de {day}.",
+        votesFor: "Votre vote compte pour {name}, {day}.",
       },
     },
     es: {
-      names: { dedications: "Dedicatorias", match: "El duelo", top30: "Top 30", likes: "¿Te gusta?" },
+      names: { dedications: "Dedicatorias", match: "El duelo", top30: "Top", likes: "¿Te gusta?" },
       until: "Hasta las {hour}",
       likes: {
         sub: "Solo se vota la canción que suena",
@@ -290,20 +293,20 @@
       },
       top30: {
         live: "En directo: los puestos que faltan se descubren en antena",
-        week: "Semana del {date}",
+        week: "Lista del {date}",
         hidden: "? ? ?",
         answer: "La respuesta en antena",
         onAir: "EN ANTENA",
         isNew: "NUEVO",
         reentry: "VUELVE",
-        weeks: "{n} sem.",
+        weeks: "{n} listas",
         newRelease: "La novedad",
         none: "Todavía no hay lista.",
-        votesFor: "Tu voto cuenta para el Top 30 del {day}.",
+        votesFor: "Tu voto cuenta para {name}, el {day}.",
       },
     },
     de: {
-      names: { dedications: "Widmungen", match: "Das Duell", top30: "Top 30", likes: "Gefällt's dir?" },
+      names: { dedications: "Widmungen", match: "Das Duell", top30: "Top", likes: "Gefällt's dir?" },
       until: "Bis {hour}",
       likes: {
         sub: "Abgestimmt wird nur über den laufenden Titel",
@@ -383,16 +386,16 @@
       },
       top30: {
         live: "Live: die nächsten Plätze gibt es im Radio",
-        week: "Woche vom {date}",
+        week: "Charts vom {date}",
         hidden: "? ? ?",
         answer: "Die Antwort im Radio",
         onAir: "LÄUFT",
         isNew: "NEU",
         reentry: "WIEDER DA",
-        weeks: "{n} Wo.",
+        weeks: "{n} Charts",
         newRelease: "Die Neuheit",
         none: "Noch keine Charts.",
-        votesFor: "Deine Stimme zählt für die Top 30 am {day}.",
+        votesFor: "Deine Stimme zählt für {name} am {day}.",
       },
     },
   };
@@ -455,7 +458,7 @@
   }
 
   var host = document.createElement("div");
-  host.className = "heron-widget heron-" + module;
+  host.className = "heron-widget heron-" + module + (key !== module ? " heron-" + key : "");
   host.setAttribute("data-mode", mode);
   var target = script.getAttribute("data-target");
   var parent = target && document.querySelector(target);
@@ -643,12 +646,16 @@
     });
     body.appendChild(votes);
     body.appendChild(el("p", "muted", mine.note || t.likes.sub + "."));
-    // The votes of now count for the next Top 30.
-    var top = (state.shows || []).filter(function (s) { return s.module === "top30"; })[0];
-    var counts = top && top.enabled && top.state && top.state.votes_count_for_unix_ms;
-    if (counts) {
+    // The votes of now count for the top whose next show plays them first.
+    var top = null;
+    (state.shows || []).forEach(function (s) {
+      var at = s.module === "top30" && s.enabled && s.state && s.state.votes_count_for_unix_ms;
+      if (at && (!top || at < top.state.votes_count_for_unix_ms)) top = s;
+    });
+    if (top) {
+      var counts = top.state.votes_count_for_unix_ms;
       var weekday = new Intl.DateTimeFormat(lang, { weekday: "long", timeZone: top.timezone || state.timezone }).format(counts);
-      body.appendChild(el("p", "muted", fill(t.top30.votesFor, { day: weekday })));
+      body.appendChild(el("p", "muted", fill(t.top30.votesFor, { name: top.title || top.state.name || t.names.top30, day: weekday })));
     }
   };
 
@@ -674,7 +681,7 @@
     }
     if (top.live) body.appendChild(el("p", "muted", t.top30.live));
     else body.appendChild(el("p", "muted", fill(t.top30.week, {
-      date: new Intl.DateTimeFormat(lang, { day: "numeric", month: "long", timeZone: "UTC" }).format(Date.parse(top.chart.week + "T00:00:00Z")),
+      date: new Intl.DateTimeFormat(lang, { day: "numeric", month: "long", timeZone: "UTC" }).format(Date.parse(top.chart.key + "T00:00:00Z")),
     })));
     var entries = top.chart.entries || [];
     if (mode === "widget") {
@@ -702,7 +709,7 @@
         if (entry.artist) who.appendChild(el("span", entry.on_air ? "" : "muted", entry.artist));
       }
       row.appendChild(who);
-      if (!entry.hidden && entry.weeks && mode === "page") row.appendChild(el("span", "muted", fill(t.top30.weeks, { n: entry.weeks })));
+      if (!entry.hidden && entry.charts && mode === "page") row.appendChild(el("span", "muted", fill(t.top30.weeks, { n: entry.charts })));
       list.appendChild(row);
     });
     body.appendChild(list);
@@ -1152,7 +1159,10 @@
     var caret = focused && typeof focused.selectionStart === "number"
       ? [focused.selectionStart, focused.selectionEnd] : null;
     box.textContent = "";
-    var show = (state.shows || []).filter(function (s) { return s.module === module; })[0];
+    var shows = state.shows || [];
+    var show = shows.filter(function (s) { return (s.key || s.module) === key; })[0];
+    // `top30.js`: the first top.
+    if (!show && key === "top30") show = shows.filter(function (s) { return s.module === "top30"; })[0];
     if (!show) return;
     draw(state, show);
     if (focused && focused.isConnected && root.activeElement !== focused) {

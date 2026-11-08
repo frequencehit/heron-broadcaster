@@ -106,7 +106,7 @@ impl Module {
             Self::Labels => "labels",
             Self::Dedications => "dedications",
             Self::Match => "the match",
-            Self::Top30 => "the top 30",
+            Self::Top30 => "the tops",
             Self::Likes => "likes",
             Self::Certification => "audience certification",
         }

@@ -63,7 +63,7 @@ const PER_STATION: [&str; 22] = [
     "listeners",
     "shows",
     "likes",
-    "top30",
+    "tops",
     "dedications",
     "match",
     "certification",

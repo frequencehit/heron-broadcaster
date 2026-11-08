@@ -55,7 +55,7 @@ mod staging;
 mod stations;
 mod sync;
 mod system;
-mod top30;
+mod tops;
 mod tracks;
 mod two_factor;
 mod users;
@@ -351,7 +351,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Arc::clone(&stations),
         Arc::clone(&webhooks),
     )));
-    tasks.push(tokio::spawn(top30::run(
+    tasks.push(tokio::spawn(tops::run(
         pool.clone(),
         Arc::clone(&stations),
         Arc::clone(&webhooks),
@@ -1224,6 +1224,149 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 3);
+
+        pool.close().await;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+    }
+
+    /// The single Top 30 becomes the first top of each station that set it
+    /// up, with its settings in the new shape and its history.
+    #[tokio::test]
+    async fn the_top30_becomes_the_first_top_with_its_history() {
+        const TOPS: i64 = 20271109000000;
+        let Ok(admin_url) = std::env::var("HERON_TEST_DATABASE_URL") else {
+            return;
+        };
+        let admin_url = admin_url.trim_end_matches('/').to_owned();
+        let name = format!("heron_tops_{}", std::process::id());
+        let admin = sqlx::MySqlPool::connect(&admin_url).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE `{name}`")))
+            .execute(&admin)
+            .await
+            .unwrap();
+        let pool = sqlx::MySqlPool::connect(&format!("{admin_url}/{name}"))
+            .await
+            .unwrap();
+        MIGRATOR.run_to(TOPS - 1, &pool).await.unwrap();
+        sqlx::raw_sql(
+            r##"INSERT INTO stations (id, name, code, enabled, position)
+                 VALUES (2, 'Two', 'two', TRUE, 1), (3, 'Three', 'three', TRUE, 2);
+             INSERT INTO categories (id, name, type_id) VALUES (7, 'Hits', 1), (8, 'Jingles', 2);
+             INSERT INTO tracks (id, path, title, artist) VALUES (1, 'a.mp3', 'One', 'A'), (2, 'b.mp3', 'Two', 'B');
+             INSERT INTO station_settings (station_id, name, value) VALUES
+                 (1, 'top30', '{"close_day": 7, "close_hour": 24, "min_votes": 4, "size": 12,
+                                "category_ids": [7], "jingle_category_id": 8}'),
+                 (1, 'show_top30', '{"enabled": false, "hours": [{"days": [7], "start_hour": 18, "end_hour": 20}],
+                                     "website": {"title": "Le Top", "color": "#123456"},
+                                     "notifications": {"webhook_ids": [], "lead_minutes": 30}}'),
+                 (2, 'show_top30', '{"hours": [{"days": [1, 2, 3, 4, 5, 6, 7], "start_hour": 9, "end_hour": 10}]}');
+             INSERT INTO top30_charts (station_id, week, from_at, closes_at, frozen_at, votes, new_release_track_id)
+                 VALUES (1, '2026-11-02', '2026-11-01 23:00:00', '2026-11-08 23:00:00', '2026-11-08 23:00:00', 20, 2);
+             INSERT INTO top30_entries (station_id, week, `rank`, track_id, artist, title, likes, dislikes,
+                                        plays, movement, previous_rank, weeks)
+                 VALUES (1, '2026-11-02', 1, 1, 'A', 'One', 9, 1, 3, 'up', 2, 4);
+             INSERT INTO top30_removals (station_id, week, track_id, removed_at)
+                 VALUES (1, '2026-11-02', 2, '2026-11-07 10:00:00'), (1, '2026-11-09', 2, '2026-11-10 10:00:00');
+             INSERT INTO top30_shows (station_id, opens_at, closes_at, week, programme, next_item, built_at)
+                 VALUES (1, '2026-11-08 23:00:00', '2026-11-09 01:00:00', '2026-11-02', '{"items": [], "left_out": []}', 0, NOW(6));"##,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        MIGRATOR.run(&pool).await.unwrap();
+        let tops: Vec<(u64, u64, String)> = sqlx::query_as(
+            "SELECT id, station_id, CAST(settings AS CHAR) FROM tops ORDER BY station_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        // Station 3 never set it up.
+        assert_eq!(
+            tops.iter().map(|top| top.1).collect::<Vec<_>>(),
+            [1, 2],
+            "{tops:?}"
+        );
+        let first: tops::TopSettings = serde_json::from_str(&tops[0].2).unwrap();
+        assert_eq!(first.check(), Ok(()));
+        assert_eq!(first.name, "Top 30");
+        assert!(!first.enabled);
+        assert_eq!(first.size, 20, "12 rounded up to a size offered");
+        assert_eq!(first.period, tops::TopPeriod::Week);
+        // Sunday 24:00: reset on Monday at 00:00.
+        assert_eq!(
+            (first.reset_weekday, first.reset_time.as_str()),
+            (1, "00:00")
+        );
+        assert_eq!((first.plays_percent, first.min_votes), (0, 4));
+        assert_eq!(first.category_ids, [7]);
+        assert_eq!(first.jingle_category_id, Some(8));
+        assert_eq!(first.new_release_category_id, None);
+        assert_eq!(
+            first.slot,
+            Some(tops::TopSlot {
+                every: tops::SlotEvery::Week,
+                weekday: Some(7),
+                nth: None,
+                start: "18:00".to_owned(),
+                end: "20:00".to_owned(),
+            })
+        );
+        assert_eq!(first.website.title, "Le Top");
+        assert_eq!(first.notifications.lead_minutes, 30);
+        let second: tops::TopSettings = serde_json::from_str(&tops[1].2).unwrap();
+        assert_eq!(second.check(), Ok(()));
+        assert_eq!(
+            second.slot.as_ref().map(|slot| slot.every),
+            Some(tops::SlotEvery::Day)
+        );
+        assert_eq!(
+            (second.reset_weekday, second.reset_time.as_str()),
+            (7, "17:00")
+        );
+        // The history, named by the day each week closed.
+        let id = tops[0].0;
+        let charts: Vec<(String, u64, Option<u64>)> = sqlx::query_as(
+            "SELECT CAST(chart_key AS CHAR), votes, new_release_track_id FROM top_charts WHERE top_id = ?",
+        )
+        .bind(id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(charts, [("2026-11-09".to_owned(), 20, Some(2))]);
+        let entries: Vec<(String, u64, f64, u64)> = sqlx::query_as(
+            "SELECT CAST(movement AS CHAR), CAST(charts AS UNSIGNED), score, plays FROM top_entries WHERE top_id = ?",
+        )
+        .bind(id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(entries, [("up".to_owned(), 4, 0.9, 3)]);
+        let removals: Vec<String> = sqlx::query_scalar(
+            "SELECT CAST(chart_key AS CHAR) FROM top_removals WHERE top_id = ? ORDER BY chart_key",
+        )
+        .bind(id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(removals, ["2026-11-09", "2026-11-16"]);
+        let shows: Vec<(u64, Option<String>)> = sqlx::query_as(
+            "SELECT station_id, CAST(chart_key AS CHAR) FROM top_shows WHERE top_id = ?",
+        )
+        .bind(id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(shows, [(1, Some("2026-11-09".to_owned()))]);
+        let old: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM station_settings WHERE name IN ('top30', 'show_top30')",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(old, 0);
 
         pool.close().await;
         sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE `{name}`")))
