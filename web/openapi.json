@@ -28072,13 +28072,20 @@
         "type": "object",
         "description": "A station's match settings (`station_settings`, `match`). Its hours,\nwebsite and notifications are its show settings.",
         "properties": {
+          "announce_every": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The announcement every X matches, 1 to 20.",
+            "default": 1,
+            "minimum": 0
+          },
           "category_id": {
             "type": [
               "integer",
               "null"
             ],
             "format": "int64",
-            "description": "The category the two tracks come from, the station's; none: no\nmatch.",
+            "description": "The category the two tracks come from, the station's (from the\nclock: in the hours without one); none: no match (then).",
             "default": null,
             "minimum": 0
           },
@@ -28092,7 +28099,7 @@
           "every_tracks": {
             "type": "integer",
             "format": "int32",
-            "description": "A winner every N tracks, 2 to 20: the vote runs during the track\nbefore it.",
+            "description": "A winner every N tracks, 1 to 20: the vote runs during the track\nbefore it; 1: every track, each winner carrying the next vote.",
             "default": 4,
             "minimum": 0
           },
@@ -28115,6 +28122,11 @@
             "type": "boolean",
             "description": "A loser can be one of the two tracks again the same day.",
             "default": false
+          },
+          "tracks_from": {
+            "$ref": "#/components/schemas/TracksFrom",
+            "description": "Where the two tracks come from.",
+            "default": "category"
           }
         },
         "additionalProperties": false
@@ -28171,6 +28183,7 @@
           "vote_track",
           "choices",
           "entry_ids",
+          "locked_entry_ids",
           "votes"
         ],
         "properties": {
@@ -28243,6 +28256,15 @@
                 "type": "null"
               }
             ]
+          },
+          "locked_entry_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "What else it locks: what the clock put between the vote's track and\nthe winner, and the announcement queued before a vote's track queued\nalready (every track)."
           },
           "opened_at_unix_ms": {
             "type": [
@@ -36950,6 +36972,14 @@
             "minimum": 0
           }
         }
+      },
+      "TracksFrom": {
+        "type": "string",
+        "description": "Where a match's two tracks come from.",
+        "enum": [
+          "clock",
+          "category"
+        ]
       },
       "TransitionPreview": {
         "type": "object",

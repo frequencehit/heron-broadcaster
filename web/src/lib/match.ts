@@ -64,14 +64,15 @@ export function sides(match: MatchView): { winner: MatchView["choices"][number] 
 
 /**
  * The queue entries locked by the match waiting or open: its vote's track,
- * A, B, and the announcement linked to the vote's track. Only the match
+ * A, B, the announcement over the vote's track's intro, and what the clock
+ * put between the vote's track and the winner. Only the match
  * takes them out, or cancelling it (docs/listener-interaction.md#on-air).
  */
 export function lockedEntries(match: MatchView | null | undefined, waiting: readonly QueueEntry[]): Set<number> {
   if (!match || (match.status !== "queued" && match.status !== "open")) {
     return new Set();
   }
-  const locked = new Set(match.entry_ids);
+  const locked = new Set([...match.entry_ids, ...(match.locked_entry_ids ?? [])]);
   for (const entry of waiting) {
     if (entry.linked_to !== null && entry.linked_to !== undefined && locked.has(entry.linked_to)) {
       locked.add(entry.entry_id);

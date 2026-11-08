@@ -6,12 +6,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_ON } from "../lib/modules";
 import { chooseStation } from "../lib/station";
 import { answer, renderApp, sent, user } from "../test/render";
-import { CurrentMatch, History, MatchOnAir } from "./Match";
+import { CurrentMatch, History, MatchOnAir, SettingsCard } from "./Match";
 
 const on = { ...ALL_ON, match: true };
 const MODULES = { "GET /api/v1/stations/{id}/modules": { installation: on, station: on, on } };
 const SETTINGS = {
   every_tracks: 4,
+  tracks_from: "category",
+  announce_every: 1,
   category_id: 3,
   jingle_category_id: null,
   close_before_s: 10,
@@ -98,5 +100,42 @@ describe("match", () => {
     expect(await screen.findByText("Matches played")).toBeTruthy();
     expect(screen.getByText("no vote")).toBeTruthy();
     expect(screen.getByText(/28 matches/)).toBeTruthy();
+  });
+
+  it("says every track on air, and a match from the clock needs no category", async () => {
+    answer({
+      ...MODULES,
+      "GET /api/v1/stations/{station_id}/match/current": match({ status: "queued", opened_at_unix_ms: null }),
+      "GET /api/v1/stations/{station_id}/match/settings": { ...SETTINGS, every_tracks: 1 },
+    });
+    renderApp(<MatchOnAir />, user("viewer"));
+    expect(await screen.findByText("every track")).toBeTruthy();
+    answer({
+      ...MODULES,
+      "GET /api/v1/stations/{station_id}/match/current": null,
+      "GET /api/v1/stations/{station_id}/match/settings": { ...SETTINGS, tracks_from: "clock", category_id: null },
+    });
+    renderApp(<CurrentMatch empty />, user("viewer"));
+    expect(await screen.findByText(/The next one comes/)).toBeTruthy();
+  });
+
+  it("takes the tracks from the clock, every track, announced every 2 matches", async () => {
+    chooseStation(1);
+    answer({
+      ...MODULES,
+      "GET /api/v1/stations/{station_id}/match/settings": SETTINGS,
+      "GET /api/v1/categories": [{ id: 3, name: "Hits", station_ids: [1] }],
+      "PUT /api/v1/stations/{station_id}/match/settings": (options: { body: unknown }) => options.body,
+    });
+    renderApp(<SettingsCard />);
+    fireEvent.click(await screen.findByRole("button", { name: "From the clock" }));
+    expect(await screen.findByText("In the hours without a clock")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("A match every"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("The announcement every"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent("PUT /api/v1/stations/{station_id}/match/settings")).toHaveLength(1));
+    expect(sent("PUT /api/v1/stations/{station_id}/match/settings")[0]?.options).toMatchObject({
+      body: { tracks_from: "clock", every_tracks: 1, announce_every: 2, category_id: 3 },
+    });
   });
 });

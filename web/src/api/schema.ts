@@ -9914,9 +9914,15 @@ export interface components {
          */
         MatchSettings: {
             /**
+             * Format: int32
+             * @description The announcement every X matches, 1 to 20.
+             * @default 1
+             */
+            announce_every: number;
+            /**
              * Format: int64
-             * @description The category the two tracks come from, the station's; none: no
-             *     match.
+             * @description The category the two tracks come from, the station's (from the
+             *     clock: in the hours without one); none: no match (then).
              * @default null
              */
             category_id: number | null;
@@ -9928,8 +9934,8 @@ export interface components {
             close_before_s: number;
             /**
              * Format: int32
-             * @description A winner every N tracks, 2 to 20: the vote runs during the track
-             *     before it.
+             * @description A winner every N tracks, 1 to 20: the vote runs during the track
+             *     before it; 1: every track, each winner carrying the next vote.
              * @default 4
              */
             every_tracks: number;
@@ -9950,6 +9956,11 @@ export interface components {
              * @default false
              */
             loser_same_day: boolean;
+            /**
+             * @description Where the two tracks come from.
+             * @default category
+             */
+            tracks_from: components["schemas"]["TracksFrom"];
         };
         /**
          * @description One of the two tracks.
@@ -9986,6 +9997,12 @@ export interface components {
             /** Format: int64 */
             id: number;
             jingle?: components["schemas"]["MatchTrack"] | null;
+            /**
+             * @description What else it locks: what the clock put between the vote's track and
+             *     the winner, and the announcement queued before a vote's track queued
+             *     already (every track).
+             */
+            locked_entry_ids: number[];
             /**
              * Format: int64
              * @description When the vote's track started.
@@ -13483,6 +13500,11 @@ export interface components {
              */
             year?: number | null;
         };
+        /**
+         * @description Where a match's two tracks come from.
+         * @enum {string}
+         */
+        TracksFrom: "clock" | "category";
         TransitionPreview: {
             fade_in?: components["schemas"]["RampView"] | null;
             fade_out?: components["schemas"]["RampView"] | null;

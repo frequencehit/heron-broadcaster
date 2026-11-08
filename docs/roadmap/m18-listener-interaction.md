@@ -59,7 +59,8 @@ Asked after the first evenings on air: a match on every track of the hours, and 
 - [ ] `every_tracks` accepts 1: each winner carries the next vote; the next match is queued behind the winner at the close, and its vote opens when the winner starts; a match that cannot run lets its slot's track carry the next vote.
 - [ ] `tracks_from: clock` picks both tracks as the next music slot of the hour's clock would, twice; the winner counts as that slot's pick; jingle and exact-time slots play between the vote's track and the winner, the vote closing 10 seconds before the first of them; an hour without a clock takes the match's category.
 - [ ] `announce_every` plays the announcement every X matches.
+- [ ] The first match of a range votes during the last track before it, its winner the first track of the range (after an exact time at its start); the last match is the last whose winner starts before the range closes; the show counts as open from the first vote.
 - [ ] The queue lock covers what the clock put between the vote's track and the winner.
 - [ ] The settings form: *the tracks of the match* (the clock or a category), every track, the announcement every X matches; the On air panel says *every track*.
-- [ ] Unit tests for the planner (every track, the clock's slots, a jingle and an exact time between, a slot without two tracks, an hour without a clock); the match e2e test runs a chain of three matches from a clock.
+- [ ] Unit tests for the planner (every track, the clock's slots, a jingle and an exact time between, a slot without two tracks, an hour without a clock, a range starting at an exact time and one starting mid-hour); the match e2e test runs a chain of three matches from a clock.
 

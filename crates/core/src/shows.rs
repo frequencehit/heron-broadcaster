@@ -866,7 +866,15 @@ impl ShowPublic {
             };
         }
         let tz = TimeZone::get(&self.timezone).unwrap_or(TimeZone::UTC);
-        status(&Week::of(&self.hours), &tz, now)
+        let mut status = status(&Week::of(&self.hours), &tz, now);
+        // A match's first vote runs during the last track before its hours:
+        // the show is open from it.
+        if self.module == Module::Match
+            && self.state.get("match_id").is_some_and(|id| !id.is_null())
+        {
+            status.open = true;
+        }
+        status
     }
 }
 
@@ -1081,6 +1089,24 @@ mod tests {
         ok.hours = vec![range(&[1, 2], 0, 24)];
         ok.website.closed_message = "Back {day} at {hour}, {unknown".to_owned();
         assert_eq!(ok.check(show), Ok(()));
+    }
+
+    #[test]
+    fn a_match_open_before_its_hours_opens_the_show() {
+        let show = Show::of(Module::Match).unwrap();
+        let mut settings = ShowSettings::default();
+        settings.complete(show);
+        settings.enabled = true;
+        // 17:00 to 18:00 on Mondays; 16:56 on Monday 9 November 2026.
+        settings.hours = vec![range(&[1], 17, 18)];
+        let before = time("2026-11-09T16:56");
+        let mut public = ShowPublic::new(Module::Match, &settings, "Europe/Paris");
+        assert!(!public.status(before).open);
+        public.state = serde_json::json!({"match_id": null});
+        assert!(!public.status(before).open);
+        // The first vote, during the last track before the hours.
+        public.state = serde_json::json!({"match_id": 12});
+        assert!(public.status(before).open);
     }
 
     #[test]

@@ -53,6 +53,9 @@ pub struct QueueManager {
     /// Held while the queue is filled, and while an attempt replaces the
     /// fill kept.
     busy: tokio::sync::Mutex<()>,
+    /// Every track: the match whose winner was tried as the next vote's
+    /// track, so as not to try again.
+    chain_tried: Mutex<Option<u64>>,
 }
 
 /// A library track as the engine needs it.
@@ -304,6 +307,7 @@ impl QueueManager {
             idle_until: Mutex::new(None),
             kept: Mutex::new(Kept::default()),
             busy: tokio::sync::Mutex::new(()),
+            chain_tried: Mutex::new(None),
         })
     }
 
@@ -435,7 +439,20 @@ impl QueueManager {
             .filter(|entry| entry.track.source != PlaySource::Fallback)
             .count();
         let missing = (settings.min_queued as usize).saturating_sub(waiting);
-        if !settings.autofill || missing == 0 {
+        if !settings.autofill {
+            return Ok(());
+        }
+        // Every track: the winner of the match just closed carries the next
+        // vote, whatever the queue's depth.
+        let tried = self.chain_tried.lock().ok().and_then(|tried| *tried);
+        let chained = crate::matches::chained(&self.pool, self.station_id, state)
+            .await?
+            .filter(|(id, _, _)| tried != Some(*id));
+        if missing == 0 && chained.is_none() {
+            return Ok(());
+        }
+        // Every track: nothing goes behind the match waiting or open.
+        if chained.is_none() && crate::matches::holds_queue(&self.pool, self.station_id).await? {
             return Ok(());
         }
         let now = rotation::now_ms();
@@ -483,6 +500,25 @@ impl QueueManager {
             .map(|kept| kept.clone())
             .unwrap_or_default();
         let mut plan = kept.plan.take();
+        if let (Some((id, entry, track)), Some(planner)) = (chained, planner.as_mut()) {
+            if let Ok(mut tried) = self.chain_tried.lock() {
+                *tried = Some(id);
+            }
+            let start = planned
+                .iter()
+                .find(|(waiting, _)| waiting.entry_id == entry)
+                .map_or(at, |(_, start)| *start);
+            let mut ground = crate::matches::Ground {
+                library: &library,
+                history: &mut history,
+                at: &mut at,
+                last: &mut last,
+                plan: &mut plan,
+                rng: &mut rng,
+            };
+            planned_match = planner.behind(&mut ground, &mut picks, entry, track, start);
+        }
+        let missing = if planned_match.is_some() { 0 } else { missing };
         'picking: for _ in 0..missing {
             let outcome = heron_rotation::next_planned_with(
                 &library,
@@ -528,12 +564,19 @@ impl QueueManager {
             if let Some(from) = from {
                 ahead.push((first..picks.len(), from));
             }
-            if let Some(planner) = planner.as_mut()
-                && let Some(planned) =
-                    planner.after(&library, &history, at, last.as_ref(), &mut picks, &mut rng)
-            {
-                planned_match = Some(planned);
-                break;
+            if let Some(planner) = planner.as_mut() {
+                let mut ground = crate::matches::Ground {
+                    library: &library,
+                    history: &mut history,
+                    at: &mut at,
+                    last: &mut last,
+                    plan: &mut plan,
+                    rng: &mut rng,
+                };
+                if let Some(planned) = planner.after(&mut ground, &mut picks) {
+                    planned_match = Some(planned);
+                    break;
+                }
             }
         }
         if planned_match.is_some() {
@@ -557,6 +600,11 @@ impl QueueManager {
         if let Ok(mut slot) = self.kept.lock() {
             *slot = kept;
         }
+        if picks.is_empty() && chained.is_some() {
+            // Every track: the winner carries no match, and the queue is
+            // deep enough.
+            return Ok(());
+        }
         if picks.is_empty() {
             // Tracks held back by their ratio moved: they play sooner.
             rotation::save_counters(&self.pool, self.station_id, &counters).await?;
@@ -571,6 +619,41 @@ impl QueueManager {
             }
             self.rest();
             return Ok(());
+        }
+        // Every track: the announcement of the match behind the winner goes
+        // over the winner's intro, right before it.
+        let mut jingle_entry = None;
+        if let Some(planned) = &planned_match
+            && let (Some(announcement), Some(vote_entry)) =
+                (&planned.announce_before, planned.vote_entry)
+            && let Some(position) = state
+                .waiting()
+                .position(|entry| entry.entry_id == vote_entry)
+                .and_then(|position| u32::try_from(position).ok())
+        {
+            let tracks = self
+                .tracks(&[announcement.track], PlaySource::Rotation)
+                .await?;
+            match self
+                .engine
+                .enqueue(tracks, Some(position), Vec::new())
+                .await
+            {
+                Ok(ids) => {
+                    jingle_entry = ids.first().copied();
+                    if let Some(entry_id) = jingle_entry {
+                        let entry = (state.engine_started_at_unix_ms, entry_id);
+                        rotation::record_pick(
+                            &self.pool,
+                            self.station_id,
+                            announcement,
+                            Some(entry),
+                        )
+                        .await?;
+                    }
+                }
+                Err(error) => tracing::warn!(%error, "cannot queue the match's announcement"),
+            }
         }
         let ids: Vec<u64> = picks.iter().map(|pick| pick.track).collect();
         let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
@@ -598,6 +681,7 @@ impl QueueManager {
                 state.engine_started_at_unix_ms,
                 &pick_entries,
                 &log_ids,
+                jingle_entry,
             )
             .await?;
         }
