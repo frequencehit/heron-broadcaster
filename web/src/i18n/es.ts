@@ -1129,6 +1129,7 @@ const es = {
   "clocks.loop": "Bucle entre horas",
   "clocks.loopHelp": "El reloj continúa desde su último hueco sea cual sea la hora, como un clockwheel de SAM Broadcaster: puede durar más de una hora.",
   "clocks.noLoopHelp": "Cada hora empieza el reloj desde su primer hueco; los huecos que no caben en la hora se descartan.",
+  "clocks.loopExact": "Un reloj con una hora exacta vuelve a empezar cada hora: sus horas exactas son minutos de la hora, así que no puede encadenar una hora con otra.",
   "clocks.needCategories": "Los huecos llaman a categorías: {link} primero.",
   "clocks.createSome": "cree algunas",
   "clocks.noSlot": "Todavía no hay huecos.",

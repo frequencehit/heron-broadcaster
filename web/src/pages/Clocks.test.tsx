@@ -16,9 +16,12 @@ const CLOCK = {
   slots: [{ category_id: 1, method: "least_recently_played", enforce_rules: true, separation: {}, linked_to_next: false }],
 };
 
-function api(put: unknown = (options: { body: unknown }) => ({ ...CLOCK, ...(options.body as object) })) {
+function api(
+  put: unknown = (options: { body: unknown }) => ({ ...CLOCK, ...(options.body as object) }),
+  clock: unknown = CLOCK,
+) {
   answer({
-    "GET /api/v1/stations/{station_id}/clocks/{id}": CLOCK,
+    "GET /api/v1/stations/{station_id}/clocks/{id}": clock,
     "GET /api/v1/categories": [{ id: 1, name: "90s", color: "#2e7d32", type_id: null, station_ids: [1] }],
     "GET /api/v1/stations/{station_id}/settings/rotation": {},
     "GET /api/v1/category-types": [],
@@ -45,6 +48,26 @@ describe("ClockEditor", () => {
     const body = (sent("PUT /api/v1/stations/{station_id}/clocks/{id}")[0]?.options as { body: { name: string } })
       .body;
     expect(body.name).toBe("Morning show");
+  });
+
+  it("never loops a clock with an exact time", async () => {
+    const exact = { at_s: 0, mode: "soft", before_s: 10, after_s: 30, medley_fill: false, cut_live: false };
+    const stored = { ...CLOCK, looping: true, slots: [{ ...CLOCK.slots[0], exact }] };
+    api(undefined, stored);
+    renderApp(<ClockEditor id={3} />);
+    const name = await screen.findByDisplayValue("Morning");
+    const loop = screen.getByRole("checkbox", { name: t("clocks.loop") }) as HTMLInputElement;
+    expect(loop.checked).toBe(false);
+    expect(loop.disabled).toBe(true);
+    expect(screen.getByText(t("clocks.loopExact"))).toBeTruthy();
+    // Saved again without looping.
+    fireEvent.change(name, { target: { value: "Morning show" } });
+    await waitFor(() => expect(sent("PUT /api/v1/stations/{station_id}/clocks/{id}")).toHaveLength(1), {
+      timeout: 3000,
+    });
+    const body = (sent("PUT /api/v1/stations/{station_id}/clocks/{id}")[0]?.options as { body: { looping: boolean } })
+      .body;
+    expect(body.looping).toBe(false);
   });
 
   it("says why a change was not saved", async () => {

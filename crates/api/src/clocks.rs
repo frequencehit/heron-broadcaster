@@ -100,6 +100,12 @@ impl ClockInput {
         }
         check_links(&self.slots)?;
         check_exact(&self.slots)?;
+        if self.looping && self.slots.iter().any(|slot| slot.exact.is_some()) {
+            return Err(ApiError::Invalid(
+                "a clock with an exact time cannot loop across hours: its exact times are minutes of the hour"
+                    .to_owned(),
+            ));
+        }
         Ok(name.to_owned())
     }
 }
@@ -456,6 +462,11 @@ async fn preview_clock(
             })
             .collect(),
         looping: request.looping,
+    };
+    // As rotation plays it: never looping with an exact time.
+    let clock = heron_rotation::Clock {
+        looping: clock.loops(),
+        ..clock
     };
     let clock = &clock;
     let colors: HashMap<u64, Option<String>> =

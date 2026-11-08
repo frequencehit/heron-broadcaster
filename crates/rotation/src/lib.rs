@@ -271,11 +271,18 @@ pub struct Clock {
     pub name: String,
     pub slots: Vec<Slot>,
     /// Loops across hours: carries on from its last slot instead of
-    /// starting over at each hour (SAM Broadcaster's clockwheel).
+    /// starting over at each hour (SAM Broadcaster's clockwheel). Never
+    /// with an exact time: the library turns it off ([`Clock::loops`]).
     pub looping: bool,
 }
 
 impl Clock {
+    /// Whether it may loop across hours: not with an exact time, which is
+    /// a minute of the hour (`docs/rotation.md#clockwheel`).
+    pub fn loops(&self) -> bool {
+        self.looping && self.slots.iter().all(|slot| slot.exact.is_none())
+    }
+
     /// Whether the slot at `index` is linked to the slot after it (the
     /// first one after the last). A linked slot followed by another linked
     /// slot is not: the API refuses such chains.
@@ -411,7 +418,16 @@ impl Library {
             categories,
             similar,
             restrictions: parts.restrictions,
-            clocks: parts.clocks.into_iter().map(|c| (c.id, c)).collect(),
+            // A clock with an exact time starts over at each hour, even if
+            // it was stored looping before that was refused.
+            clocks: parts
+                .clocks
+                .into_iter()
+                .map(|mut clock| {
+                    clock.looping = clock.loops();
+                    (clock.id, clock)
+                })
+                .collect(),
             schedule: parts.schedule,
             schedules: parts.schedules,
             settings: parts.settings,
