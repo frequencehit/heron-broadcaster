@@ -204,8 +204,8 @@ pub struct SearchStats {
     /// could play.
     pub slots: Vec<u32>,
     pub options: Vec<u32>,
-    /// Too many combinations: only the first tracks of each slot were
-    /// tried ([`MAX_COMBINATIONS`]).
+    /// Too many combinations (over 200 000): only the first tracks of
+    /// each slot were tried.
     pub capped: bool,
     /// Combinations tried, and of them those landing in the window.
     pub combinations: u64,
@@ -222,7 +222,7 @@ pub struct SearchStats {
 pub struct Attempt {
     /// From 1, in the order built.
     pub number: u32,
-    /// Its batch of [`DRAWS`], from 1; 0 for the fill kept, played again.
+    /// Its batch of 10, from 1; 0 for the fill kept, played again.
     pub batch: u32,
     /// The fill kept by an earlier pick, played again: it competes with
     /// the new ones.
@@ -266,9 +266,9 @@ pub enum Stop {
     Followed,
     /// The best one lands.
     Landed,
-    /// [`Budget::max_fills`] built.
+    /// The most fills built (200).
     MaxFills,
-    /// [`Budget::max_duration`] spent.
+    /// The time to build them spent (3 s).
     Time,
 }
 

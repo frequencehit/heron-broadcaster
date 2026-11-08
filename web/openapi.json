@@ -20837,7 +20837,7 @@
           "batch": {
             "type": "integer",
             "format": "int32",
-            "description": "Its batch of [`DRAWS`], from 1; 0 for the fill kept, played again.",
+            "description": "Its batch of 10, from 1; 0 for the fill kept, played again.",
             "minimum": 0
           },
           "ending": {
@@ -32093,7 +32093,7 @@
         "properties": {
           "capped": {
             "type": "boolean",
-            "description": "Too many combinations: only the first tracks of each slot were\ntried ([`MAX_COMBINATIONS`])."
+            "description": "Too many combinations (over 200 000): only the first tracks of\neach slot were tried."
           },
           "combinations": {
             "type": "integer",
