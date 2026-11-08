@@ -6,7 +6,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, unwrap } from "../api";
+import { api, done, unwrap } from "../api";
 import { Card, ConfirmButton, Empty, ErrorView, Field, Loading, NumberInput, PageHead, Segmented } from "../components/ui";
 import { number, t } from "../i18n";
 import {
@@ -21,6 +21,7 @@ import {
 import { dateTime } from "../lib/format";
 import { addDays, dayOf } from "../lib/listeners";
 import { useAction } from "../lib/session";
+import { Deliveries } from "./CertificationDeliveries";
 import { here, useStation } from "../lib/station";
 
 export function Certification() {
@@ -29,6 +30,7 @@ export function Certification() {
       <PageHead title={t("nav.certification")} description={t("certification.description")} />
       <Sources />
       <Days />
+      <Deliveries />
       <Retention />
     </>
   );
@@ -86,7 +88,7 @@ function Source({ serverId, name, log }: Readonly<{ serverId: number; name: stri
   const [editing, setEditing] = useState(false);
   const remove = useAction(
     () =>
-      unwrap(
+      done(
         api.DELETE("/api/v1/stations/{station_id}/stream-servers/{server_id}/access-log", {
           params: { path: here({ server_id: serverId }) },
         }),
