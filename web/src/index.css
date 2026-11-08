@@ -239,8 +239,25 @@ code,
   background: var(--surface-2);
 }
 
+/* A page under the one above it: an elbow from that page's icon to its own,
+   so it reads as part of it. */
 .nav a.sub {
-  padding-left: 1.6rem;
+  position: relative;
+  padding-left: 2.2rem;
+}
+
+.nav a.sub::before {
+  content: "";
+  position: absolute;
+  left: 1.05rem;
+  top: -0.45rem;
+  width: 0.75rem;
+  height: calc(50% + 0.45rem);
+  border-left: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  border-bottom-left-radius: 5px;
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .nav a[aria-current="page"] {
