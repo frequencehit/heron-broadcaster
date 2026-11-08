@@ -303,10 +303,12 @@ function Result({
     const status = metStatus(exact);
     return (
       <div className={`card exact-tile exact-result tone-box-${status.tone}`}>
-        <span className="small">{t("exactTimes.resultMet")}</span>
+        <span className="small">{exact.planned ? t("exactTimes.resultPlanned") : t("exactTimes.resultMet")}</span>
         <strong>{status.label}</strong>
         <span className="small">
-          {t("exactTimes.startedAt", { time: clockTime(exact.met.at_unix_ms + exact.met.offset_ms) })}
+          {t(exact.planned ? "exactTimes.plannedAt" : "exactTimes.startedAt", {
+            time: clockTime(exact.met.at_unix_ms + exact.met.offset_ms),
+          })}
         </span>
       </div>
     );

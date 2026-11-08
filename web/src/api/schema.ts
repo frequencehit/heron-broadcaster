@@ -8544,6 +8544,8 @@ export interface components {
             clock_name?: string | null;
             met?: components["schemas"]["ExactLog"] | null;
             mode: components["schemas"]["ExactMode"];
+            /** @description Its slot is picked and queued, not played yet: `met` is the plan. */
+            planned: boolean;
             /** Format: int32 */
             slot?: number | null;
             /** @description Not reached yet. */

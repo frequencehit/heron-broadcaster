@@ -24817,6 +24817,7 @@
           "mode",
           "window_from_unix_ms",
           "window_cut_unix_ms",
+          "planned",
           "upcoming",
           "calculations"
         ],
@@ -24843,7 +24844,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/ExactLog",
-                "description": "How it was met, once its slot was picked."
+                "description": "How it was met, once its slot was picked: as planned while its\ntrack has not started (`planned`)."
               },
               {
                 "type": "null"
@@ -24852,6 +24853,10 @@
           },
           "mode": {
             "$ref": "#/components/schemas/ExactMode"
+          },
+          "planned": {
+            "type": "boolean",
+            "description": "Its slot is picked and queued, not played yet: `met` is the plan."
           },
           "slot": {
             "type": [
