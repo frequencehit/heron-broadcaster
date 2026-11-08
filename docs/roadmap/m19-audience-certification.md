@@ -58,12 +58,12 @@ Part 1:
 Part 2:
 
 - [ ] A delivery sends the day's file by SFTP at the set time, retries, and its failures are visible and alerted. *(By FTPS for now; SFTP once age is released with ml-kem 0.3, see Scope.)*
-- [ ] A delivery sends the day's file by FTPS at the set time, retries, and its failures are visible and alerted.
-- [ ] The file sent is the day's export, named from its pattern, compressed when asked; a day with gaps is sent with its gaps in the log.
-- [ ] Passwords are never sent back; the server's certificate is checked.
-- [ ] The last 30 days sent are listed with their attempts; *Send now* and *Test connection* work; only admins, and off, the module sends nothing.
-- [ ] An end-to-end test delivers by FTPS to a server in the test (the bytes received, a refused login retried, the alert, the 30 days kept).
-- [ ] Docs, translations (all catalogs) and the CHANGELOG are up to date.
+- [x] A delivery sends the day's file by FTPS at the set time, retries, and its failures are visible and alerted.
+- [x] The file sent is the day's export, named from its pattern, compressed when asked; a day with gaps is sent with its gaps in the log.
+- [x] Passwords are never sent back; the server's certificate is checked.
+- [x] The last 30 days sent are listed with their attempts; *Send now* and *Test connection* work; only admins, and off, the module sends nothing.
+- [x] An end-to-end test delivers by FTPS to a server in the test (the bytes received, a refused login retried, the alert, the 30 days kept).
+- [x] Docs, translations (all catalogs) and the CHANGELOG are up to date.
 
 ## References
 
