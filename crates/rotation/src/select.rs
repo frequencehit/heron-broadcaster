@@ -13,7 +13,7 @@ use crate::exact::{
     self, Choice, ExactLog, ExactMode, ExactTime, FillKind, FillLog, Fit, FitMode, MedleyCut,
     Window,
 };
-use crate::lookahead::{self, LookaheadLog, Plan};
+use crate::lookahead::{self, Calculation, LookaheadLog, Plan, Planning};
 use crate::ratio::{self, HeldByRatio};
 use crate::restrict::{Subject, forbidding};
 use crate::rules::{AcrossWindows, FALLBACK_STEP, LAST_STEP, Windows, describe_step};
@@ -915,6 +915,9 @@ pub fn next(
 pub struct Outcome {
     pub pick: Option<Pick>,
     pub held_by_ratio: Vec<HeldByRatio>,
+    /// Before an exact time, with [`Planning::record`]: the fill kept
+    /// followed, or the fills built, each an attempt.
+    pub calculation: Option<Calculation>,
 }
 
 impl Outcome {
@@ -958,6 +961,20 @@ pub fn next_planned(
     outcome(library, history, at_ms, last, rng, true, plan)
 }
 
+/// [`next_planned`] with its own [`Planning`]: the queue manager's budget,
+/// and the attempts recorded in [`Outcome::calculation`].
+pub fn next_planned_with(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+    rng: &mut Rng,
+    plan: &mut Option<Plan>,
+    planning: Planning,
+) -> Outcome {
+    outcome_with(library, history, at_ms, last, rng, true, plan, planning)
+}
+
 /// The exact time ahead of a pick at `at_ms`, as rotation plans for it:
 /// its window, for a match choosing its two tracks.
 pub fn exact_ahead(
@@ -980,7 +997,32 @@ pub(crate) fn outcome(
     fills: bool,
     plan: &mut Option<Plan>,
 ) -> Outcome {
+    outcome_with(
+        library,
+        history,
+        at_ms,
+        last,
+        rng,
+        fills,
+        plan,
+        Planning::default(),
+    )
+}
+
+/// [`outcome`] with its own [`Planning`].
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn outcome_with(
+    library: &Library,
+    history: &History,
+    at_ms: i64,
+    last: Option<&Position>,
+    rng: &mut Rng,
+    fills: bool,
+    plan: &mut Option<Plan>,
+    planning: Planning,
+) -> Outcome {
     let mut held_by_ratio = Vec::new();
+    let mut calculation = None;
     let ahead = next_exact(library, history, at_ms, last).filter(|_| fills);
     let pick = match ahead {
         Some(ahead) => lookahead::best(
@@ -988,10 +1030,12 @@ pub(crate) fn outcome(
             history,
             at_ms,
             last,
-            ahead.window,
+            &ahead,
             &mut held_by_ratio,
             rng,
             plan,
+            planning,
+            &mut calculation,
         ),
         None => {
             *plan = None;
@@ -1013,6 +1057,7 @@ pub(crate) fn outcome(
     Outcome {
         pick,
         held_by_ratio,
+        calculation,
     }
 }
 
@@ -1076,6 +1121,9 @@ pub fn from_category(
 /// The next exact time ahead of a pick, for [`lookahead`].
 pub(crate) struct Ahead {
     pub window: Window,
+    pub mode: ExactMode,
+    /// The exact slot, from 0 in its clock.
+    pub slot: u32,
 }
 
 /// The next exact time not due yet for a pick at `at_ms`, as [`pick`]
@@ -1105,6 +1153,8 @@ fn next_exact(
     }
     Some(Ahead {
         window: upcoming.window,
+        mode: upcoming.exact.mode,
+        slot: u32::try_from(upcoming.index).unwrap_or(u32::MAX),
     })
 }
 
