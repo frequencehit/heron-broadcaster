@@ -1232,7 +1232,7 @@ const de = {
   "exactTimes.backToAutomatic": "Zurück zur automatischen Wahl",
   "exactTimes.backDone": "Zurück zur automatischen Wahl: die nächste Wahl baut neue Füllungen",
   "exactTimes.calculationsFor": "Berechnungen für {time}",
-  "exactTimes.calculationsHelp": "Jede Karte ist eine Berechnung: Füllungen, je 10 auf einmal bis zur genauen Zeit gebaut, das Ende jeder auf die beste Passung durchsucht, und die beste beibehalten. Eine entsteht bei der ersten Wahl für diese genaue Zeit, wenn die Warteschlange ändert, wo sie davor endet (eine Widmung, ein Titel hinzugefügt, entfernt oder verschoben, ein Sprung, ein Duell), nach einem Neustart oder von Hand. Dazwischen folgt jede nächste Wahl der beibehaltenen Füllung: sie wird auf der Karte als befolgt gezählt, ohne neue Berechnung.",
+  "exactTimes.calculationsHelp": "Jede Karte ist eine Berechnung: Füllungen, je 10 auf einmal bis zur genauen Zeit gebaut, die beste beibehalten. Eine entsteht bei der ersten Wahl, wenn die Warteschlange ändert, wo sie endet (eine Widmung, ein Titel hinzugefügt, entfernt oder verschoben, ein Sprung, ein Duell), nach einem Neustart oder von Hand. Dazwischen folgt jede Wahl der beibehaltenen Füllung: auf ihrer Karte als befolgt gezählt.",
   "exactTimes.noCalculations": "Keine Berechnung dafür: die Rotation plant eine genaue Zeit ab der ersten Wahl nach der vorigen.",
   "exactTimes.calculationDetail": { one: "{count} Versuch · {ms} ms", other: "{count} Versuche · {ms} ms" },
   "exactTimes.chosenByHandBy": "Versuch #{number} von {user} um {time} von Hand gewählt",

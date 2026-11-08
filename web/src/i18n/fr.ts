@@ -1239,7 +1239,7 @@ const fr = {
   "exactTimes.backToAutomatic": "Revenir au choix automatique",
   "exactTimes.backDone": "Retour au choix automatique : le prochain choix construit de nouveaux remplissages",
   "exactTimes.calculationsFor": "Calculs pour {time}",
-  "exactTimes.calculationsHelp": "Chaque carte est un calcul : des remplissages construits 10 par 10 jusqu'à l'heure exacte, la fin de chacun cherchée pour la meilleure combinaison, et le meilleur retenu. Un calcul a lieu au premier choix pour cette heure exacte, quand la file change là où elle se termine avant elle (une dédicace, un titre ajouté, retiré ou déplacé, un saut, un match), après un redémarrage, ou à la main. Entre deux, chaque choix suivant suit le remplissage retenu : il est compté sur la carte comme suivi, sans nouveau calcul.",
+  "exactTimes.calculationsHelp": "Chaque carte est un calcul : des remplissages construits 10 par 10 jusqu'à l'heure exacte, le meilleur retenu. Un calcul a lieu au premier choix, quand la file change là où elle se termine (une dédicace, un titre ajouté, retiré ou déplacé, un saut, un match), après un redémarrage, ou à la main. Entre deux, chaque choix suit le remplissage retenu : compté sur sa carte comme suivi.",
   "exactTimes.noCalculations": "Aucun calcul pour elle : la rotation prépare une heure exacte dès le premier choix après la précédente.",
   "exactTimes.calculationDetail": { one: "{count} essai · {ms} ms", other: "{count} essais · {ms} ms" },
   "exactTimes.chosenByHandBy": "Essai #{number} choisi à la main par {user} à {time}",

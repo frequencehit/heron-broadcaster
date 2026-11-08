@@ -1232,7 +1232,7 @@ const es = {
   "exactTimes.backToAutomatic": "Volver a la elección automática",
   "exactTimes.backDone": "Vuelta a la elección automática: la próxima elección construye nuevos rellenos",
   "exactTimes.calculationsFor": "Cálculos para las {time}",
-  "exactTimes.calculationsHelp": "Cada tarjeta es un cálculo: rellenos construidos de 10 en 10 hasta la hora exacta, el final de cada uno buscado para el mejor ajuste, y el mejor retenido. Se hace uno en la primera elección para esta hora exacta, cuando la cola cambia dónde termina antes de ella (una dedicatoria, una pista añadida, quitada o movida, un salto, un duelo), tras un reinicio, o a mano. Entre medias, cada elección siguiente sigue el relleno retenido: se cuenta en la tarjeta como seguida, sin nuevo cálculo.",
+  "exactTimes.calculationsHelp": "Cada tarjeta es un cálculo: rellenos construidos de 10 en 10 hasta la hora exacta, el mejor retenido. Se hace uno en la primera elección, cuando la cola cambia dónde termina (una dedicatoria, una pista añadida, quitada o movida, un salto, un duelo), tras un reinicio, o a mano. Entre medias, cada elección sigue el relleno retenido: se cuenta en su tarjeta como seguida.",
   "exactTimes.noCalculations": "Ningún cálculo para ella: la rotación planifica una hora exacta desde la primera elección tras la anterior.",
   "exactTimes.calculationDetail": { one: "{count} intento · {ms} ms", other: "{count} intentos · {ms} ms" },
   "exactTimes.chosenByHandBy": "Intento #{number} elegido a mano por {user} a las {time}",

@@ -3885,6 +3885,9 @@ ul.held {
 
 .exact-earlier {
   align-self: flex-start;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
 }
 
 .exact-run {

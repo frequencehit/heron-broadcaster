@@ -1230,7 +1230,7 @@ const en = {
   "exactTimes.backToAutomatic": "Back to automatic",
   "exactTimes.backDone": "Back to automatic: the next pick builds new fills",
   "exactTimes.calculationsFor": "Calculations for {time}",
-  "exactTimes.calculationsHelp": "Each card is one calculation: fills built 10 at a time up to the exact time, the end of each searched for the best fit, and the best one kept. One is made at the first pick for this exact time, when the queue changes where it ends before it (a dedication, a track added, removed or moved, a skip, a match), after a restart, or by hand. In between, each next pick follows the fill kept: it is counted on the card as followed, with no new calculation.",
+  "exactTimes.calculationsHelp": "Each card is one calculation: fills built 10 at a time up to the exact time, the best one kept. One is made at the first pick, when the queue changes where it ends (a dedication, a track added, removed or moved, a skip, a match), after a restart, or by hand. In between, each pick follows the fill kept: counted on its card as followed.",
   "exactTimes.noCalculations": "No calculation for it: rotation plans for an exact time from the first pick after the one before it.",
   "exactTimes.calculationDetail": { one: "{count} attempt · {ms} ms", other: "{count} attempts · {ms} ms" },
   "exactTimes.chosenByHandBy": "Attempt #{number} chosen by hand by {user} at {time}",
