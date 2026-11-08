@@ -56,6 +56,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_access_log, put_access_log, delete_access_log))
         .routes(routes!(list_certification_sources))
         .routes(routes!(certification_days))
+        .routes(routes!(delete_day))
         .routes(routes!(export_day))
         .merge(delivery::router())
 }
@@ -1058,6 +1059,73 @@ async fn certification_days(
     }
     out.sort_by(|a, b| b.day.cmp(&a.day).then(a.server_id.cmp(&b.server_id)));
     Ok(Json(out))
+}
+
+#[derive(Clone, Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct DeleteDayQuery {
+    /// The server whose day is deleted.
+    pub server_id: u64,
+}
+
+/// How much a deleted day held.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, ToSchema)]
+pub struct DeletedDay {
+    pub lines: u64,
+    pub gaps: u64,
+}
+
+/// Deletes a server's day: its lines, and the gaps that lie within it. The
+/// log is not read again (its position is kept), so the day is gone for
+/// good, from the exports and the deliveries too. Admins only.
+#[utoipa::path(delete, path = "/certification/days/{day}", tag = "certification",
+    params(("day" = String, Path, description = "`YYYY-MM-DD`, in the station's time zone"), DeleteDayQuery),
+    responses((status = 200, body = DeletedDay), (status = "4XX", body = ErrorBody)))]
+async fn delete_day(
+    user: CurrentUser,
+    State(state): State<AppState>,
+    station: Station,
+    Path(day): Path<String>,
+    Query(query): Query<DeleteDayQuery>,
+) -> ApiResult<Json<DeletedDay>> {
+    user.require(Role::Admin)?;
+    server_name(&state.pool, station.id(), query.server_id).await?;
+    let date = parse_day(&day)?;
+    let tz = time_zone(&state.pool, station.id()).await?;
+    let (from, to) = day_range(date, &tz)?;
+    let lines = sqlx::query(
+        "DELETE FROM access_log_lines
+         WHERE station_id = ? AND server_id = ?
+           AND logged_at >= FROM_UNIXTIME(?) AND logged_at < FROM_UNIXTIME(?)",
+    )
+    .bind(station.id())
+    .bind(query.server_id)
+    .bind(seconds(from))
+    .bind(seconds(to))
+    .execute(&state.pool)
+    .await?
+    .rows_affected();
+    let gaps = sqlx::query(
+        "DELETE FROM access_log_gaps
+         WHERE station_id = ? AND server_id = ?
+           AND from_at >= FROM_UNIXTIME(?) AND to_at <= FROM_UNIXTIME(?)",
+    )
+    .bind(station.id())
+    .bind(query.server_id)
+    .bind(seconds(from))
+    .bind(seconds(to))
+    .execute(&state.pool)
+    .await?
+    .rows_affected();
+    tracing::info!(
+        user = %user.username,
+        server = query.server_id,
+        %day,
+        lines,
+        gaps,
+        "certification day deleted"
+    );
+    Ok(Json(DeletedDay { lines, gaps }))
 }
 
 /// The row of a day and a server, added when missing.

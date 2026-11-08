@@ -13300,6 +13300,33 @@ async fn access_logs_are_read_once_and_exported() {
     );
     assert!(sources[0]["error_since_unix_ms"].is_i64());
 
+    // A day deleted: its lines and the gaps within it, admins only.
+    let server = days[0]["server_id"].as_u64().unwrap();
+    let path = format!("/certification/days/2026-11-07?server_id={server}");
+    let (status, _) = viewer.request(Method::DELETE, &path, None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, deleted) = admin.request(Method::DELETE, &path, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(deleted["lines"], 5);
+    let days = admin
+        .get("/certification/days?from=2026-11-01&to=2026-11-07")
+        .await;
+    assert!(
+        days.as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["day"] != "2026-11-07"),
+        "{days}"
+    );
+    let (status, _) = admin
+        .request(
+            Method::DELETE,
+            &format!("/certification/days/2026-11-07?server_id={}", server + 999),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
     // Admins only; off, nothing answers.
     let (status, _) = viewer
         .request(

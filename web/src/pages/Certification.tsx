@@ -273,6 +273,9 @@ function Days() {
               <th className="num">{t("certification.lines")}</th>
               <th>{t("certification.gaps")}</th>
               <th>{t("certification.download")}</th>
+              <th>
+                <span className="visually-hidden">{t("certification.deleteDay")}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -305,12 +308,42 @@ function Days() {
                     ))}
                   </div>
                 </td>
+                <td>
+                  <DeleteDay day={day.day} serverId={day.server_id} server={nameOf(day.server_id)} />
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
     </Card>
+  );
+}
+
+/** Deletes a server's day, after asking: its lines are gone for good. */
+export function DeleteDay({ day, serverId, server }: Readonly<{ day: string; serverId: number; server: string }>) {
+  const remove = useAction(
+    () =>
+      unwrap(
+        api.DELETE("/api/v1/stations/{station_id}/certification/days/{day}", {
+          params: { path: here({ day }), query: { server_id: serverId } },
+        }),
+      ),
+    {
+      success: (deleted) => t("certification.dayDeleted", { count: deleted.lines }),
+      invalidate: [["certification", "days"]],
+    },
+  );
+  return (
+    <ConfirmButton
+      className="btn small danger"
+      question={t("certification.deleteDayQuestion", { day, server })}
+      confirm={t("certification.deleteDay")}
+      disabled={remove.isPending}
+      onConfirm={() => remove.mutate(undefined)}
+    >
+      {t("certification.deleteDay")}
+    </ConfirmButton>
   );
 }
 

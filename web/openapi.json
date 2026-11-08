@@ -2389,6 +2389,57 @@
         }
       }
     },
+    "/api/v1/certification/days/{day}": {
+      "delete": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Deletes a server's day: its lines, and the gaps that lie within it. The\nlog is not read again (its position is kept), so the day is gone for\ngood, from the exports and the deliveries too. Admins only.",
+        "operationId": "delete_day",
+        "parameters": [
+          {
+            "name": "day",
+            "in": "path",
+            "description": "`YYYY-MM-DD`, in the station's time zone",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "The server whose day is deleted.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedDay"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/certification/deliveries": {
       "get": {
         "tags": [
@@ -10673,6 +10724,66 @@
                   "items": {
                     "$ref": "#/components/schemas/CertificationDay"
                   }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/certification/days/{day}": {
+      "delete": {
+        "tags": [
+          "certification"
+        ],
+        "summary": "Deletes a server's day: its lines, and the gaps that lie within it. The\nlog is not read again (its position is kept), so the day is gone for\ngood, from the exports and the deliveries too. Admins only.",
+        "operationId": "delete_day_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "description": "`YYYY-MM-DD`, in the station's time zone",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "description": "The server whose day is deleted.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedDay"
                 }
               }
             }
@@ -23009,6 +23120,26 @@
           "played",
           "refused"
         ]
+      },
+      "DeletedDay": {
+        "type": "object",
+        "description": "How much a deleted day held.",
+        "required": [
+          "lines",
+          "gaps"
+        ],
+        "properties": {
+          "gaps": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "lines": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "DeliveryAttempt": {
         "type": "object",

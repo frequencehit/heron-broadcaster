@@ -142,6 +142,7 @@ Admins only, but `GET /settings/certification`:
 - `GET /certification/sources`: the station's servers with an access log, the same way.
 - `GET`, `PUT /settings/certification`: `retention_months` (1 to 25, 13).
 - `GET /certification/days?from&to` (62 days at most): per day and server, the lines, the sessions among them and the gaps.
+- `DELETE /certification/days/{day}?server_id=`: deletes a server's day, its lines and the gaps within it, and answers how many (`lines`, `gaps`). The log is not read again, so the day is gone for good, from the exports and the deliveries too.
 - `GET /certification/export?day=2026-11-07&server_id=3&mount=/live&format=raw|combined|csv|json`: the file, named `<station>-<server>-<day>.<ext>`; `X-Heron-Gaps` lists the gaps.
 - `GET`, `POST /certification/deliveries`; `GET`, `PUT`, `DELETE /certification/deliveries/{id}`: the [deliveries](#what-a-delivery-sets). `password` is write-only (`password_set` says whether one is kept; left out, it is kept). Each delivery comes with its `last` day sent.
 - `POST /certification/deliveries/{id}/test`: connects, logs in and opens the folder, answers `ok` and `error`.
