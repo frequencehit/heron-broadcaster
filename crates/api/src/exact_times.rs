@@ -52,6 +52,9 @@ pub enum Trigger {
     Automatic,
     /// The pick followed the fill kept: no fill built.
     Followed,
+    /// *Calculate now*: built on demand, rotation's queued picks before the
+    /// exact slot counted as not queued (`requested_by`).
+    OnDemand,
 }
 
 impl Trigger {
@@ -63,6 +66,7 @@ impl Trigger {
             Self::HandDropped => "hand_dropped",
             Self::Automatic => "automatic",
             Self::Followed => "followed",
+            Self::OnDemand => "on_demand",
         }
     }
 
@@ -73,6 +77,7 @@ impl Trigger {
             "queue_changed" => Self::QueueChanged,
             "hand_dropped" => Self::HandDropped,
             "automatic" => Self::Automatic,
+            "on_demand" => Self::OnDemand,
             _ => Self::Followed,
         }
     }
@@ -114,6 +119,8 @@ pub struct Kept {
     /// Why the next fills are built, when the queue manager knows it
     /// (back to automatic).
     pub next_trigger: Option<Trigger>,
+    /// The latest calculation made on demand (*Calculate now*).
+    pub on_demand: Option<crate::queue::OnDemand>,
 }
 
 /// The calculation whose fill the queue follows.
@@ -172,13 +179,15 @@ pub fn choosable(ending: &AttemptEnding) -> bool {
 
 /// Stores what a pick before an exact time did: a calculation with its
 /// attempts, or a light row for a pick that followed the fill kept
-/// (`follows`: the calculation it comes from). Returns its ID.
+/// (`follows`: the calculation it comes from); `requested_by`: the user
+/// who asked for it (*Calculate now*). Returns its ID.
 pub async fn store(
     pool: &MySqlPool,
     station_id: u64,
     calculation: &Calculation,
     trigger: Trigger,
     follows: Option<u64>,
+    requested_by: Option<u64>,
 ) -> ApiResult<u64> {
     let attempts = if calculation.attempts.is_empty() {
         None
@@ -192,9 +201,10 @@ pub async fn store(
     let id = sqlx::query(
         "INSERT INTO exact_calculations
              (station_id, exact_at_ms, window_from_ms, window_cut_ms, mode, clock_id, exact_slot,
-              from_ms, reason, follows_id, fills, batches, stop, duration_ms, kept_attempt,
-              offset_ms, in_window, faded, filling_ms, relaxed_steps, age_ms, by_hand, attempts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              from_ms, reason, follows_id, requested_by, fills, batches, stop, duration_ms,
+              kept_attempt, offset_ms, in_window, faded, filling_ms, relaxed_steps, age_ms,
+              by_hand, attempts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(station_id)
     .bind(calculation.exact_at_unix_ms)
@@ -206,6 +216,7 @@ pub async fn store(
     .bind(calculation.from_unix_ms)
     .bind(trigger.as_str())
     .bind(follows)
+    .bind(requested_by)
     .bind(u16::try_from(calculation.fills).unwrap_or(u16::MAX))
     .bind(u16::try_from(calculation.batches).unwrap_or(u16::MAX))
     .bind(stop_str(calculation.stop))
@@ -229,15 +240,16 @@ pub async fn store(
     Ok(id)
 }
 
-/// Whether the station has calculations for the exact time at
-/// `exact_at_ms` already.
+/// Whether the queue manager made calculations for the exact time at
+/// `exact_at_ms` already (those made on demand aside).
 pub async fn calculated_before(
     pool: &MySqlPool,
     station_id: u64,
     exact_at_ms: i64,
 ) -> ApiResult<bool> {
     let found: Option<u64> = sqlx::query_scalar(
-        "SELECT id FROM exact_calculations WHERE station_id = ? AND exact_at_ms = ? LIMIT 1",
+        "SELECT id FROM exact_calculations
+         WHERE station_id = ? AND exact_at_ms = ? AND reason <> 'on_demand' LIMIT 1",
     )
     .bind(station_id)
     .bind(exact_at_ms)
@@ -276,6 +288,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_exact_calculation))
         .routes(routes!(use_exact_attempt))
         .routes(routes!(drop_exact_choice))
+        .routes(routes!(calculate_exact_now))
 }
 
 /// An attempt chosen by hand, as kept with its calculation.
@@ -307,6 +320,9 @@ pub struct CalculationSummary {
     /// The fill followed was chosen by hand.
     pub by_hand: bool,
     pub chosen: Option<ChosenAttempt>,
+    /// Who asked for it (*Calculate now*); missing once the user is
+    /// deleted.
+    pub requested_by: Option<String>,
 }
 
 /// An exact time of the day.
@@ -378,6 +394,7 @@ struct SummaryRow {
     chosen_attempt: Option<u16>,
     chosen_by: Option<String>,
     chosen_at_ms: Option<i64>,
+    requested_by: Option<String>,
 }
 
 const SUMMARY_COLUMNS: &str = "
@@ -388,10 +405,12 @@ const SUMMARY_COLUMNS: &str = "
     CAST(e.stop AS CHAR) AS stop, e.duration_ms, e.kept_attempt, e.offset_ms, e.in_window,
     e.faded, e.filling_ms, e.relaxed_steps, e.age_ms, e.by_hand, e.chosen_attempt,
     u.username AS chosen_by,
-    CAST(UNIX_TIMESTAMP(e.chosen_at) * 1000 AS SIGNED) AS chosen_at_ms
+    CAST(UNIX_TIMESTAMP(e.chosen_at) * 1000 AS SIGNED) AS chosen_at_ms,
+    r.username AS requested_by
     FROM exact_calculations e
     LEFT JOIN clocks c ON c.id = e.clock_id
-    LEFT JOIN users u ON u.id = e.chosen_by";
+    LEFT JOIN users u ON u.id = e.chosen_by
+    LEFT JOIN users r ON r.id = e.requested_by";
 
 impl SummaryRow {
     fn mode(&self) -> ExactMode {
@@ -427,6 +446,7 @@ impl SummaryRow {
                 username: self.chosen_by.clone(),
                 at_unix_ms: self.chosen_at_ms.unwrap_or_default(),
             }),
+            requested_by: self.requested_by.clone(),
         }
     }
 }
@@ -676,9 +696,8 @@ async fn get_exact_calculation(
 ) -> ApiResult<Json<CalculationDetail>> {
     let (row, attempts) = load(&state.pool, station.id(), id).await?;
     let latest = is_latest(&state.pool, &row).await?;
-    let can_choose = latest
-        && row.exact_at_ms > crate::rotation::now_ms()
-        && station.queue.kept_calculation() == Some(id);
+    let can_choose =
+        latest && row.exact_at_ms > crate::rotation::now_ms() && station.queue.can_use(id);
     let track_ids: HashSet<u64> = attempts
         .iter()
         .flat_map(|attempt| &attempt.tracks)
@@ -796,6 +815,50 @@ async fn drop_exact_choice(user: CurrentUser, station: Station) -> ApiResult<Sta
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Which exact time to calculate now.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CalculateRequest {
+    /// The upcoming exact time (Unix ms); the upcoming one when missing.
+    #[serde(default)]
+    pub exact_at_unix_ms: Option<i64>,
+}
+
+/// A calculation made on demand.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CalculatedNow {
+    /// The calculation's ID.
+    pub id: u64,
+    pub exact_at_unix_ms: i64,
+}
+
+/// *Calculate now*: builds the fills of the upcoming exact time (the next
+/// one whose slot has not started) from after what may not move, rotation's
+/// own picks queued before the exact slot counted as not queued, and stores
+/// them as a calculation. Nothing in the queue changes. Operators and
+/// admins; `409` for another exact time.
+#[utoipa::path(post, path = "/exact-times/calculate", tag = "rotation",
+    request_body(content = Option<CalculateRequest>),
+    responses((status = 200, body = CalculatedNow), (status = "4XX", body = ErrorBody)))]
+async fn calculate_exact_now(
+    user: CurrentUser,
+    station: Station,
+    body: Option<Json<CalculateRequest>>,
+) -> ApiResult<Json<CalculatedNow>> {
+    user.require(Role::Operator)?;
+    let asked = body.and_then(|Json(request)| request.exact_at_unix_ms);
+    if asked.is_some_and(|asked| asked <= crate::rotation::now_ms()) {
+        return Err(ApiError::Conflict(
+            "this exact time has passed: only the upcoming one can be calculated".to_owned(),
+        ));
+    }
+    let (id, exact_at_unix_ms) = station.queue.calculate_now(asked, &user).await?;
+    Ok(Json(CalculatedNow {
+        id,
+        exact_at_unix_ms,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use heron_rotation::{AttemptTrack, Chosen};
@@ -865,6 +928,7 @@ mod tests {
             Trigger::HandDropped,
             Trigger::Automatic,
             Trigger::Followed,
+            Trigger::OnDemand,
         ] {
             assert_eq!(Trigger::parse(trigger.as_str()), trigger);
         }

@@ -13,6 +13,10 @@
 //!
 //! The engine holds the queue: when the API is down it plays what it has.
 
+mod on_demand;
+
+pub use on_demand::OnDemand;
+
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -424,6 +428,26 @@ impl QueueManager {
         }
     }
 
+    /// The station's library as rotation sees it, and what played (here
+    /// and on the other stations) at `now`.
+    async fn rotation_ground(
+        &self,
+        now: i64,
+    ) -> ApiResult<(heron_rotation::Library, heron_rotation::History)> {
+        let library = rotation::load_library(&self.pool, self.station_id).await?;
+        let history = rotation::load_history(&self.pool, self.station_id, &library, now).await?;
+        let history = match self.stations.upgrade() {
+            Some(stations) => {
+                let elsewhere =
+                    rotation::load_elsewhere(&self.pool, &stations, self.station_id, &library, now)
+                        .await?;
+                history.with_elsewhere(elsewhere)
+            }
+            None => history,
+        };
+        Ok((library, history))
+    }
+
     /// Adds the tracks rotation picks until `min_queued` are waiting.
     async fn fill(&self, state: &PlayerState) -> ApiResult<()> {
         let _busy = self.busy.lock().await;
@@ -449,17 +473,7 @@ impl QueueManager {
         if self.idle() {
             return Ok(());
         }
-        let mut library = rotation::load_library(&self.pool, self.station_id).await?;
-        let history = rotation::load_history(&self.pool, self.station_id, &library, now).await?;
-        let history = match self.stations.upgrade() {
-            Some(stations) => {
-                let elsewhere =
-                    rotation::load_elsewhere(&self.pool, &stations, self.station_id, &library, now)
-                        .await?;
-                history.with_elsewhere(elsewhere)
-            }
-            None => history,
-        };
+        let (mut library, history) = self.rotation_ground(now).await?;
         let (planned, mut at) = rotation::planned_starts(state, now, alternatives);
         let mut history = rotation::with_queue(&self.pool, &library, history, &planned).await?;
         let mut last = rotation::last_position(&self.pool, self.station_id).await?;
@@ -555,6 +569,8 @@ impl QueueManager {
         }
         kept.plan = plan;
         if let Ok(mut slot) = self.kept.lock() {
+            // A calculation made on demand meanwhile stays.
+            kept.on_demand = slot.on_demand.take();
             *slot = kept;
         }
         if picks.is_empty() {
@@ -660,8 +676,15 @@ impl QueueManager {
             kept.next_trigger = None;
         }
         let link = if followed { follows } else { None };
-        let id = match exact_times::store(&self.pool, self.station_id, calculation, trigger, link)
-            .await
+        let id = match exact_times::store(
+            &self.pool,
+            self.station_id,
+            calculation,
+            trigger,
+            link,
+            None,
+        )
+        .await
         {
             Ok(id) => Some(id),
             Err(error) => {
@@ -720,12 +743,19 @@ impl QueueManager {
         }
     }
 
-    /// The calculation whose fill the queue follows.
-    pub fn kept_calculation(&self) -> Option<u64> {
-        self.kept
-            .lock()
-            .ok()
-            .and_then(|kept| kept.calculation.as_ref().map(|calculation| calculation.id))
+    /// Whether the attempts of calculation `id` can be used: the queue
+    /// follows its fill, or it was made on demand (the queue is checked
+    /// when one is used).
+    pub fn can_use(&self, id: u64) -> bool {
+        self.kept.lock().is_ok_and(|kept| {
+            kept.calculation
+                .as_ref()
+                .is_some_and(|calculation| calculation.id == id)
+                || kept
+                    .on_demand
+                    .as_ref()
+                    .is_some_and(|on_demand| on_demand.id == id)
+        })
     }
 
     /// The attempt chosen by hand the queue follows.
@@ -751,6 +781,9 @@ impl QueueManager {
         user: &crate::auth::CurrentUser,
     ) -> ApiResult<()> {
         let _busy = self.busy.lock().await;
+        if let Some(on_demand) = self.on_demand(id) {
+            return self.use_on_demand(on_demand, attempt, user).await;
+        }
         let conflict = |reason: &str| Err(ApiError::Conflict(reason.to_owned()));
         let queued = {
             let kept = self
@@ -791,20 +824,9 @@ impl QueueManager {
         if out.iter().any(|entry| !waiting.contains(entry)) {
             return conflict("a track queued from this calculation has started since");
         }
-        // A track first: its linked jingle goes with it.
-        for entry in out.iter().rev() {
-            match self.engine.remove(*entry).await {
-                Ok(()) | Err(ApiError::Invalid(_) | ApiError::NotFound(_)) => {}
-                Err(error) => return Err(error),
-            }
-        }
-        if !out.is_empty() {
-            tracing::info!(
-                station = self.station_id,
-                removed = out.len(),
-                "exact time: the tracks the attempt chosen by hand replaces taken out"
-            );
-        }
+        // Out of the queue and of the rotation log: the clock's position
+        // goes back to before them, where the attempt starts.
+        self.take_out(state.engine_started_at_unix_ms, &out).await?;
         if let Ok(mut kept) = self.kept.lock() {
             if let Some(calculation) = kept.calculation.as_mut() {
                 calculation.queued.truncate(same);
