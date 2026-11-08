@@ -42,14 +42,18 @@ pub enum Trigger {
     /// No fill kept, but this exact time had calculations: the API
     /// restarted.
     Restart,
-    /// The fill kept no longer landed: the queue changed (a track added,
-    /// removed or moved, a skip, a match, a rule that no longer passes).
+    /// The queue changed (a track added, removed or moved, a skip, a
+    /// match, a show's items) and moved where it ends before the exact
+    /// time, or the fill kept no longer landed (a rule that no longer
+    /// passes).
     QueueChanged,
     /// The fill chosen by hand no longer landed: rotation chooses by
     /// itself again.
     HandDropped,
     /// Back to automatic: the choice by hand was dropped.
     Automatic,
+    /// *Recalculate now*: an operator asked for new fills.
+    ByHand,
     /// The pick followed the fill kept: no fill built.
     Followed,
 }
@@ -62,6 +66,7 @@ impl Trigger {
             Self::QueueChanged => "queue_changed",
             Self::HandDropped => "hand_dropped",
             Self::Automatic => "automatic",
+            Self::ByHand => "by_hand",
             Self::Followed => "followed",
         }
     }
@@ -73,6 +78,7 @@ impl Trigger {
             "queue_changed" => Self::QueueChanged,
             "hand_dropped" => Self::HandDropped,
             "automatic" => Self::Automatic,
+            "by_hand" => Self::ByHand,
             _ => Self::Followed,
         }
     }
@@ -121,6 +127,8 @@ pub struct Kept {
 pub struct KeptCalculation {
     pub id: u64,
     pub exact_at_ms: i64,
+    /// The end of its window: the exact slot's start time in the queue.
+    pub cut_ms: i64,
     /// The picks queued from it since (its own first, then those that
     /// followed it), in order.
     pub queued: Vec<QueuedPick>,
@@ -276,6 +284,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_exact_calculation))
         .routes(routes!(use_exact_attempt))
         .routes(routes!(drop_exact_choice))
+        .routes(routes!(recalculate_exact_time))
 }
 
 /// An attempt chosen by hand, as kept with its calculation.
@@ -796,6 +805,46 @@ async fn drop_exact_choice(user: CurrentUser, station: Station) -> ApiResult<Sta
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct RecalculateQuery {
+    /// The exact time (Unix ms): the next one the queue plans for by
+    /// default.
+    pub exact_at_unix_ms: Option<i64>,
+}
+
+/// The calculation *Recalculate now* stored.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct Recalculated {
+    pub id: u64,
+}
+
+/// *Recalculate now*: new fills for the next exact time at once, the picks
+/// queued from the fill kept replaced as when the queue changes. Operators
+/// and admins; `409` when the queue follows no calculation for it, or
+/// nothing can be replaced.
+#[utoipa::path(post, path = "/exact-times/recalculate", tag = "rotation",
+    params(RecalculateQuery),
+    responses((status = 200, body = Recalculated), (status = "4XX", body = ErrorBody)))]
+async fn recalculate_exact_time(
+    user: CurrentUser,
+    station: Station,
+    Query(query): Query<RecalculateQuery>,
+) -> ApiResult<Json<Recalculated>> {
+    user.require(Role::Operator)?;
+    let id = station
+        .queue
+        .replace(Trigger::ByHand, query.exact_at_unix_ms)
+        .await?;
+    tracing::info!(
+        station = station.id(),
+        calculation = id,
+        user = %user.username,
+        "exact time: recalculated by hand"
+    );
+    Ok(Json(Recalculated { id }))
+}
+
 #[cfg(test)]
 mod tests {
     use heron_rotation::{AttemptTrack, Chosen};
@@ -864,6 +913,7 @@ mod tests {
             Trigger::QueueChanged,
             Trigger::HandDropped,
             Trigger::Automatic,
+            Trigger::ByHand,
             Trigger::Followed,
         ] {
             assert_eq!(Trigger::parse(trigger.as_str()), trigger);
