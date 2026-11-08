@@ -898,6 +898,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/certification/days/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Deletes a server's day: its lines, and the gaps that lie within it. The
+         *     log is not read again (its position is kept), so the day is gone for
+         *     good, from the exports and the deliveries too. Admins only.
+         */
+        delete: operations["delete_day"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/certification/deliveries": {
         parameters: {
             query?: never;
@@ -3726,6 +3747,27 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/certification/days/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Deletes a server's day: its lines, and the gaps that lie within it. The
+         *     log is not read again (its position is kept), so the day is gone for
+         *     good, from the exports and the deliveries too. Admins only.
+         */
+        delete: operations["delete_day_on_station"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7717,6 +7759,13 @@ export interface components {
          * @enum {string}
          */
         DedicationStatus: "pending" | "accepted" | "played" | "refused";
+        /** @description How much a deleted day held. */
+        DeletedDay: {
+            /** Format: int64 */
+            gaps: number;
+            /** Format: int64 */
+            lines: number;
+        };
         /** @description An attempt to send a day. */
         DeliveryAttempt: {
             /** Format: int64 */
@@ -15352,6 +15401,39 @@ export interface operations {
             };
         };
     };
+    delete_day: {
+        parameters: {
+            query: {
+                /** @description The server whose day is deleted. */
+                server_id: number;
+            };
+            header?: never;
+            path: {
+                /** @description `YYYY-MM-DD`, in the station's time zone */
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedDay"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_certification_deliveries: {
         parameters: {
             query?: never;
@@ -21395,6 +21477,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CertificationDay"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_day_on_station: {
+        parameters: {
+            query: {
+                /** @description The server whose day is deleted. */
+                server_id: number;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description `YYYY-MM-DD`, in the station's time zone */
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedDay"];
                 };
             };
             "4XX": {
