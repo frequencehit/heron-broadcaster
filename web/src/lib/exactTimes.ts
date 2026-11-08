@@ -350,6 +350,8 @@ export function triggerLabel(calculation: CalculationSummary): string {
       return t("exactTimes.triggerHandDropped");
     case "automatic":
       return t("exactTimes.triggerAutomatic");
+    case "by_hand":
+      return t("exactTimes.triggerByHand");
     default:
       return calculation.by_hand ? t("exactTimes.triggerFollowedByHand") : t("exactTimes.triggerFollowed");
   }
@@ -369,19 +371,75 @@ export function stopLabel(calculation: CalculationSummary): string {
   }
 }
 
-/** The result in the list of calculations: `−4 s`, `followed`, `faded`. */
-export function calculationResult(calculation: CalculationSummary): Status {
+/**
+ * How a calculation's best fill ends against its exact time, in words:
+ * `ends right on time`, `ends 5 s early`, `ends 3 s late`, `faded: cuts 12 s`,
+ * `does not reach the exact time`.
+ */
+export function calculationResult(calculation: CalculationSummary, window: ExactWindow): Status {
   const ending = calculation.ending;
   if (calculation.trigger === "followed") {
-    return { label: t("exactTimes.followed"), tone: "good" };
+    return { label: t("exactTimes.resultFollowed"), tone: "good" };
   }
   if (ending.offset_ms === null || ending.offset_ms === undefined) {
     return { label: t("exactTimes.notReached"), tone: "bad" };
   }
-  if (ending.faded || !ending.in_window) {
-    return { label: signedSeconds(ending.offset_ms), tone: "bad" };
+  if (ending.faded) {
+    return { label: t("exactTimes.resultFaded", { seconds: Math.round(cutMs(ending, window) / 1000) }), tone: "bad" };
   }
-  return { label: signedSeconds(ending.offset_ms), tone: ending.filling_ms > 0 ? "warn" : "good" };
+  const seconds = Math.round(Math.abs(ending.offset_ms) / 1000);
+  const result =
+    seconds === 0
+      ? t("exactTimes.resultOnTime")
+      : ending.offset_ms < 0
+        ? t("exactTimes.resultEarly", { seconds })
+        : t("exactTimes.resultLate", { seconds });
+  if (!ending.in_window) {
+    return { label: t("exactTimes.resultOutside", { result }), tone: "bad" };
+  }
+  if (ending.filling_ms > 0) {
+    return {
+      label: t("exactTimes.resultFilled", { result, seconds: Math.round(ending.filling_ms / 1000) }),
+      tone: "warn",
+    };
+  }
+  return { label: result, tone: "good" };
+}
+
+/** A card of the list: a calculation, and the picks that followed its fill since. */
+export interface Run {
+  calculation: CalculationSummary;
+  followed: CalculationSummary[];
+}
+
+/**
+ * The calculations as cards, newest first: a pick that followed a fill is
+ * not a calculation, it goes with the one it follows (or, that one gone,
+ * with the picks that followed it too).
+ */
+export function runsOf(calculations: readonly CalculationSummary[]): Run[] {
+  const runs: Run[] = [];
+  for (const calculation of calculations) {
+    if (calculation.trigger === "followed") {
+      const follows = calculation.follows_id;
+      const run =
+        follows === null || follows === undefined
+          ? runs.at(-1)
+          : (runs.find((run) => run.calculation.id === follows) ??
+            runs.find((run) => run.calculation.trigger === "followed" && run.calculation.follows_id === follows));
+      if (run) {
+        run.followed.push(calculation);
+        continue;
+      }
+    }
+    runs.push({ calculation, followed: [] });
+  }
+  return runs.reverse();
+}
+
+/** Whether a card holds the calculation (or followed pick) `id`. */
+export function runHolds(run: Run, id: number | null | undefined): boolean {
+  return run.calculation.id === id || run.followed.some((followed) => followed.id === id);
 }
 
 /** How a track of an attempt was chosen: `least recently played`, `fit search`, `medley, 2 parts left out`. */

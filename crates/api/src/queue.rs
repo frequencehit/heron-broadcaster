@@ -7,6 +7,8 @@
 //! - Keeps the queue from running dry (`queue.autofill`) with the tracks
 //!   rotation picks (`heron-rotation`), each recorded in the rotation log;
 //!   a jingle of a linked clock slot is queued linked to its track.
+//! - Before an exact time, calculates again when the queue changes where it
+//!   ends, and replaces the picks it queued from the fill kept.
 //! - Follows the library: queued tracks whose file the librarian moved, or
 //!   whose cue points were changed, are updated; tracks whose file
 //!   disappeared are taken out of the queue.
@@ -24,7 +26,7 @@ use heron_rotation::{Budget, Planning, Play, Rng, Stop};
 use sqlx::{MySqlPool, QueryBuilder};
 use tokio::sync::Notify;
 
-use crate::engine::{EngineLink, PlayerState, source_to_proto};
+use crate::engine::{EngineLink, PlayerState, QueueEntry, source_to_proto};
 use crate::error::{ApiError, ApiResult};
 use crate::exact_times::{self, HandChoice, Kept, KeptCalculation, QueuedPick, Trigger};
 use crate::rotation::{self, SILENT_MS};
@@ -35,6 +37,13 @@ const FOLLOW_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Wait before trying again when rotation could pick nothing.
 const NOTHING_TO_PICK: Duration = Duration::from_secs(30);
+
+/// How far the end of the queue before an exact time moves before the
+/// queue manager calculates again (`docs/rotation.md#exact-times`).
+const MOVED_MS: i64 = 2_000;
+/// How long it waits for the queue to settle first: a burst of changes
+/// gives one calculation.
+const SETTLE: Duration = Duration::from_secs(2);
 
 pub struct QueueManager {
     pool: MySqlPool,
@@ -56,6 +65,58 @@ pub struct QueueManager {
     /// Every track: the match whose winner was tried as the next vote's
     /// track, so as not to try again.
     chain_tried: Mutex<Option<u64>>,
+    /// Where the queue ends before the exact time, watched.
+    watch: Mutex<Watch>,
+}
+
+/// Where the waiting tracks before the exact time of the calculation kept
+/// end, once the last pick was queued, to tell when the queue changed.
+#[derive(Default)]
+struct Watch {
+    /// The calculation it watches the queue of.
+    calculation: Option<u64>,
+    /// The end, from the exact time's queue as it was.
+    baseline: Option<i64>,
+    /// Entries just queued, not in the engine's state yet: the end is
+    /// taken again once they are.
+    awaiting: Vec<u64>,
+    /// The end moved: when to calculate again, and where it then was.
+    pending: Option<(Instant, i64)>,
+}
+
+/// Where the exact slot is in `queue`, its linked jingle first: the first
+/// entry starting at `cut` at the latest, the end of its window.
+fn exact_index(queue: &[QueueEntry], cut: i64) -> Option<usize> {
+    let mut index = queue
+        .iter()
+        .position(|entry| entry.track.start_at_unix_ms == Some(cut))?;
+    while index > 0 && queue[index - 1].linked_to == Some(queue[index].entry_id) {
+        index -= 1;
+    }
+    Some(index)
+}
+
+/// Where the waiting tracks before the exact slot (starting at `cut` at
+/// the latest) end, as the queue's expected starts count them; `None`
+/// once the exact slot is cued.
+fn end_before_exact(
+    state: &PlayerState,
+    now: i64,
+    alternatives: Option<(u64, u64)>,
+    cut: i64,
+) -> Option<i64> {
+    if state
+        .cued
+        .as_ref()
+        .is_some_and(|entry| entry.track.start_at_unix_ms == Some(cut))
+    {
+        return None;
+    }
+    let mut before = state.clone();
+    if let Some(index) = exact_index(&before.queue, cut) {
+        before.queue.truncate(index);
+    }
+    Some(rotation::planned_starts(&before, now, alternatives).1)
 }
 
 /// A library track as the engine needs it.
@@ -308,6 +369,7 @@ impl QueueManager {
             kept: Mutex::new(Kept::default()),
             busy: tokio::sync::Mutex::new(()),
             chain_tried: Mutex::new(None),
+            watch: Mutex::new(Watch::default()),
         })
     }
 
@@ -407,6 +469,9 @@ impl QueueManager {
         loop {
             let state = engine.borrow_and_update().clone();
             if let Some(state) = state {
+                if let Err(error) = self.watch_queue(&state).await {
+                    tracing::warn!(%error, "cannot check the queue against the fill kept");
+                }
                 if let Err(error) = self.trim_before_exact(&state).await {
                     tracing::warn!(%error, "cannot check the queue against its exact time");
                 }
@@ -431,6 +496,11 @@ impl QueueManager {
     /// Adds the tracks rotation picks until `min_queued` are waiting.
     async fn fill(&self, state: &PlayerState) -> ApiResult<()> {
         let _busy = self.busy.lock().await;
+        self.fill_locked(state, 0).await
+    }
+
+    /// [`Self::fill`], `self.busy` held, with at least `at_least` picks.
+    async fn fill_locked(&self, state: &PlayerState, at_least: usize) -> ApiResult<()> {
         let settings: QueueSettings =
             settings::load_for(&self.pool, self.station_id, QueueSettings::SETTINGS_NAME).await?;
         // A cued fallback track gives way to anything queued.
@@ -438,7 +508,9 @@ impl QueueManager {
             .waiting()
             .filter(|entry| entry.track.source != PlaySource::Fallback)
             .count();
-        let missing = (settings.min_queued as usize).saturating_sub(waiting);
+        let missing = (settings.min_queued as usize)
+            .saturating_sub(waiting)
+            .max(at_least);
         if !settings.autofill {
             return Ok(());
         }
@@ -681,6 +753,7 @@ impl QueueManager {
         let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
         let (tracks, linked, firsts) = entries(&picks, tracks)?;
         let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
+        self.awaiting(entry_ids.iter().copied().chain(jingle_entry));
         self.queued_from(&ahead, &picks, &firsts, &entry_ids);
         let mut log_ids = Vec::new();
         // Each pick's first entry: a shortened medley queues two.
@@ -787,6 +860,7 @@ impl QueueManager {
         kept.calculation = id.map(|id| KeptCalculation {
             id,
             exact_at_ms: exact_at,
+            cut_ms: calculation.window_cut_unix_ms,
             queued: Vec::new(),
             blocked: false,
         });
@@ -938,6 +1012,311 @@ impl QueueManager {
         Ok(())
     }
 
+    /// Entries just queued: the end of the queue before the exact time is
+    /// taken again once the engine's state has them.
+    fn awaiting(&self, entries: impl IntoIterator<Item = u64>) {
+        if let Ok(mut watch) = self.watch.lock() {
+            watch.awaiting.extend(entries);
+            watch.baseline = None;
+            watch.pending = None;
+        }
+    }
+
+    /// Before an exact time, calculates again once the end of the queue
+    /// before it has moved and settled (`docs/rotation.md#exact-times`).
+    async fn watch_queue(&self, state: &PlayerState) -> ApiResult<()> {
+        let now = rotation::now_ms();
+        let Some((id, exact_at, cut)) = self.kept.lock().ok().and_then(|kept| {
+            kept.calculation
+                .as_ref()
+                .map(|calculation| (calculation.id, calculation.exact_at_ms, calculation.cut_ms))
+        }) else {
+            return Ok(());
+        };
+        if exact_at <= now || state.paused {
+            if let Ok(mut watch) = self.watch.lock() {
+                watch.pending = None;
+            }
+            return Ok(());
+        }
+        let alternatives = crate::matches::alternatives(&self.pool, self.station_id, state)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "cannot read the match's tracks");
+                None
+            });
+        let end = end_before_exact(state, now, alternatives, cut);
+        let due = {
+            let Ok(mut watch) = self.watch.lock() else {
+                return Ok(());
+            };
+            if watch.calculation != Some(id) {
+                watch.calculation = Some(id);
+                watch.baseline = None;
+                watch.pending = None;
+            }
+            // Engine entry IDs only grow: a state with a newer entry is
+            // newer than the entries queued before it.
+            let newest = state
+                .waiting()
+                .chain(state.decks.iter().filter_map(|deck| deck.entry.as_ref()))
+                .map(|entry| entry.entry_id)
+                .max()
+                .unwrap_or(0);
+            watch.awaiting.retain(|entry| *entry > newest);
+            match end {
+                _ if !watch.awaiting.is_empty() => false,
+                None => {
+                    watch.pending = None;
+                    false
+                }
+                Some(end) => match (watch.baseline, watch.pending) {
+                    (None, _) => {
+                        watch.baseline = Some(end);
+                        watch.pending = None;
+                        false
+                    }
+                    (Some(baseline), _) if (end - baseline).abs() <= MOVED_MS => {
+                        watch.pending = None;
+                        false
+                    }
+                    (Some(_), Some((at, seen))) if (end - seen).abs() <= MOVED_MS => {
+                        Instant::now() >= at
+                    }
+                    (Some(_), _) => {
+                        watch.pending = Some((Instant::now() + SETTLE, end));
+                        false
+                    }
+                },
+            }
+        };
+        if !due {
+            return Ok(());
+        }
+        let result = self.replace(Trigger::QueueChanged, None).await;
+        if let Ok(mut watch) = self.watch.lock() {
+            // The queue as it now is, whatever happened.
+            watch.baseline = None;
+            watch.pending = None;
+        }
+        match result {
+            Ok(_) => Ok(()),
+            Err(ApiError::Conflict(reason)) => {
+                tracing::info!(
+                    station = self.station_id,
+                    exact_at,
+                    %reason,
+                    "exact time: the queue changed, its picks cannot be replaced"
+                );
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Calculates the exact time the queue follows a fill of again, now:
+    /// the picks queued from the fill kept that wait (not the cued one),
+    /// the exact slot's and those after it are taken out, and the queue is
+    /// filled again from where it ends with new fills, as many picks as
+    /// were taken out (`docs/rotation.md#exact-times`). Tracks queued by
+    /// hand, requests, a show's items and a match's tracks stay. Returns
+    /// the new calculation; `409` when there is none to redo, nothing can
+    /// be replaced, or `exact_at` is not the exact time it plans for.
+    pub async fn replace(&self, trigger: Trigger, exact_at: Option<i64>) -> ApiResult<u64> {
+        let _busy = self.busy.lock().await;
+        let conflict = |reason: &str| ApiError::Conflict(reason.to_owned());
+        let now = rotation::now_ms();
+        let calculation = self
+            .kept
+            .lock()
+            .ok()
+            .and_then(|kept| kept.calculation.clone())
+            .filter(|calculation| calculation.exact_at_ms > now)
+            .ok_or_else(|| {
+                conflict(
+                    "the queue follows no calculation for an exact time ahead: \
+                     there is none, or the API restarted",
+                )
+            })?;
+        if exact_at.is_some_and(|at| at != calculation.exact_at_ms) {
+            return Err(conflict(
+                "only the next exact time, the one the queue plans for, can be calculated again",
+            ));
+        }
+        let settings: QueueSettings =
+            settings::load_for(&self.pool, self.station_id, QueueSettings::SETTINGS_NAME).await?;
+        if !settings.autofill {
+            return Err(conflict(
+                "autofill is off: nothing would fill the queue again",
+            ));
+        }
+        if self.idle() {
+            return Err(conflict("rotation could pick nothing a moment ago"));
+        }
+        if crate::matches::holds_queue(&self.pool, self.station_id).await? {
+            return Err(conflict(
+                "a match is waiting or open: nothing goes behind it",
+            ));
+        }
+        let state = self.engine.fetch_state().await?;
+        let queue = &state.queue;
+        let rows = self.picks_of(&state).await?;
+        let kept_of = |entry: u64| {
+            calculation
+                .queued
+                .iter()
+                .position(|pick| pick.entries.contains(&entry))
+        };
+        let exact = exact_index(queue, calculation.cut_ms);
+        let end = exact.unwrap_or(queue.len());
+        // After the exact slot, rotation's picks only: they go with it.
+        if let Some(index) = exact {
+            let foreign = queue[index..].iter().any(|entry| {
+                !(rows.contains(&entry.entry_id)
+                    || kept_of(entry.entry_id).is_some()
+                    || entry.track.continues)
+            });
+            if foreign {
+                return Err(conflict(
+                    "something rotation did not pick is queued after the exact slot",
+                ));
+            }
+        }
+        // Before it: the picks of the fill kept that only picks of it and
+        // tracks queued by hand follow.
+        let mut from = end;
+        while from > 0 {
+            let entry = &queue[from - 1];
+            let stays = matches!(entry.track.source, PlaySource::Manual | PlaySource::Request);
+            if !stays && kept_of(entry.entry_id).is_none() {
+                break;
+            }
+            from -= 1;
+        }
+        let range: Vec<u64> = queue[from..end]
+            .iter()
+            .map(|entry| entry.entry_id)
+            .collect();
+        // Whole picks only: one with an entry cued stays.
+        let picks: Vec<usize> = (0..calculation.queued.len())
+            .filter(|index| {
+                calculation.queued[*index]
+                    .entries
+                    .iter()
+                    .all(|entry| range.contains(entry))
+            })
+            .collect();
+        let mut out: Vec<u64> = queue[from..end]
+            .iter()
+            .map(|entry| entry.entry_id)
+            .filter(|entry| kept_of(*entry).is_some_and(|index| picks.contains(&index)))
+            .collect();
+        if let Some(index) = exact {
+            out.extend(queue[index..].iter().map(|entry| entry.entry_id));
+        }
+        if out.is_empty() {
+            return Err(conflict(
+                "the picks queued from the fill kept are on air or cued: none to replace",
+            ));
+        }
+        let refill = picks.len() + usize::from(exact.is_some());
+        let previous = calculation.id;
+        // From now on the queue no longer follows it: none of its attempts
+        // can be chosen while the new fills are built.
+        if let Ok(mut kept) = self.kept.lock() {
+            let by_hand = kept.choice.is_some()
+                || kept
+                    .plan
+                    .as_ref()
+                    .is_some_and(heron_rotation::Plan::chosen_by_hand);
+            if by_hand && trigger == Trigger::QueueChanged {
+                tracing::warn!(
+                    station = self.station_id,
+                    exact_at = calculation.exact_at_ms,
+                    "the queue changed: the attempt chosen by hand is dropped, \
+                     rotation chooses by itself again"
+                );
+            }
+            kept.plan = None;
+            kept.choice = None;
+            kept.calculation = None;
+            kept.next_trigger = Some(if by_hand && trigger == Trigger::QueueChanged {
+                Trigger::HandDropped
+            } else {
+                trigger
+            });
+        }
+        // From the end: a track first, its linked jingle goes with it.
+        let mut removed = Vec::new();
+        for entry in out.iter().rev() {
+            match self.engine.remove(*entry).await {
+                Ok(()) | Err(ApiError::NotFound(_)) => removed.push(*entry),
+                // Started meanwhile: it plays.
+                Err(ApiError::Invalid(_)) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        // They never play: the rotation log forgets them, and the clock
+        // goes on from the pick before them.
+        if !removed.is_empty() {
+            let mut forget = QueryBuilder::new("DELETE FROM rotation_picks WHERE station_id = ");
+            forget
+                .push_bind(self.station_id)
+                .push(" AND engine_started_at = ")
+                .push_bind(state.engine_started_at_unix_ms)
+                .push(" AND entry_id IN (");
+            let mut ids = forget.separated(", ");
+            for entry in &removed {
+                ids.push_bind(*entry);
+            }
+            forget.push(")");
+            forget.build().execute(&self.pool).await?;
+        }
+        tracing::info!(
+            station = self.station_id,
+            exact_at = calculation.exact_at_ms,
+            removed = removed.len(),
+            trigger = ?trigger,
+            "exact time: calculated again, the picks queued from the fill kept replaced"
+        );
+        let state = self.engine.fetch_state().await?;
+        let filled = self.fill_locked(&state, refill).await;
+        let latest = self.kept.lock().ok().and_then(|mut kept| {
+            // Not consumed: no pick was made before the exact time.
+            kept.next_trigger = None;
+            kept.calculation.as_ref().map(|calculation| calculation.id)
+        });
+        filled?;
+        match latest {
+            Some(id) if id != previous => Ok(id),
+            _ => Err(conflict(
+                "the queue reaches the exact time's window already: no fill to build",
+            )),
+        }
+    }
+
+    /// The waiting entries rotation picked, by their rotation log.
+    async fn picks_of(&self, state: &PlayerState) -> ApiResult<Vec<u64>> {
+        let entries: Vec<u64> = state.queue.iter().map(|entry| entry.entry_id).collect();
+        if entries.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut select =
+            QueryBuilder::new("SELECT entry_id FROM rotation_picks WHERE station_id = ");
+        select
+            .push_bind(self.station_id)
+            .push(" AND engine_started_at = ")
+            .push_bind(state.engine_started_at_unix_ms)
+            .push(" AND entry_id IN (");
+        let mut ids = select.separated(", ");
+        for entry in &entries {
+            ids.push_bind(*entry);
+        }
+        select.push(")");
+        let rows: Vec<(u64,)> = select.build_query_as().fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(|(entry,)| entry).collect())
+    }
+
     /// Drops the attempt chosen by hand: the next pick builds new fills.
     /// False when there was none.
     pub async fn back_to_automatic(&self) -> bool {
@@ -1001,7 +1380,8 @@ impl QueueManager {
                 })
                 .map(|(index, _)| u32::try_from(index).unwrap_or(u32::MAX))
                 .collect();
-            self.engine.enqueue(tracks, None, linked).await?;
+            let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
+            self.awaiting(entry_ids);
             tracing::info!(tracks = ids.len(), "top 30: queued the show's next tracks");
         }
         crate::top30::queued(

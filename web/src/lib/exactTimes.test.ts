@@ -19,6 +19,8 @@ import {
   latestBuilt,
   losesAt,
   metStatus,
+  runHolds,
+  runsOf,
   signedSeconds,
   spanOf,
   ticks,
@@ -195,10 +197,52 @@ describe("exact times of the day", () => {
     ];
     expect(latestBuilt(list)?.id).toBe(2);
     expect(latestBuilt([])).toBeUndefined();
-    expect(calculationResult(list[2] as CalculationSummary).label).toBe(t("exactTimes.followed"));
-    expect(calculationResult(list[0] as CalculationSummary)).toEqual({ label: "−4 s", tone: "good" });
     expect(triggerLabel(list[1] as CalculationSummary)).toBe(t("exactTimes.triggerQueueChanged"));
+    expect(triggerLabel(calculation({ trigger: "by_hand" }))).toBe(t("exactTimes.triggerByHand"));
     expect(triggerLabel(calculation({ trigger: "followed", by_hand: true }))).toBe(t("exactTimes.triggerFollowedByHand"));
+  });
+
+  it("says how a calculation ends in words, its sign spelled out", () => {
+    const result = (changes: Partial<AttemptEnding>) => calculationResult(calculation({ ending: ending(changes) }), WINDOW);
+    expect(result({ offset_ms: -4_000 })).toEqual({ label: t("exactTimes.resultEarly", { seconds: 4 }), tone: "good" });
+    expect(result({ offset_ms: 300 })).toEqual({ label: t("exactTimes.resultOnTime"), tone: "good" });
+    expect(result({ offset_ms: 3_000 }).label).toBe(t("exactTimes.resultLate", { seconds: 3 }));
+    expect(result({ offset_ms: -2_000, filling_ms: 9_000 })).toEqual({
+      label: t("exactTimes.resultFilled", { result: t("exactTimes.resultEarly", { seconds: 2 }), seconds: 9 }),
+      tone: "warn",
+    });
+    expect(result({ offset_ms: -15_000, in_window: false })).toEqual({
+      label: t("exactTimes.resultOutside", { result: t("exactTimes.resultEarly", { seconds: 15 }) }),
+      tone: "bad",
+    });
+    // Faded: by how much the cut takes off the track before.
+    expect(result({ offset_ms: 42_000, in_window: false, faded: true })).toEqual({
+      label: t("exactTimes.resultFaded", { seconds: 12 }),
+      tone: "bad",
+    });
+    expect(result({ offset_ms: null })).toEqual({ label: t("exactTimes.notReached"), tone: "bad" });
+    expect(calculationResult(calculation({ trigger: "followed" }), WINDOW).label).toBe(t("exactTimes.resultFollowed"));
+  });
+
+  it("puts the picks that followed a fill on the card of its calculation, newest first", () => {
+    const runs = runsOf([
+      calculation({ id: 1 }),
+      calculation({ id: 2, trigger: "followed", follows_id: 1 }),
+      calculation({ id: 3, trigger: "followed", follows_id: 1 }),
+      calculation({ id: 4, trigger: "queue_changed" }),
+      calculation({ id: 5, trigger: "followed", follows_id: 4 }),
+      // The one it follows is no longer kept: its picks together.
+      calculation({ id: 6, trigger: "followed", follows_id: 99 }),
+      calculation({ id: 7, trigger: "followed", follows_id: 99 }),
+    ]);
+    expect(runs.map((run) => [run.calculation.id, run.followed.map((followed) => followed.id)])).toEqual([
+      [6, [7]],
+      [4, [5]],
+      [1, [2, 3]],
+    ]);
+    expect(runHolds(runs[2] as (typeof runs)[number], 3)).toBe(true);
+    expect(runHolds(runs[2] as (typeof runs)[number], 4)).toBe(false);
+    expect(runsOf([])).toEqual([]);
   });
 });
 

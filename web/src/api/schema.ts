@@ -1451,6 +1451,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exact-times/recalculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * *Recalculate now*: new fills for the next exact time at once, the picks
+         *     queued from the fill kept replaced as when the queue changes. Operators
+         *     and admins; `409` when the queue follows no calculation for it, or
+         *     nothing can be replaced.
+         */
+        post: operations["recalculate_exact_time"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gateway/state": {
         parameters: {
             query?: never;
@@ -4222,6 +4244,28 @@ export interface paths {
          *     pick builds new fills. Operators and admins.
          */
         delete: operations["drop_exact_choice_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/exact-times/recalculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * *Recalculate now*: new fills for the next exact time at once, the picks
+         *     queued from the fill kept replaced as when the queue changes. Operators
+         *     and admins; `409` when the queue follows no calculation for it, or
+         *     nothing can be replaced.
+         */
+        post: operations["recalculate_exact_time_on_station"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -11262,6 +11306,11 @@ export interface components {
              */
             values: number;
         };
+        /** @description The calculation *Recalculate now* stored. */
+        Recalculated: {
+            /** Format: int64 */
+            id: number;
+        };
         /** @description How a medley is built. */
         Recipe: {
             /**
@@ -13572,7 +13621,7 @@ export interface components {
          * @description Why fills were built, or that a pick followed the fill kept.
          * @enum {string}
          */
-        Trigger: "first" | "restart" | "queue_changed" | "hand_dropped" | "automatic" | "followed";
+        Trigger: "first" | "restart" | "queue_changed" | "hand_dropped" | "automatic" | "by_hand" | "followed";
         /**
          * @description Which roles require a second factor. With several stations, a user's
          *     highest role counts.
@@ -17064,6 +17113,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    recalculate_exact_time: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The exact time (Unix ms): the next one the queue plans for by
+                 *     default.
+                 */
+                exact_at_unix_ms?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recalculated"];
+                };
             };
             "4XX": {
                 headers: {
@@ -22949,6 +23031,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    recalculate_exact_time_on_station: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The exact time (Unix ms): the next one the queue plans for by
+                 *     default.
+                 */
+                exact_at_unix_ms?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recalculated"];
+                };
             };
             "4XX": {
                 headers: {

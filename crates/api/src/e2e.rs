@@ -13221,6 +13221,253 @@ async fn exact_time_attempts_are_kept_and_one_can_be_chosen_by_hand() {
     station.stop().await;
 }
 
+/// An exact time calculated again (docs/rotation.md#exact-times): by
+/// hand with *Recalculate now*, and when a dedication goes into a queue
+/// already filled up to the exact time, the picks queued from the fill
+/// kept are replaced so that the queue still ends in the window.
+#[tokio::test(flavor = "multi_thread")]
+async fn exact_times_are_calculated_again_when_the_queue_changes() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let t = &station.tracks;
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let mut categories = Vec::new();
+    let free = json!({"track_min": 0, "title_min": 0, "artist_min": 0, "album_min": 0});
+    for (name, members) in [("News", &t[4..]), ("Songs", &t[..4])] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "separation": free}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (news, songs) = (categories[0], categories[1]);
+    let mut rotation = admin.get("/settings/rotation").await;
+    rotation["filler_category_id"] = json!(songs);
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // A soft exact time a minute and a quarter ahead, in this hour.
+    while rotation_now().rem_euclid(3_600_000) > 3_600_000 - 180_000 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let hour_start = rotation_now() - rotation_now().rem_euclid(3_600_000);
+    let soft_s = (rotation_now() - hour_start) / 1_000 + 75;
+    let soft_at = hour_start + soft_s * 1_000;
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Again", "slots": [
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": songs, "enforce_rules": false},
+                // Ending in the 10 s before it, and slots after it: with
+                // tracks of 3 s, a clock starting over in its window would
+                // play it again.
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": soft_s, "mode": "soft", "after_s": 0}},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": songs, "enforce_rules": false},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    let clock_id = clock["id"].as_u64().unwrap();
+    let week: Vec<Value> = (1..=7)
+        .flat_map(|day| {
+            (0..24).map(move |hour| json!({"day_of_week": day, "hour": hour, "clock_id": clock_id}))
+        })
+        .collect();
+    let (status, _) = admin.send(Method::PUT, "/schedule", json!(week)).await;
+    assert_eq!(status, StatusCode::OK);
+    // Tracks of 3 s: the queue reaches past the exact time.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 50}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let day = jiff::Timestamp::from_millisecond(soft_at)
+        .unwrap()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date()
+        .to_string();
+    async fn of_day(client: &Client, day: &str, at: i64) -> Vec<Value> {
+        let day = client.get(&format!("/exact-times?day={day}")).await;
+        day["exact_times"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|exact| exact["at_unix_ms"] == at)
+            .map(|exact| exact["calculations"].as_array().unwrap().clone())
+            .unwrap_or_default()
+    }
+    let calculations = || of_day(&viewer, &day, soft_at);
+    let exact_entries = || async {
+        let queue = admin.get("/queue").await;
+        queue
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entry| entry["track"]["start_at_unix_ms"] == soft_at)
+            .map(|entry| entry["entry_id"].as_u64().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let first = eventually(
+        "the queue filled up to the exact slot",
+        Duration::from_secs(30),
+        || async {
+            let entries = exact_entries().await;
+            (entries.len() == 1).then(|| entries[0])
+        },
+    )
+    .await;
+
+    // By hand: operators, for the exact time the queue plans for.
+    let (status, _) = viewer
+        .request(Method::POST, "/exact-times/recalculate", None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, body) = admin
+        .request(
+            Method::POST,
+            &format!("/exact-times/recalculate?exact_at_unix_ms={}", soft_at + 1),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    let (status, body) = admin
+        .request(
+            Method::POST,
+            &format!("/exact-times/recalculate?exact_at_unix_ms={soft_at}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let by_hand = body["id"].as_u64().unwrap();
+    let listed = calculations().await;
+    let calculation = listed
+        .iter()
+        .find(|calculation| calculation["id"] == by_hand)
+        .unwrap_or_else(|| panic!("{listed:?}"));
+    assert_eq!(calculation["trigger"], "by_hand", "{calculation}");
+    // The exact slot's track was replaced with the picks before it.
+    let again = exact_entries().await;
+    assert_eq!(again.len(), 1, "{again:?}");
+    assert_ne!(again[0], first);
+
+    // A dedication right after the cued track: the end moves by its
+    // length, the picks queued from the fill kept are replaced.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let runtime = station.state.stations.first();
+    let tracks = runtime
+        .queue
+        .tracks(&[t[0]], heron_core::PlaySource::Request)
+        .await
+        .unwrap();
+    let inserted_at = rotation_now();
+    let dedication = runtime
+        .engine
+        .enqueue(tracks, Some(0), Vec::new())
+        .await
+        .unwrap()[0];
+    let changed = eventually(
+        "a calculation for the changed queue",
+        Duration::from_secs(20),
+        || async {
+            calculations().await.into_iter().find(|calculation| {
+                calculation["trigger"] == "queue_changed"
+                    && calculation["computed_at_unix_ms"].as_i64() > Some(inserted_at)
+            })
+        },
+    )
+    .await;
+    assert_eq!(changed["ending"]["in_window"], true, "{changed}");
+    assert_eq!(changed["ending"]["faded"], false, "{changed}");
+    // The dedication stays: waiting, or played already.
+    let queue = admin.get("/queue").await;
+    let history = admin.get("/history").await;
+    assert!(
+        queue
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["entry_id"] == dedication)
+            || history.as_array().unwrap().iter().any(|play| {
+                play["source"] == "request"
+                    && play["started_at_unix_ms"].as_i64() > Some(inserted_at)
+            }),
+        "the dedication stays: {queue}"
+    );
+    // The exact slot queued again, once, in its window.
+    let entries = eventually(
+        "the exact slot queued again",
+        Duration::from_secs(10),
+        || async {
+            let entries = exact_entries().await;
+            (entries.len() == 1 && entries[0] != again[0]).then_some(entries)
+        },
+    )
+    .await;
+    let picks = admin.get("/rotation/picks?limit=100").await;
+    let exact = picks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pick| pick["explanation"]["exact"]["at_unix_ms"] == soft_at)
+        .map(|pick| pick["explanation"]["exact"].clone())
+        .unwrap();
+    assert_eq!(exact["in_window"], true, "{exact} {entries:?}");
+    assert_eq!(exact["faded"], false, "{exact}");
+    // The picks taken out are forgotten: the exact slot is logged once.
+    let logged = picks
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|pick| pick["explanation"]["exact"]["at_unix_ms"] == soft_at)
+        .count();
+    assert_eq!(logged, 1, "{picks}");
+    // Playing on, the queue no longer changes: no new calculation.
+    let count = |calculations: &[Value]| {
+        calculations
+            .iter()
+            .filter(|calculation| calculation["trigger"] == "queue_changed")
+            .count()
+    };
+    let before = count(&calculations().await);
+    tokio::time::sleep(Duration::from_secs(12)).await;
+    let after = calculations().await;
+    assert_eq!(count(&after), before, "{after:?}");
+    station.stop().await;
+}
+
 /// Two stations added up and compared: the peak and AQH on their minutes
 /// together, a listener of both counted once, each user only the stations
 /// they see.
