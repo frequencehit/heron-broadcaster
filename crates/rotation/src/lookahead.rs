@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::exact::{Choice, ExactMode, FillKind, Window};
 use crate::ratio::HeldByRatio;
 use crate::select::{self, Ahead, Pick, Steer};
-use crate::{CategoryId, History, Library, Play, Position, Rng, TrackId};
+use crate::{CategoryId, ClockId, History, Library, Play, Position, Rng, TrackId};
 
 /// Fills built in a batch: more batches follow while the best fill does
 /// not land.
@@ -277,11 +277,12 @@ pub enum Stop {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Calculation {
-    /// The exact time (Unix ms), its mode, window and slot (from 0).
+    /// The exact time (Unix ms), its mode, window, clock and slot (from 0).
     pub exact_at_unix_ms: i64,
     pub mode: ExactMode,
     pub window_from_unix_ms: i64,
     pub window_cut_unix_ms: i64,
+    pub exact_clock_id: ClockId,
     pub exact_slot: u32,
     /// Where the fills start: the end of the queue.
     pub from_unix_ms: i64,
@@ -413,11 +414,12 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// An attempt of `calculation` chosen by hand, as the fill kept: its
-    /// picks from `from_pick` on (those before it are queued already).
-    /// The next picks follow it while it still lands, then rotation builds
-    /// fills again ([`Calculation::hand_dropped`]).
-    pub fn chosen(calculation: &Calculation, attempt: &Attempt, from_pick: u32) -> Self {
+    /// An attempt chosen by hand, as the fill kept before the exact time at
+    /// `exact_at_unix_ms` (its calculation's): its picks from `from_pick`
+    /// on (those before it are queued already). The next picks follow it
+    /// while it still lands, then rotation builds fills again
+    /// ([`Calculation::hand_dropped`]).
+    pub fn chosen(exact_at_unix_ms: i64, attempt: &Attempt, from_pick: u32) -> Self {
         let mut picks: Vec<Vec<TrackId>> = Vec::new();
         let mut last = None;
         for track in attempt
@@ -435,7 +437,7 @@ impl Plan {
             }
         }
         Self {
-            exact_at_ms: calculation.exact_at_unix_ms,
+            exact_at_ms: exact_at_unix_ms,
             picks,
             ending: Ending::of(&attempt.ending),
             search: attempt.search.as_ref().is_some_and(|search| search.found),
@@ -1124,6 +1126,7 @@ pub(crate) fn best(
             mode: ahead.mode,
             window_from_unix_ms: window.from_ms,
             window_cut_unix_ms: window.cut_ms,
+            exact_clock_id: ahead.clock_id,
             exact_slot: ahead.slot,
             from_unix_ms: at_ms,
             fills: draws,
@@ -1583,6 +1586,7 @@ mod tests {
         Ahead {
             window,
             mode: ExactMode::Hard,
+            clock_id: 1,
             slot: 0,
         }
     }
@@ -2027,7 +2031,7 @@ mod tests {
             .filter(|attempt| attempt.ending.in_window && !attempt.ending.faded)
             .max_by_key(|attempt| attempt.rank)
             .unwrap();
-        let mut plan = Some(Plan::chosen(&calculation, chosen, 0));
+        let mut plan = Some(Plan::chosen(calculation.exact_at_unix_ms, chosen, 0));
         assert!(plan.as_ref().unwrap().chosen_by_hand());
         // Played again from where it was built: followed.
         let (pick, followed) = calculate(
@@ -2077,7 +2081,7 @@ mod tests {
             in_window: true,
             ..AttemptEnding::default()
         };
-        let mut plan = Some(Plan::chosen(&calculation, &attempt, 0));
+        let mut plan = Some(Plan::chosen(calculation.exact_at_unix_ms, &attempt, 0));
         let (pick, rebuilt) = calculate(
             &library,
             &History::default(),

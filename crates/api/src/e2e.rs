@@ -12843,6 +12843,274 @@ async fn exact_times_start_on_time_and_take_out_what_no_longer_fits() {
     station.stop().await;
 }
 
+/// The attempts page (docs/rotation.md#the-attempts-page): the fills built
+/// before an exact time are kept as calculations with their attempts, read
+/// by every role and linked from the rotation log; an operator uses an
+/// attempt of the latest calculation that lands in the window, then goes
+/// back to automatic; calculations go after 7 days.
+#[tokio::test(flavor = "multi_thread")]
+async fn exact_time_attempts_are_kept_and_one_can_be_chosen_by_hand() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let t = &station.tracks;
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/station", json!({"timezone": "UTC"}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let mut categories = Vec::new();
+    let free = json!({"track_min": 0, "title_min": 0, "artist_min": 0, "album_min": 0});
+    for (name, members) in [("News", &t[4..]), ("Songs", &t[..4])] {
+        let (status, category) = admin
+            .send(
+                Method::POST,
+                "/categories",
+                json!({"name": name, "separation": free}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{category}");
+        for track in members {
+            let (status, _) = admin
+                .send(
+                    Method::PUT,
+                    &format!("/tracks/{track}/categories"),
+                    json!([{"category_id": category["id"]}]),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        categories.push(category["id"].as_u64().unwrap());
+    }
+    let (news, songs) = (categories[0], categories[1]);
+    let mut rotation = admin.get("/settings/rotation").await;
+    rotation["filler_category_id"] = json!(songs);
+    let (status, body) = admin
+        .send(Method::PUT, "/settings/rotation", rotation)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // A soft exact time a minute ahead, in this hour.
+    while rotation_now().rem_euclid(3_600_000) > 3_600_000 - 150_000 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let hour_start = rotation_now() - rotation_now().rem_euclid(3_600_000);
+    let soft_s = (rotation_now() - hour_start) / 1_000 + 60;
+    let soft_at = hour_start + soft_s * 1_000;
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Attempts", "slots": [
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": songs, "enforce_rules": false},
+                {"category_id": news, "enforce_rules": false,
+                 "exact": {"at_s": soft_s, "mode": "soft"}},
+                {"category_id": songs, "enforce_rules": false},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    let clock_id = clock["id"].as_u64().unwrap();
+    let week: Vec<Value> = (1..=7)
+        .flat_map(|day| {
+            (0..24).map(move |hour| json!({"day_of_week": day, "hour": hour, "clock_id": clock_id}))
+        })
+        .collect();
+    let (status, _) = admin.send(Method::PUT, "/schedule", json!(week)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/settings/queue",
+            json!({"autofill": true, "min_queued": 3}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Its calculations, the first one first.
+    let day = jiff::Timestamp::from_millisecond(soft_at)
+        .unwrap()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date()
+        .to_string();
+    // The exact time as the page shows it, and the choice by hand.
+    async fn exact_time(client: &Client, day: &str, at: i64) -> Option<(Value, Value)> {
+        let day = client.get(&format!("/exact-times?day={day}")).await;
+        day["exact_times"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|exact| exact["at_unix_ms"] == at)
+            .cloned()
+            .map(|exact| (exact, day["choice"].clone()))
+    }
+    let (exact, _) = eventually(
+        "a calculation for the exact time",
+        Duration::from_secs(30),
+        || async {
+            exact_time(&viewer, &day, soft_at)
+                .await
+                .filter(|(exact, _)| {
+                    exact["calculations"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|calculation| calculation["trigger"] != "followed")
+                })
+        },
+    )
+    .await;
+    assert_eq!(exact["mode"], "soft", "{exact}");
+    assert_eq!(exact["window_from_unix_ms"], soft_at - 10_000, "{exact}");
+    assert_eq!(exact["window_cut_unix_ms"], soft_at + 30_000, "{exact}");
+    let first = &exact["calculations"][0];
+    assert_eq!(first["trigger"], "first", "{exact}");
+    let fills = first["fills"].as_u64().unwrap();
+    assert!(
+        (10..=200).contains(&fills) && fills % 10 == 0 || first["stop"] == "time",
+        "{first}"
+    );
+    // The rotation log links each pick before it to its calculation.
+    let picks = viewer.get("/rotation/picks?limit=50").await;
+    let linked = picks
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|pick| pick["explanation"]["lookahead"]["calculation_id"].as_u64())
+        .collect::<Vec<_>>();
+    assert!(linked.contains(&first["id"].as_u64().unwrap()), "{picks}");
+
+    // Paused, the queue stays as it is: the queue follows the latest
+    // calculation, whose attempts can be chosen.
+    let (status, _) = admin.request(Method::POST, "/player/pause", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let latest = eventually(
+        "the latest calculation, its attempts to choose from",
+        Duration::from_secs(20),
+        || async {
+            let (exact, _) = exact_time(&viewer, &day, soft_at).await?;
+            let id = exact["calculations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|calculation| calculation["trigger"] != "followed")?["id"]
+                .as_u64()?;
+            let detail = viewer.get(&format!("/exact-times/calculations/{id}")).await;
+            (detail["can_choose"] == true).then_some(detail)
+        },
+    )
+    .await;
+    let id = latest["id"].as_u64().unwrap();
+    assert_eq!(latest["latest"], true);
+    let attempts = latest["attempts"].as_array().unwrap();
+    assert!(!attempts.is_empty(), "{latest}");
+    for (rank, attempt) in attempts.iter().enumerate() {
+        // Best first, each from the end of the queue, its seed a string.
+        assert_eq!(attempt["rank"], rank as u64 + 1, "{latest}");
+        assert!(attempt["seed"].is_string(), "{attempt}");
+        let tracks = attempt["tracks"].as_array().unwrap();
+        assert_eq!(
+            tracks[0]["start_unix_ms"], latest["from_unix_ms"],
+            "{attempt}"
+        );
+        for track in tracks {
+            assert!(
+                latest["tracks"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|label| label["id"] == track["track_id"]),
+                "{latest}"
+            );
+        }
+    }
+    let lands = |attempt: &&Value| {
+        attempt["ending"]["in_window"] == true && attempt["ending"]["faded"] == false
+    };
+    let chosen = attempts
+        .iter()
+        .filter(lands)
+        .find(|attempt| attempt["number"] != latest["kept"])
+        .or_else(|| attempts.iter().find(lands))
+        .expect("an attempt in the window")["number"]
+        .as_u64()
+        .unwrap();
+    let use_path = |n: u64| format!("/exact-times/calculations/{id}/attempts/{n}/use");
+    let (status, _) = viewer.request(Method::POST, &use_path(chosen), None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = admin.request(Method::POST, &use_path(9_999), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    if let Some(out) = attempts.iter().find(|attempt| !lands(attempt)) {
+        let n = out["number"].as_u64().unwrap();
+        let (status, body) = admin.request(Method::POST, &use_path(n), None).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    }
+    let (status, body) = admin.request(Method::POST, &use_path(chosen), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    // Kept with its calculation: which, by whom.
+    let detail = viewer.get(&format!("/exact-times/calculations/{id}")).await;
+    assert_eq!(detail["chosen"]["attempt"], chosen, "{detail}");
+    assert_eq!(detail["chosen"]["username"], "admin", "{detail}");
+    // Followed, unless it no longer landed at once: then rotation chose
+    // by itself again, and said so.
+    let (exact, choice) = exact_time(&admin, &day, soft_at).await.unwrap();
+    if choice.is_null() {
+        assert!(
+            exact["calculations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|calculation| calculation["trigger"] == "hand_dropped"),
+            "{exact}"
+        );
+    } else {
+        assert_eq!(choice["calculation_id"], id, "{choice}");
+        assert_eq!(choice["attempt"], chosen, "{choice}");
+        assert_eq!(choice["username"], "admin", "{choice}");
+    }
+    // Back to automatic.
+    let (status, _) = viewer
+        .request(Method::DELETE, "/exact-times/choice", None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = admin
+        .request(Method::DELETE, "/exact-times/choice", None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, choice) = exact_time(&admin, &day, soft_at).await.unwrap();
+    assert!(choice.is_null(), "{choice}");
+    let (status, _) = admin.request(Method::POST, "/player/resume", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = viewer
+        .request(Method::GET, "/exact-times/calculations/999999", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = viewer
+        .request(Method::GET, "/exact-times?day=tomorrow", None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Deleted after 7 days.
+    let pool = &station.state.pool;
+    sqlx::query("UPDATE exact_calculations SET computed_at = NOW(6) - INTERVAL 8 DAY")
+        .execute(pool)
+        .await
+        .unwrap();
+    assert!(crate::exact_times::purge_old(pool).await.unwrap() > 0);
+    let old: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM exact_calculations WHERE computed_at < NOW(6) - INTERVAL 7 DAY",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(old, 0);
+    station.stop().await;
+}
+
 /// Two stations added up and compared: the peak and AQH on their minutes
 /// together, a listener of both counted once, each user only the stations
 /// they see.

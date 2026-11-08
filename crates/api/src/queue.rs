@@ -20,12 +20,13 @@ use heron_core::FadeCurve;
 use heron_core::playout::{CrossfadeMode, CrossfadeOverrides, Fade};
 use heron_core::{PlaySource, TrackOverrides, TrackPlayout};
 use heron_proto::engine as pb;
-use heron_rotation::{Play, Rng};
+use heron_rotation::{Budget, Planning, Play, Rng, Stop};
 use sqlx::{MySqlPool, QueryBuilder};
 use tokio::sync::Notify;
 
 use crate::engine::{EngineLink, PlayerState, source_to_proto};
 use crate::error::{ApiError, ApiResult};
+use crate::exact_times::{self, HandChoice, Kept, KeptCalculation, QueuedPick, Trigger};
 use crate::rotation::{self, SILENT_MS};
 use crate::settings::{self, QueueSettings};
 
@@ -45,8 +46,13 @@ pub struct QueueManager {
     /// Rotation could pick nothing: no new try before then.
     idle_until: Mutex<Option<Instant>>,
     /// The best fill before the next exact time, followed by the next
-    /// picks while it still lands (`docs/rotation.md#exact-times`).
-    plan: Mutex<Option<heron_rotation::Plan>>,
+    /// picks while it still lands (`docs/rotation.md#exact-times`), the
+    /// calculation it comes from and the attempt chosen by hand
+    /// (`docs/rotation.md#the-attempts-page`).
+    kept: Mutex<Kept>,
+    /// Held while the queue is filled, and while an attempt replaces the
+    /// fill kept.
+    busy: tokio::sync::Mutex<()>,
 }
 
 /// A library track as the engine needs it.
@@ -296,7 +302,8 @@ impl QueueManager {
             stations,
             wake: Notify::new(),
             idle_until: Mutex::new(None),
-            plan: Mutex::new(None),
+            kept: Mutex::new(Kept::default()),
+            busy: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -419,6 +426,7 @@ impl QueueManager {
 
     /// Adds the tracks rotation picks until `min_queued` are waiting.
     async fn fill(&self, state: &PlayerState) -> ApiResult<()> {
+        let _busy = self.busy.lock().await;
         let settings: QueueSettings =
             settings::load_for(&self.pool, self.station_id, QueueSettings::SETTINGS_NAME).await?;
         // A cued fallback track gives way to anything queued.
@@ -456,31 +464,43 @@ impl QueueManager {
         let mut history = rotation::with_queue(&self.pool, &library, history, &planned).await?;
         let mut last = rotation::last_position(&self.pool, self.station_id).await?;
         let mut rng = Rng::new(rotation::seed());
-        // The best fill before an exact time, kept from a fill to the next
-        // while it still lands.
-        let mut plan = self
-            .plan
-            .lock()
-            .map(|mut plan| plan.take())
-            .unwrap_or_default();
         let mut picks = Vec::new();
+        // The picks made before an exact time (their range in `picks`),
+        // and the calculation they come from.
+        let mut ahead: Vec<(std::ops::Range<usize>, u64)> = Vec::new();
         // Play ratio counters moved by these picks, saved once queued.
         let mut counters = Vec::new();
         // A match in the show's hours: its tracks after one of the picks.
         let mut planner = crate::matches::planner(&self.pool, self.station_id).await?;
         let mut planned_match = None;
+        // The best fill before an exact time, kept from a fill to the next
+        // while it still lands, and the calculation it comes from.
+        let mut kept = self
+            .kept
+            .lock()
+            .map(|mut kept| std::mem::take(&mut *kept))
+            .unwrap_or_default();
+        let mut plan = kept.plan.take();
         'picking: for _ in 0..missing {
-            let outcome = heron_rotation::next_planned(
+            let outcome = heron_rotation::next_planned_with(
                 &library,
                 &history,
                 at,
                 last.as_ref(),
                 &mut rng,
                 &mut plan,
+                Planning {
+                    budget: Budget::LIVE,
+                    record: true,
+                },
             );
             counters.extend(library.count_down(outcome.offered()));
-            let Some(pick) = outcome.pick else {
+            let Some(mut pick) = outcome.pick else {
                 break;
+            };
+            let from = match &outcome.calculation {
+                Some(calculation) => self.calculated(&mut kept, calculation, &mut pick).await,
+                None => None,
             };
             let group = pick.into_picks();
             if group
@@ -489,6 +509,7 @@ impl QueueManager {
             {
                 break;
             }
+            let first = picks.len();
             for pick in group {
                 let Some(track) = library.tracks.get(&pick.track) else {
                     break 'picking;
@@ -502,6 +523,9 @@ impl QueueManager {
                 }
                 picks.push(pick);
             }
+            if let Some(from) = from {
+                ahead.push((first..picks.len(), from));
+            }
             if let Some(planner) = planner.as_mut()
                 && let Some(planned) =
                     planner.after(&library, &history, at, last.as_ref(), &mut picks, &mut rng)
@@ -510,8 +534,23 @@ impl QueueManager {
                 break;
             }
         }
-        if let Ok(mut kept) = self.plan.lock() {
-            *kept = plan;
+        if planned_match.is_some() {
+            // The match's tracks are locked: no attempt replaces them.
+            if let Some(calculation) = kept.calculation.as_mut() {
+                calculation.blocked = true;
+            }
+            ahead.clear();
+        }
+        kept.plan = plan;
+        if !kept
+            .plan
+            .as_ref()
+            .is_some_and(heron_rotation::Plan::chosen_by_hand)
+        {
+            kept.choice = None;
+        }
+        if let Ok(mut slot) = self.kept.lock() {
+            *slot = kept;
         }
         if picks.is_empty() {
             // Tracks held back by their ratio moved: they play sooner.
@@ -532,6 +571,7 @@ impl QueueManager {
         let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
         let (tracks, linked, firsts) = entries(&picks, tracks)?;
         let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
+        self.queued_from(&ahead, &picks, &firsts, &entry_ids);
         let mut log_ids = Vec::new();
         // Each pick's first entry: a shortened medley queues two.
         let mut pick_entries = Vec::new();
@@ -568,6 +608,238 @@ impl QueueManager {
             .count();
         metrics::counter!("heron_api_rotation_relaxed_total").increment(relaxed as u64);
         Ok(())
+    }
+
+    /// Stores what a pick before an exact time did (`docs/rotation.md#the-
+    /// attempts-page`), and links its log to it. Returns the calculation
+    /// the queue follows the fill of, if stored.
+    async fn calculated(
+        &self,
+        kept: &mut Kept,
+        calculation: &heron_rotation::Calculation,
+        pick: &mut heron_rotation::Pick,
+    ) -> Option<u64> {
+        let exact_at = calculation.exact_at_unix_ms;
+        let follows = kept
+            .calculation
+            .as_ref()
+            .filter(|kept| kept.exact_at_ms == exact_at)
+            .map(|kept| kept.id);
+        let trigger = if calculation.stop == Stop::Followed {
+            Trigger::Followed
+        } else if calculation.hand_dropped {
+            tracing::warn!(
+                station = self.station_id,
+                exact_at,
+                "the attempt chosen by hand no longer lands before the exact time: \
+                 rotation chooses by itself again"
+            );
+            kept.choice = None;
+            Trigger::HandDropped
+        } else if let Some(trigger) = kept.next_trigger {
+            trigger
+        } else if follows.is_some() {
+            Trigger::QueueChanged
+        } else {
+            match exact_times::calculated_before(&self.pool, self.station_id, exact_at).await {
+                Ok(true) => Trigger::Restart,
+                Ok(false) => Trigger::First,
+                Err(error) => {
+                    tracing::warn!(%error, "cannot read the calculations of the exact time");
+                    Trigger::First
+                }
+            }
+        };
+        let followed = trigger == Trigger::Followed;
+        if !followed {
+            kept.next_trigger = None;
+        }
+        let link = if followed { follows } else { None };
+        let id = match exact_times::store(&self.pool, self.station_id, calculation, trigger, link)
+            .await
+        {
+            Ok(id) => Some(id),
+            Err(error) => {
+                tracing::warn!(%error, "cannot store the exact time's calculation");
+                None
+            }
+        };
+        if let Some(lookahead) = pick.explanation.lookahead.as_mut() {
+            lookahead.calculation_id = id;
+        }
+        if followed {
+            return follows;
+        }
+        kept.calculation = id.map(|id| KeptCalculation {
+            id,
+            exact_at_ms: exact_at,
+            queued: Vec::new(),
+            blocked: false,
+        });
+        id
+    }
+
+    /// Keeps the entries of the picks queued from the calculation the
+    /// queue follows, to replace them with an attempt chosen by hand.
+    fn queued_from(
+        &self,
+        planned: &[(std::ops::Range<usize>, u64)],
+        picks: &[heron_rotation::Pick],
+        firsts: &[usize],
+        entry_ids: &[u64],
+    ) {
+        let Ok(mut kept) = self.kept.lock() else {
+            return;
+        };
+        let Some(calculation) = kept.calculation.as_mut() else {
+            return;
+        };
+        for (range, from) in planned {
+            if *from != calculation.id {
+                continue;
+            }
+            let entries_of = |index: usize| {
+                let first = firsts.get(index).copied().unwrap_or(entry_ids.len());
+                let end = firsts.get(index + 1).copied().unwrap_or(entry_ids.len());
+                entry_ids.get(first..end).unwrap_or_default().to_vec()
+            };
+            calculation.queued.push(QueuedPick {
+                entries: range.clone().flat_map(entries_of).collect(),
+                tracks: picks
+                    .get(range.clone())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|pick| pick.track)
+                    .collect(),
+            });
+        }
+    }
+
+    /// The calculation whose fill the queue follows.
+    pub fn kept_calculation(&self) -> Option<u64> {
+        self.kept
+            .lock()
+            .ok()
+            .and_then(|kept| kept.calculation.as_ref().map(|calculation| calculation.id))
+    }
+
+    /// The attempt chosen by hand the queue follows.
+    pub fn choice(&self) -> Option<HandChoice> {
+        self.kept.lock().ok().and_then(|kept| kept.choice.clone())
+    }
+
+    /// Uses `attempt` of calculation `id` (before the exact time at
+    /// `exact_at_ms`) instead of the fill kept: the picks queued from the
+    /// calculation where they part from it are taken out, and the next
+    /// picks follow it. `409` when the queue no longer follows the
+    /// calculation, or has moved on since.
+    pub async fn use_attempt(
+        &self,
+        id: u64,
+        exact_at_ms: i64,
+        attempt: &heron_rotation::Attempt,
+        user: &crate::auth::CurrentUser,
+    ) -> ApiResult<()> {
+        let _busy = self.busy.lock().await;
+        let conflict = |reason: &str| Err(ApiError::Conflict(reason.to_owned()));
+        let queued = {
+            let kept = self
+                .kept
+                .lock()
+                .map_err(|_| ApiError::Internal("the queue manager's state".to_owned()))?;
+            match kept.calculation.as_ref() {
+                Some(calculation) if calculation.id == id && calculation.blocked => {
+                    return conflict("a match is planned with its tracks: they cannot change");
+                }
+                Some(calculation) if calculation.id == id => calculation.queued.clone(),
+                _ => {
+                    return conflict(
+                        "the queue no longer follows this calculation: \
+                         a newer one replaced it, or the API restarted",
+                    );
+                }
+            }
+        };
+        let state = self.engine.fetch_state().await?;
+        let waiting: Vec<u64> = state.waiting().map(|entry| entry.entry_id).collect();
+        // Nothing queued after its picks: neither the exact slot, nor a
+        // track added at the end.
+        let last = queued.last().and_then(|pick| pick.entries.last());
+        if last.is_none() || waiting.last() != last {
+            return conflict("the queue has moved on since this calculation");
+        }
+        let picks = exact_times::attempt_picks(attempt);
+        let same = queued
+            .iter()
+            .zip(&picks)
+            .take_while(|(queued, pick)| queued.tracks == **pick)
+            .count();
+        let out: Vec<u64> = queued[same..]
+            .iter()
+            .flat_map(|pick| pick.entries.iter().copied())
+            .collect();
+        if out.iter().any(|entry| !waiting.contains(entry)) {
+            return conflict("a track queued from this calculation has started since");
+        }
+        // A track first: its linked jingle goes with it.
+        for entry in out.iter().rev() {
+            match self.engine.remove(*entry).await {
+                Ok(()) | Err(ApiError::Invalid(_) | ApiError::NotFound(_)) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        if !out.is_empty() {
+            tracing::info!(
+                station = self.station_id,
+                removed = out.len(),
+                "exact time: the tracks the attempt chosen by hand replaces taken out"
+            );
+        }
+        if let Ok(mut kept) = self.kept.lock() {
+            if let Some(calculation) = kept.calculation.as_mut() {
+                calculation.queued.truncate(same);
+            }
+            kept.plan = Some(heron_rotation::Plan::chosen(
+                exact_at_ms,
+                attempt,
+                u32::try_from(same).unwrap_or(u32::MAX),
+            ));
+            kept.choice = Some(HandChoice {
+                calculation_id: id,
+                attempt: attempt.number,
+                exact_at_unix_ms: exact_at_ms,
+                user_id: user.id,
+                username: user.username.clone(),
+                at_unix_ms: rotation::now_ms(),
+            });
+            kept.next_trigger = None;
+        }
+        self.wake();
+        Ok(())
+    }
+
+    /// Drops the attempt chosen by hand: the next pick builds new fills.
+    /// False when there was none.
+    pub async fn back_to_automatic(&self) -> bool {
+        let _busy = self.busy.lock().await;
+        let dropped = match self.kept.lock() {
+            Ok(mut kept)
+                if kept
+                    .plan
+                    .as_ref()
+                    .is_some_and(heron_rotation::Plan::chosen_by_hand) =>
+            {
+                kept.plan = None;
+                kept.choice = None;
+                kept.next_trigger = Some(Trigger::Automatic);
+                true
+            }
+            _ => false,
+        };
+        if dropped {
+            self.wake();
+        }
+        dropped
     }
 
     /// Queues what the Top 30's show has to play for a track planned at

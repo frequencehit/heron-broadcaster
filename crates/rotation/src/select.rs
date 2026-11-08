@@ -1122,7 +1122,8 @@ pub fn from_category(
 pub(crate) struct Ahead {
     pub window: Window,
     pub mode: ExactMode,
-    /// The exact slot, from 0 in its clock.
+    /// The exact slot's clock, and the slot from 0 in it.
+    pub clock_id: ClockId,
     pub slot: u32,
 }
 
@@ -1154,6 +1155,7 @@ fn next_exact(
     Some(Ahead {
         window: upcoming.window,
         mode: upcoming.exact.mode,
+        clock_id: upcoming.clock.id,
         slot: u32::try_from(upcoming.index).unwrap_or(u32::MAX),
     })
 }
