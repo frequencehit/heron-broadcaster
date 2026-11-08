@@ -87,11 +87,30 @@ export function useStationCategories() {
   });
 }
 
+/** A copy of a clock (its slots, looping, exact times and links), named "… (copy)"; opens it. Not scheduled. */
+function useDuplicateClock() {
+  return useAction(
+    (clock: Schemas["ClockView"]) =>
+      unwrap(
+        api.POST("/api/v1/stations/{station_id}/clocks", {
+          params: { path: here() },
+          body: { name: t("clocks.copyName", { name: clock.name }), looping: clock.looping, slots: clock.slots },
+        }),
+      ),
+    {
+      success: t("clocks.duplicated"),
+      invalidate: [["clocks"]],
+      onSuccess: (created) => navigate(`/clocks/${created.id}`),
+    },
+  );
+}
+
 export function Clocks() {
   const canEdit = useCan("operator");
   const clocks = useQuery({ queryKey: ["clocks"], queryFn: () => unwrap(api.GET("/api/v1/stations/{station_id}/clocks", { params: { path: here() } })) });
   const categories = useCategories();
   const byId = new Map((categories.data ?? []).map((c) => [c.id, c]));
+  const duplicate = useDuplicateClock();
   return (
     <>
       <PageHead
@@ -119,6 +138,11 @@ export function Clocks() {
                   <th>{t("categories.name")}</th>
                   <th>{t("clocks.slots")}</th>
                   <th>{t("clocks.scheduled")}</th>
+                  {canEdit && (
+                    <th>
+                      <span className="visually-hidden">{t("clocks.duplicate")}</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -155,6 +179,19 @@ export function Clocks() {
                         t("clocks.hoursAWeek", { count: clock.scheduled_hours })
                       )}
                     </td>
+                    {canEdit && (
+                      <td className="num">
+                        <button
+                          type="button"
+                          className="btn small"
+                          disabled={duplicate.isPending}
+                          aria-label={t("clocks.duplicateNamed", { name: clock.name })}
+                          onClick={() => duplicate.mutate(clock)}
+                        >
+                          <Icon name="copy" size={14} /> {t("clocks.duplicate")}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -298,6 +335,7 @@ function Editor({ clock }: { clock: ClockView | null }) {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [draftKey]);
+  const duplicate = useDuplicateClock();
   const remove = useAction(
     () => done(api.DELETE("/api/v1/stations/{station_id}/clocks/{id}", { params: { path: here({ id: clock?.id ?? 0 }) } })),
     { success: t("clocks.deleted"), invalidate: [["clocks"], ["schedule"]], onSuccess: () => navigate("/clocks") },
@@ -334,6 +372,17 @@ function Editor({ clock }: { clock: ClockView | null }) {
         actions={
           canEdit && (
             <>
+              {clock && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={duplicate.isPending || dirty}
+                  title={dirty ? t("clocks.saving") : undefined}
+                  onClick={() => duplicate.mutate(clock)}
+                >
+                  <Icon name="copy" /> {t("clocks.duplicate")}
+                </button>
+              )}
               {clock && (
                 <ConfirmButton
                   className="btn danger"
