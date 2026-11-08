@@ -261,6 +261,9 @@ pub(crate) struct Fit<'a> {
     pub want: Option<TrackId>,
     /// The fit search: where the pick records the tracks it may play.
     pub options: Option<&'a std::cell::RefCell<Option<Vec<Choice>>>>,
+    /// The pick is never logged: [`crate::select`] leaves out what only
+    /// the log needs.
+    pub quick: bool,
 }
 
 /// A track a pick may play, for the fit search: its ID and where the next

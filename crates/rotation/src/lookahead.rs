@@ -231,6 +231,8 @@ impl From<'_> {
             let steer = Steer {
                 want: want.get(n).map_or(&[], Vec::as_slice),
                 options: record.then_some(&options),
+                // Only a fill's first pick may be queued and logged.
+                quick: n > 0,
             };
             // The counters stay as they are: a track held back stays held.
             let mut held = Vec::new();
@@ -558,7 +560,15 @@ pub(crate) fn best(
                 let mut fill = fill.unwrap_or_else(|| {
                     start.simulate(history, at_ms, last.copied(), &[], true, &mut draw)
                 });
-                if let Some(found) = start.search(&fill, &mut draw)
+                // Once a fill lands within a second with nothing filled,
+                // the others are not searched: it saves the time of the
+                // search, for less than a second to gain.
+                let searched = best
+                    .as_ref()
+                    .is_none_or(|best| !best.ending.close_enough())
+                    .then(|| start.search(&fill, &mut draw))
+                    .flatten();
+                if let Some(found) = searched
                     && found.first.is_some()
                 {
                     fill = found;
@@ -876,6 +886,55 @@ mod tests {
         longest
     }
 
+    /// The time a whole re-plan takes (10 fills built and searched, none
+    /// kept) right after each exact time of a day, with the day's plays as
+    /// history: on average and at worst (ms).
+    fn ten_fills_ms(library: &Library, seed: u64) -> (f64, f64) {
+        let day = simulate_with(library, History::default(), None, 0, 24 * HOUR, seed, true);
+        let mut times = Vec::new();
+        for (index, pick) in day.picks.iter().enumerate() {
+            if pick.explanation.exact.is_none() || index + 1 >= day.picks.len() {
+                continue;
+            }
+            let next = &day.picks[index + 1];
+            let history = History::new(
+                day.picks[..=index]
+                    .iter()
+                    .map(|pick| Play::of(&library.tracks[&pick.track_id], pick.start_unix_ms))
+                    .collect(),
+                HashMap::new(),
+            );
+            let last = Position {
+                hour_start_unix_ms: pick.start_unix_ms.div_euclid(HOUR) * HOUR
+                    + if pick.start_unix_ms.rem_euclid(HOUR) > 30 * MIN {
+                        HOUR
+                    } else {
+                        0
+                    },
+                clock_id: 1,
+                slot: 0,
+            };
+            let start = std::time::Instant::now();
+            let outcome = crate::select::outcome(
+                library,
+                &history,
+                next.start_unix_ms,
+                Some(&last),
+                &mut Rng::new(seed),
+                true,
+                &mut None,
+            );
+            times.push(start.elapsed().as_secs_f64() * 1_000.0);
+            assert!(
+                outcome
+                    .pick
+                    .is_some_and(|pick| pick.explanation.lookahead.is_some())
+            );
+        }
+        let mean = times.iter().sum::<f64>() / times.len().max(1) as f64;
+        (mean, times.iter().copied().fold(0.0, f64::max))
+    }
+
     /// Prints how soft and hard exact times are met with and without the
     /// fills, on a station of `songs` songs.
     fn compare(days: i64, seeds: &[u64], songs: u64) -> Vec<(ExactMode, bool, u64, Timing)> {
@@ -939,6 +998,12 @@ mod tests {
     fn exact_times_soft_and_hard_over_a_week() {
         for songs in [400, 2_000] {
             compare(7, &[7, 11, 23], songs);
+            for mode in [ExactMode::Soft, ExactMode::Hard] {
+                let (mean, worst) = ten_fills_ms(&station_of(mode, songs), 7);
+                eprintln!(
+                    "{songs} songs, {mode:?}: a whole re-plan at the start of the hour, {mean:.1} ms on average, {worst:.1} ms at worst"
+                );
+            }
         }
     }
 
@@ -1017,29 +1082,50 @@ mod tests {
         };
         let at = 49 * MIN;
         let window = library.clocks[&1].slots[0].exact.unwrap().window(HOUR);
-        for seed in 0..5 {
-            let mut plan = None;
-            let pick = best(
-                &library,
-                &history,
-                at,
-                Some(&last),
-                window,
-                &mut Vec::new(),
-                &mut Rng::new(seed),
-                &mut plan,
-            )
-            .unwrap();
-            let log = pick.explanation.lookahead.unwrap();
-            assert!(!log.faded && log.in_window, "{log:?}");
-            assert!(log.search, "{log:?}");
+        // A fill drawn at random ends out of the window, or far in it: the
+        // search finds tracks of the same slots that land.
+        let start = From {
+            library: &library,
+            history: &history,
+            at_ms: at,
+            last: Some(last),
+            window,
+        };
+        let mut searched = 0;
+        for seed in 0..20 {
+            let mut rng = Rng::new(seed);
+            let fill = start.simulate(&history, at, Some(last), &[], true, &mut rng);
+            if fill.ending.close_enough() {
+                continue;
+            }
+            searched += 1;
+            let found = start.search(&fill, &mut rng).expect("a better fit");
+            assert!(found.search && found.first.is_some());
+            let (offset, in_window) = found.ending.end.unwrap();
+            assert!(in_window && !found.ending.faded, "{:?}", found.ending);
+            assert!(found.ending.rank() < fill.ending.rank());
             // The three that land, or a fourth song played on once the
-            // clock's slots ran out: 2:03, 2:07, 3:29 and 3:20 end at the
-            // exact time itself.
-            let offset = log.offset_ms.unwrap();
-            assert!((-SEC..=0).contains(&offset), "{log:?}");
-            assert!(plan.is_some());
+            // clock's slots ran out (2:03, 2:07, 3:29 and 3:20 end at the
+            // exact time itself).
+            assert!((-SEC..=0).contains(&offset), "{:?}", found.ending);
         }
+        assert!(searched > 10, "{searched}");
+        // And the pick: its fill lands.
+        let mut plan = None;
+        let pick = best(
+            &library,
+            &history,
+            at,
+            Some(&last),
+            window,
+            &mut Vec::new(),
+            &mut Rng::new(1),
+            &mut plan,
+        )
+        .unwrap();
+        let log = pick.explanation.lookahead.unwrap();
+        assert!(!log.faded && log.in_window, "{log:?}");
+        assert!(plan.is_some());
     }
 
     #[test]

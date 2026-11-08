@@ -604,7 +604,10 @@ fn fill(
     };
     let mut blocked = Blocked::default();
     let mut held: Option<(Option<i64>, HeldElsewhere)> = None;
-    if slot.enforce_rules {
+    // A fill's later picks are never logged: what only the log needs is
+    // left out.
+    let quick = fit.is_some_and(|fit| fit.quick);
+    if slot.enforce_rules && !quick {
         for (track, _) in &allowed {
             let windows = library.for_track(slot.call.windows, track);
             match recent.blocking(library, track, windows, at_ms) {
@@ -807,7 +810,7 @@ fn fill(
         };
         let draw = depth.zip(pct).map(|(depth, pct)| {
             let mut blocked = Blocked::default();
-            for (other, _) in &pool[..size] {
+            for (other, _) in pool[..size].iter().filter(|_| !quick) {
                 if let Some(rule) = recent.blocking(library, other, windows_of(other), at_ms) {
                     count(&mut blocked, rule);
                 } else if held_elsewhere(library, history, other, across, at_ms).is_some() {
@@ -1260,6 +1263,9 @@ pub(crate) struct Steer<'a> {
     pub want: &'a [TrackId],
     /// Where its slot records the tracks it may play.
     pub options: Option<&'a std::cell::RefCell<Option<Vec<Choice>>>>,
+    /// A pick never logged (a fill's later ones): what only the log needs
+    /// is left out.
+    pub quick: bool,
 }
 
 impl Picker<'_, '_> {
@@ -1463,6 +1469,7 @@ impl Picker<'_, '_> {
                 medleys: Some(&library.medleys),
                 want: self.steer.want.first().copied(),
                 options: None,
+                quick: self.steer.quick,
             };
             let Ok((track, mut explanation, cut)) = fill(
                 library,
@@ -1615,6 +1622,7 @@ pub(crate) fn pick(
             medleys: None,
             want: picker.steer.want.first().copied(),
             options: picker.steer.options,
+            quick: picker.steer.quick,
         });
         while k < count {
             let index = (first + k) % count;
