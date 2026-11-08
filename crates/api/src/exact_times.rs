@@ -435,6 +435,30 @@ fn internal(error: impl std::fmt::Display) -> ApiError {
     ApiError::Internal(error.to_string())
 }
 
+/// Whether an exact slot's pick says how its exact time is met: it played,
+/// or it waits in the queue (`waiting`: the engine's start and its waiting
+/// entries). Taken out of the queue unplayed, it never will.
+fn tells(
+    not_played: bool,
+    engine_started_at: Option<u64>,
+    entry_id: Option<u64>,
+    waiting: Option<&(u64, HashSet<u64>)>,
+) -> bool {
+    if !not_played {
+        return true;
+    }
+    match (waiting, engine_started_at, entry_id) {
+        (Some((started, entries)), Some(engine_started_at), Some(entry_id)) => {
+            *started == engine_started_at && entries.contains(&entry_id)
+        }
+        _ => false,
+    }
+}
+
+/// An exact slot's pick: its ID, explanation, whether it has not played,
+/// and its queue entry.
+type PickRow = (u64, String, bool, Option<u64>, Option<u64>);
+
 /// The station's exact times of a day, each with how it was met and its
 /// calculations. Every role.
 #[utoipa::path(get, path = "/exact-times", tag = "rotation",
@@ -500,11 +524,21 @@ async fn list_exact_times(
         item.calculations.push(row.summary());
     }
 
-    // How each was met: its slot's pick (the latest when picked again).
+    // How each was met: its slot's pick (the latest when picked again),
+    // once played; as planned while it waits in the queue. A pick taken
+    // out of the queue (cleared, replaced) never played: it says nothing.
     // Its planned start is in its window, at most 5 minutes from it.
     let margin = 5 * 60_000;
-    let picks: Vec<(u64, String, bool)> = sqlx::query_as(
-        "SELECT id, CAST(explanation AS CHAR), play_id IS NULL FROM rotation_picks
+    let waiting: Option<(u64, HashSet<u64>)> =
+        station.engine.state().borrow().as_ref().map(|player| {
+            (
+                player.engine_started_at_unix_ms,
+                player.waiting().map(|entry| entry.entry_id).collect(),
+            )
+        });
+    let picks: Vec<PickRow> = sqlx::query_as(
+        "SELECT id, CAST(explanation AS CHAR), play_id IS NULL, engine_started_at, entry_id
+         FROM rotation_picks
          WHERE station_id = ? AND planned_at >= FROM_UNIXTIME(?) AND planned_at < FROM_UNIXTIME(?)
            AND JSON_VALUE(explanation, '$.exact.at_unix_ms') IS NOT NULL
          ORDER BY id",
@@ -514,7 +548,10 @@ async fn list_exact_times(
     .bind((end + margin) as f64 / 1_000.0)
     .fetch_all(&state.pool)
     .await?;
-    for (id, explanation, not_played) in picks {
+    for (id, explanation, not_played, engine_started_at, entry_id) in picks {
+        if !tells(not_played, engine_started_at, entry_id, waiting.as_ref()) {
+            continue;
+        }
         let explanation: Explanation = serde_json::from_str(&explanation)
             .map_err(|error| ApiError::Internal(format!("pick {id}: {error}")))?;
         let Some(exact) = explanation.exact else {
@@ -834,6 +871,21 @@ mod tests {
         for stop in [Stop::Followed, Stop::Landed, Stop::MaxFills, Stop::Time] {
             assert_eq!(parse_stop(stop_str(stop)), stop);
         }
+    }
+
+    #[test]
+    fn an_exact_pick_tells_once_played_or_while_queued() {
+        let waiting = (100, HashSet::from([7, 8]));
+        // Played: how it was met, wherever its entry is.
+        assert!(tells(false, Some(100), Some(3), Some(&waiting)));
+        assert!(tells(false, None, None, None));
+        // Waiting in the queue: planned.
+        assert!(tells(true, Some(100), Some(7), Some(&waiting)));
+        // Taken out (the queue cleared), or of an engine run before: never
+        // played, it says nothing.
+        assert!(!tells(true, Some(100), Some(3), Some(&waiting)));
+        assert!(!tells(true, Some(99), Some(7), Some(&waiting)));
+        assert!(!tells(true, Some(100), Some(7), None));
     }
 
     #[test]
