@@ -12068,10 +12068,10 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
         .send(Method::PUT, "/match/settings", json!({"category_id": 999}))
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    let (status, _) = admin
-        .send(Method::PUT, "/match/settings", json!({"every_tracks": 1}))
-        .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    for bad in [json!({"every_tracks": 0}), json!({"announce_every": 21})] {
+        let (status, _) = admin.send(Method::PUT, "/match/settings", bad).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
     let (status, _) = viewer
         .send(Method::PUT, "/match/settings", json!({"every_tracks": 3}))
         .await;
@@ -12598,6 +12598,109 @@ async fn the_match_opens_every_n_tracks_and_queues_its_winner() {
         .request(Method::POST, "/match/current/cancel", None)
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Every track, from the clock: hits, a jingle, hits, hits. Each winner
+    // carries the next vote: the next match is queued behind it at the
+    // close, with nothing after its two tracks, and its vote opens when the
+    // winner starts; announced every 2 matches.
+    let (status, clock) = admin
+        .send(
+            Method::POST,
+            "/clocks",
+            json!({"name": "Match hour", "looping": true, "slots": [
+                {"category_id": hits}, {"category_id": announce, "enforce_rules": false},
+                {"category_id": hits}, {"category_id": hits},
+            ]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{clock}");
+    let clock_id = clock["id"].as_u64().unwrap();
+    let week: Vec<Value> = (1..=7)
+        .flat_map(|day| {
+            (0..24).map(move |hour| json!({"day_of_week": day, "hour": hour, "clock_id": clock_id}))
+        })
+        .collect();
+    let (status, _) = admin.send(Method::PUT, "/schedule", json!(week)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, settings) = admin
+        .send(
+            Method::PUT,
+            "/match/settings",
+            json!({"every_tracks": 1, "tracks_from": "clock", "category_id": hits,
+                   "jingle_category_id": announce, "announce_every": 2,
+                   "loser_same_day": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{settings}");
+    assert_eq!(settings["tracks_from"], "clock");
+    let first_chained: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) FROM matches")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    let mut open = open_next().await;
+    for chained in 0..3 {
+        assert_eq!(open["category_id"], hits, "{open}");
+        let id = open["id"].clone();
+        let (status, winner, _) = close_now(id.clone()).await;
+        assert_eq!(status, "closed");
+        let side = if winner.as_deref() == Some("a") { 0 } else { 1 };
+        let winner_track = open["choices"][side]["track_id"].clone();
+        let winner_entry = open["entry_ids"][side + 1].as_u64();
+        // The next match, behind the winner: its vote's track.
+        let next = eventually(
+            "the next match behind the winner",
+            Duration::from_secs(20),
+            || async {
+                let current = admin.get("/match/current").await;
+                (current["status"] == "queued" && current["id"] != id).then_some(current)
+            },
+        )
+        .await;
+        assert_eq!(
+            next["vote_track"]["track_id"], winner_track,
+            "match {chained}"
+        );
+        assert_eq!(
+            next["entry_ids"][0].as_u64(),
+            winner_entry,
+            "match {chained}"
+        );
+        // Nothing after its two tracks.
+        let queue = entries().await;
+        let last = queue.last().unwrap()["entry_id"].as_u64();
+        assert!(
+            last == next["entry_ids"][1].as_u64() || last == next["entry_ids"][2].as_u64(),
+            "match {chained}: {queue:?}"
+        );
+        // Its vote opens when the winner starts.
+        while on_air().await != winner_entry {
+            let before = on_air().await;
+            skip().await;
+            eventually("the next track", Duration::from_secs(20), || async {
+                (on_air().await != before).then_some(())
+            })
+            .await;
+        }
+        open = eventually("the next vote open", Duration::from_secs(10), || async {
+            tick().await;
+            let current = admin.get("/match/current").await;
+            (current["status"] == "open" && current["id"] == next["id"]).then_some(current)
+        })
+        .await;
+    }
+    // Announced every 2 matches, the first of them.
+    let announced: Vec<bool> = sqlx::query_scalar(
+        "SELECT jingle_track_id IS NOT NULL FROM matches WHERE id > ? ORDER BY id LIMIT 4",
+    )
+    .bind(first_chained)
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    assert_eq!(announced, vec![true, false, true, false]);
+    let (status, _) = admin
+        .request(Method::POST, "/match/current/cancel", None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
 
     // Turned off: the match waiting is cancelled, and nothing answers.
     next_match().await;

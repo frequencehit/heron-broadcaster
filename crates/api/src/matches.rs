@@ -84,15 +84,19 @@ fn seconds(ms: i64) -> f64 {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct MatchSettings {
-    /// A winner every N tracks, 2 to 20: the vote runs during the track
-    /// before it.
+    /// A winner every N tracks, 1 to 20: the vote runs during the track
+    /// before it; 1: every track, each winner carrying the next vote.
     pub every_tracks: u32,
-    /// The category the two tracks come from, the station's; none: no
-    /// match.
+    /// Where the two tracks come from.
+    pub tracks_from: TracksFrom,
+    /// The category the two tracks come from, the station's (from the
+    /// clock: in the hours without one); none: no match (then).
     pub category_id: Option<u64>,
     /// The announcement over the intro of the vote's track; none: no
     /// jingle.
     pub jingle_category_id: Option<u64>,
+    /// The announcement every X matches, 1 to 20.
+    pub announce_every: u32,
     /// Seconds before the next transition the vote closes, 5 to 60.
     pub close_before_s: u32,
     /// The votes on the website as they come; off: the result only.
@@ -101,12 +105,26 @@ pub struct MatchSettings {
     pub loser_same_day: bool,
 }
 
+/// Where a match's two tracks come from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TracksFrom {
+    /// The next music slot of the hour's clock, as it would pick its track,
+    /// twice; the category in the hours without a clock.
+    Clock,
+    /// The match's category.
+    #[default]
+    Category,
+}
+
 impl Default for MatchSettings {
     fn default() -> Self {
         Self {
             every_tracks: 4,
+            tracks_from: TracksFrom::Category,
             category_id: None,
             jingle_category_id: None,
+            announce_every: 1,
             close_before_s: 10,
             live_results: true,
             loser_same_day: false,
@@ -118,8 +136,11 @@ impl MatchSettings {
     pub const SETTINGS_NAME: &str = "match";
 
     fn check(&self) -> Result<(), String> {
-        if !(2..=20).contains(&self.every_tracks) {
-            return Err("every_tracks is 2 to 20".to_owned());
+        if !(1..=20).contains(&self.every_tracks) {
+            return Err("every_tracks is 1 to 20".to_owned());
+        }
+        if !(1..=20).contains(&self.announce_every) {
+            return Err("announce_every is 1 to 20".to_owned());
         }
         if !(5..=60).contains(&self.close_before_s) {
             return Err("close_before_s is 5 to 60".to_owned());
@@ -215,13 +236,16 @@ async fn put_match_settings(
 /// see [`planner`].
 pub struct Planner {
     settings: MatchSettings,
-    category: u64,
     week: Week,
     tz: TimeZone,
     /// When the last match's winner was planned to start.
     last_planned_ms: Option<i64>,
     /// Music tracks rotation queued since then.
     since: u32,
+    /// When the last announced match's winner was planned to start, and the
+    /// matches planned since it.
+    last_announced_ms: Option<i64>,
+    since_announced: u32,
     /// Tracks that cannot be one of the two: today's losers.
     excluded: Vec<u64>,
     /// Categories whose type sends no metadata (jingles).
@@ -231,14 +255,77 @@ pub struct Planner {
 /// A match planned among rotation's picks: where its tracks are in them.
 #[derive(Clone, Debug)]
 pub struct Planned {
-    pub category: u64,
-    pub vote: usize,
+    /// The category the two tracks come from (the slot's, from the clock).
+    pub category: Option<u64>,
+    /// The vote's track among the picks; `None`: queued already (the winner
+    /// of the match before, every track), at `vote_entry`.
+    pub vote: Option<usize>,
+    pub vote_entry: Option<u64>,
+    pub vote_track: u64,
+    /// The announcement linked to the vote's track, among the picks.
     pub jingle: Option<usize>,
+    /// The announcement over the intro of a vote's track queued already:
+    /// queued right before it, at the match's queueing.
+    pub announce_before: Option<Pick>,
+    /// What the clock puts between the vote's track and the winner.
+    pub between: Vec<usize>,
     pub a: usize,
     pub b: usize,
     /// When the winner should start (Unix ms).
     pub planned_at_ms: i64,
 }
+
+/// Rotation's state a match is planned from, moved on by the picks it
+/// adds (what the clock puts between the vote's track and the winner).
+pub struct Ground<'g> {
+    pub library: &'g Library,
+    pub history: &'g mut History,
+    /// Where the next pick starts, and the clock's position.
+    pub at: &'g mut i64,
+    pub last: &'g mut Option<Position>,
+    /// The fill kept before an exact time.
+    pub plan: &'g mut Option<heron_rotation::Plan>,
+    pub rng: &'g mut Rng,
+}
+
+impl Ground<'_> {
+    /// Rotation's next pick, as the queue manager would make it.
+    fn next(&mut self, library: &Library, plan: bool) -> Option<Pick> {
+        let mut none = None;
+        heron_rotation::next_planned_with(
+            library,
+            self.history,
+            *self.at,
+            self.last.as_ref(),
+            self.rng,
+            if plan { &mut *self.plan } else { &mut none },
+            heron_rotation::Planning {
+                budget: heron_rotation::Budget::LIVE,
+                record: false,
+            },
+        )
+        .pick
+    }
+
+    /// Adds `pick` (one of a group) to `picks`, rotation moving on after it.
+    fn push(&mut self, pick: Pick, picks: &mut Vec<Pick>) -> Option<usize> {
+        let track = self.library.tracks.get(&pick.track)?;
+        let start = pick.explanation.at_unix_ms;
+        self.history.push(Play::of(track, start));
+        *self.at = start + i64::from(pick.next_ms(self.library));
+        if pick.position.is_some() {
+            *self.last = pick.position;
+        }
+        picks.push(pick);
+        Some(picks.len() - 1)
+    }
+}
+
+/// The most picks the clock puts between the vote's track and the winner.
+const MAX_BETWEEN: usize = 16;
+/// The most tries in a row when a match cannot run: the slot's track
+/// carries the next vote.
+const MAX_TRIES: usize = 3;
 
 /// The opening range `at` is in: when it opened and closes. Hours open all
 /// week long count a day at a time, from midnight.
@@ -261,16 +348,16 @@ const MUSIC: &str = "NOT EXISTS (SELECT 1 FROM track_categories tc
                      WHERE tc.track_id = p.track_id AND NOT ct.sends_metadata)";
 
 /// The planner of the station's matches, when one may be queued: the
-/// module on, the show enabled with a category, and no match waiting or
-/// open.
+/// module on, the show enabled with somewhere to take the tracks from (the
+/// clock, or a category), and no match waiting or open.
 pub async fn planner(pool: &MySqlPool, station_id: u64) -> ApiResult<Option<Planner>> {
     if !crate::modules::is_on(pool, Some(station_id), Module::Match).await? {
         return Ok(None);
     }
     let settings = load_settings(pool, station_id).await?;
-    let Some(category) = settings.category_id else {
+    if settings.tracks_from == TracksFrom::Category && settings.category_id.is_none() {
         return Ok(None);
-    };
+    }
     let show = show_settings(pool, station_id).await?;
     let week = show.open_week();
     if week.is_empty() {
@@ -306,6 +393,23 @@ pub async fn planner(pool: &MySqlPool, station_id: u64) -> ApiResult<Option<Plan
         }
         None => 0,
     };
+    let announced: Option<(u64, i64)> = sqlx::query_as(
+        "SELECT id, CAST(UNIX_TIMESTAMP(planned_at) * 1000 AS SIGNED) FROM matches
+         WHERE station_id = ? AND jingle_track_id IS NOT NULL ORDER BY id DESC LIMIT 1",
+    )
+    .bind(station_id)
+    .fetch_optional(pool)
+    .await?;
+    let since_announced: i64 = match announced {
+        Some((id, _)) => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM matches WHERE station_id = ? AND id > ?")
+                .bind(station_id)
+                .bind(id)
+                .fetch_one(pool)
+                .await?
+        }
+        None => 0,
+    };
     let excluded = if settings.loser_same_day {
         Vec::new()
     } else {
@@ -334,162 +438,432 @@ pub async fn planner(pool: &MySqlPool, station_id: u64) -> ApiResult<Option<Plan
     .await?;
     Ok(Some(Planner {
         settings,
-        category,
         week,
         tz,
         last_planned_ms,
         since: u32::try_from(since).unwrap_or(u32::MAX),
+        last_announced_ms: announced.map(|(_, at)| at),
+        since_announced: u32::try_from(since_announced).unwrap_or(u32::MAX),
         excluded,
         silent: silent.into_iter().collect(),
     }))
 }
 
+/// `library` without `excluded` in its categories: the tracks a match
+/// cannot take.
+fn without(library: &Library, excluded: &[u64]) -> Library {
+    let mut library = library.clone();
+    if !excluded.is_empty() {
+        for category in library.categories.values_mut() {
+            category
+                .members
+                .retain(|member| !excluded.contains(&member.track));
+        }
+    }
+    library
+}
+
 impl Planner {
-    /// Whether a match is due for a vote's track starting at `start_ms`
-    /// and lasting `length_ms`: in the hours, the whole track in its range,
-    /// long enough, and every N tracks (or the first of the range).
-    fn due(&self, start_ms: i64, length_ms: i64) -> bool {
-        let Ok(start) = Timestamp::from_millisecond(start_ms) else {
-            return false;
-        };
-        let Some((opens, closes)) = opening(&self.week, &self.tz, start) else {
-            return false;
-        };
+    /// The range a winner starting at `winner_ms` plays in, when a match
+    /// is due for it: in the hours (it starts before its range closes), and
+    /// every N tracks counted from the range's first winner, which is the
+    /// first track of the range. The vote's track (`vote_ms` long) must be
+    /// long enough to vote during.
+    fn due(&self, winner_ms: i64, vote_ms: i64) -> Option<(Timestamp, Timestamp)> {
+        let start = Timestamp::from_millisecond(winner_ms).ok()?;
+        let (opens, closes) = opening(&self.week, &self.tz, start)?;
         let first = self
             .last_planned_ms
             .is_none_or(|last| last < opens.as_millisecond());
         let counted = first || self.since + 2 >= self.settings.every_tracks;
-        counted
-            && length_ms >= self.settings.min_track_ms()
-            && start_ms + length_ms <= closes.as_millisecond()
+        (counted && vote_ms >= self.settings.min_track_ms() && winner_ms < closes.as_millisecond())
+            .then_some((opens, closes))
     }
 
-    /// After rotation's last pick (the end of `picks`, planned to end at
-    /// `at`, the clock at `last`): when it carries a match, links the
-    /// announcement to it and adds the two tracks after it. Otherwise
-    /// counts it.
-    pub fn after(
+    /// Whether this match is announced: the first of its range, then every
+    /// X matches.
+    fn announces(&self, opens: Timestamp) -> bool {
+        self.last_announced_ms
+            .is_none_or(|last| last < opens.as_millisecond())
+            || self.since_announced + 1 >= self.settings.announce_every
+    }
+
+    /// Whether `category` sends no metadata (a jingle, an ad).
+    fn silent(&self, category: Option<u64>) -> bool {
+        category.is_some_and(|category| self.silent.contains(&category))
+    }
+
+    /// What the clock puts between the vote's track and the winner: not
+    /// a slot of music (a jingle, an ad), an exact time's slot, or a gap
+    /// filled before one.
+    fn between(&self, pick: &Pick) -> bool {
+        let explanation = &pick.explanation;
+        explanation.exact.is_some()
+            || explanation.fill.is_some()
+            || self.silent(explanation.slot_category_id.or(explanation.category_id))
+    }
+
+    /// After rotation's last pick (the end of `picks`, rotation at `ground`):
+    /// when it carries a match, the announcement linked to it, what the
+    /// clock puts between it and the winner, and the two tracks are added.
+    /// Otherwise it is counted. When the match cannot run, the track rotation
+    /// picks for its slot carries the next vote.
+    pub fn after(&mut self, ground: &mut Ground<'_>, picks: &mut Vec<Pick>) -> Option<Planned> {
+        for _ in 0..MAX_TRIES {
+            let vote = picks.len().checked_sub(1)?;
+            let pick = &picks[vote];
+            let start = pick.explanation.at_unix_ms;
+            match self.plan(ground, picks, Some(vote), pick.track, start, None) {
+                Ok(planned) => return Some(planned),
+                // Its slot's track was added: it carries the next vote.
+                Err(true) => {}
+                Err(false) => return None,
+            }
+        }
+        None
+    }
+
+    /// Every track: the winner `vote_entry` (`vote_track`, starting at
+    /// `start_ms`), queued already, carries the next match; what it adds
+    /// goes after it in `picks`.
+    pub fn behind(
         &mut self,
-        library: &Library,
-        history: &History,
-        at: i64,
-        last: Option<&Position>,
+        ground: &mut Ground<'_>,
         picks: &mut Vec<Pick>,
-        rng: &mut Rng,
+        vote_entry: u64,
+        vote_track: u64,
+        start_ms: i64,
     ) -> Option<Planned> {
-        let vote = picks.last()?;
-        let track = library.tracks.get(&vote.track)?;
+        match self.plan(ground, picks, None, vote_track, start_ms, Some(vote_entry)) {
+            Ok(planned) => Some(planned),
+            Err(true) => self.after(ground, picks),
+            Err(false) => None,
+        }
+    }
+
+    /// A match whose vote runs during `vote_track` (`picks[vote]`, or queued
+    /// already at `vote_entry`), starting at `start_ms`. `Err(true)`: no
+    /// match, but the slot's track was added to `picks`, to carry the next
+    /// vote; `Err(false)`: no match.
+    #[allow(clippy::too_many_arguments)]
+    fn plan(
+        &mut self,
+        ground: &mut Ground<'_>,
+        picks: &mut Vec<Pick>,
+        vote: Option<usize>,
+        vote_track: u64,
+        start_ms: i64,
+        vote_entry: Option<u64>,
+    ) -> Result<Planned, bool> {
+        let library = ground.library;
+        let Some(track) = library.tracks.get(&vote_track) else {
+            return Err(false);
+        };
         if track.categories.iter().any(|c| self.silent.contains(c)) {
-            return None;
+            return Err(false);
         }
         let length = i64::from(track.length_ms);
-        // Its planned start: an exact slot's jumps to its time.
-        let start = vote.explanation.at_unix_ms;
-        if !self.due(start, length) {
+        if length < self.settings.min_track_ms() {
             self.since = self.since.saturating_add(1);
+            return Err(false);
+        }
+        // What the clock puts between the vote's track and the winner, up
+        // to the next music slot: they play as the clock says.
+        let mut between = Vec::new();
+        let mut slot = None;
+        // The fill kept as it was before the slot's pick, for when that pick
+        // is not queued.
+        let mut kept = None;
+        for _ in 0..MAX_BETWEEN {
+            kept = Some(ground.plan.clone());
+            let Some(next) = ground.next(library, true) else {
+                break;
+            };
+            let mut group = next.into_picks();
+            // A jingle linked to the music slot's track: it plays between,
+            // linked to neither of the two.
+            if group.len() == 2 && !self.between(&group[1]) && self.between(&group[0]) {
+                let mut jingle = group.remove(0);
+                jingle.explanation.linked = false;
+                if let Some(index) = ground.push(jingle, picks) {
+                    between.push(index);
+                }
+            }
+            if group.iter().all(|pick| self.between(pick)) {
+                for pick in group {
+                    if let Some(index) = ground.push(pick, picks) {
+                        between.push(index);
+                    }
+                }
+                continue;
+            }
+            slot = (group.len() == 1).then(|| group.remove(0));
+            break;
+        }
+        let Some(slot) = slot else {
+            return Err(false);
+        };
+        // The winner starts after them: its range, and whether it is due.
+        let winner_ms = *ground.at;
+        let mut restore = |ground: &mut Ground<'_>| {
+            if let Some(kept) = kept.take() {
+                *ground.plan = kept;
+            }
+        };
+        let Some((opens, _)) = self.due(winner_ms, length) else {
+            self.since = self.since.saturating_add(1);
+            restore(ground);
+            return Err(false);
+        };
+        let from_clock = self.settings.tracks_from == TracksFrom::Clock && slot.position.is_some();
+        let two = if from_clock {
+            self.two_from_slot(ground, &slot)
+        } else {
+            self.settings
+                .category_id
+                .and_then(|category| self.two_from_category(ground, category))
+                .map(|(a, b)| (a, b, self.settings.category_id))
+        };
+        let Some((a, b, category)) = two else {
+            // No match: the slot plays the track rotation picked, which
+            // carries the next vote.
+            ground.push(slot, picks);
+            return Err(true);
+        };
+        if !from_clock {
+            // From a category: the clock's slot waits for the next pick.
+            restore(ground);
+        }
+        // The announcement, in turn and without separation rules, every X
+        // matches.
+        let announcement = self
+            .settings
+            .jingle_category_id
+            .filter(|_| self.announces(opens))
+            .and_then(|jingles| {
+                heron_rotation::from_category(
+                    library,
+                    ground.history,
+                    start_ms,
+                    jingles,
+                    &[],
+                    false,
+                    ground.rng,
+                )
+            });
+        let mut announce_before = None;
+        let mut jingle = None;
+        let mut vote = vote;
+        match (announcement, vote) {
+            (Some(announcement), None) => announce_before = Some(announcement),
+            (announcement, Some(index)) => {
+                let had_jingle = index > 0 && picks[index - 1].explanation.linked;
+                match (announcement, had_jingle) {
+                    (Some(mut announcement), true) => {
+                        announcement.explanation.linked = true;
+                        picks[index - 1] = announcement;
+                        jingle = Some(index - 1);
+                    }
+                    (Some(mut announcement), false) => {
+                        announcement.explanation.linked = true;
+                        picks.insert(index, announcement);
+                        jingle = Some(index);
+                        vote = Some(index + 1);
+                        for place in &mut between {
+                            *place += 1;
+                        }
+                    }
+                    (None, true) => jingle = Some(index - 1),
+                    (None, false) => {}
+                }
+            }
+            (None, None) => {}
+        }
+        picks.push(a);
+        picks.push(b);
+        Ok(Planned {
+            category,
+            vote,
+            vote_entry,
+            vote_track,
+            jingle,
+            announce_before,
+            between,
+            a: picks.len() - 2,
+            b: picks.len() - 1,
+            planned_at_ms: winner_ms,
+        })
+    }
+
+    /// The two tracks as the clock's music slot of `slot` (rotation's pick
+    /// for it) would pick its track, twice: the second with the first
+    /// played, of the same slot and category, today's losers aside.
+    fn two_from_slot(
+        &self,
+        ground: &mut Ground<'_>,
+        slot: &Pick,
+    ) -> Option<(Pick, Pick, Option<u64>)> {
+        let library = ground.library;
+        let same = |pick: &Pick, a: &Pick| {
+            pick.position == a.position
+                && pick.track != a.track
+                && pick.linked.is_none()
+                && pick.explanation.category_id == a.explanation.category_id
+                && pick.explanation.category_id == a.explanation.slot_category_id
+        };
+        let matching = without(library, &self.excluded);
+        let a = if self.excluded.contains(&slot.track) || slot.linked.is_some() {
+            let again = ground.next(&matching, false)?;
+            (again.position == slot.position && again.linked.is_none()).then_some(again)?
+        } else {
+            slot.clone()
+        };
+        let category = a.explanation.category_id;
+        if category != a.explanation.slot_category_id {
+            // The fallback category: no match from it.
             return None;
         }
+        let mut with_a = ground.history.clone();
+        with_a.push(Play::of(
+            library.tracks.get(&a.track)?,
+            a.explanation.at_unix_ms,
+        ));
+        let mut excluded = self.excluded.clone();
+        excluded.push(a.track);
+        let category_id = category?;
+        // Before an exact time, B lasts about as long as A.
+        let tolerances: Vec<Option<i64>> = match heron_rotation::exact_ahead(
+            library,
+            ground.history,
+            *ground.at,
+            ground.last.as_ref(),
+        ) {
+            Some(window) => {
+                let width = (window.cut_ms - window.from_ms).max(1_000);
+                (0..4)
+                    .map(|doubled| Some(width << doubled))
+                    .chain([None])
+                    .collect()
+            }
+            None => vec![None],
+        };
+        let a_next = i64::from(a.next_ms(library));
+        for tolerance in tolerances {
+            let mut out = excluded.clone();
+            if let Some(tolerance) = tolerance {
+                out.extend(
+                    library
+                        .categories
+                        .get(&category_id)
+                        .into_iter()
+                        .flat_map(|category| &category.members)
+                        .filter_map(|member| library.tracks.get(&member.track))
+                        .filter(|track| (i64::from(track.next_ms()) - a_next).abs() > tolerance)
+                        .map(|track| track.id),
+                );
+            }
+            let candidates = without(library, &out);
+            let mut none = None;
+            let b = heron_rotation::next_planned_with(
+                &candidates,
+                &with_a,
+                *ground.at,
+                ground.last.as_ref(),
+                ground.rng,
+                &mut none,
+                heron_rotation::Planning {
+                    budget: heron_rotation::Budget::LIVE,
+                    record: false,
+                },
+            )
+            .pick
+            // A jingle linked to the slot comes with it: the track only.
+            .and_then(|pick| pick.into_picks().pop());
+            if let Some(b) = b.filter(|b| same(b, &a)) {
+                return Some((a, b, category));
+            }
+        }
+        None
+    }
+
+    /// The two tracks from `category`, as a slot calling it would pick
+    /// them: B with A played, about as long as A before an exact time.
+    fn two_from_category(&self, ground: &mut Ground<'_>, category: u64) -> Option<(Pick, Pick)> {
+        let library = ground.library;
+        let at = *ground.at;
         let a = heron_rotation::from_category(
             library,
-            history,
+            ground.history,
             at,
-            self.category,
+            category,
             &self.excluded,
             true,
-            rng,
+            ground.rng,
         )?;
-        let mut with_a = history.clone();
+        let mut with_a = ground.history.clone();
         if let Some(track) = library.tracks.get(&a.track) {
             with_a.push(Play::of(track, at));
         }
         let mut excluded = self.excluded.clone();
         excluded.push(a.track);
-        // Before an exact time, B lasts about as long as A: planning counts
-        // the longer, and either lands the hour in the window.
-        let b = match heron_rotation::exact_ahead(library, history, at, last) {
-            Some(window) => self.close_to(library, &with_a, at, &excluded, &a, window, rng),
-            None => None,
-        }
-        .or_else(|| {
-            heron_rotation::from_category(library, &with_a, at, self.category, &excluded, true, rng)
-        })?;
-        // The announcement, in turn and without separation rules, takes the
-        // place of a linked slot's jingle.
-        let announcement = self.settings.jingle_category_id.and_then(|jingles| {
-            heron_rotation::from_category(library, history, start, jingles, &[], false, rng)
-        });
-        let mut vote = picks.len() - 1;
-        let had_jingle = vote > 0 && picks[vote - 1].explanation.linked;
-        let jingle = match (announcement, had_jingle) {
-            (Some(mut announcement), true) => {
-                announcement.explanation.linked = true;
-                picks[vote - 1] = announcement;
-                Some(vote - 1)
+        let b =
+            match heron_rotation::exact_ahead(library, ground.history, at, ground.last.as_ref()) {
+                Some(window) => close_to(
+                    library, &with_a, at, category, &excluded, &a, window, ground.rng,
+                ),
+                None => None,
             }
-            (Some(mut announcement), false) => {
-                announcement.explanation.linked = true;
-                picks.insert(vote, announcement);
-                vote += 1;
-                Some(vote - 1)
-            }
-            (None, true) => Some(vote - 1),
-            (None, false) => None,
-        };
-        picks.push(a);
-        picks.push(b);
-        Some(Planned {
-            category: self.category,
-            vote,
-            jingle,
-            a: vote + 1,
-            b: vote + 2,
-            planned_at_ms: at,
-        })
+            .or_else(|| {
+                heron_rotation::from_category(
+                    library, &with_a, at, category, &excluded, true, ground.rng,
+                )
+            })?;
+        Some((a, b))
     }
 }
 
-impl Planner {
-    /// B, picked as usual among the tracks of the match's category whose
-    /// next track starts within the window's width of A's (its early
-    /// tolerance in hard mode), that width doubled up to three times when
-    /// none can be picked (`docs/rotation.md#exact-times`).
-    #[allow(clippy::too_many_arguments)]
-    fn close_to(
-        &self,
-        library: &Library,
-        history: &History,
-        at: i64,
-        excluded: &[u64],
-        a: &Pick,
-        window: heron_rotation::exact::Window,
-        rng: &mut Rng,
-    ) -> Option<Pick> {
-        let a_next = i64::from(a.next_ms(library));
-        let members: Vec<(u64, i64)> = library
-            .categories
-            .get(&self.category)
-            .into_iter()
-            .flat_map(|category| &category.members)
-            .filter_map(|member| library.tracks.get(&member.track))
-            .map(|track| (track.id, i64::from(track.next_ms())))
-            .collect();
-        let width = (window.cut_ms - window.from_ms).max(1_000);
-        (0..4).find_map(|doubled| {
-            let tolerance = width << doubled;
-            let mut out = excluded.to_vec();
-            out.extend(
-                members
-                    .iter()
-                    .filter(|(_, next)| (next - a_next).abs() > tolerance)
-                    .map(|(id, _)| *id),
-            );
-            heron_rotation::from_category(library, history, at, self.category, &out, true, rng)
-        })
-    }
+/// B, picked as usual among the tracks of `category` whose next track
+/// starts within the window's width of A's (its early tolerance in hard
+/// mode), that width doubled up to three times when none can be picked
+/// (`docs/rotation.md#exact-times`).
+#[allow(clippy::too_many_arguments)]
+fn close_to(
+    library: &Library,
+    history: &History,
+    at: i64,
+    category: u64,
+    excluded: &[u64],
+    a: &Pick,
+    window: heron_rotation::exact::Window,
+    rng: &mut Rng,
+) -> Option<Pick> {
+    let a_next = i64::from(a.next_ms(library));
+    let members: Vec<(u64, i64)> = library
+        .categories
+        .get(&category)
+        .into_iter()
+        .flat_map(|category| &category.members)
+        .filter_map(|member| library.tracks.get(&member.track))
+        .map(|track| (track.id, i64::from(track.next_ms())))
+        .collect();
+    let width = (window.cut_ms - window.from_ms).max(1_000);
+    (0..4).find_map(|doubled| {
+        let tolerance = width << doubled;
+        let mut out = excluded.to_vec();
+        out.extend(
+            members
+                .iter()
+                .filter(|(_, next)| (next - a_next).abs() > tolerance)
+                .map(|(id, _)| *id),
+        );
+        heron_rotation::from_category(library, history, at, category, &out, true, rng)
+    })
 }
 
 /// Records a match just queued: its picks became `entries`, logged as
-/// `log_ids`.
+/// `log_ids`; `jingle_entry`: the announcement queued before a vote's track
+/// queued already.
+#[allow(clippy::too_many_arguments)]
 pub async fn queued(
     pool: &MySqlPool,
     station_id: u64,
@@ -498,30 +872,45 @@ pub async fn queued(
     engine_started_at: u64,
     entries: &[u64],
     log_ids: &[u64],
+    jingle_entry: Option<u64>,
 ) -> ApiResult<u64> {
     let entry = |index: usize| entries.get(index).copied();
+    let vote_entry = planned.vote.and_then(entry).or(planned.vote_entry);
     let (Some(vote_entry), Some(entry_a), Some(entry_b)) =
-        (entry(planned.vote), entry(planned.a), entry(planned.b))
+        (vote_entry, entry(planned.a), entry(planned.b))
     else {
         return Err(internal("a match's tracks were not all queued"));
     };
+    let between: Vec<u64> = planned
+        .between
+        .iter()
+        .filter_map(|&index| entry(index))
+        .collect();
+    let between = serde_json::to_string(&between).map_err(internal)?;
+    let jingle_track = planned
+        .jingle
+        .map(|index| picks[index].track)
+        .or(planned.announce_before.as_ref().map(|pick| pick.track));
+    let jingle_entry = planned.jingle.and_then(entry).or(jingle_entry);
     let id = sqlx::query(
         "INSERT INTO matches
              (station_id, status, category_id, vote_track_id, jingle_track_id, track_a_id,
               track_b_id, engine_started_at, vote_entry_id, entry_a_id, entry_b_id,
-              pick_a_id, pick_b_id, planned_at, created_at)
-         VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), NOW(6))",
+              jingle_entry_id, between_entry_ids, pick_a_id, pick_b_id, planned_at, created_at)
+         VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), NOW(6))",
     )
     .bind(station_id)
     .bind(planned.category)
-    .bind(picks[planned.vote].track)
-    .bind(planned.jingle.map(|index| picks[index].track))
+    .bind(planned.vote_track)
+    .bind(jingle_track)
     .bind(picks[planned.a].track)
     .bind(picks[planned.b].track)
     .bind(engine_started_at)
     .bind(vote_entry)
     .bind(entry_a)
     .bind(entry_b)
+    .bind(jingle_entry)
+    .bind(between)
     .bind(log_ids.get(planned.a).copied())
     .bind(log_ids.get(planned.b).copied())
     .bind(seconds(planned.planned_at_ms))
@@ -536,6 +925,58 @@ pub async fn queued(
         "match queued"
     );
     Ok(id)
+}
+
+/// The station's last match: its ID, status, engine, entries A and B, the
+/// winner's track and side (1: A, 2: B).
+type LastMatch = (u64, String, u64, u64, u64, Option<u64>, Option<u64>);
+
+/// Every track: the winner of the station's last match, still waiting at
+/// the end of the queue, which carries the next vote. `None` without one.
+pub async fn chained(
+    pool: &MySqlPool,
+    station_id: u64,
+    player: &PlayerState,
+) -> ApiResult<Option<(u64, u64, u64)>> {
+    if !crate::modules::is_on(pool, Some(station_id), Module::Match).await? {
+        return Ok(None);
+    }
+    if load_settings(pool, station_id).await?.every_tracks != 1 {
+        return Ok(None);
+    }
+    let last: Option<LastMatch> = sqlx::query_as(
+        "SELECT id, CAST(status AS CHAR), engine_started_at, entry_a_id, entry_b_id,
+                IF(winner = 'a', track_a_id, track_b_id), IF(winner = 'a', 1, IF(winner = 'b', 2, NULL))
+         FROM matches WHERE station_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .bind(station_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((id, status, started_at, entry_a, entry_b, Some(track), Some(side))) = last else {
+        return Ok(None);
+    };
+    if status != "closed" || player.engine_started_at_unix_ms != started_at {
+        return Ok(None);
+    }
+    let entry = if side == 1 { entry_a } else { entry_b };
+    let at_the_end = player
+        .waiting()
+        .filter(|waiting| waiting.track.source != heron_core::PlaySource::Fallback)
+        .last()
+        .is_some_and(|waiting| waiting.entry_id == entry);
+    Ok(at_the_end.then_some((id, entry, track)))
+}
+
+/// Every track: whether the queue waits behind the match waiting or open,
+/// the next one queued behind its winner at its close.
+pub async fn holds_queue(pool: &MySqlPool, station_id: u64) -> ApiResult<bool> {
+    if !crate::modules::is_on(pool, Some(station_id), Module::Match).await? {
+        return Ok(false);
+    }
+    if load_settings(pool, station_id).await?.every_tracks != 1 {
+        return Ok(false);
+    }
+    Ok(pending(pool, station_id).await?.is_some())
 }
 
 // ---------------------------------------------------------------------------
@@ -652,6 +1093,8 @@ struct Row {
     vote_entry_id: u64,
     entry_a_id: u64,
     entry_b_id: u64,
+    jingle_entry_id: Option<u64>,
+    between_entry_ids: Option<String>,
     pick_a_id: Option<u64>,
     pick_b_id: Option<u64>,
     opened_ms: Option<i64>,
@@ -670,7 +1113,8 @@ const COLUMNS: &str = "m.id, m.station_id, CAST(m.status AS CHAR) AS status, m.c
     m.jingle_track_id, tj.artist AS jingle_artist, tj.title AS jingle_title,
     m.track_a_id, ta.artist AS a_artist, ta.title AS a_title,
     m.track_b_id, tb.artist AS b_artist, tb.title AS b_title,
-    m.engine_started_at, m.vote_entry_id, m.entry_a_id, m.entry_b_id, m.pick_a_id, m.pick_b_id,
+    m.engine_started_at, m.vote_entry_id, m.entry_a_id, m.entry_b_id, m.jingle_entry_id,
+    CAST(m.between_entry_ids AS CHAR) AS between_entry_ids, m.pick_a_id, m.pick_b_id,
     CAST(UNIX_TIMESTAMP(m.opened_at) * 1000 AS SIGNED) AS opened_ms,
     CAST(UNIX_TIMESTAMP(m.closes_at) * 1000 AS SIGNED) AS closes_ms,
     CAST(UNIX_TIMESTAMP(m.transition_at) * 1000 AS SIGNED) AS transition_ms,
@@ -686,6 +1130,14 @@ const FROM: &str = "FROM matches m
     LEFT JOIN tracks tb ON tb.id = m.track_b_id";
 
 impl Row {
+    /// What the clock put between the vote's track and the winner.
+    fn between(&self) -> Vec<u64> {
+        self.between_entry_ids
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default()
+    }
+
     fn status(&self) -> MatchStatus {
         MatchStatus::parse(&self.status)
     }
@@ -828,6 +1280,10 @@ pub struct MatchView {
     /// engine started then: locked in the queue while the match waits or
     /// its vote is open, with the announcement linked to the vote's track.
     pub entry_ids: Vec<u64>,
+    /// What else it locks: what the clock put between the vote's track and
+    /// the winner, and the announcement queued before a vote's track queued
+    /// already (every track).
+    pub locked_entry_ids: Vec<u64>,
     pub votes: u32,
     /// When the vote's track started.
     pub opened_at_unix_ms: Option<i64>,
@@ -859,6 +1315,11 @@ impl From<&Row> for MatchView {
             }),
             choices: vec![row.choice(MatchSide::A), row.choice(MatchSide::B)],
             entry_ids: vec![row.vote_entry_id, row.entry_a_id, row.entry_b_id],
+            locked_entry_ids: row
+                .jingle_entry_id
+                .into_iter()
+                .chain(row.between())
+                .collect(),
             votes: row.total(),
             opened_at_unix_ms: row.opened_ms,
             closes_at_unix_ms: row.closes_ms,
@@ -1177,7 +1638,8 @@ fn on_air<'p>(player: &'p PlayerState, row: &Row) -> Option<&'p crate::engine::D
 /// it (docs/listener-interaction.md#on-air).
 #[derive(Clone, Debug)]
 pub(crate) struct Lock {
-    /// The vote's track, its announcement, A and B.
+    /// The vote's track, its announcement, what the clock put between it
+    /// and the winner, A and B.
     entries: Vec<u64>,
     /// The waiting entries in play order (`PlayerState::waiting`), whose
     /// places the queue's positions count.
@@ -1190,6 +1652,8 @@ impl Lock {
     fn new(found: &Row, player: &PlayerState) -> Self {
         let vote = found.vote_entry_id;
         let mut entries = vec![vote, found.entry_a_id, found.entry_b_id];
+        entries.extend(found.jingle_entry_id);
+        entries.extend(found.between());
         entries.extend(
             player
                 .waiting()
@@ -1411,7 +1875,17 @@ async fn open(
         None => None,
     };
     let position = i64::try_from(deck.position_ms).unwrap_or(0);
-    let transition = now + (mix.unwrap_or(length) - position).max(0);
+    let mut transition = now + (mix.unwrap_or(length) - position).max(0);
+    // What the clock put between: an exact time's slot starts at its time
+    // at the latest.
+    if let Some(first) = found.between().first()
+        && let Some(start_at) = fresh
+            .as_ref()
+            .and_then(|player| player.waiting().find(|entry| entry.entry_id == *first))
+            .and_then(|entry| entry.track.start_at_unix_ms)
+    {
+        transition = transition.min(start_at);
+    }
     let closes = transition - i64::from(settings.close_before_s) * 1_000;
     let started = now - position;
     let opened = sqlx::query(
@@ -1942,9 +2416,31 @@ mod tests {
     #[test]
     fn settings_are_checked() {
         assert_eq!(MatchSettings::default().check(), Ok(()));
+        // Every track, from the clock, the announcement every 20 matches.
+        let every = MatchSettings {
+            every_tracks: 1,
+            tracks_from: TracksFrom::Clock,
+            announce_every: 20,
+            ..MatchSettings::default()
+        };
+        assert_eq!(every.check(), Ok(()));
+        // Stored before them: from a category, announced every match.
+        let stored: MatchSettings = serde_json::from_str(r#"{"every_tracks": 4}"#).unwrap();
+        assert_eq!(
+            (stored.tracks_from, stored.announce_every),
+            (TracksFrom::Category, 1)
+        );
         for bad in [
             MatchSettings {
-                every_tracks: 1,
+                every_tracks: 0,
+                ..MatchSettings::default()
+            },
+            MatchSettings {
+                announce_every: 0,
+                ..MatchSettings::default()
+            },
+            MatchSettings {
+                announce_every: 21,
                 ..MatchSettings::default()
             },
             MatchSettings {
@@ -1998,7 +2494,6 @@ mod tests {
                 category_id: Some(1),
                 ..MatchSettings::default()
             },
-            category: 1,
             // Mondays, 18:00 to 19:00, UTC.
             week: Week::of(&[core_shows::HourRange {
                 days: vec![1],
@@ -2008,6 +2503,8 @@ mod tests {
             tz: TimeZone::UTC,
             last_planned_ms: last,
             since,
+            last_announced_ms: None,
+            since_announced: 0,
             excluded: Vec::new(),
             silent: HashSet::new(),
         }
@@ -2020,20 +2517,80 @@ mod tests {
     #[test]
     fn a_match_is_due_every_n_tracks_in_the_hours_only() {
         let minutes = |n: i64| n * 60_000;
-        let start = at("2026-11-09T18:10:00Z");
-        // The first track of the range carries the vote.
-        assert!(planner(4, 0, None).due(start, minutes(3)));
-        assert!(planner(4, 9, Some(at("2026-11-02T18:50:00Z"))).due(start, minutes(3)));
-        // Then the winner every 4 tracks: two tracks, then the vote's.
-        let last = Some(at("2026-11-09T18:05:00Z"));
-        assert!(!planner(4, 0, last).due(start, minutes(3)));
-        assert!(!planner(4, 1, last).due(start, minutes(3)));
-        assert!(planner(4, 2, last).due(start, minutes(3)));
-        // Not outside the hours, nor past their end, nor on a short track.
-        assert!(!planner(4, 0, None).due(at("2026-11-09T17:58:00Z"), minutes(3)));
-        assert!(!planner(4, 0, None).due(at("2026-11-10T18:10:00Z"), minutes(3)));
-        assert!(!planner(4, 0, None).due(at("2026-11-09T18:58:00Z"), minutes(3)));
-        assert!(!planner(4, 0, None).due(start, 59_000));
+        let due =
+            |planner: Planner, winner: &str, vote: i64| planner.due(at(winner), vote).is_some();
+        // The first winner is the first track of the range: its vote runs
+        // during the last track before it.
+        assert!(due(planner(4, 0, None), "2026-11-09T18:00:20Z", minutes(3)));
+        assert!(due(
+            planner(4, 9, Some(at("2026-11-02T18:50:00Z"))),
+            "2026-11-09T18:00:20Z",
+            minutes(3)
+        ));
+        assert!(!due(
+            planner(4, 0, None),
+            "2026-11-09T17:59:50Z",
+            minutes(3)
+        ));
+        // Then a winner every 4 tracks, counted from the first one: two
+        // tracks, then the vote's.
+        let first = Some(at("2026-11-09T18:00:20Z"));
+        assert!(!due(
+            planner(4, 0, first),
+            "2026-11-09T18:10:00Z",
+            minutes(3)
+        ));
+        assert!(!due(
+            planner(4, 1, first),
+            "2026-11-09T18:10:00Z",
+            minutes(3)
+        ));
+        assert!(due(
+            planner(4, 2, first),
+            "2026-11-09T18:10:00Z",
+            minutes(3)
+        ));
+        // Every track: each winner carries the next vote.
+        assert!(due(
+            planner(1, 0, first),
+            "2026-11-09T18:04:00Z",
+            minutes(3)
+        ));
+        // The last match is the last whose winner starts before the range
+        // closes; not on another day, nor after a short vote's track.
+        assert!(due(
+            planner(1, 0, first),
+            "2026-11-09T18:59:30Z",
+            minutes(3)
+        ));
+        assert!(!due(
+            planner(1, 0, first),
+            "2026-11-09T19:00:10Z",
+            minutes(3)
+        ));
+        assert!(!due(
+            planner(4, 0, None),
+            "2026-11-10T18:10:00Z",
+            minutes(3)
+        ));
+        assert!(!due(planner(4, 0, None), "2026-11-09T18:10:00Z", 59_000));
+    }
+
+    #[test]
+    fn the_announcement_comes_every_x_matches() {
+        let opens = "2026-11-09T18:00:00Z".parse::<Timestamp>().unwrap();
+        let mut planner = planner(1, 0, None);
+        planner.settings.announce_every = 3;
+        // The range's first match is announced.
+        assert!(planner.announces(opens));
+        planner.last_announced_ms = Some(at("2026-11-09T18:00:20Z"));
+        for (since, announced) in [(0, false), (1, false), (2, true)] {
+            planner.since_announced = since;
+            assert_eq!(planner.announces(opens), announced, "{since}");
+        }
+        planner.settings.announce_every = 1;
+        planner.since_announced = 0;
+        assert!(planner.announces(opens));
     }
 
     /// A station whose clock has a news flash at the top of each hour
@@ -2170,7 +2727,17 @@ mod tests {
                 let mut picks = vec![vote];
                 let mut planner = planner(4, 0, None);
                 let planned = planner
-                    .after(&library, &history, at, last.as_ref(), &mut picks, &mut rng)
+                    .after(
+                        &mut Ground {
+                            library: &library,
+                            history: &mut history,
+                            at: &mut at,
+                            last: &mut last,
+                            plan: &mut plan,
+                            rng: &mut rng,
+                        },
+                        &mut picks,
+                    )
                     .expect("a match is due");
                 let next = |index: usize| i64::from(picks[index].next_ms(&library));
                 let (a, b) = (next(planned.a), next(planned.b));
@@ -2207,5 +2774,372 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A station whose clock 1 has a news flash at the top of each hour
+    /// (soft), then songs (1), hits (4), a jingle linked to songs, a jingle,
+    /// hits, songs…; clock 2 (Tuesdays) has no exact time. No clock on
+    /// Monday at 21:00. Songs and hits are music; the news and the jingles
+    /// are not (2, 3). `hits`: how many hits there are.
+    fn clock_station(hits: u64) -> Library {
+        use heron_rotation::{
+            Category, Clock, ExactMode, ExactTime, LibraryParts, Member, Method, RotationSettings,
+            Schedule, SeparationOverrides, Slot, Track,
+        };
+        let mut rng = Rng::new(42);
+        let track = |id: u64, length_ms: u32| Track {
+            id,
+            title_key: Some(format!("title {id}")),
+            album_key: Some(format!("album {id}")),
+            artists: vec![1_000 + id],
+            categories: vec![],
+            length_ms,
+            mix_ms: None,
+            ratio: 10,
+            dayparts: None,
+            daypart_days: None,
+        };
+        let songs: Vec<u64> = (1..=150).collect();
+        let hit_ids: Vec<u64> = (700..700 + hits).collect();
+        let jingles: Vec<u64> = (600..612).collect();
+        let mut tracks: Vec<Track> = songs
+            .iter()
+            .chain(&hit_ids)
+            .map(|&id| track(id, 150_000 + u32::try_from(rng.below(180_000)).unwrap()))
+            .collect();
+        tracks.push(track(500, 120_000));
+        tracks.extend(jingles.iter().map(|&id| track(id, 6_000)));
+        let category = |id: u64, members: &[u64], separation: SeparationOverrides| Category {
+            id,
+            name: format!("C{id}"),
+            separation,
+            members: members
+                .iter()
+                .map(|&track| Member { track, weight: 1.0 })
+                .collect(),
+        };
+        let often = SeparationOverrides {
+            track_min: Some(10),
+            title_min: Some(10),
+            artist_min: Some(0),
+            album_min: Some(0),
+            ..SeparationOverrides::default()
+        };
+        let slot = |category: u64, linked: bool, exact: Option<ExactTime>| Slot {
+            category,
+            method: Method::LeastRecentlyPlayed,
+            enforce_rules: true,
+            separation: SeparationOverrides::default(),
+            linked_to_next: linked,
+            exact,
+        };
+        let news = ExactTime {
+            at_s: 0,
+            mode: ExactMode::Soft,
+            before_s: 10,
+            after_s: 30,
+            medley_fill: false,
+            cut_live: false,
+        };
+        let mut hour = vec![slot(2, false, Some(news))];
+        let mut plain = Vec::new();
+        for _ in 0..4 {
+            for (category, linked) in [(1, false), (4, false), (3, true), (1, false), (3, false)] {
+                hour.push(slot(category, linked, None));
+                plain.push(slot(category, linked, None));
+            }
+        }
+        let schedule = Schedule {
+            hours: HashMap::from_iter((1..=7).flat_map(|day| {
+                (0..24)
+                    .filter(move |&hour| !(day == 1 && hour == 21))
+                    .map(move |hour| ((day, hour), if day == 2 { 2 } else { 1 }))
+            })),
+            ..Schedule::default()
+        };
+        Library::new(
+            LibraryParts {
+                tracks,
+                categories: vec![
+                    category(1, &songs, SeparationOverrides::default()),
+                    category(2, &[500], often),
+                    category(3, &jingles, often),
+                    category(4, &hit_ids, SeparationOverrides::default()),
+                ],
+                clocks: vec![
+                    Clock {
+                        id: 1,
+                        name: "Top".into(),
+                        looping: false,
+                        slots: hour,
+                    },
+                    Clock {
+                        id: 2,
+                        name: "Plain".into(),
+                        looping: false,
+                        slots: plain,
+                    },
+                ],
+                schedule,
+                settings: RotationSettings {
+                    filler_category_id: Some(3),
+                    ..RotationSettings::default()
+                },
+                ..LibraryParts::default()
+            },
+            TimeZone::UTC,
+        )
+    }
+
+    /// A planner taking the tracks from the clock, every track, in the hours
+    /// of `days` from `start` to `end`.
+    fn from_clock(days: Vec<u8>, start: u8, end: u8, category: Option<u64>) -> Planner {
+        let mut planner = planner(1, 0, None);
+        planner.settings.tracks_from = TracksFrom::Clock;
+        planner.settings.category_id = category;
+        planner.week = Week::of(&[core_shows::HourRange {
+            days,
+            start_hour: start,
+            end_hour: end,
+        }]);
+        planner.silent = HashSet::from([2, 3]);
+        planner
+    }
+
+    /// Rotation's state, picking as the queue manager does.
+    struct Run {
+        history: History,
+        at: i64,
+        last: Option<Position>,
+        plan: Option<heron_rotation::Plan>,
+        rng: Rng,
+    }
+
+    impl Run {
+        fn new(at: i64, seed: u64) -> Self {
+            Self {
+                history: History::default(),
+                at,
+                last: None,
+                plan: None,
+                rng: Rng::new(seed),
+            }
+        }
+
+        fn ground<'g>(&'g mut self, library: &'g Library) -> Ground<'g> {
+            Ground {
+                library,
+                history: &mut self.history,
+                at: &mut self.at,
+                last: &mut self.last,
+                plan: &mut self.plan,
+                rng: &mut self.rng,
+            }
+        }
+
+        /// Rotation's next pick, queued: its picks pushed to `picks`. None
+        /// when it is the exact slot (not queued).
+        fn pick(
+            &mut self,
+            library: &Library,
+            picks: &mut Vec<Pick>,
+            exact_too: bool,
+        ) -> Option<()> {
+            let pick = heron_rotation::next_planned(
+                library,
+                &self.history,
+                self.at,
+                self.last.as_ref(),
+                &mut self.rng,
+                &mut self.plan,
+            )
+            .pick?;
+            if pick.explanation.exact.is_some() && !exact_too {
+                return None;
+            }
+            for pick in pick.into_picks() {
+                self.ground(library).push(pick, picks)?;
+            }
+            Some(())
+        }
+
+        /// The winner of `planned` played: rotation goes on after it.
+        fn won(&mut self, library: &Library, picks: &[Pick], planned: &Planned) {
+            let winner = &picks[planned.a];
+            self.history.push(Play::of(
+                &library.tracks[&winner.track],
+                planned.planned_at_ms,
+            ));
+            self.at = planned.planned_at_ms + i64::from(winner.next_ms(library));
+            if winner.position.is_some() {
+                self.last = winner.position;
+            }
+        }
+    }
+
+    fn assert_from_one_slot(picks: &[Pick], planned: &Planned) {
+        let (a, b) = (&picks[planned.a], &picks[planned.b]);
+        assert_ne!(a.track, b.track);
+        assert!(
+            a.position.is_some() && a.position == b.position,
+            "{a:?} {b:?}"
+        );
+        assert_eq!(a.explanation.category_id, b.explanation.category_id);
+        assert_eq!(a.explanation.category_id, a.explanation.slot_category_id);
+        assert_eq!(planned.category, a.explanation.category_id);
+        assert_eq!(a.explanation.at_unix_ms, planned.planned_at_ms);
+        assert_eq!(b.explanation.at_unix_ms, planned.planned_at_ms);
+    }
+
+    #[test]
+    fn the_first_winner_of_a_range_follows_the_exact_time_at_its_start() {
+        let library = clock_station(60);
+        let top = at("2026-11-09T19:00:00Z");
+        for seed in 0..4 {
+            let mut run = Run::new(at("2026-11-09T18:40:00Z"), seed);
+            let mut planner = from_clock(vec![1], 19, 20, None);
+            let mut picks = Vec::new();
+            // Rotation fills the queue, a match tried after each pick: the
+            // first is the range's.
+            let planned = loop {
+                run.pick(&library, &mut picks, false)
+                    .expect("a match before the exact slot");
+                if let Some(planned) = planner.after(&mut run.ground(&library), &mut picks) {
+                    break planned;
+                }
+            };
+            // The last track before the range carries the vote; the news
+            // plays between it and the winner.
+            let vote = planned.vote.unwrap();
+            assert!(picks[vote].explanation.at_unix_ms < top);
+            // The news, after a filler when the vote's track ends early.
+            assert!(
+                planned
+                    .between
+                    .iter()
+                    .any(|&index| picks[index].explanation.exact.is_some()),
+                "seed {seed}: {:?}",
+                planned.between
+            );
+            assert!(planned.planned_at_ms > top, "seed {seed}");
+            assert_from_one_slot(&picks, &planned);
+            // The slot after the news: songs.
+            assert_eq!(picks[planned.a].explanation.slot, Some(1));
+        }
+    }
+
+    #[test]
+    fn every_track_the_matches_follow_the_clock_its_jingles_between() {
+        let library = clock_station(60);
+        let mut run = Run::new(at("2026-11-09T19:00:00Z"), 7);
+        let mut planner = from_clock(vec![1], 19, 20, None);
+        let mut picks = Vec::new();
+        // The news, then songs: its track carries the first vote.
+        run.pick(&library, &mut picks, true).unwrap();
+        run.pick(&library, &mut picks, false).unwrap();
+        let mut planned = planner
+            .after(&mut run.ground(&library), &mut picks)
+            .expect("a match");
+        // Hits, then the jingle linked to songs and a match of two songs,
+        // then the jingle and a match of hits, then songs.
+        let mut slots = Vec::new();
+        for _ in 0..4 {
+            assert_from_one_slot(&picks, &planned);
+            let a = &picks[planned.a];
+            let between: Vec<(Option<u32>, bool)> = planned
+                .between
+                .iter()
+                .map(|&index| {
+                    (
+                        picks[index].explanation.slot,
+                        picks[index].explanation.linked,
+                    )
+                })
+                .collect();
+            slots.push((a.explanation.slot, between));
+            run.won(&library, &picks, &planned);
+            let mut next = vec![a.clone()];
+            planner.last_planned_ms = Some(planned.planned_at_ms);
+            planned = planner
+                .after(&mut run.ground(&library), &mut next)
+                .expect("the next match, its vote on the winner");
+            assert_eq!(planned.vote, Some(0));
+            picks = next;
+        }
+        assert_eq!(
+            slots,
+            vec![
+                (Some(2), vec![]),
+                (Some(4), vec![(Some(3), false)]),
+                (Some(6), vec![(Some(5), false)]),
+                (Some(7), vec![]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_slot_without_two_tracks_lets_its_track_carry_the_next_vote() {
+        // One hit only: its slot plays it, which carries the next vote.
+        let library = clock_station(1);
+        let mut run = Run::new(at("2026-11-09T19:00:00Z"), 3);
+        let mut planner = from_clock(vec![1], 19, 20, None);
+        let mut picks = Vec::new();
+        run.pick(&library, &mut picks, true).unwrap();
+        run.pick(&library, &mut picks, false).unwrap();
+        let planned = planner
+            .after(&mut run.ground(&library), &mut picks)
+            .expect("a match after the hit");
+        let vote = planned.vote.unwrap();
+        assert_eq!(picks[vote].track, 700);
+        assert_eq!(picks[vote].explanation.slot, Some(2));
+        // Then the jingle linked to songs between, and two songs.
+        assert_from_one_slot(&picks, &planned);
+        assert_eq!(picks[planned.a].explanation.slot, Some(4));
+    }
+
+    #[test]
+    fn an_hour_without_a_clock_takes_the_category_or_none() {
+        let library = clock_station(60);
+        for category in [None, Some(4)] {
+            let mut run = Run::new(at("2026-11-09T21:10:00Z"), 5);
+            let mut planner = from_clock(vec![1], 21, 22, category);
+            let mut picks = Vec::new();
+            run.pick(&library, &mut picks, false).unwrap();
+            assert!(picks[0].position.is_none(), "no clock at 21:00");
+            let planned = planner.after(&mut run.ground(&library), &mut picks);
+            match category {
+                None => assert!(planned.is_none()),
+                Some(category) => {
+                    let planned = planned.expect("a match from the category");
+                    assert_eq!(planned.category, Some(category));
+                    assert!(picks[planned.a].position.is_none());
+                    assert_ne!(picks[planned.a].track, picks[planned.b].track);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_range_without_an_exact_time_at_its_start_opens_with_its_first_winner() {
+        let library = clock_station(60);
+        // Tuesdays, clock 2: no exact time. The range opens at 18:00.
+        let opens = at("2026-11-10T18:00:00Z");
+        let mut run = Run::new(at("2026-11-10T17:40:00Z"), 11);
+        let mut planner = from_clock(vec![2], 18, 19, None);
+        let mut picks = Vec::new();
+        let planned = loop {
+            run.pick(&library, &mut picks, false).unwrap();
+            if let Some(planned) = planner.after(&mut run.ground(&library), &mut picks) {
+                break planned;
+            }
+            assert!(run.at < opens + 600_000, "no match by 18:10");
+        };
+        let vote = &picks[planned.vote.unwrap()];
+        // The vote during the last track before the range, the winner its
+        // first track.
+        assert!(vote.explanation.at_unix_ms < opens, "{vote:?}");
+        assert!(planned.planned_at_ms >= opens);
+        assert!(planned.planned_at_ms < opens + 10 * 60_000);
+        assert_from_one_slot(&picks, &planned);
     }
 }
