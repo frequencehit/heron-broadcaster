@@ -2680,12 +2680,27 @@ ul.steps .bar {
 
 /* Status bar -------------------------------------------------------------- */
 
-.statusbar {
+/* The bar and, opened above it, a bar per other station: fixed at the
+   bottom of the page. Their parts follow the dock's own width (the preview
+   in Account is narrower). */
+.statusbar-dock {
   position: fixed;
   inset: auto 0 0 0;
   z-index: 20;
-  /* Its parts follow its own width (the preview in Account is narrower). */
   container: statusbar / inline-size;
+}
+
+.statusbar-dock.statusbar-preview {
+  position: static;
+}
+
+/* At most four other stations show; more scroll. */
+.statusbar-rows {
+  max-height: calc(4 * var(--statusbar-h));
+  overflow-y: auto;
+}
+
+.statusbar {
   height: var(--statusbar-h);
   display: flex;
   align-items: center;
@@ -2706,9 +2721,65 @@ ul.steps .bar {
 
 /* The preview in Account › Status bar: in its place, not over the page. */
 .statusbar.statusbar-preview {
-  position: static;
   border: 1px solid var(--border);
   border-radius: 4px;
+}
+
+/* The station button, and the other stations' bars it opens. */
+.statusbar-station {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: calc(var(--statusbar-h) - 0.4rem);
+  padding: 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--fg);
+  font: 700 0.75rem/1 var(--mono);
+  cursor: pointer;
+}
+
+.statusbar-station:hover {
+  background: var(--border);
+}
+
+.statusbar-station-trouble {
+  border-color: var(--bad);
+}
+
+.statusbar-row {
+  background: var(--surface-2);
+}
+
+.statusbar-row .statusbar-deck {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+}
+
+.statusbar-row-code {
+  flex: none;
+  min-width: 4rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: 700 0.75rem/1 var(--mono);
+  text-align: left;
+}
+
+button.statusbar-row-code {
+  cursor: pointer;
+}
+
+button.statusbar-row-code:hover {
+  text-decoration: underline;
+}
+
+.statusbar-row-trouble .statusbar-row-code {
+  color: var(--bad);
 }
 
 .statusbar-offline {
@@ -3031,6 +3102,11 @@ select.input.statusbar-select {
 @container statusbar (max-width: 760px) {
   .statusbar-deck {
     min-width: 0;
+  }
+
+  /* Only the other stations in trouble. */
+  .statusbar-row-ok {
+    display: none;
   }
 
   /* The deck on air takes the room: the other one keeps its letter and state. */

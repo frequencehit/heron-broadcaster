@@ -473,7 +473,7 @@ async fn list_by_id(pool: &MySqlPool) -> ApiResult<Vec<StationInfo>> {
     .await?)
 }
 
-async fn list(pool: &MySqlPool) -> ApiResult<Vec<StationInfo>> {
+pub(crate) async fn list(pool: &MySqlPool) -> ApiResult<Vec<StationInfo>> {
     Ok(sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLUMNS} FROM stations ORDER BY position, id"
     )))

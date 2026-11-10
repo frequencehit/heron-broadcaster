@@ -9925,7 +9925,13 @@ export interface components {
         } | (components["schemas"]["SystemLoad"] & {
             /** @enum {string} */
             type: "system";
-        });
+        }) | {
+            /** Format: int64 */
+            at_unix_ms: number;
+            stations: components["schemas"]["StationSummary"][];
+            /** @enum {string} */
+            type: "stations";
+        };
         /** @enum {string} */
         LogSource: "file" | "url";
         LoginRequest: {
@@ -10637,6 +10643,24 @@ export interface components {
             percent: number;
             /** Format: int32 */
             votes: number;
+        };
+        /** @description The deck on air of another station. */
+        OnAirSummary: {
+            artist?: string | null;
+            deck: components["schemas"]["DeckName"];
+            /**
+             * Format: int64
+             * @description Where the next track starts, from the cue-in; the track's length
+             *     when the engine does not say.
+             */
+            next_start_ms: number;
+            path: string;
+            /**
+             * Format: int64
+             * @description From the cue-in, at the message's `at_unix_ms`.
+             */
+            position_ms: number;
+            title?: string | null;
         };
         /**
          * @description An opening of a show set by dates rather than weekly hours (a top's
@@ -12658,6 +12682,18 @@ export interface components {
         StationShares: components["schemas"]["StationRef"] & {
             groups: components["schemas"]["Share"][];
         };
+        /** @description Another station, in short: what its status bar needs. */
+        StationSummary: {
+            code: string;
+            /** Format: int64 */
+            id: number;
+            on_air?: components["schemas"]["OnAirSummary"] | null;
+            /** @description The names of its enabled outputs that are not connected. */
+            outputs_down: string[];
+            paused: boolean;
+            /** @description Its engine answers. */
+            reachable: boolean;
+        };
         /**
          * @description The station's separation windows, in minutes (`rotation` settings); 0
          *     turns a rule off. Daypart separation is not among them: it is each
@@ -12792,6 +12828,12 @@ export interface components {
              */
             end_seconds: number;
             /**
+             * @description The stations the station button does not open, by ID: a station
+             *     added later shows.
+             * @default []
+             */
+            hidden_stations: number[];
+            /**
              * @description The last track played to its end.
              * @default false
              */
@@ -12861,6 +12903,11 @@ export interface components {
              * @default false
              */
             station_time: boolean;
+            /**
+             * @description A station in trouble shows on the station button, even hidden.
+             * @default true
+             */
+            station_trouble: boolean;
             /**
              * @description The machine's load (operators and admins only).
              * @default true
@@ -18789,6 +18836,8 @@ export interface operations {
             query?: {
                 /** @description Send levels ten times a second (default true). */
                 levels?: boolean;
+                /** @description Send the other stations the user sees, in short (default false). */
+                stations?: boolean;
             };
             header?: never;
             path?: never;
@@ -23851,6 +23900,8 @@ export interface operations {
             query?: {
                 /** @description Send levels ten times a second (default true). */
                 levels?: boolean;
+                /** @description Send the other stations the user sees, in short (default false). */
+                stations?: boolean;
             };
             header?: never;
             path: {

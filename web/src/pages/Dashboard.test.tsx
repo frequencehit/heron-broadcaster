@@ -50,6 +50,7 @@ live.state = {
   eq: null,
   agc: null,
   system: null,
+  stations: null,
 } satisfies LiveState;
 
 vi.mock("../lib/live", async (original) => ({

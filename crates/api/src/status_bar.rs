@@ -85,6 +85,11 @@ pub struct StatusBarSettings {
     /// (`#rrggbb`); `null`: each deck's own colour.
     #[schema(pattern = "^#[0-9a-f]{6}$")]
     pub track_color: Option<String>,
+    /// The stations the station button does not open, by ID: a station
+    /// added later shows.
+    pub hidden_stations: Vec<u64>,
+    /// A station in trouble shows on the station button, even hidden.
+    pub station_trouble: bool,
 }
 
 impl Default for StatusBarSettings {
@@ -110,6 +115,8 @@ impl Default for StatusBarSettings {
             end_seconds: 10,
             intro_color: None,
             track_color: None,
+            hidden_stations: Vec::new(),
+            station_trouble: true,
         }
     }
 }
