@@ -212,21 +212,27 @@ describe("tops", () => {
     expect(screen.getByText("Next:", { exact: false })).toBeTruthy();
     expect(screen.getByText("score = 50 % × plays + 50 % × share of likes")).toBeTruthy();
     expect(screen.getAllByText("When a chart is frozen").length).toBeGreaterThan(0);
-    // Top 10, 70 % plays, the 1st Sunday of the month.
+    // Top 10, 70 % plays, the 1st Saturday and Sunday of the month.
     fireEvent.click(screen.getByText("Top 10"));
     fireEvent.change(screen.getByLabelText("Plays or votes"), { target: { value: "30" } });
     expect(screen.getByText("score = 70 % × plays + 30 % × share of likes")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("When"), { target: { value: "first" } });
     expect(screen.getByText("of the month")).toBeTruthy();
+    // Every day saved before: the seven days pressed, five taken off.
+    expect(screen.getByLabelText("Sunday").getAttribute("aria-pressed")).toBe("true");
+    for (const day of ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]) {
+      fireEvent.click(screen.getByLabelText(day));
+    }
+    expect(screen.getByLabelText("Monday").getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(sent("PUT /api/v1/stations/{station_id}/tops/{top_id}")).toHaveLength(1));
     const body = sent("PUT /api/v1/stations/{station_id}/tops/{top_id}")[0]?.options?.body as {
       size: number;
       plays_percent: number;
-      slot: { every: string; nth: string; weekday: number };
+      slot: { every: string; nth: string; weekdays: number[]; weekday: number | null };
     };
     expect(body.size).toBe(10);
     expect(body.plays_percent).toBe(70);
-    expect(body.slot).toMatchObject({ every: "month", nth: "first", weekday: 7 });
+    expect(body.slot).toMatchObject({ every: "month", nth: "first", weekdays: [6, 7], weekday: null });
   });
 });

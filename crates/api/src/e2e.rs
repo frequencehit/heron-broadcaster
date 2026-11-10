@@ -11148,7 +11148,8 @@ fn pinned_top(tz: &jiff::tz::TimeZone, now: jiff::Timestamp, extra: Value) -> (V
         "name": "Top 3", "size": 3, "min_votes": 2, "period": "week",
         "reset_weekday": reset.weekday().to_monday_one_offset(),
         "reset_time": format!("{:02}:{:02}", reset.hour(), reset.minute()),
-        "slot": {"every": "day", "start": format!("{:02}:00", here.hour()),
+        "slot": {"every": "week", "weekdays": [1, 2, 3, 4, 5, 6, 7],
+                 "start": format!("{:02}:00", here.hour()),
                  "end": format!("{:02}:00", here.hour() + 1)},
     });
     for (key, value) in extra.as_object().unwrap() {
@@ -11423,14 +11424,21 @@ async fn tops_are_frozen_then_played_with_their_ranks_hidden() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body["next_show"]["opens_at_unix_ms"].as_i64().is_some());
     assert_eq!(body["status"]["open"], true);
-    // Another top every day on the same hours: refused; on Sundays only, it
-    // would take this one's Sundays.
+    assert_eq!(
+        body["settings"]["slot"]["weekdays"],
+        json!([1, 2, 3, 4, 5, 6, 7])
+    );
+    // Another top every week on the same hours: refused, on Sundays only
+    // too; on the 1st Sunday of the month, it would take that Sunday.
     let mut other = settings.clone();
     other["name"] = json!("Evening");
     let (status, body) = admin.send(Method::POST, "/tops", other.clone()).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    other["slot"]["every"] = json!("week");
-    other["slot"]["weekday"] = json!(7);
+    other["slot"]["weekdays"] = json!([7]);
+    let (status, body) = admin.send(Method::POST, "/tops", other.clone()).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    other["slot"]["every"] = json!("month");
+    other["slot"]["nth"] = json!("first");
     other["enabled"] = json!(false);
     let (status, sundays) = admin.send(Method::POST, "/tops", other).await;
     assert_eq!(status, StatusCode::CREATED, "{sundays}");

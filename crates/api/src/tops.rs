@@ -111,6 +111,8 @@ pub enum TopPeriod {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SlotEvery {
+    /// Settings saved before the days were chosen one by one: every day
+    /// of the week. Read as `week` with the seven days.
     Day,
     Week,
     Month,
@@ -144,8 +146,12 @@ impl SlotNth {
 #[serde(deny_unknown_fields)]
 pub struct TopSlot {
     pub every: SlotEvery,
-    /// 1 (Monday) to 7, for `week` and `month`.
+    /// Its days, 1 (Monday) to 7, at least one: every week, or the `nth`
+    /// of each in the month.
     #[serde(default)]
+    pub weekdays: Vec<u8>,
+    /// Settings saved before: a single day, read as `weekdays`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weekday: Option<u8>,
     /// For `month`.
     #[serde(default)]
@@ -242,9 +248,41 @@ impl TopSlot {
         )
     }
 
-    fn weekday(&self) -> Weekday {
-        Weekday::from_monday_one_offset(self.weekday.unwrap_or(7).clamp(1, 7) as i8)
-            .unwrap_or(Weekday::Sunday)
+    /// Settings saved before in the new form: every day as the seven
+    /// days of every week, a single `weekday` as `weekdays`; the days in
+    /// order, each once.
+    pub fn normalize(&mut self) {
+        if self.every == SlotEvery::Day {
+            self.every = SlotEvery::Week;
+            self.weekdays = (1..=7).collect();
+        }
+        if let Some(day) = self.weekday.take()
+            && self.weekdays.is_empty()
+        {
+            self.weekdays.push(day);
+        }
+        self.weekdays.sort_unstable();
+        self.weekdays.dedup();
+    }
+
+    /// Its days of the week.
+    fn days(&self) -> Vec<Weekday> {
+        if self.every == SlotEvery::Day {
+            return (1..=7)
+                .filter_map(|day| Weekday::from_monday_one_offset(day).ok())
+                .collect();
+        }
+        let mut days: Vec<u8> = self
+            .weekdays
+            .iter()
+            .chain(self.weekday.iter().filter(|_| self.weekdays.is_empty()))
+            .copied()
+            .collect();
+        days.sort_unstable();
+        days.dedup();
+        days.into_iter()
+            .filter_map(|day| Weekday::from_monday_one_offset(day as i8).ok())
+            .collect()
     }
 
     fn check(&self) -> Result<(), String> {
@@ -255,12 +293,10 @@ impl TopSlot {
         if end <= start {
             return Err("the show ends after it starts, the same day".to_owned());
         }
-        match self.every {
-            SlotEvery::Day => {}
-            SlotEvery::Week | SlotEvery::Month => {
-                if !self.weekday.is_some_and(|day| (1..=7).contains(&day)) {
-                    return Err("the show's day is 1 (Monday) to 7".to_owned());
-                }
+        if self.every != SlotEvery::Day {
+            let days: Vec<u8> = self.weekdays.iter().chain(&self.weekday).copied().collect();
+            if days.is_empty() || !days.iter().all(|day| (1..=7).contains(day)) {
+                return Err("the show's days are 1 (Monday) to 7, at least one".to_owned());
             }
         }
         if (self.every == SlotEvery::Month) != self.nth.is_some() {
@@ -269,44 +305,44 @@ impl TopSlot {
         Ok(())
     }
 
-    /// How rare it is: a day of the month before a day of the week before
-    /// every day.
+    /// How rare it is: a day of the month before a day of every week.
     fn rarity(&self) -> u8 {
         match self.every {
-            SlotEvery::Day => 0,
-            SlotEvery::Week => 1,
+            SlotEvery::Day | SlotEvery::Week => 1,
             SlotEvery::Month => 2,
         }
     }
 
     /// Whether it plays on `date`.
     pub fn occurs_on(&self, date: Date) -> bool {
+        let days = self.days();
         match self.every {
-            SlotEvery::Day => true,
-            SlotEvery::Week => date.weekday() == self.weekday(),
+            SlotEvery::Day | SlotEvery::Week => days.contains(&date.weekday()),
             SlotEvery::Month => {
                 let nth = self.nth.map_or(1, SlotNth::number);
-                date.nth_weekday_of_month(nth, self.weekday()).ok() == Some(date)
+                days.iter()
+                    .any(|day| date.nth_weekday_of_month(nth, *day).ok() == Some(date))
             }
         }
     }
 
     /// Whether both can play on the same day.
     fn can_coincide(&self, other: &Self) -> bool {
-        use SlotEvery::{Day, Month, Week};
+        let (ours, theirs) = (self.days(), other.days());
+        if !ours.iter().any(|day| theirs.contains(day)) {
+            return false;
+        }
         match (self.every, other.every) {
-            (Day, _) | (_, Day) => true,
-            (Week, _) | (_, Week) => self.weekday() == other.weekday(),
-            (Month, Month) => {
+            (SlotEvery::Month, SlotEvery::Month) => {
                 let nths = (self.nth, other.nth);
-                self.weekday() == other.weekday()
-                    && (nths.0 == nths.1
-                        || matches!(
-                            nths,
-                            (Some(SlotNth::Fourth), Some(SlotNth::Last))
-                                | (Some(SlotNth::Last), Some(SlotNth::Fourth))
-                        ))
+                nths.0 == nths.1
+                    || matches!(
+                        nths,
+                        (Some(SlotNth::Fourth), Some(SlotNth::Last))
+                            | (Some(SlotNth::Last), Some(SlotNth::Fourth))
+                    )
             }
+            _ => true,
         }
     }
 
@@ -320,10 +356,11 @@ impl TopSlot {
     pub fn hours(&self) -> HourRange {
         let (start, end) = self.range();
         HourRange {
-            days: match self.every {
-                SlotEvery::Day => (1..=7).collect(),
-                _ => vec![self.weekday().to_monday_one_offset() as u8],
-            },
+            days: self
+                .days()
+                .iter()
+                .map(|day| day.to_monday_one_offset() as u8)
+                .collect(),
             start_hour: (start / 60) as u8,
             end_hour: end.div_ceil(60).min(24) as u8,
         }
@@ -441,6 +478,9 @@ type Stored = (u64, u64, u32, Result<TopSettings, String>);
 fn parse(json: &str) -> Result<TopSettings, String> {
     let mut settings: TopSettings =
         serde_json::from_str(json).map_err(|error| error.to_string())?;
+    if let Some(slot) = settings.slot.as_mut() {
+        slot.normalize();
+    }
     settings.check()?;
     settings.complete();
     Ok(settings)
@@ -1690,6 +1730,9 @@ async fn checked(
     mut settings: TopSettings,
 ) -> ApiResult<TopSettings> {
     settings.check().map_err(ApiError::Invalid)?;
+    if let Some(slot) = settings.slot.as_mut() {
+        slot.normalize();
+    }
     settings.complete();
     settings.name = settings.name.trim().to_owned();
     settings.category_ids.sort_unstable();
@@ -3406,7 +3449,8 @@ mod tests {
     ) -> TopSlot {
         TopSlot {
             every,
-            weekday,
+            weekdays: weekday.into_iter().collect(),
+            weekday: None,
             nth,
             start: start.to_owned(),
             end: end.to_owned(),
@@ -3616,10 +3660,14 @@ mod tests {
                 "20:00",
             )),
         };
+        // Every evening but Sundays: Monday to Saturday.
         let daily = Planned {
             id: 3,
             enabled: true,
-            slot: Some(slot(SlotEvery::Day, None, None, "19:30", "20:30")),
+            slot: Some(TopSlot {
+                weekdays: (1..=6).collect(),
+                ..slot(SlotEvery::Week, None, None, "19:30", "20:30")
+            }),
         };
         let tops = vec![weekly.clone(), monthly.clone(), daily.clone()];
         let from = at("2026-11-23T00:00");
@@ -3677,13 +3725,81 @@ mod tests {
         let given: Vec<u64> = gives_way(&all[0], &all).iter().map(|g| g.top_id).collect();
         assert_eq!(given, [2]);
         assert!(gives_way(&all[1], &all).is_empty());
-        let given: Vec<u64> = gives_way(&all[2], &all).iter().map(|g| g.top_id).collect();
-        assert_eq!(given, [1, 2]);
-        // Two of the same rarity on the same slot cannot be saved.
+        assert!(gives_way(&all[2], &all).is_empty());
+        // Two of the same rarity on the same slot cannot be saved: every
+        // day of the week takes Sunday too.
         let other_sunday = slot(SlotEvery::Week, Some(7), None, "19:00", "21:00");
         assert_eq!(same_slot(&other_sunday, &all).map(|t| t.id), Some(1));
-        let saturday = slot(SlotEvery::Week, Some(6), None, "19:00", "21:00");
+        let every_day = TopSlot {
+            weekdays: (1..=7).collect(),
+            ..slot(SlotEvery::Week, None, None, "19:00", "21:00")
+        };
+        assert!(same_slot(&every_day, &all).is_some());
+        let saturday = slot(SlotEvery::Week, Some(6), None, "21:00", "22:00");
         assert!(same_slot(&saturday, &all).is_none());
+        let saturday_evening = slot(SlotEvery::Week, Some(6), None, "20:00", "21:00");
+        assert_eq!(same_slot(&saturday_evening, &all).map(|t| t.id), Some(3));
+    }
+
+    #[test]
+    fn a_show_s_days_are_chosen_one_by_one() {
+        // Monday, Wednesday and Friday.
+        let three = TopSlot {
+            weekdays: vec![5, 1, 3, 3],
+            ..slot(SlotEvery::Week, None, None, "20:00", "21:00")
+        };
+        assert_eq!(three.check(), Ok(()));
+        let days: Vec<bool> = (23..=29)
+            .map(|day| three.occurs_on(date(&format!("2026-11-{day}"))))
+            .collect();
+        assert_eq!(days, [true, false, true, false, true, false, false]);
+        assert_eq!(three.hours().days, [1, 3, 5]);
+        // The 1st Saturday and Sunday of the month.
+        let first_weekend = TopSlot {
+            weekdays: vec![6, 7],
+            ..slot(
+                SlotEvery::Month,
+                None,
+                Some(SlotNth::First),
+                "18:00",
+                "20:00",
+            )
+        };
+        let on: Vec<u32> = (1..=31)
+            .filter(|day| first_weekend.occurs_on(date(&format!("2026-08-{day:02}"))))
+            .collect();
+        assert_eq!(on, [1, 2]);
+        // No day: refused.
+        let none = slot(SlotEvery::Week, None, None, "20:00", "21:00");
+        assert!(none.check().is_err());
+        assert!(
+            TopSlot {
+                weekdays: vec![8],
+                ..none.clone()
+            }
+            .check()
+            .is_err()
+        );
+        // Settings saved before: every day, or a single day.
+        let mut legacy: TopSlot = serde_json::from_str(
+            r#"{"every": "day", "weekday": null, "nth": null, "start": "20:00", "end": "21:00"}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.check(), Ok(()));
+        legacy.normalize();
+        assert_eq!(
+            (legacy.every, legacy.weekdays.clone()),
+            (SlotEvery::Week, (1..=7).collect())
+        );
+        let mut single: TopSlot = serde_json::from_str(
+            r#"{"every": "week", "weekday": 7, "nth": null, "start": "20:00", "end": "21:00"}"#,
+        )
+        .unwrap();
+        assert!(single.occurs_on(date("2026-11-29")));
+        single.normalize();
+        assert_eq!((single.weekdays.clone(), single.weekday), (vec![7], None));
+        let saved = serde_json::to_value(&single).unwrap();
+        assert!(saved.get("weekday").is_none(), "{saved}");
     }
 
     #[test]

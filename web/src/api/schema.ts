@@ -13200,9 +13200,14 @@ export interface components {
             start: string;
             /**
              * Format: int32
-             * @description 1 (Monday) to 7, for `week` and `month`.
+             * @description Settings saved before: a single day, read as `weekdays`.
              */
             weekday?: number | null;
+            /**
+             * @description Its days, 1 (Monday) to 7, at least one: every week, or the `nth`
+             *     of each in the month.
+             */
+            weekdays?: number[];
         };
         /** @description A top, as the pages show it. */
         TopView: {

@@ -94,22 +94,36 @@ export function weekdayName(day: number): string {
   return new Intl.DateTimeFormat(locale(), { weekday: "long", timeZone: "UTC" }).format(Date.UTC(2024, 0, day));
 }
 
+/** `Sun.`, in the current language. */
+export function weekdayShort(day: number): string {
+  return new Intl.DateTimeFormat(locale(), { weekday: "short", timeZone: "UTC" }).format(Date.UTC(2024, 0, day));
+}
+
 /** The day of the week of a date (`2026-11-08`), 1 (Monday) to 7. */
 function weekdayOf(date: Date): number {
   return ((date.getUTCDay() + 6) % 7) + 1;
 }
 
+/** A slot's days, 1 (Monday) to 7, in order; settings saved before have
+ * every day, or a single `weekday`. */
+export function slotDays(slot: TopSlot): number[] {
+  if (slot.every === "day") {
+    return [1, 2, 3, 4, 5, 6, 7];
+  }
+  const days = slot.weekdays?.length ? slot.weekdays : slot.weekday ? [slot.weekday] : [];
+  return [...new Set(days)].sort((a, b) => a - b);
+}
+
 /** Whether a slot plays on a date (UTC midnight of that day). */
 export function playsOn(slot: TopSlot, date: Date): boolean {
+  if (!slotDays(slot).includes(weekdayOf(date))) {
+    return false;
+  }
   switch (slot.every) {
     case "day":
-      return true;
     case "week":
-      return weekdayOf(date) === slot.weekday;
+      return true;
     case "month": {
-      if (weekdayOf(date) !== slot.weekday) {
-        return false;
-      }
       const day = date.getUTCDate();
       if (slot.nth === "last") {
         const next = new Date(date.getTime() + 7 * 86_400_000);
@@ -165,14 +179,21 @@ export function nthOption(nth: Nth): string {
   }
 }
 
-/** When a show plays without its hours: `Every Sunday`, `1st Sunday of the month`. */
+/** `Monday, Wednesday and Friday`, in the current language. */
+function daysList(days: number[]): string {
+  return new Intl.ListFormat(locale(), { style: "long", type: "conjunction" }).format(days.map(weekdayName));
+}
+
+/** When a show plays without its hours: `Every Sunday`, `Every day`,
+ * `1st Saturday and Sunday of the month`. */
 export function recurrenceLabel(slot: TopSlot): string {
-  const day = weekdayName(slot.weekday ?? 7);
+  const days = slotDays(slot);
+  const day = daysList(days);
   switch (slot.every) {
     case "day":
       return t("tops.every.dayLabel");
     case "week":
-      return t("tops.every.weekLabel", { day });
+      return days.length === 7 ? t("tops.every.dayLabel") : t("tops.every.weekLabel", { day });
     case "month":
       return t("tops.every.monthLabel", { nth: nthLabel(slot.nth), day });
   }
@@ -224,5 +245,5 @@ export function validSlot(slot: TopSlot): boolean {
   if (!validTime(slot.start) || !validTime(slot.end, true) || slot.end <= slot.start) {
     return false;
   }
-  return slot.every === "day" || (slot.weekday ?? 0) >= 1;
+  return slotDays(slot).length > 0;
 }

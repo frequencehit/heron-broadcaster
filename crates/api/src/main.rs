@@ -1289,8 +1289,10 @@ mod tests {
             [1, 2],
             "{tops:?}"
         );
-        let first: tops::TopSettings = serde_json::from_str(&tops[0].2).unwrap();
+        let mut first: tops::TopSettings = serde_json::from_str(&tops[0].2).unwrap();
         assert_eq!(first.check(), Ok(()));
+        // Read in the form of the days chosen one by one.
+        first.slot.as_mut().map(tops::TopSlot::normalize);
         assert_eq!(first.name, "Top 30");
         assert!(!first.enabled);
         assert_eq!(first.size, 20, "12 rounded up to a size offered");
@@ -1308,7 +1310,8 @@ mod tests {
             first.slot,
             Some(tops::TopSlot {
                 every: tops::SlotEvery::Week,
-                weekday: Some(7),
+                weekdays: vec![7],
+                weekday: None,
                 nth: None,
                 start: "18:00".to_owned(),
                 end: "20:00".to_owned(),
@@ -1316,11 +1319,19 @@ mod tests {
         );
         assert_eq!(first.website.title, "Le Top");
         assert_eq!(first.notifications.lead_minutes, 30);
-        let second: tops::TopSettings = serde_json::from_str(&tops[1].2).unwrap();
+        let mut second: tops::TopSettings = serde_json::from_str(&tops[1].2).unwrap();
         assert_eq!(second.check(), Ok(()));
         assert_eq!(
             second.slot.as_ref().map(|slot| slot.every),
             Some(tops::SlotEvery::Day)
+        );
+        second.slot.as_mut().map(tops::TopSlot::normalize);
+        assert_eq!(
+            second
+                .slot
+                .as_ref()
+                .map(|slot| (slot.every, slot.weekdays.clone())),
+            Some((tops::SlotEvery::Week, (1..=7).collect()))
         );
         assert_eq!(
             (second.reset_weekday, second.reset_time.as_str()),

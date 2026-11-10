@@ -86,6 +86,15 @@ describe("tops", () => {
     expect(scoreLabel({ plays_percent: 0, min_votes: 1 })).toBe("0 % plays · 100 % likes · 1 vote min.");
     expect(slotLabel(null)).toBe("Not on air");
     expect(slotLabel({ every: "day", weekday: null, nth: null, start: "20:00", end: "21:00" })).toBe("Every day, 20:00–21:00");
+    expect(slotLabel({ every: "week", weekdays: [1, 2, 3, 4, 5, 6, 7], nth: null, start: "20:00", end: "21:00" })).toBe(
+      "Every day, 20:00–21:00",
+    );
+    expect(slotLabel({ every: "week", weekdays: [5, 1, 3], nth: null, start: "20:00", end: "21:00" })).toBe(
+      "Every Monday, Wednesday, and Friday, 20:00–21:00",
+    );
+    expect(slotLabel({ every: "month", weekdays: [6, 7], nth: "first", start: "18:00", end: "20:00" })).toBe(
+      "1st Saturday and Sunday of the month, 18:00–20:00",
+    );
     expect(slotLabel({ every: "week", weekday: 7, nth: null, start: "18:00", end: "20:00" })).toBe(
       "Every Sunday, 18:00–20:00",
     );
@@ -110,5 +119,7 @@ describe("tops", () => {
     expect(validSlot({ every: "day", weekday: null, nth: null, start: "20:00", end: "24:00" })).toBe(true);
     expect(validSlot({ every: "day", weekday: null, nth: null, start: "20:00", end: "19:00" })).toBe(false);
     expect(validSlot({ every: "week", weekday: null, nth: null, start: "18:00", end: "20:00" })).toBe(false);
+    expect(validSlot({ every: "week", weekdays: [], nth: null, start: "18:00", end: "20:00" })).toBe(false);
+    expect(validSlot({ every: "week", weekdays: [1, 3, 5], nth: null, start: "18:00", end: "20:00" })).toBe(true);
   });
 });
