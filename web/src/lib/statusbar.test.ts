@@ -2,7 +2,16 @@
 
 import { describe, expect, it } from "vitest";
 import type { DeckState } from "../api";
-import { levelOf, listenersText, recordOf, summarizeDeck, summarizeSystem } from "./statusbar";
+import {
+  END_SOON_MS,
+  countdownOf,
+  countdownText,
+  levelOf,
+  listenersText,
+  recordOf,
+  summarizeDeck,
+  summarizeSystem,
+} from "./statusbar";
 
 const deck = (over: Partial<DeckState> = {}, title = "Space Cowboy"): DeckState =>
   ({
@@ -20,10 +29,13 @@ describe("summarizeDeck", () => {
       letter: "A",
       status: "playing",
       symbol: "▶",
-      text: "Jamiroquai – Space Cowboy 2:31",
+      text: "Jamiroquai – Space Cowboy",
+      time: "2:31",
+      countdown: null,
       onAir: true,
       badge: "on_air",
       progress: 151_000 / 240_000,
+      intro: null,
     });
   });
 
@@ -34,7 +46,7 @@ describe("summarizeDeck", () => {
   });
 
   it("moves on from the position it is given", () => {
-    expect(summarizeDeck("A", deck(), false, 65_000).text).toBe("Jamiroquai – Space Cowboy 1:05");
+    expect(summarizeDeck("A", deck(), false, 65_000).time).toBe("1:05");
   });
 
   it("says paused for a deck the player has paused", () => {
@@ -48,14 +60,80 @@ describe("summarizeDeck", () => {
   });
 
   it("is empty without a track, or when the player does not list the deck", () => {
-    const empty = { letter: "B", status: "empty", symbol: "—", text: "", onAir: false, badge: null, progress: null };
+    const empty = {
+      letter: "B",
+      status: "empty",
+      symbol: "—",
+      text: "",
+      time: "",
+      countdown: null,
+      onAir: false,
+      badge: null,
+      progress: null,
+      intro: null,
+    };
     expect(summarizeDeck("B", deck({ entry: null }), false, null)).toEqual(empty);
     expect(summarizeDeck("B", undefined, false, null)).toEqual(empty);
   });
 
   it("falls back on the file name without tags", () => {
     const untagged = deck({ entry: { entry_id: 2, track: { path: "incoming/jingle.mp3" } } as NonNullable<DeckState["entry"]> });
-    expect(summarizeDeck("A", untagged, false, 0).text).toBe("jingle.mp3 0:00");
+    expect(summarizeDeck("A", untagged, false, 0).text).toBe("jingle.mp3");
+  });
+});
+
+describe("the intro and the countdowns", () => {
+  const withIntro = (over: Partial<DeckState> = {}, intro: number | null = 21_000) =>
+    deck({
+      entry: {
+        entry_id: 3,
+        next_start_ms: 236_000,
+        track: { artist: "Daft Punk", title: "One More Time", path: "x.mp3", cue_in_ms: 1_000, cue_out_ms: 241_000, intro_ms: intro },
+      } as NonNullable<DeckState["entry"]>,
+      ...over,
+    });
+
+  it("places the vocals from the cue-in, on both decks", () => {
+    expect(summarizeDeck("A", withIntro(), false, 0).intro).toBeCloseTo(20_000 / 240_000);
+    expect(summarizeDeck("B", withIntro({ on_air: false }), false, 0).intro).toBeCloseTo(20_000 / 240_000);
+  });
+
+  it("has no intro without one, before the cue-in or without a length", () => {
+    expect(summarizeDeck("A", withIntro({}, null), false, 0).intro).toBeNull();
+    expect(summarizeDeck("A", withIntro({}, 500), false, 0).intro).toBeNull();
+    expect(summarizeDeck("A", withIntro({ length_ms: 0 }), false, 0).intro).toBeNull();
+  });
+
+  it("counts down on the deck on air only", () => {
+    expect(summarizeDeck("A", withIntro(), false, 12_500).countdown).toEqual({ kind: "intro", seconds: 8, urgent: false });
+    expect(summarizeDeck("B", withIntro({ on_air: false }), false, 0).countdown).toBeNull();
+  });
+
+  it("counts to the engine's transition, else to the end of the track", () => {
+    expect(summarizeDeck("A", withIntro(), false, 230_000).countdown).toEqual({ kind: "end", seconds: 6, urgent: true });
+    expect(summarizeDeck("A", deck(), false, 235_000).countdown).toEqual({ kind: "end", seconds: 5, urgent: true });
+  });
+
+  it("turns urgent in the intro's last 5 seconds and rounds up", () => {
+    expect(countdownOf(20_000, 236_000, 14_999)).toEqual({ kind: "intro", seconds: 6, urgent: false });
+    expect(countdownOf(20_000, 236_000, 15_000)).toEqual({ kind: "intro", seconds: 5, urgent: true });
+    expect(countdownOf(20_000, 236_000, 19_999)).toEqual({ kind: "intro", seconds: 1, urgent: true });
+    expect(countdownOf(20_000, 236_000, 20_000)).toBeNull();
+  });
+
+  it("shows the end in its last 10 seconds only, and not past it", () => {
+    expect(countdownOf(null, 236_000, 236_000 - END_SOON_MS - 1)).toBeNull();
+    expect(countdownOf(null, 236_000, 236_000 - END_SOON_MS)).toEqual({ kind: "end", seconds: 10, urgent: true });
+    expect(countdownOf(null, 236_000, 236_000)).toBeNull();
+    expect(countdownOf(null, 0, 0)).toBeNull();
+  });
+
+  it("puts the intro first when both would count", () => {
+    expect(countdownOf(9_000, 10_000, 1_000)?.kind).toBe("intro");
+  });
+
+  it("writes the time left with a minus sign", () => {
+    expect(countdownText({ kind: "intro", seconds: 7, urgent: false })).toBe("−0:07");
   });
 });
 

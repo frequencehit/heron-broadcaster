@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The line at the bottom of every page: both decks, the station's
-// listeners and, for operators and admins, the machine's load
-// (docs/web.md#status-bar).
+// The line at the bottom of every page: both decks (with the intro and
+// the countdowns of the deck on air), the station's listeners and, for
+// operators and admins, the machine's load (docs/web.md#status-bar).
 
 import { useModule } from "../lib/modules";
 import { useEffect, useState } from "react";
@@ -10,7 +10,15 @@ import { t } from "../i18n";
 import { useListenersNow } from "../lib/listeners";
 import { positionNow, useLive } from "../lib/live";
 import { Link } from "../lib/router";
-import { type DeckSummary, listenersText, recordOf, summarizeDeck, summarizeSystem } from "../lib/statusbar";
+import {
+  type Countdown,
+  type DeckSummary,
+  countdownText,
+  listenersText,
+  recordOf,
+  summarizeDeck,
+  summarizeSystem,
+} from "../lib/statusbar";
 
 /** The time now, in the clock `positionNow` uses, moved on once a second. */
 function useNow() {
@@ -22,10 +30,36 @@ function useNow() {
   return now;
 }
 
+/** The countdown's text and class: `intro −0:07`, blinking in its last seconds; `−0:09` before the next track. */
+function countdownView(countdown: Countdown) {
+  const time = countdownText(countdown);
+  if (countdown.kind === "intro") {
+    return {
+      text: t("statusbar.intro", { time }),
+      spoken: t("statusbar.introLeft", { count: countdown.seconds }),
+      className: countdown.urgent ? "statusbar-countdown-urgent" : "statusbar-countdown-intro",
+    };
+  }
+  return {
+    text: time,
+    spoken: t("statusbar.nextIn", { count: countdown.seconds }),
+    className: "statusbar-countdown-end",
+  };
+}
+
 function Deck({ summary }: Readonly<{ summary: DeckSummary }>) {
   const state = t(`statusbar.${summary.status}`);
   const badge = summary.badge && t(`statusbar.${summary.badge}`);
-  const spoken = [t("statusbar.deck", { deck: summary.letter, state }), badge, summary.text].filter(Boolean).join(", ");
+  const countdown = summary.countdown && countdownView(summary.countdown);
+  const spoken = [
+    t("statusbar.deck", { deck: summary.letter, state }),
+    badge,
+    summary.text && `${summary.text} ${summary.time}`,
+    countdown?.spoken,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const percent = (fraction: number) => `${(fraction * 100).toFixed(2)}%`;
   return (
     <Link
       to="/"
@@ -33,12 +67,18 @@ function Deck({ summary }: Readonly<{ summary: DeckSummary }>) {
     >
       {/* What the symbols and the cut title say, for screen readers. */}
       <span className="visually-hidden">{spoken}</span>
-      {/* How far the track has played, behind the text. */}
+      {/* Where the intro ends, how far the track has played and how much of the intro, behind the text. */}
+      {summary.intro !== null && (
+        <span className="statusbar-deck-intro" aria-hidden="true" style={{ width: percent(summary.intro) }} />
+      )}
       {summary.progress !== null && (
+        <span className="statusbar-deck-progress" aria-hidden="true" style={{ width: percent(summary.progress) }} />
+      )}
+      {summary.progress !== null && summary.intro !== null && summary.progress > 0 && (
         <span
-          className="statusbar-deck-progress"
+          className="statusbar-deck-intro-progress"
           aria-hidden="true"
-          style={{ width: `${(summary.progress * 100).toFixed(2)}%` }}
+          style={{ width: percent(Math.min(summary.progress, summary.intro)) }}
         />
       )}
       <span className="statusbar-deck-letter" aria-hidden="true">
@@ -56,6 +96,17 @@ function Deck({ summary }: Readonly<{ summary: DeckSummary }>) {
         <span className="statusbar-deck-text" aria-hidden="true">
           {summary.text}
         </span>
+      )}
+      {countdown ? (
+        <span className={`statusbar-deck-time ${countdown.className}`} aria-hidden="true">
+          {countdown.text}
+        </span>
+      ) : (
+        summary.time && (
+          <span className="statusbar-deck-time statusbar-deck-elapsed" aria-hidden="true">
+            {summary.time}
+          </span>
+        )
       )}
     </Link>
   );
