@@ -13333,6 +13333,11 @@ async fn exact_time_attempts_are_kept_and_one_can_be_chosen_by_hand() {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
+    // Paused before the queue fills: the queue then stays as the
+    // calculations leave it (the tracks last 3 s, and a slow run would
+    // start one queued from a calculation before its attempts are used).
+    let (status, _) = admin.request(Method::POST, "/player/pause", None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
@@ -13379,84 +13384,117 @@ async fn exact_time_attempts_are_kept_and_one_can_be_chosen_by_hand() {
         (10..=200).contains(&fills) && fills % 10 == 0 || first["stop"] == "time",
         "{first}"
     );
-    // The rotation log links each pick before it to its calculation.
-    let picks = viewer.get("/rotation/picks?limit=50").await;
-    let linked = picks
+    // The rotation log links the picks before it to their calculations
+    // (a calculation whose fill was not queued, a slow engine say, has
+    // none).
+    let ids: Vec<u64> = exact["calculations"]
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|pick| pick["explanation"]["lookahead"]["calculation_id"].as_u64())
-        .collect::<Vec<_>>();
-    assert!(linked.contains(&first["id"].as_u64().unwrap()), "{picks}");
-
-    // Paused, the queue stays as it is: the queue follows the latest
-    // calculation, whose attempts can be chosen.
-    let (status, _) = admin.request(Method::POST, "/player/pause", None).await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let latest = eventually(
-        "the latest calculation, its attempts to choose from",
+        .filter_map(|calculation| calculation["id"].as_u64())
+        .collect();
+    let picks = eventually(
+        "a pick linked to a calculation of the exact time",
         Duration::from_secs(20),
         || async {
-            let (exact, _) = exact_time(&viewer, &day, soft_at).await?;
-            let id = exact["calculations"]
+            let picks = viewer.get("/rotation/picks?limit=50").await;
+            picks
                 .as_array()
                 .unwrap()
                 .iter()
-                .rev()
-                .find(|calculation| calculation["trigger"] != "followed")?["id"]
-                .as_u64()?;
-            let detail = viewer.get(&format!("/exact-times/calculations/{id}")).await;
-            (detail["can_choose"] == true).then_some(detail)
+                .any(|pick| {
+                    pick["explanation"]["lookahead"]["calculation_id"]
+                        .as_u64()
+                        .is_some_and(|id| ids.contains(&id))
+                })
+                .then_some(picks)
         },
     )
     .await;
-    let id = latest["id"].as_u64().unwrap();
-    assert_eq!(latest["latest"], true);
-    let attempts = latest["attempts"].as_array().unwrap();
-    assert!(!attempts.is_empty(), "{latest}");
-    for (rank, attempt) in attempts.iter().enumerate() {
-        // Best first, each from the end of the queue, its seed a string.
-        assert_eq!(attempt["rank"], rank as u64 + 1, "{latest}");
-        assert!(attempt["seed"].is_string(), "{attempt}");
-        let tracks = attempt["tracks"].as_array().unwrap();
-        assert_eq!(
-            tracks[0]["start_unix_ms"], latest["from_unix_ms"],
-            "{attempt}"
-        );
-        for track in tracks {
-            assert!(
-                latest["tracks"]
+    assert!(picks.is_array());
+
+    // The queue follows the latest calculation, whose attempts can be
+    // chosen.
+    let mut round = 0;
+    let (id, chosen) = loop {
+        round += 1;
+        let latest = eventually(
+            "the latest calculation, its attempts to choose from",
+            Duration::from_secs(20),
+            || async {
+                let (exact, _) = exact_time(&viewer, &day, soft_at).await?;
+                let id = exact["calculations"]
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|label| label["id"] == track["track_id"]),
-                "{latest}"
+                    .rev()
+                    .find(|calculation| calculation["trigger"] != "followed")?["id"]
+                    .as_u64()?;
+                let detail = viewer.get(&format!("/exact-times/calculations/{id}")).await;
+                (detail["can_choose"] == true).then_some(detail)
+            },
+        )
+        .await;
+        let id = latest["id"].as_u64().unwrap();
+        assert_eq!(latest["latest"], true);
+        let attempts = latest["attempts"].as_array().unwrap();
+        assert!(!attempts.is_empty(), "{latest}");
+        for (rank, attempt) in attempts.iter().enumerate() {
+            // Best first, each from the end of the queue, its seed a string.
+            assert_eq!(attempt["rank"], rank as u64 + 1, "{latest}");
+            assert!(attempt["seed"].is_string(), "{attempt}");
+            let tracks = attempt["tracks"].as_array().unwrap();
+            assert_eq!(
+                tracks[0]["start_unix_ms"], latest["from_unix_ms"],
+                "{attempt}"
             );
+            for track in tracks {
+                assert!(
+                    latest["tracks"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|label| label["id"] == track["track_id"]),
+                    "{latest}"
+                );
+            }
         }
-    }
-    let lands = |attempt: &&Value| {
-        attempt["ending"]["in_window"] == true && attempt["ending"]["faded"] == false
+        let lands = |attempt: &&Value| {
+            attempt["ending"]["in_window"] == true && attempt["ending"]["faded"] == false
+        };
+        let chosen = attempts
+            .iter()
+            .filter(lands)
+            .find(|attempt| attempt["number"] != latest["kept"])
+            .or_else(|| attempts.iter().find(lands))
+            .expect("an attempt in the window")["number"]
+            .as_u64()
+            .unwrap();
+        let use_path = |n: u64| format!("/exact-times/calculations/{id}/attempts/{n}/use");
+        let (status, _) = viewer.request(Method::POST, &use_path(chosen), None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _) = admin.request(Method::POST, &use_path(9_999), None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        if let Some(out) = attempts.iter().find(|attempt| !lands(attempt)) {
+            let n = out["number"].as_u64().unwrap();
+            let (status, body) = admin.request(Method::POST, &use_path(n), None).await;
+            assert_eq!(status, StatusCode::CONFLICT, "{body}");
+        }
+        let (status, body) = admin.request(Method::POST, &use_path(chosen), None).await;
+        if status == StatusCode::NO_CONTENT {
+            break (id, chosen);
+        }
+        // A fill between reading the calculation and using it replaced it:
+        // read it again, as an operator would.
+        let now = exact_time(&viewer, &day, soft_at).await;
+        assert!(
+            round < 3
+                && body["message"]
+                    .as_str()
+                    .is_some_and(|m| m.contains("no longer follows")),
+            "use: {status} {body}\nexact time now: {now:?}"
+        );
     };
-    let chosen = attempts
-        .iter()
-        .filter(lands)
-        .find(|attempt| attempt["number"] != latest["kept"])
-        .or_else(|| attempts.iter().find(lands))
-        .expect("an attempt in the window")["number"]
-        .as_u64()
-        .unwrap();
-    let use_path = |n: u64| format!("/exact-times/calculations/{id}/attempts/{n}/use");
-    let (status, _) = viewer.request(Method::POST, &use_path(chosen), None).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _) = admin.request(Method::POST, &use_path(9_999), None).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    if let Some(out) = attempts.iter().find(|attempt| !lands(attempt)) {
-        let n = out["number"].as_u64().unwrap();
-        let (status, body) = admin.request(Method::POST, &use_path(n), None).await;
-        assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    }
-    let (status, body) = admin.request(Method::POST, &use_path(chosen), None).await;
-    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
     // Kept with its calculation: which, by whom.
     let detail = viewer.get(&format!("/exact-times/calculations/{id}")).await;
     assert_eq!(detail["chosen"]["attempt"], chosen, "{detail}");
