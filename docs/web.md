@@ -241,6 +241,7 @@ The layout works from phone width up: below 760 px the navigation moves to a men
 
 A line one character high stays at the bottom of every page, in the monospace font. Each user chooses what it shows in *Account › Status bar* (below). In that order:
 
+- **The station button** (`FH ▴`), for a user who sees several stations: the code of the current station. A click opens a bar per other station above this one (see *Several stations* below); another click closes them.
 - **Decks A and B,** or **the deck on air only:** the state (`▶` playing, `⏸` paused, `—` empty), a badge, then the artist and title with the time. The deck the listeners hear is marked `[ON AIR]` in red and is brighter, with a red `▶`; the other deck, when a track is loaded in it, is marked `[NEXT]`. Titles that do not fit are cut with an ellipsis. How far each deck's track has played fills its part from the left, behind the text, in a light shade of the deck's colour with a line of the full colour along the bottom; the part of a track before its vocals (its intro, from the cue-in, as On air reads it) is hatched in the intro colour, and filled in it as it plays; once the vocals start, the whole fill takes the track's colour. The time is one of seven formats: elapsed (`1:23`, the default), elapsed / total, elapsed / remaining, elapsed / remaining / total, elapsed / total / remaining, remaining, remaining / total (`−3:49 / 5:12`). The total and the remaining time count to the next track's start (the engine's transition, or the end of the track when the engine does not give it). On the deck on air, two countdowns take the place of the time:
   - **To the vocals:** `intro −0:07`, during the whole intro. Its last seconds (5 by default) blink, or turn to the alert colour without blinking.
   - **To the next track:** in its last seconds (10 by default), the time left, `−0:09`, in the warning colour; blinking if chosen.
@@ -254,6 +255,8 @@ A line one character high stays at the bottom of every page, in the monospace fo
 - **System** (operators and admins): `cpu 12% mem 41% load 0.4 0.5 0.6`. The CPU and memory turn to the warning colour from 80 % and to the alert colour from 95 %. Viewers do not get this part, whatever they choose.
 - **Station time:** the station's clock, with the seconds.
 
+**Several stations.** Opened, each other station the user sees (and chose, below) has its own bar, in the stations' order: its code, then **the deck on air only**, with its progress, its title and **the time left** before the next track (`FH 90  B ▶ Cerrone – Love in C Minor −2:41`). The time moves on every second. A click on a station's code switches to it. A station **in trouble** shows in the alert colour, saying why: its engine unreachable (`engine ?`), nothing on air (`nothing on air`), or outputs down (`outputs down: AAC`). With the bars closed, the station button says how many are in trouble (`FH ▴ 1 down`, in the alert colour), counting by default those not chosen too. At most four bars show; more scroll. Below 760 px only the stations in trouble show, without titles. Whether the bars are open is kept per browser. A disabled station is left out.
+
 While the live connection is down the bar greys out and says `offline`. Below 760 px (the bar's own width, so that the preview shows it too) the system part goes first, then the decks shrink to their letter and state (the deck on air told by its red `▶`, and given the room), and the history, next fixed time, queue and station time go; the countdowns stay. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
 
 **Account › Status bar** opens on a **preview** of the bar, live, at the width of a computer or of a phone, which follows each setting as it changes. Then:
@@ -263,6 +266,7 @@ While the live connection is down the bar greys out and says `offline`. Below 76
 - **Time on the decks:** the seven formats, each with an example.
 - **Colours** of the progress: the intro's (the theme's intro colour by default) and the track's (each deck's own colour by default).
 - **Countdowns:** to the vocals, and to the next track, each on or off, with whether it blinks and for how many of its last seconds (1 to 60). On air's *vocals in* turns to the warning colour from the same number of seconds.
+- **Several stations** (for a user who sees several): which of the other stations the station button opens (all by default, and a station added later too), and whether a station in trouble shows on the button even when not chosen (on by default).
 - **Restore the defaults.**
 
 Each change is saved at once, per user (`{"status_bar": {…}}`), so the bar is the same in every browser. An admin can turn the bar off for a station or the installation, for every user there, with the *Status bar* [module](modules.md).
