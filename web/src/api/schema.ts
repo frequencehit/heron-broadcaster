@@ -3437,7 +3437,7 @@ export interface paths {
         get: operations["get_show"];
         /**
          * Replaces a show's settings on the station. Hours another show of the
-         *     station has are refused (`409`). Operators.
+         *     station has, or a top's show, are refused (`409`). Operators.
          */
         put: operations["put_show"];
         post?: never;
@@ -5193,7 +5193,7 @@ export interface paths {
         get: operations["get_show_on_station"];
         /**
          * Replaces a show's settings on the station. Hours another show of the
-         *     station has are refused (`409`). Operators.
+         *     station has, or a top's show, are refused (`409`). Operators.
          */
         put: operations["put_show_on_station"];
         post?: never;
@@ -5270,18 +5270,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/top30/chart": {
+    "/api/v1/stations/{station_id}/tops": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * A week's chart: this week's as it stands now by default, frozen once
-         *     the week closed.
-         */
-        get: operations["get_top30_chart_on_station"];
+        /** The station's tops, in order. */
+        get: operations["list_tops_on_station"];
+        put?: never;
+        /** Creates a top, at the end of the list. Operators. */
+        post: operations["create_top_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/tops/{top_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A top of the station. */
+        get: operations["get_top_on_station"];
+        /** Replaces a top's settings. Operators. */
+        put: operations["put_top_on_station"];
+        post?: never;
+        /** Deletes a top with its charts. Operators. */
+        delete: operations["delete_top_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/tops/{top_id}/chart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A top's chart: the live one by default, a frozen one by its key. */
+        get: operations["get_top_chart_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5290,15 +5324,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/top30/charts": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/charts": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The frozen charts, the latest first. */
-        get: operations["list_top30_charts_on_station"];
+        /** A top's frozen charts, the latest first. */
+        get: operations["list_top_charts_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5307,7 +5341,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/top30/charts/{week}/new-release": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/charts/{key}/new-release": {
         parameters: {
             query?: never;
             header?: never;
@@ -5316,11 +5350,11 @@ export interface paths {
         };
         get?: never;
         /**
-         * Chooses a week's new release among the tracks of the new release
+         * Chooses a chart's new release among the tracks of the new release
          *     category, or goes back to the proposed one. `409` once a show was built
          *     from the chart. Operators.
          */
-        put: operations["choose_new_release_on_station"];
+        put: operations["choose_top_new_release_on_station"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5328,7 +5362,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/top30/charts/{week}/removals/{track_id}": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/charts/{key}/removals/{track_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -5338,42 +5372,21 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Takes a track out of a week's chart: the tracks after it move up. `409`
-         *     once a show was built from the chart. Operators.
+         * Takes a track out of a chart: the tracks after it move up. `409` once a
+         *     show was built from the chart. Operators.
          */
-        post: operations["remove_track_on_station"];
+        post: operations["remove_top_track_on_station"];
         /**
-         * Puts back a track taken out of a week's chart. `409` once a show was
-         *     built from the chart. Operators.
+         * Puts back a track taken out of a chart. `409` once a show was built
+         *     from the chart. Operators.
          */
-        delete: operations["restore_track_on_station"];
+        delete: operations["restore_top_track_on_station"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stations/{station_id}/top30/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's Top 30 settings. */
-        get: operations["get_top30_settings_on_station"];
-        /**
-         * Replaces the station's Top 30 settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_top30_settings_on_station"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/stations/{station_id}/top30/show": {
+    "/api/v1/stations/{station_id}/tops/{top_id}/show": {
         parameters: {
             query?: never;
             header?: never;
@@ -5381,10 +5394,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The show on now, else the next one within a week, with its programme:
-         *     the one built, or what would be built now. `null` without hours.
+         * A top's show on now, else its next one within 62 days, with its
+         *     programme: the one built, or what would be built now. `null` without
+         *     one.
          */
-        get: operations["get_top30_show_on_station"];
+        get: operations["get_top_show_on_station"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5631,18 +5645,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/top30/chart": {
+    "/api/v1/tops": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * A week's chart: this week's as it stands now by default, frozen once
-         *     the week closed.
-         */
-        get: operations["get_top30_chart"];
+        /** The station's tops, in order. */
+        get: operations["list_tops"];
+        put?: never;
+        /** Creates a top, at the end of the list. Operators. */
+        post: operations["create_top"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tops/{top_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A top of the station. */
+        get: operations["get_top"];
+        /** Replaces a top's settings. Operators. */
+        put: operations["put_top"];
+        post?: never;
+        /** Deletes a top with its charts. Operators. */
+        delete: operations["delete_top"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tops/{top_id}/chart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A top's chart: the live one by default, a frozen one by its key. */
+        get: operations["get_top_chart"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5651,15 +5699,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/top30/charts": {
+    "/api/v1/tops/{top_id}/charts": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The frozen charts, the latest first. */
-        get: operations["list_top30_charts"];
+        /** A top's frozen charts, the latest first. */
+        get: operations["list_top_charts"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5668,7 +5716,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/top30/charts/{week}/new-release": {
+    "/api/v1/tops/{top_id}/charts/{key}/new-release": {
         parameters: {
             query?: never;
             header?: never;
@@ -5677,11 +5725,11 @@ export interface paths {
         };
         get?: never;
         /**
-         * Chooses a week's new release among the tracks of the new release
+         * Chooses a chart's new release among the tracks of the new release
          *     category, or goes back to the proposed one. `409` once a show was built
          *     from the chart. Operators.
          */
-        put: operations["choose_new_release"];
+        put: operations["choose_top_new_release"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5689,7 +5737,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/top30/charts/{week}/removals/{track_id}": {
+    "/api/v1/tops/{top_id}/charts/{key}/removals/{track_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -5699,42 +5747,21 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Takes a track out of a week's chart: the tracks after it move up. `409`
-         *     once a show was built from the chart. Operators.
+         * Takes a track out of a chart: the tracks after it move up. `409` once a
+         *     show was built from the chart. Operators.
          */
-        post: operations["remove_track"];
+        post: operations["remove_top_track"];
         /**
-         * Puts back a track taken out of a week's chart. `409` once a show was
-         *     built from the chart. Operators.
+         * Puts back a track taken out of a chart. `409` once a show was built
+         *     from the chart. Operators.
          */
-        delete: operations["restore_track"];
+        delete: operations["restore_top_track"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/top30/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The station's Top 30 settings. */
-        get: operations["get_top30_settings"];
-        /**
-         * Replaces the station's Top 30 settings. The categories must be the
-         *     station's (`422`). Operators.
-         */
-        put: operations["put_top30_settings"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/top30/show": {
+    "/api/v1/tops/{top_id}/show": {
         parameters: {
             query?: never;
             header?: never;
@@ -5742,10 +5769,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The show on now, else the next one within a week, with its programme:
-         *     the one built, or what would be built now. `null` without hours.
+         * A top's show on now, else its next one within 62 days, with its
+         *     programme: the one built, or what would be built now. `null` without
+         *     one.
          */
-        get: operations["get_top30_show"];
+        get: operations["get_top_show"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7559,30 +7587,56 @@ export interface components {
             /** Format: float */
             rms_right: number;
         };
-        /** @description A week's chart. */
+        /** @description A top's chart. */
         Chart: {
-            /** Format: int64 */
-            closes_at_unix_ms: number;
             entries: components["schemas"]["ChartEntry"][];
             /** Format: int64 */
             from_unix_ms: number;
-            /** @description Closed and kept; else the chart as it stands now. */
+            /** @description Frozen and kept; else the chart as it stands now. */
             frozen: boolean;
+            /** @description The day it is frozen: `2026-11-08`. */
+            key: string;
             /** @description A show was built from it: it does not change any more. */
             locked: boolean;
-            new_release?: components["schemas"]["NewRelease"] | null;
-            removed: components["schemas"]["Removed"][];
             /**
              * Format: int64
-             * @description The votes on the eligible tracks over the week.
+             * @description The most played eligible track's plays.
+             */
+            max_plays: number;
+            /** Format: int64 */
+            min_votes: number;
+            new_release?: components["schemas"]["NewRelease"] | null;
+            /**
+             * @description The tracks below the minimum votes, the best first (the live chart
+             *     only).
+             */
+            not_enough_votes: components["schemas"]["NotRanked"][];
+            /** Format: int32 */
+            plays_percent: number;
+            removed: components["schemas"]["Removed"][];
+            /** @description The next ranks after the size (the live chart only). */
+            runners_up: components["schemas"]["ChartEntry"][];
+            /** Format: int32 */
+            size: number;
+            /**
+             * Format: int64
+             * @description When it is frozen.
+             */
+            to_unix_ms: number;
+            /**
+             * Format: int64
+             * @description The votes on the eligible tracks over the period.
              */
             votes: number;
-            /** @description Its Monday: `2026-11-02`. */
-            week: string;
         };
         /** @description A rank of a chart. */
         ChartEntry: {
             artist?: string | null;
+            /**
+             * Format: int32
+             * @description The top's charts it was in, this one included.
+             */
+            charts: number;
             /** Format: int64 */
             dislikes: number;
             /** Format: int64 */
@@ -7590,16 +7644,28 @@ export interface components {
             movement: components["schemas"]["Movement"];
             /**
              * Format: int64
-             * @description Its plays with votes over the week.
+             * @description Its plays over the period, outside the tops' shows (for the Top 30's
+             *     charts: its plays with votes).
              */
             plays: number;
             /**
+             * Format: double
+             * @description Its plays against the most played's, 0 to 1; `null` for the Top
+             *     30's charts.
+             */
+            plays_share?: number | null;
+            /**
              * Format: int32
-             * @description Its rank in last week's chart.
+             * @description Its rank in the top's previous chart.
              */
             previous_rank?: number | null;
             /** Format: int32 */
             rank: number;
+            /**
+             * Format: double
+             * @description 0 to 1.
+             */
+            score: number;
             /**
              * Format: double
              * @description The share of likes, 0 to 1.
@@ -7611,11 +7677,6 @@ export interface components {
              * @description Missing once the track is deleted.
              */
             track_id?: number | null;
-            /**
-             * Format: int32
-             * @description The charts it was in, this one included.
-             */
-            weeks: number;
         };
         Checked: {
             /**
@@ -9009,6 +9070,13 @@ export interface components {
             /** @description IANA time zone, which the shows' hours follow. */
             timezone: string;
         };
+        /** @description A top that takes this one's slot on some days. */
+        GivesWay: {
+            name: string;
+            slot: components["schemas"]["TopSlot"];
+            /** Format: int64 */
+            top_id: number;
+        };
         /** @description A day of the last 30. */
         GridDay: {
             /** @description `2026-10-12`. */
@@ -10388,7 +10456,7 @@ export interface components {
             position: number;
         };
         /**
-         * @description How a track moved against the chart of the week before.
+         * @description How a track moved against the top's previous chart.
          * @enum {string}
          */
         Movement: "up" | "down" | "same" | "new" | "reentry";
@@ -10481,6 +10549,34 @@ export interface components {
             /** Format: int64 */
             schedule_id: number;
         };
+        /** @description The next show of a top. */
+        NextShow: {
+            /** Format: int64 */
+            closes_at_unix_ms: number;
+            /** Format: int64 */
+            opens_at_unix_ms: number;
+        };
+        /** @description A track below the minimum votes, with the rank its score would give it. */
+        NotRanked: {
+            artist?: string | null;
+            /** Format: int64 */
+            dislikes: number;
+            /** Format: int64 */
+            likes: number;
+            /** Format: int64 */
+            plays: number;
+            /** Format: double */
+            plays_share: number;
+            /** Format: double */
+            score: number;
+            /** Format: double */
+            share: number;
+            title?: string | null;
+            /** Format: int64 */
+            track_id: number;
+            /** Format: int32 */
+            would_rank: number;
+        };
         /** @description Notifications through the station's webhooks. */
         NotificationSettings: {
             /**
@@ -10532,6 +10628,16 @@ export interface components {
             percent: number;
             /** Format: int32 */
             votes: number;
+        };
+        /**
+         * @description An opening of a show set by dates rather than weekly hours (a top's
+         *     show).
+         */
+        Opening: {
+            /** Format: int64 */
+            closes_at_unix_ms: number;
+            /** Format: int64 */
+            opens_at_unix_ms: number;
         };
         /** @description The dry run of an organization. */
         OrganizePlan: {
@@ -10710,19 +10816,19 @@ export interface components {
             /** @description Your password, asked again. */
             password: string;
         };
-        /** @description A frozen chart in the list of past weeks. */
+        /** @description A frozen chart in the list of past charts. */
         PastChart: {
             /** Format: int64 */
-            closes_at_unix_ms: number;
-            /** Format: int64 */
             from_unix_ms: number;
+            key: string;
             number_one?: components["schemas"]["PastNumberOne"] | null;
             /**
              * Format: int32
              * @description Its tracks.
              */
             size: number;
-            week: string;
+            /** Format: int64 */
+            to_unix_ms: number;
         };
         PastNumberOne: {
             artist?: string | null;
@@ -12008,7 +12114,7 @@ export interface components {
         };
         /** @enum {string} */
         ShareKind: "named" | "unknown" | "other";
-        /** @description The show on now, or the next one. */
+        /** @description A top's show on now, or its next one. */
         ShowPlan: {
             /** @description Its programme is built: the one on air. Else what would be built now. */
             built: boolean;
@@ -12017,6 +12123,8 @@ export interface components {
             items: components["schemas"]["Item"][];
             /** Format: int64 */
             jingles_ms: number;
+            /** @description The chart it plays; `null` without one. */
+            key?: string | null;
             /** @description The ranks left out to fit the slot. */
             left_out: number[];
             /** Format: int64 */
@@ -12027,8 +12135,6 @@ export interface components {
             opens_at_unix_ms: number;
             /** Format: int64 */
             total_ms: number;
-            /** @description The chart it plays; `null` without one. */
-            week?: string | null;
         };
         /** @description What the gateway and the widgets know of a show on a station. */
         ShowPublic: {
@@ -12039,7 +12145,17 @@ export interface components {
             /** @description Off: closed whatever its hours. */
             enabled: boolean;
             hours: components["schemas"]["HourRange"][];
+            /**
+             * @description Its name in the gateway's routes: the module's key, or `top-{id}`
+             *     for a top. Empty from an older API: the module's key.
+             */
+            key?: string;
             module: components["schemas"]["Module"];
+            /**
+             * @description Its openings, for a show set by dates (a top): they replace
+             *     `hours`.
+             */
+            openings?: components["schemas"]["Opening"][] | null;
             page_url?: string | null;
             small_widget: boolean;
             /**
@@ -12201,6 +12317,16 @@ export interface components {
             /** Format: int32 */
             slot: number;
         };
+        /**
+         * @description How often a top's show comes.
+         * @enum {string}
+         */
+        SlotEvery: "day" | "week" | "month";
+        /**
+         * @description Which of the month's days: the 1st Sunday, the last.
+         * @enum {string}
+         */
+        SlotNth: "first" | "second" | "third" | "fourth" | "last";
         /** @description A slot as it will sound. */
         SlotPreview: {
             /**
@@ -12962,10 +13088,12 @@ export interface components {
             to_identify: number;
         };
         /**
-         * @description A station's Top 30 settings (`station_settings`, `top30`). Its hours,
-         *     website and notifications are its show settings.
+         * @description What a top's chart counts.
+         * @enum {string}
          */
-        Top30Settings: {
+        TopPeriod: "rolling_7_days" | "week" | "month";
+        /** @description A top's settings. */
+        TopSettings: {
             /**
              * @description The categories whose tracks can enter the chart; none: the
              *     station's music.
@@ -12973,17 +13101,16 @@ export interface components {
              */
             category_ids: number[];
             /**
-             * Format: int32
-             * @description The day the week closes, 1 (Monday) to 7.
-             * @default 7
+             * @description Off: it plays nothing, its page on the website stays closed and it
+             *     sends nothing; its charts are still frozen.
+             * @default true
              */
-            close_day: number;
+            enabled: boolean;
             /**
-             * Format: int32
-             * @description The hour it closes, 0 to 24.
-             * @default 17
+             * @description The ranks still to come hidden on the website during the show.
+             * @default true
              */
-            close_hour: number;
+            hide_unplayed: boolean;
             /**
              * Format: int64
              * @description The jingles between the tracks of the show.
@@ -12992,10 +13119,16 @@ export interface components {
             jingle_category_id: number | null;
             /**
              * Format: int64
-             * @description Votes a track needs over the week to be ranked, 1 to 1000.
+             * @description Votes a track needs over the period to be ranked, 0 to 1000.
              * @default 10
              */
             min_votes: number;
+            /**
+             * @description 1 to 60 characters: its title on the website unless the website
+             *     gives another.
+             * @default Top 30
+             */
+            name: string;
             /**
              * Format: int64
              * @description Where the new release at the end of the show comes from.
@@ -13003,11 +13136,97 @@ export interface components {
              */
             new_release_category_id: number | null;
             /**
+             * @default {
+             *       "events": {},
+             *       "language": "en",
+             *       "lead_minutes": 60,
+             *       "webhook_ids": []
+             *     }
+             */
+            notifications: components["schemas"]["NotificationSettings"];
+            /** @default week */
+            period: components["schemas"]["TopPeriod"];
+            /**
              * Format: int32
-             * @description Tracks in the chart, 1 to 50.
+             * @description The score's share of plays, 0 to 100 by steps of 10; the rest is
+             *     the share of likes.
+             * @default 0
+             */
+            plays_percent: number;
+            /**
+             * Format: int32
+             * @description The reset of a month, 1 to 28.
+             * @default 1
+             */
+            reset_day: number;
+            /**
+             * @description `HH:MM`, 00:00 to 23:59.
+             * @default 17:00
+             */
+            reset_time: string;
+            /**
+             * Format: int32
+             * @description The reset of a week, 1 (Monday) to 7.
+             * @default 7
+             */
+            reset_weekday: number;
+            /**
+             * Format: int32
+             * @description 3, 5, 10, 20, 30, 40 or 50.
              * @default 30
              */
             size: number;
+            /** @default null */
+            slot: components["schemas"]["TopSlot"] | null;
+            /**
+             * @default {
+             *       "closed": "message",
+             *       "closed_message": "",
+             *       "color": "#c62828",
+             *       "page_url": null,
+             *       "small_widget": true,
+             *       "title": ""
+             *     }
+             */
+            website: components["schemas"]["WebsiteSettings"];
+        };
+        /** @description A top's show: a recurrence and hours, in the station's time zone. */
+        TopSlot: {
+            /** @description `HH:MM`, after `start`, up to `24:00`. */
+            end: string;
+            every: components["schemas"]["SlotEvery"];
+            nth?: components["schemas"]["SlotNth"] | null;
+            /** @description `HH:MM`. */
+            start: string;
+            /**
+             * Format: int32
+             * @description 1 (Monday) to 7, for `week` and `month`.
+             */
+            weekday?: number | null;
+        };
+        /** @description A top, as the pages show it. */
+        TopView: {
+            /**
+             * @description Why its stored settings cannot be read (they are shown as the
+             *     defaults); `null` when they can.
+             */
+            error?: string | null;
+            /** @description The tops that take its slot on some days. */
+            gives_way: components["schemas"]["GivesWay"][];
+            /** Format: int64 */
+            id: number;
+            /** @description Its page and widget on the website: `top-{id}`. */
+            key: string;
+            next_show?: components["schemas"]["NextShow"] | null;
+            /** Format: int32 */
+            position: number;
+            settings: components["schemas"]["TopSettings"];
+            /** @description Whether its show is on now, when it closes, and when the next opens. */
+            status: components["schemas"]["ShowStatus"];
+            /** @description The station's time zone (IANA), which its times follow. */
+            timezone: string;
+            /** @description The station's webhooks, by name, to choose from. */
+            webhooks: components["schemas"]["WebhookChoice"][];
         };
         /** @description An authenticator app to set up. */
         TotpSetup: {
@@ -21298,7 +21517,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description dedications, match, top30 or likes */
+                /** @description dedications, match or likes */
                 module: string;
             };
             cookie?: never;
@@ -21328,7 +21547,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description dedications, match, top30 or likes */
+                /** @description dedications, match or likes */
                 module: string;
             };
             cookie?: never;
@@ -25373,7 +25592,7 @@ export interface operations {
             path: {
                 /** @description The station's ID */
                 station_id: number;
-                /** @description dedications, match, top30 or likes */
+                /** @description dedications, match or likes */
                 module: string;
             };
             cookie?: never;
@@ -25405,7 +25624,7 @@ export interface operations {
             path: {
                 /** @description The station's ID */
                 station_id: number;
-                /** @description dedications, match, top30 or likes */
+                /** @description dedications, match or likes */
                 module: string;
             };
             cookie?: never;
@@ -25688,16 +25907,183 @@ export interface operations {
             };
         };
     };
-    get_top30_chart_on_station: {
+    list_tops_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_top_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopSettings"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_top_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The top */
+                top_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_top_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The top */
+                top_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_top_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The top */
+                top_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_top_chart_on_station: {
         parameters: {
             query?: {
-                /** @description A week, by its Monday (`2026-11-02`); this week by default. */
-                week?: string;
+                /**
+                 * @description A chart, by the day it is frozen (`2026-11-08`); the live one by
+                 *     default.
+                 */
+                key?: string;
             };
             header?: never;
             path: {
                 /** @description The station's ID */
                 station_id: number;
+                /** @description The top */
+                top_id: number;
             };
             cookie?: never;
         };
@@ -25721,10 +26107,10 @@ export interface operations {
             };
         };
     };
-    list_top30_charts_on_station: {
+    list_top_charts_on_station: {
         parameters: {
             query?: {
-                /** @description Weeks before this one (its Monday), for the next page. */
+                /** @description Charts before this one (its key), for the next page. */
                 before?: string;
                 /** @description 1 to 100, 20 by default. */
                 limit?: number;
@@ -25733,6 +26119,8 @@ export interface operations {
             path: {
                 /** @description The station's ID */
                 station_id: number;
+                /** @description The top */
+                top_id: number;
             };
             cookie?: never;
         };
@@ -25756,15 +26144,17 @@ export interface operations {
             };
         };
     };
-    choose_new_release_on_station: {
+    choose_top_new_release_on_station: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 /** @description The station's ID */
                 station_id: number;
-                /** @description The week's Monday */
-                week: string;
+                /** @description The top */
+                top_id: number;
+                /** @description The chart: the day it is frozen */
+                key: string;
             };
             cookie?: never;
         };
@@ -25792,15 +26182,17 @@ export interface operations {
             };
         };
     };
-    remove_track_on_station: {
+    remove_top_track_on_station: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 /** @description The station's ID */
                 station_id: number;
-                /** @description The week's Monday */
-                week: string;
+                /** @description The top */
+                top_id: number;
+                /** @description The chart: the day it is frozen */
+                key: string;
                 /** @description The track */
                 track_id: number;
             };
@@ -25826,15 +26218,17 @@ export interface operations {
             };
         };
     };
-    restore_track_on_station: {
+    restore_top_track_on_station: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 /** @description The station's ID */
                 station_id: number;
-                /** @description The week's Monday */
-                week: string;
+                /** @description The top */
+                top_id: number;
+                /** @description The chart: the day it is frozen */
+                key: string;
                 /** @description The track */
                 track_id: number;
             };
@@ -25860,77 +26254,15 @@ export interface operations {
             };
         };
     };
-    get_top30_settings_on_station: {
+    get_top_show_on_station: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 /** @description The station's ID */
                 station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_top30_settings_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Top30Settings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_top30_show_on_station: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The station's ID */
-                station_id: number;
+                /** @description The top */
+                top_id: number;
             };
             cookie?: never;
         };
@@ -26583,14 +26915,170 @@ export interface operations {
             };
         };
     };
-    get_top30_chart: {
+    list_tops: {
         parameters: {
-            query?: {
-                /** @description A week, by its Monday (`2026-11-02`); this week by default. */
-                week?: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"][];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_top: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopSettings"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_top: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The top */
+                top_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_top: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The top */
+                top_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopView"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_top: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The top */
+                top_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_top_chart: {
+        parameters: {
+            query?: {
+                /**
+                 * @description A chart, by the day it is frozen (`2026-11-08`); the live one by
+                 *     default.
+                 */
+                key?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The top */
+                top_id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -26613,16 +27101,19 @@ export interface operations {
             };
         };
     };
-    list_top30_charts: {
+    list_top_charts: {
         parameters: {
             query?: {
-                /** @description Weeks before this one (its Monday), for the next page. */
+                /** @description Charts before this one (its key), for the next page. */
                 before?: string;
                 /** @description 1 to 100, 20 by default. */
                 limit?: number;
             };
             header?: never;
-            path?: never;
+            path: {
+                /** @description The top */
+                top_id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -26645,13 +27136,15 @@ export interface operations {
             };
         };
     };
-    choose_new_release: {
+    choose_top_new_release: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The week's Monday */
-                week: string;
+                /** @description The top */
+                top_id: number;
+                /** @description The chart: the day it is frozen */
+                key: string;
             };
             cookie?: never;
         };
@@ -26679,13 +27172,15 @@ export interface operations {
             };
         };
     };
-    remove_track: {
+    remove_top_track: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The week's Monday */
-                week: string;
+                /** @description The top */
+                top_id: number;
+                /** @description The chart: the day it is frozen */
+                key: string;
                 /** @description The track */
                 track_id: number;
             };
@@ -26711,13 +27206,15 @@ export interface operations {
             };
         };
     };
-    restore_track: {
+    restore_top_track: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The week's Monday */
-                week: string;
+                /** @description The top */
+                top_id: number;
+                /** @description The chart: the day it is frozen */
+                key: string;
                 /** @description The track */
                 track_id: number;
             };
@@ -26743,69 +27240,14 @@ export interface operations {
             };
         };
     };
-    get_top30_settings: {
+    get_top_show: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
+            path: {
+                /** @description The top */
+                top_id: number;
             };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    put_top30_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Top30Settings"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Top30Settings"];
-                };
-            };
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    get_top30_show: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
             cookie?: never;
         };
         requestBody?: never;

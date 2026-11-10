@@ -76,7 +76,7 @@ pub fn module_of(path: &str) -> Option<Module> {
         ["labels", ..] | ["tracks", "labels"] => Module::Labels,
         ["shows", key, ..] => Module::from_key(key).filter(|module| module.is_show())?,
         ["likes", ..] => Module::Likes,
-        ["top30", ..] => Module::Top30,
+        ["tops", ..] => Module::Top30,
         ["dedications", ..] => Module::Dedications,
         ["match", ..] => Module::Match,
         ["certification", ..]
@@ -279,7 +279,7 @@ mod tests {
                 Some(Module::Certification),
             ),
             ("/api/v1/stream-servers/3", None),
-            ("/api/v1/top30/chart", Some(Module::Top30)),
+            ("/api/v1/tops/4/chart", Some(Module::Top30)),
             ("/api/v1/dedications/12/accept", Some(Module::Dedications)),
             ("/api/v1/match/current/close", Some(Module::Match)),
             ("/api/v1/shows/medleys", None),

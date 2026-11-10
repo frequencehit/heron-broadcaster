@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::{Duration, Instant};
 
 use axum::http::{HeaderMap, HeaderName};
+use heron_core::Module;
 use heron_core::shows::ShowPublic;
 use jiff::Timestamp;
 use serde::Deserialize;
@@ -323,14 +324,20 @@ impl Gateway {
     }
 
     /// A show of a station that is on, as the widgets see it now.
-    pub fn show(&self, code: &str, module: &str, now: Timestamp) -> Option<Value> {
+    /// A station's show by its key (`match`, `top-4`); `top30` is also the
+    /// first top.
+    pub fn show(&self, code: &str, key: &str, now: Timestamp) -> Option<Value> {
         let stations = self.stations.read().unwrap_or_else(PoisonError::into_inner);
         let station = stations.get(code)?;
-        station
-            .data
-            .shows
+        let shows = &station.data.shows;
+        shows
             .iter()
-            .find(|show| show.module.key() == module)
+            .find(|show| show.key() == key)
+            .or_else(|| {
+                (key == Module::Top30.key())
+                    .then(|| shows.iter().find(|show| show.module == Module::Top30))
+                    .flatten()
+            })
             .map(|show| show_view(show, now))
     }
 

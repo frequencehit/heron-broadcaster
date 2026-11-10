@@ -542,6 +542,19 @@ const TABLES: &[Table] = &[
         Mode::Upsert,
         &["name"],
     ),
+    // The stations' tops (docs/listener-interaction.md#tops): their
+    // charts, by ID, are in the database dump and stay attached.
+    table(
+        "tops",
+        &[
+            Plain("id"),
+            Plain("station_id"),
+            Plain("position"),
+            Json("settings"),
+        ],
+        Mode::Upsert,
+        &[],
+    ),
     // What is set on each track.
     table(
         "track_categories",
@@ -1027,6 +1040,12 @@ const UPGRADES: &[(i64, &str)] = &[
     ),
     // Outputs holding their server's settings, grouped into servers.
     (20270301000001, crate::outputs::GROUP_INTO_SERVERS),
+    // The Top 30's settings of an older file: the tops are kept as they
+    // are instead.
+    (
+        20271109000000,
+        "DELETE FROM station_settings WHERE name IN ('top30', 'show_top30')",
+    ),
 ];
 
 /// A row of an older file with a column since renamed, in the new shape:
@@ -1094,6 +1113,11 @@ pub async fn restore(
     // The file's rows, parents before children.
     let mut deletes = Vec::new();
     for table in TABLES {
+        // A file from before the tops has none: the tops stay as they are,
+        // with their charts.
+        if table.name == "tops" && !file.tables.contains_key("tops") {
+            continue;
+        }
         let mut left_out = 0;
         // Images are files, written before their rows.
         let cols: Vec<Col> = table

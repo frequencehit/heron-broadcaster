@@ -76,15 +76,16 @@ pub const SHOWS: [Show; 4] = [
             "votes",
         ],
     },
-    // The chart when the week closes; each rank as it plays (#134).
+    // The tops: each chart when it is frozen; each rank as it plays
+    // (#134). Each top has its own settings, not the module's.
     Show {
         module: Module::Top30,
-        name: "Top 30",
+        name: "Top",
         has_hours: true,
         events: &[
             (
                 TOP_PUBLISHED,
-                "This week's number 1: {artist} – {title}",
+                "{name}: number 1 is {artist} – {title}",
                 true,
             ),
             (TOP_RANK, "Number {rank}: {artist} – {title}", false),
@@ -110,9 +111,9 @@ pub const COMMON_EVENTS: [(&str, &str, bool); 3] = [
 pub const SHOW_UPCOMING: &str = "show.upcoming";
 pub const SHOW_STARTED: &str = "show.started";
 pub const SHOW_ENDED: &str = "show.ended";
-/// The Top 30's chart, when its week closes.
+/// A top's chart, when it is frozen.
 pub const TOP_PUBLISHED: &str = "top.published";
-/// A rank of the Top 30, as it starts playing in the show.
+/// A rank of a top, as it starts playing in its show.
 pub const TOP_RANK: &str = "top.rank";
 
 /// An accepted dedication, as it goes on air.
@@ -635,6 +636,26 @@ pub fn next_opening(week: &Week, tz: &TimeZone, at: Timestamp) -> Option<(Timest
     opening(week, tz, start)
 }
 
+/// Whether one of `openings` is open at `now`, and the next change.
+pub fn status_of_openings(openings: &[Opening], now: Timestamp) -> ShowStatus {
+    let now = now.as_millisecond();
+    let mut sorted = openings.to_vec();
+    sorted.sort_by_key(|opening| opening.opens_at_unix_ms);
+    let current = sorted
+        .iter()
+        .find(|opening| opening.opens_at_unix_ms <= now && now < opening.closes_at_unix_ms);
+    let after = current.map_or(now, |opening| opening.closes_at_unix_ms);
+    let next = sorted
+        .iter()
+        .find(|opening| opening.opens_at_unix_ms >= after && opening.opens_at_unix_ms > now)
+        .map(|opening| opening.opens_at_unix_ms);
+    ShowStatus {
+        open: current.is_some(),
+        closes_at_unix_ms: current.map(|opening| opening.closes_at_unix_ms),
+        next_opening_unix_ms: next,
+    }
+}
+
 /// A change a notification tells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Change {
@@ -809,11 +830,24 @@ pub fn date_text(time: Timestamp, tz: &TimeZone, language: &str) -> String {
     }
 }
 
+/// An opening of a show set by dates rather than weekly hours (a top's
+/// show).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Opening {
+    pub opens_at_unix_ms: i64,
+    pub closes_at_unix_ms: i64,
+}
+
 /// What the gateway and the widgets know of a show on a station.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ShowPublic {
     pub module: Module,
+    /// Its name in the gateway's routes: the module's key, or `top-{id}`
+    /// for a top. Empty from an older API: the module's key.
+    #[serde(default)]
+    pub key: String,
     /// The title on the website; `null`: the show's name in the listener's
     /// language.
     pub title: Option<String>,
@@ -826,6 +860,10 @@ pub struct ShowPublic {
     /// Off: closed whatever its hours.
     pub enabled: bool,
     pub hours: Vec<HourRange>,
+    /// Its openings, for a show set by dates (a top): they replace
+    /// `hours`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openings: Option<Vec<Opening>>,
     /// The station's time zone (IANA).
     pub timezone: String,
     /// The show's own live data (the current match, the day's dedications);
@@ -840,6 +878,7 @@ impl ShowPublic {
         let text = |value: &str| Some(value.trim().to_owned()).filter(|value| !value.is_empty());
         Self {
             module,
+            key: module.key().to_owned(),
             title: text(&website.title),
             color: website.color.clone(),
             small_widget: website.small_widget,
@@ -848,8 +887,18 @@ impl ShowPublic {
             page_url: website.page_url.clone(),
             enabled: settings.enabled,
             hours: settings.hours.clone(),
+            openings: None,
             timezone: timezone.to_owned(),
             state: serde_json::Value::Null,
+        }
+    }
+
+    /// Its name in the gateway's routes.
+    pub fn key(&self) -> &str {
+        if self.key.is_empty() {
+            self.module.key()
+        } else {
+            &self.key
         }
     }
 
@@ -864,6 +913,9 @@ impl ShowPublic {
                 open: true,
                 ..ShowStatus::default()
             };
+        }
+        if let Some(openings) = &self.openings {
+            return status_of_openings(openings, now);
         }
         let tz = TimeZone::get(&self.timezone).unwrap_or(TimeZone::UTC);
         let mut status = status(&Week::of(&self.hours), &tz, now);
@@ -1129,6 +1181,42 @@ mod tests {
                 .status(Timestamp::now())
                 .open
         );
+    }
+
+    #[test]
+    fn openings_replace_the_hours() {
+        let ms = |text: &str| time(text).as_millisecond();
+        let openings = vec![
+            Opening {
+                opens_at_unix_ms: ms("2026-11-15T18:00"),
+                closes_at_unix_ms: ms("2026-11-15T20:00"),
+            },
+            Opening {
+                opens_at_unix_ms: ms("2026-12-06T18:00"),
+                closes_at_unix_ms: ms("2026-12-06T20:30"),
+            },
+        ];
+        let mut public = ShowPublic::new(Module::Top30, &ShowSettings::default(), "Europe/Paris");
+        public.key = "top-4".to_owned();
+        public.openings = Some(openings);
+        assert_eq!(public.key(), "top-4");
+        let during = public.status(time("2026-11-15T19:00"));
+        assert!(during.open);
+        assert_eq!(during.closes_at_unix_ms, Some(ms("2026-11-15T20:00")));
+        assert_eq!(during.next_opening_unix_ms, Some(ms("2026-12-06T18:00")));
+        let before = public.status(time("2026-11-10T09:00"));
+        assert!(!before.open);
+        assert_eq!(before.next_opening_unix_ms, Some(ms("2026-11-15T18:00")));
+        let after = public.status(time("2026-12-07T09:00"));
+        assert_eq!(after, ShowStatus::default());
+        // From an older API, without a key: the module's.
+        let older: ShowPublic = serde_json::from_value(serde_json::json!({
+            "module": "match", "title": null, "color": "#c62828", "small_widget": true,
+            "closed": "message", "closed_message": null, "page_url": null, "enabled": true,
+            "hours": [], "timezone": "UTC", "state": null
+        }))
+        .unwrap();
+        assert_eq!(older.key(), "match");
     }
 
     #[test]

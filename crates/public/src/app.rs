@@ -193,7 +193,7 @@ async fn read(
             if let Some(key) = name.strip_suffix(".html") {
                 return page(&gateway, &code, key, now);
             }
-            match show_module(&name).and_then(|module| gateway.show(&code, module.key(), now)) {
+            match gateway.show(&code, &name, now) {
                 Some(show) => json_with(show, 1),
                 None => not_found(&format!("show {name}")),
             }
@@ -277,10 +277,7 @@ fn events(gateway: &Gateway, code: &str, address: std::net::IpAddr) -> Response 
 }
 
 fn script(gateway: &Gateway, code: &str, key: &str, now: Timestamp) -> Response {
-    if show_module(key)
-        .and_then(|module| gateway.show(code, module.key(), now))
-        .is_none()
-    {
+    if gateway.show(code, key, now).is_none() {
         return not_found(&format!("show {key}"));
     }
     (
@@ -294,8 +291,7 @@ fn script(gateway: &Gateway, code: &str, key: &str, now: Timestamp) -> Response 
 }
 
 fn page(gateway: &Gateway, code: &str, key: &str, now: Timestamp) -> Response {
-    let Some(show) = show_module(key).and_then(|module| gateway.show(code, module.key(), now))
-    else {
+    let Some(show) = gateway.show(code, key, now) else {
         return not_found(&format!("show {key}"));
     };
     let title = show["title"].as_str().unwrap_or(key);
@@ -836,6 +832,62 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(shows.as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn each_top_is_a_show_of_its_own_and_top30_is_the_first() {
+        let (_, url) = fake_api().await;
+        let gateway = gateway(url, Config::default(), 0);
+        let mut state = state(json!([]), 0);
+        let now = Timestamp::now().as_millisecond();
+        let top = |key: &str, title: &str, opens: i64| -> heron_core::shows::ShowPublic {
+            serde_json::from_value(json!({
+                "module": "top30", "key": key, "title": title, "color": "#123456",
+                "small_widget": true, "closed": "message", "closed_message": null,
+                "page_url": null, "enabled": true, "hours": [],
+                "openings": [{"opens_at_unix_ms": opens, "closes_at_unix_ms": opens + 3_600_000}],
+                "timezone": "UTC", "state": {"name": title}
+            }))
+            .unwrap()
+        };
+        state.stations[0].shows = vec![
+            top("top-4", "Top 30", now - 60_000),
+            top("top-9", "Top 3", now + 3_600_000),
+        ];
+        gateway.apply(Some(state), Timestamp::now());
+        let get = |path: String| {
+            let gateway = Arc::clone(&gateway);
+            async move { call(&gateway, Method::GET, &path, &[], None, LISTENER).await }
+        };
+        let (status, _, show) = get("/api/v1/public/stations/main/top-9".to_owned()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(show["title"], "Top 3");
+        assert_eq!(show["open"], false);
+        // Open by its openings, not by hours.
+        let (_, _, show) = get("/api/v1/public/stations/main/top-4".to_owned()).await;
+        assert_eq!(show["open"], true, "{show}");
+        // `top30` is the first top, so that the lines already on a website
+        // keep working.
+        let (status, _, show) = get("/api/v1/public/stations/main/top30".to_owned()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(show["key"], "top-4");
+        for path in ["top-9.js", "top-9.html", "top30.js"] {
+            let (status, _, _) = get(format!("/api/v1/public/stations/main/{path}")).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+        }
+        let (status, _, _) = get("/api/v1/public/stations/main/top-5".to_owned()).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        // A top takes no writes.
+        let (status, _, _) = call(
+            &gateway,
+            Method::POST,
+            "/api/v1/public/stations/main/top-4",
+            &[],
+            Some(json!({})),
+            LISTENER,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

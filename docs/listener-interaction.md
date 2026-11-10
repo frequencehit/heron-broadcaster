@@ -118,7 +118,7 @@ The website can also build its own pages on the [public API of the gateway](api.
 
 ### Styling it from the website
 
-The website's styles do not reach inside the widget, but its own stylesheet can change it through names that stay the same from one version to the next, whatever the widget's inner classes become. The element the script draws in has the classes `heron-widget` and `heron-{module}` (`heron-match`), and `data-mode` (`page` or `widget`).
+The website's styles do not reach inside the widget, but its own stylesheet can change it through names that stay the same from one version to the next, whatever the widget's inner classes become. The element the script draws in has the classes `heron-widget` and `heron-{module}` (`heron-match`; a top has `heron-top30` and its key, `heron-top-4`), and `data-mode` (`page` or `widget`).
 
 **Variables**, set on that element (or any parent), each with its default:
 

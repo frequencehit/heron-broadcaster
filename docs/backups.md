@@ -26,7 +26,8 @@ The configuration file is what a station restores after a bad change or a lost d
 | Labels | Rendered medley files: they are in the library, under `medleys/` |
 | Artists curated by hand: marked similar, suggestions accepted or dismissed | Artist names moved or merged by hand: to do again after a restore onto a rebuilt library, or restore the database dump |
 | Medleys: recipes, stations and parts | |
-| Webhooks, with their secrets | Covers found in the files or on the Cover Art Archive: the scan and a lookup find them again (the database dump has their rows, not their images) |
+| Webhooks, with their secrets; the stations' [tops](listener-interaction.md#tops) and their settings (a file from before the tops leaves them as they are) | The tops' charts and programmes: in the database dump |
+| | Covers found in the files or on the Cover Art Archive: the scan and a lookup find them again (the database dump has their rows, not their images) |
 | Covers set by hand, on albums and tracks, and the station logos, with their images (read from the covers folder) | |
 | Users (password hashes, shared roles, roles per station, preferences), their second factors (the authenticator app's secret, passkeys, hashes of recovery codes) and API tokens (hashes) | |
 | **What is set on each track:** enabled, categories and weights, labels, overrides (cue points, crossfade, where the next track starts), intro and hook markers, BPM, mood, sound code, play ratio (the default and each station's) and the track's own daypart separation, disabled everywhere or on a station and by whom, tags kept in Heron | The play ratio counters: state, not configuration ([Rotation – Play ratio](rotation.md#play-ratio)); a restore leaves them as they are |

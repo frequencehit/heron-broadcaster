@@ -10,7 +10,10 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::{Path, State};
 use heron_core::Module;
-use heron_core::shows::{self, Change, SHOWS, Show, ShowPublic, ShowSettings, ShowStatus, Week};
+use heron_core::shows::{
+    self, Change, HourRange, NotificationSettings, SHOWS, Show, ShowPublic, ShowSettings,
+    ShowStatus, WebsiteSettings, Week,
+};
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 use serde::Serialize;
@@ -55,10 +58,17 @@ pub struct ShowView {
     pub webhooks: Vec<WebhookChoice>,
 }
 
+/// The shows set by the module's settings: all but the tops, which have
+/// their own (`/tops`).
+fn module_shows() -> impl Iterator<Item = &'static Show> {
+    SHOWS.iter().filter(|show| show.module != Module::Top30)
+}
+
 /// The show of a path's `{module}`.
 fn show_of(key: &str) -> ApiResult<&'static Show> {
     Module::from_key(key)
         .and_then(Show::of)
+        .filter(|show| show.module != Module::Top30)
         .ok_or_else(|| ApiError::NotFound(format!("there is no show {key:?}")))
 }
 
@@ -80,6 +90,17 @@ pub async fn public_shows(pool: &MySqlPool, station_id: u64) -> ApiResult<Vec<Sh
     let timezone = station_settings(pool, station_id).await?.timezone;
     let mut shows = Vec::new();
     for show in SHOWS.iter().filter(|show| on.is_on(show.module)) {
+        if show.module == Module::Top30 {
+            // Each top is a show of its own; one that fails never hides
+            // the others' shows.
+            match crate::tops::public_shows(pool, station_id, &timezone).await {
+                Ok(tops) => shows.extend(tops),
+                Err(error) => {
+                    tracing::warn!(station = station_id, %error, "the tops cannot be read")
+                }
+            }
+            continue;
+        }
         let settings = load(pool, station_id, show).await?;
         // Each show adds its live data here (`state`).
         let mut public = ShowPublic::new(show.module, &settings, &timezone);
@@ -92,10 +113,6 @@ pub async fn public_shows(pool: &MySqlPool, station_id: u64) -> ApiResult<Vec<Sh
         }
         if show.module == Module::Match {
             public.state = crate::matches::public_state(pool, station_id, &timezone).await?;
-        }
-        if show.module == Module::Top30 {
-            public.state =
-                crate::top30::public_state(pool, station_id, &settings, &timezone).await?;
         }
         shows.push(public);
     }
@@ -131,7 +148,7 @@ async fn list_shows(
 ) -> ApiResult<Json<Vec<ShowView>>> {
     let on = crate::modules::on_for(&state.pool, station.id()).await?;
     let mut views = Vec::new();
-    for show in SHOWS.iter().filter(|show| on.is_on(show.module)) {
+    for show in module_shows().filter(|show| on.is_on(show.module)) {
         views.push(view(&state.pool, station.id(), show).await?);
     }
     Ok(Json(views))
@@ -139,7 +156,7 @@ async fn list_shows(
 
 /// A show's settings on the station, and whether it is open now.
 #[utoipa::path(get, path = "/shows/{module}", tag = "shows",
-    params(("module" = String, Path, description = "dedications, match, top30 or likes")),
+    params(("module" = String, Path, description = "dedications, match or likes")),
     responses((status = 200, body = ShowView), (status = "4XX", body = ErrorBody)))]
 async fn get_show(
     _user: CurrentUser,
@@ -152,9 +169,9 @@ async fn get_show(
 }
 
 /// Replaces a show's settings on the station. Hours another show of the
-/// station has are refused (`409`). Operators.
+/// station has, or a top's show, are refused (`409`). Operators.
 #[utoipa::path(put, path = "/shows/{module}", tag = "shows",
-    params(("module" = String, Path, description = "dedications, match, top30 or likes")),
+    params(("module" = String, Path, description = "dedications, match or likes")),
     request_body = ShowSettings,
     responses((status = 200, body = ShowView), (status = "4XX", body = ErrorBody)))]
 async fn put_show(
@@ -169,19 +186,8 @@ async fn put_show(
     settings.check(show).map_err(ApiError::Invalid)?;
     settings.complete(show);
     let pool = &state.pool;
-    // An hour belongs to one show at most: the others' hours count even
-    // while they are off, so that turning them on finds them free.
-    let week = Week::of(&settings.hours);
-    for other in SHOWS.iter().filter(|other| other.module != show.module) {
-        let theirs = load(pool, station.id(), other).await?;
-        let overlap = week.overlap(&Week::of(&theirs.hours));
-        if let Some((day, start, end)) = overlap.first() {
-            return Err(ApiError::Conflict(format!(
-                "{start:02}:00–{end:02}:00 on {} belongs to {}: an hour belongs to one show at most",
-                shows::day_name(*day),
-                other.module.name(),
-            )));
-        }
+    for range in &settings.hours {
+        check_free(pool, station.id(), range, Some(show.module)).await?;
     }
     let webhooks: Vec<u64> = sqlx::query_scalar("SELECT id FROM webhooks WHERE station_id = ?")
         .bind(station.id())
@@ -202,6 +208,42 @@ async fn put_show(
     settings::save_for(pool, station.id(), show.settings_name(), &settings).await?;
     tracing::info!(user = %user.username, station = station.id(), show = show.module.key(), "show settings changed");
     Ok(Json(view(pool, station.id(), show).await?))
+}
+
+/// Refuses hours that another show of the station has (`409`, saying
+/// which): an hour belongs to one show at most. `module` is the show they
+/// are for (`None`: a top). The others' hours count even while they are
+/// off, so that turning them on finds them free; the tops' shows count
+/// with the whole hours they touch.
+pub(crate) async fn check_free(
+    pool: &MySqlPool,
+    station_id: u64,
+    range: &HourRange,
+    module: Option<Module>,
+) -> ApiResult<()> {
+    let week = Week::of(std::slice::from_ref(range));
+    let refuse = |day: u8, start: u8, end: u8, name: &str| {
+        ApiError::Conflict(format!(
+            "{start:02}:00–{end:02}:00 on {} belongs to {name}: an hour belongs to one show at most",
+            shows::day_name(day),
+        ))
+    };
+    for other in module_shows().filter(|other| Some(other.module) != module) {
+        let theirs = load(pool, station_id, other).await?;
+        let overlap = week.overlap(&Week::of(&theirs.hours));
+        if let Some((day, start, end)) = overlap.first() {
+            return Err(refuse(*day, *start, *end, other.module.name()));
+        }
+    }
+    if module.is_some() {
+        for (name, hours) in crate::tops::hours_taken(pool, station_id).await? {
+            let overlap = week.overlap(&Week::of(&[hours]));
+            if let Some((day, start, end)) = overlap.first() {
+                return Err(refuse(*day, *start, *end, &format!("the top “{name}”")));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Sends the shows' notifications (`show.upcoming`, `show.started`,
@@ -238,7 +280,13 @@ pub(crate) async fn notify_station(
     }
     let station = station_settings(pool, station_id).await?;
     let tz = station.time_zone();
-    for show in SHOWS.iter().filter(|show| on.is_on(show.module)) {
+    if on.is_on(Module::Top30)
+        && let Err(error) =
+            crate::tops::notify_shows(pool, webhooks, station_id, code, &tz, from, to).await
+    {
+        tracing::warn!(station = %code, %error, "cannot send the tops' notifications");
+    }
+    for show in module_shows().filter(|show| on.is_on(show.module)) {
         let settings = load(pool, station_id, show).await?;
         let notifications = &settings.notifications;
         if notifications.webhook_ids.is_empty() {
@@ -255,14 +303,13 @@ pub(crate) async fn notify_station(
             let Some(wanted) = notifications.events.get(name).filter(|event| event.enabled) else {
                 continue;
             };
+            let times = end_and_next(&settings, &tz, change, at);
             let payload = message(
-                show,
-                &settings,
+                &Notice::of(show, &settings),
                 &station,
                 code,
                 &tz,
-                change,
-                at,
+                times,
                 &wanted.message,
                 &[],
             );
@@ -282,7 +329,54 @@ pub(crate) async fn notify_station(
     Ok(())
 }
 
-/// Sends one of a show's own events (`top.published`), with its own
+/// A show as its notifications name it: a module's, or a top.
+pub(crate) struct Notice<'a> {
+    pub show: &'a Show,
+    /// Its name in the gateway's routes, for `{link}`.
+    pub key: String,
+    /// `{name}`: its title on the website, else its name.
+    pub name: String,
+    pub website: &'a WebsiteSettings,
+    pub notifications: &'a NotificationSettings,
+}
+
+impl<'a> Notice<'a> {
+    pub fn of(show: &'a Show, settings: &'a ShowSettings) -> Self {
+        Self {
+            show,
+            key: show.module.key().to_owned(),
+            name: Some(settings.website.title.trim())
+                .filter(|title| !title.is_empty())
+                .unwrap_or(show.name)
+                .to_owned(),
+            website: &settings.website,
+            notifications: &settings.notifications,
+        }
+    }
+}
+
+/// When a module's show closes and opens next, as a change at `at` says.
+fn end_and_next(
+    settings: &ShowSettings,
+    tz: &TimeZone,
+    change: Change,
+    at: Timestamp,
+) -> (Option<i64>, Option<i64>) {
+    let week = settings.open_week();
+    // Upcoming: as the show will be once it opens.
+    let reference = match change {
+        Change::Upcoming { opens } => opens,
+        _ => at,
+    };
+    let status = shows::status(&week, tz, reference);
+    let next = match change {
+        Change::Upcoming { opens } => Some(opens.as_millisecond()),
+        _ => status.next_opening_unix_ms,
+    };
+    (status.closes_at_unix_ms, next)
+}
+
+/// Sends one of a show's own events (`dedication.played`), with its own
 /// placeholders, to the webhooks the show chose: not while the webhooks or
 /// the event are off. Returns the deliveries queued.
 #[allow(clippy::too_many_arguments)]
@@ -296,11 +390,40 @@ pub(crate) async fn send_own_event(
     at: Timestamp,
     extra: &[(&str, String)],
 ) -> ApiResult<usize> {
+    let settings = load(pool, station_id, show).await?;
+    let tz = station_settings(pool, station_id).await?.time_zone();
+    let times = end_and_next(&settings, &tz, Change::Started, at);
+    send_notice(
+        pool,
+        webhooks,
+        station_id,
+        code,
+        &Notice::of(show, &settings),
+        event,
+        times,
+        extra,
+    )
+    .await
+}
+
+/// Sends an event of a show (a module's or a top), with its placeholders
+/// and when it closes and opens next, to the webhooks it chose: not while
+/// the webhooks or the event are off. Returns the deliveries queued.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn send_notice(
+    pool: &MySqlPool,
+    webhooks: &Webhooks,
+    station_id: u64,
+    code: &str,
+    notice: &Notice<'_>,
+    event: WebhookEvent,
+    times: (Option<i64>, Option<i64>),
+    extra: &[(&str, String)],
+) -> ApiResult<usize> {
     if !crate::modules::on_for(pool, station_id).await?.webhooks {
         return Ok(0);
     }
-    let settings = load(pool, station_id, show).await?;
-    let notifications = &settings.notifications;
+    let notifications = notice.notifications;
     let Some(wanted) = notifications
         .events
         .get(event.as_str())
@@ -313,24 +436,14 @@ pub(crate) async fn send_own_event(
     }
     let station = station_settings(pool, station_id).await?;
     let tz = station.time_zone();
-    let (show_payload, text) = message(
-        show,
-        &settings,
-        &station,
-        code,
-        &tz,
-        Change::Started,
-        at,
-        &wanted.message,
-        extra,
-    );
+    let (show_payload, text) = message(notice, &station, code, &tz, times, &wanted.message, extra);
     let payload = Payload::show(event, show_payload, text);
     let sent = webhooks
         .queue_show(station_id, &notifications.webhook_ids, payload)
         .await?;
     tracing::info!(
         station = code,
-        show = show.module.key(),
+        show = %notice.key,
         event = event.as_str(),
         sent,
         "show notification"
@@ -339,44 +452,26 @@ pub(crate) async fn send_own_event(
 }
 
 /// A show event's show and message, written out.
-#[allow(clippy::too_many_arguments)]
 fn message(
-    show: &Show,
-    settings: &ShowSettings,
+    notice: &Notice<'_>,
     station: &StationSettings,
     code: &str,
     tz: &TimeZone,
-    change: Change,
-    at: Timestamp,
+    (end, next): (Option<i64>, Option<i64>),
     template: &str,
     extra: &[(&str, String)],
 ) -> (PayloadShow, String) {
-    let week = settings.open_week();
-    // Upcoming: as the show will be once it opens.
-    let reference = match change {
-        Change::Upcoming { opens } => opens,
-        _ => at,
-    };
-    let status = shows::status(&week, tz, reference);
-    let next = match change {
-        Change::Upcoming { opens } => Some(opens.as_millisecond()),
-        _ => status.next_opening_unix_ms,
-    };
-    let end = status.closes_at_unix_ms;
-    let name = Some(settings.website.title.trim())
-        .filter(|title| !title.is_empty())
-        .unwrap_or(show.name)
-        .to_owned();
-    let link = settings.website.page_url.clone().or_else(|| {
+    let name = notice.name.clone();
+    let link = notice.website.page_url.clone().or_else(|| {
         station.gateway_url.as_ref().map(|gateway| {
             format!(
                 "{gateway}/api/v1/public/stations/{code}/{}.html",
-                show.module.key()
+                notice.key
             )
         })
     });
     let time = |ms: Option<i64>| ms.and_then(|ms| Timestamp::from_millisecond(ms).ok());
-    let language = &settings.notifications.language;
+    let language = &notice.notifications.language;
     let mut values = vec![
         ("name", name.clone()),
         ("link", link.clone().unwrap_or_default()),
@@ -396,7 +491,7 @@ fn message(
     values.extend(extra.iter().cloned());
     (
         PayloadShow {
-            module: show.module,
+            module: notice.show.module,
             name,
             link,
             end_unix_ms: end,
@@ -436,14 +531,13 @@ mod tests {
                 .timestamp()
         };
         let template = "{name} until {end}, back {next}: {link}";
+        let started = end_and_next(&settings, &tz, Change::Started, at("2026-11-09T17:00"));
         let (payload, text) = message(
-            show,
-            &settings,
+            &Notice::of(show, &settings),
             &station,
             "main",
             &tz,
-            Change::Started,
-            at("2026-11-09T17:00"),
+            started,
             template,
             &[],
         );
@@ -459,14 +553,18 @@ mod tests {
         settings.website.title = "Vos dédicaces".to_owned();
         settings.website.page_url = Some("https://radio.example.org/dedicaces".to_owned());
         let opens = at("2026-11-09T17:00");
-        let (_, text) = message(
-            show,
+        let upcoming = end_and_next(
             &settings,
-            &station,
-            "main",
             &tz,
             Change::Upcoming { opens },
             at("2026-11-09T16:00"),
+        );
+        let (_, text) = message(
+            &Notice::of(show, &settings),
+            &station,
+            "main",
+            &tz,
+            upcoming,
             template,
             &[],
         );

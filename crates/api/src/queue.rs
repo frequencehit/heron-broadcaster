@@ -547,9 +547,17 @@ impl QueueManager {
                 tracing::warn!(%error, "cannot read the match's tracks: the queue fills without it");
                 None
             });
-        // A show on air (the Top 30) queues its programme in its hours.
+        // A show on air (a top) queues its programme in its hours. A show
+        // that fails never stops the music: the queue fills as without it.
         let (_, planned_end) = rotation::planned_starts(state, now, alternatives);
-        if self.fill_show(planned_end, missing).await? {
+        let shown = self
+            .fill_show(planned_end, missing)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "cannot queue the top's show: the queue fills without it");
+                false
+            });
+        if shown {
             return Ok(());
         }
         if self.idle() {
@@ -1344,55 +1352,72 @@ impl QueueManager {
         dropped
     }
 
-    /// Queues what the Top 30's show has to play for a track planned at
-    /// `at` (`docs/listener-interaction.md#top-30`): its programme's next
-    /// items, each jingle linked to its track. False when the show has
-    /// nothing to play: rotation picks.
+    /// Queues what a top's show has to play for a track planned at `at`
+    /// (`docs/listener-interaction.md#tops`): its programme's next items,
+    /// each jingle linked to its track. False when the show has nothing to
+    /// play: rotation picks. An item that cannot play is passed over, with
+    /// its jingle, and the programme moves on.
     async fn fill_show(&self, at: i64, missing: usize) -> ApiResult<bool> {
-        let Some(due) = crate::top30::due(&self.pool, self.station_id, at, missing).await? else {
+        use crate::tops::ItemKind;
+        let Some(due) = crate::tops::due(&self.pool, self.station_id, at, missing).await? else {
             return Ok(false);
         };
         let ids: Vec<u64> = due.items.iter().map(|item| item.track_id).collect();
         let rows = self.rows(&ids).await?;
-        let plays = |id: u64| rows.iter().any(|row| row.id == id && row.plays());
-        // What can no longer play is passed over, a track with its jingle.
-        let mut items: Vec<&crate::top30::Item> = Vec::new();
+        // The check every queued track goes through (`tracks`).
+        let plays = |id: u64| {
+            rows.iter()
+                .any(|row| row.id == id && row.unplayable().is_none())
+        };
+        let mut items: Vec<&crate::tops::Item> = Vec::new();
         for item in &due.items {
             if plays(item.track_id) {
                 items.push(item);
-            } else if item.kind != crate::top30::ItemKind::Jingle
-                && items
-                    .last()
-                    .is_some_and(|last| last.kind == crate::top30::ItemKind::Jingle)
-            {
-                items.pop();
+            } else {
+                tracing::warn!(
+                    top = due.top_id,
+                    track = item.track_id,
+                    "a top's item cannot play: passed over"
+                );
+                if item.kind != ItemKind::Jingle
+                    && items
+                        .last()
+                        .is_some_and(|last| last.kind == ItemKind::Jingle)
+                {
+                    items.pop();
+                }
             }
         }
+        let mut queued = false;
         if !items.is_empty() {
             let ids: Vec<u64> = items.iter().map(|item| item.track_id).collect();
-            let tracks = self.tracks(&ids, PlaySource::Rotation).await?;
-            let linked = items
-                .windows(2)
-                .enumerate()
-                .filter(|(_, pair)| {
-                    pair[0].kind == crate::top30::ItemKind::Jingle
-                        && pair[1].kind != crate::top30::ItemKind::Jingle
-                })
-                .map(|(index, _)| u32::try_from(index).unwrap_or(u32::MAX))
-                .collect();
-            let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
-            self.awaiting(entry_ids);
-            tracing::info!(tracks = ids.len(), "top 30: queued the show's next tracks");
+            match self.tracks(&ids, PlaySource::Rotation).await {
+                Ok(tracks) => {
+                    let linked = items
+                        .windows(2)
+                        .enumerate()
+                        .filter(|(_, pair)| {
+                            pair[0].kind == ItemKind::Jingle && pair[1].kind != ItemKind::Jingle
+                        })
+                        .map(|(index, _)| u32::try_from(index).unwrap_or(u32::MAX))
+                        .collect();
+                    let entry_ids = self.engine.enqueue(tracks, None, linked).await?;
+                    self.awaiting(entry_ids);
+                    tracing::info!(
+                        top = due.top_id,
+                        tracks = ids.len(),
+                        "queued the top's next tracks"
+                    );
+                    queued = true;
+                }
+                // Changed since it was read: these items are passed over.
+                Err(error) => {
+                    tracing::warn!(top = due.top_id, %error, "a top's items cannot play: passed over");
+                }
+            }
         }
-        crate::top30::queued(
-            &self.pool,
-            self.station_id,
-            due.opens_ms,
-            due.from,
-            due.next,
-        )
-        .await?;
-        Ok(true)
+        crate::tops::queued(&self.pool, due.top_id, due.opens_ms, due.from, due.next).await?;
+        Ok(queued)
     }
 
     /// Before a soft exact time, takes out the tracks queued by hand that

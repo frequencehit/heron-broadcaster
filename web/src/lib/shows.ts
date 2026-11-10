@@ -46,8 +46,8 @@ export function ownEvents(key: string): { name: string; label: PlainKey }[] {
   switch (key) {
     case "top30":
       return [
-        { name: "top.published", label: "top30.event.published" },
-        { name: "top.rank", label: "top30.event.rank" },
+        { name: "top.published", label: "tops.event.published" },
+        { name: "top.rank", label: "tops.event.rank" },
       ];
     case "dedications":
       return [
