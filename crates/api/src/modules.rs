@@ -166,7 +166,8 @@ async fn get_modules(
 }
 
 /// Turns modules on or off for the installation (a module left out takes
-/// its default: off for a show). Admins only.
+/// its default: off for a show). A show turned on while another show has
+/// its hours on a station is refused (`409`). Admins only.
 #[utoipa::path(put, path = "/modules", tag = "settings", request_body = Modules,
     responses((status = 200, body = Modules), (status = "4XX", body = ErrorBody)))]
 async fn put_modules(
@@ -175,6 +176,19 @@ async fn put_modules(
     Json(modules): Json<Modules>,
 ) -> ApiResult<Json<Modules>> {
     user.require(Role::Admin)?;
+    let before = installation(&state.pool).await?;
+    let stations: Vec<(u64, String)> = sqlx::query_as("SELECT id, code FROM stations ORDER BY id")
+        .fetch_all(&state.pool)
+        .await?;
+    for (id, code) in stations {
+        let own = own(&state.pool, id).await?;
+        crate::shows::check_turned_on(&state.pool, id, &before.and(own), &modules.and(own))
+            .await
+            .map_err(|error| match error {
+                ApiError::Conflict(message) => ApiError::Conflict(format!("on {code}: {message}")),
+                other => other,
+            })?;
+    }
     settings::save(&state.pool, Modules::SETTINGS_NAME, &modules).await?;
     tracing::info!(user = %user.username, ?modules, "installation modules changed");
     changed(&state);
@@ -195,7 +209,8 @@ async fn get_station_modules(
 }
 
 /// Turns modules on or off for a station (a module left out is on). A
-/// module off for the installation stays off. Admins of the station.
+/// module off for the installation stays off. A show turned on while
+/// another show has its hours is refused (`409`). Admins of the station.
 #[utoipa::path(put, path = "/stations/{id}/modules", tag = "stations",
     params(("id" = u64, Path)), request_body = Modules,
     responses((status = 200, body = StationModules), (status = "4XX", body = ErrorBody)))]
@@ -215,6 +230,14 @@ async fn put_station_modules(
     }
     // What the station leaves out stays on.
     let modules = Modules::over(Modules::ALL_ON, &body).for_station();
+    let installation = installation(&state.pool).await?;
+    crate::shows::check_turned_on(
+        &state.pool,
+        id,
+        &installation.and(own(&state.pool, id).await?),
+        &installation.and(modules),
+    )
+    .await?;
     settings::save_for(&state.pool, id, Modules::STATION_SETTINGS_NAME, &modules).await?;
     tracing::info!(user = %user.username, station = id, ?modules, "station modules changed");
     changed(&state);

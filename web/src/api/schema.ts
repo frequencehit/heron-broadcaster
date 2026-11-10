@@ -2521,7 +2521,8 @@ export interface paths {
         get: operations["get_modules"];
         /**
          * Turns modules on or off for the installation (a module left out takes
-         *     its default: off for a show). Admins only.
+         *     its default: off for a show). A show turned on while another show has
+         *     its hours on a station is refused (`409`). Admins only.
          */
         put: operations["put_modules"];
         post?: never;
@@ -3827,7 +3828,8 @@ export interface paths {
         get: operations["get_station_modules"];
         /**
          * Turns modules on or off for a station (a module left out is on). A
-         *     module off for the installation stays off. Admins of the station.
+         *     module off for the installation stays off. A show turned on while
+         *     another show has its hours is refused (`409`). Admins of the station.
          */
         put: operations["put_station_modules"];
         post?: never;

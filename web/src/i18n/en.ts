@@ -2971,7 +2971,7 @@ const en = {
   "shows.help": "When and how listeners take part from the station's website. Hours in the station's time zone ({zone}).",
   "shows.hours": "Hours",
   "shows.enabled": "Open during its hours",
-  "shows.hoursHelp": "In whole hours. An hour belongs to one show at most.",
+  "shows.hoursHelp": "In whole hours. An hour belongs to one show at most; a show turned off leaves its hours to the others.",
   "shows.openUntil": "Open now, until {time}.",
   "shows.closedUntil": "Closed, opens {time}.",
   "shows.neverOpen": "Closed: no hours.",

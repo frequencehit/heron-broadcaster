@@ -2973,7 +2973,7 @@ const de = {
   "shows.help": "Wann und wie Hörer auf der Website des Senders mitmachen. Zeiten in der Zeitzone des Senders ({zone}).",
   "shows.hours": "Zeiten",
   "shows.enabled": "Zu ihren Zeiten geöffnet",
-  "shows.hoursHelp": "In vollen Stunden. Eine Stunde gehört höchstens einer Sendung.",
+  "shows.hoursHelp": "In vollen Stunden. Eine Stunde gehört höchstens einer Sendung; eine ausgeschaltete Sendung überlässt ihre Stunden den anderen.",
   "shows.openUntil": "Jetzt geöffnet, bis {time}.",
   "shows.closedUntil": "Geschlossen, öffnet {time}.",
   "shows.neverOpen": "Geschlossen: keine Zeiten.",

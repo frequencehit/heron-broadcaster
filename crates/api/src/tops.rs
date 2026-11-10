@@ -1770,11 +1770,12 @@ async fn checked(
     }
     settings.notifications.webhook_ids.sort_unstable();
     settings.notifications.webhook_ids.dedup();
-    if let Some(slot) = &settings.slot {
+    // A top not enabled holds no slot: it is checked when enabled again.
+    if let Some(slot) = settings.slot.as_ref().filter(|_| settings.enabled) {
         let others: Vec<Top> = tops_of(pool, station_id)
             .await?
             .into_iter()
-            .filter(|other| Some(other.id) != top_id)
+            .filter(|other| Some(other.id) != top_id && other.settings.enabled)
             .collect();
         if let Some(other) = same_slot(slot, &others) {
             return Err(ApiError::Invalid(format!(
@@ -3402,8 +3403,9 @@ pub(crate) async fn notify_shows(
     Ok(())
 }
 
-/// The whole hours of the station's tops' shows, by top name, for the
-/// other shows' check: an hour belongs to one show at most.
+/// The whole hours of the station's enabled tops' shows, by top name, for
+/// the other shows' check: an hour belongs to one show at most. A top not
+/// enabled holds none.
 pub(crate) async fn hours_taken(
     pool: &MySqlPool,
     station_id: u64,
@@ -3411,6 +3413,7 @@ pub(crate) async fn hours_taken(
     Ok(tops_of(pool, station_id)
         .await?
         .into_iter()
+        .filter(|top| top.settings.enabled)
         .filter_map(|top| {
             let hours = top.settings.slot.as_ref()?.hours();
             Some((top.settings.name, hours))
