@@ -267,13 +267,13 @@ The chart keeps each rank's plays, its share of the most played, its likes and d
 
 A top's show is **a recurrence and hours**, in the station's time zone:
 
-- **every day**, **every** Sunday (a day of the week), or **the 1st, 2nd, 3rd, 4th or last** Sunday of the month;
+- **days of the week**, chosen one by one (Monday to Sunday: one day, three, all seven), **every week** or **the 1st, 2nd, 3rd, 4th or last** of them in the month (*the 1st Saturday and Sunday of the month*);
 - **from** a time **to** a time (18:00 to 20:00, minutes included; up to 24:00, not across midnight).
 
 No show: the top's charts are kept, and nothing plays.
 
 - **It plays the latest chart frozen before the show opens**: a weekly top reset on Sunday at 17:00 and played at 18:00 plays the week that just ended; a monthly top played on the 1st Sunday plays last month's. A top of the last 7 days freezes its chart for the show, when the programme is built.
-- **Two tops on the same slot** (their hours overlap on a day both play): the **rarer recurrence takes it that day**, a day of the month before a day of the week before every day. The other gives way for that day: it does not play at all then, and the list of tops says so. Two tops of the same rarity whose hours overlap (two every day, two on Sundays, the 1st Sunday and the 1st Sunday, the 4th and the last) are refused when saved (`422`), saying which. A top that is not enabled takes no slot from the others, but its hours still count for that check.
+- **Two tops on the same slot** (their hours overlap on a day both play): the **rarer recurrence takes it that day**: a top of the month (the 1st Sunday) before a top of every week. The other gives way for that day: it does not play at all then, and the list of tops says so. Two tops of the same rarity whose hours overlap on a day both can play (every Monday to Sunday and every Sunday, the 1st Sunday and the 1st Sunday, the 4th Sunday and the last) are refused when saved (`422`), saying which: a top of every evening and a top of Sunday evening at the same time take Monday to Saturday and Sunday. A top that is not enabled takes no slot from the others, but its hours still count for that check.
 - **Its hours are its own**, as every show's: a Match or Dedications hour (whole hours) that a top's show touches, on a day it can play, is refused when either is saved (`409`, saying which). Outside the tops' shows, the clocks play as usual.
 - **The programme is built when the show starts**: when the queue manager needs the first track planned in the slot (with the queue's depth, a few minutes before at most).
 - **The order**: a jingle, the last rank, a jingle… number 1, a jingle, then **the new release**. The jingles come from the **jingle category** of the top: a jingle of a rank when the category has one (its title ends with the rank after a dash or `#`: *Top 30 – 12*, *Top 30 #12*), else the category's other jingles in turn, the least recently played first. Without a jingle category, the tracks follow one another.
@@ -315,7 +315,7 @@ The tops' settings (the configuration file of the [backups](backups.md), with th
 
 ### From the Top 30
 
-The single weekly Top 30 of earlier versions becomes the first top of each station that had set it up (its settings, its hours or a chart), with its history: charts, tracks taken out, new releases chosen, programmes, settings, website and notifications. Its period becomes the **week**, reset at its former close (Sunday 17:00 by default), and its score 100 % likes. Its show's hours become its show: the first range's first day every week (every day when the range has every day), from its first to its last hour. Its charts keep their dates as they were: from Monday 00:00 to the close. Votes are no longer lost between the close and Monday: they count for the next chart.
+The single weekly Top 30 of earlier versions becomes the first top of each station that had set it up (its settings, its hours or a chart), with its history: charts, tracks taken out, new releases chosen, programmes, settings, website and notifications. Its period becomes the **week**, reset at its former close (Sunday 17:00 by default), and its score 100 % likes. Its show's hours become its show: the first range's days every week, from its first to its last hour. Its charts keep their dates as they were: from Monday 00:00 to the close. Votes are no longer lost between the close and Monday: they count for the next chart.
 
 ## Dedications
 
