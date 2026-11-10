@@ -488,34 +488,35 @@ async fn until_match(station: &Station, admin: &Client, status: &str, how: Skip)
     panic!("no match {status}");
 }
 
-/// The Top 30's chart: `ranked` (number 1 first), voted in the week
-/// closed three days ago at noon (whatever the day the test runs), its
-/// tracks from `music`, its jingles from `jingles`.
-async fn top30_chart(station: &Station, admin: &Client, music: u64, jingles: u64, ranked: &[u64]) {
-    use crate::top30::{ChartWeek, Top30Settings};
+/// A top's chart: `ranked` (number 1 first), voted in the week frozen
+/// three days ago at noon (whatever the day the test runs), its tracks from
+/// `music`, its jingles from `jingles`. Returns the top and its settings.
+async fn top30_chart(
+    station: &Station,
+    admin: &Client,
+    music: u64,
+    jingles: u64,
+    ranked: &[u64],
+) -> (u64, Value) {
     let pool = &station.db.pool;
     modules(admin, json!({"top30": true})).await;
     let today = jiff::Timestamp::now()
         .to_zoned(jiff::tz::TimeZone::UTC)
         .weekday()
         .to_monday_one_offset();
-    let close_day = (today + 3) % 7 + 1;
-    put_ok(
-        admin,
-        "/top30/settings",
-        json!({"min_votes": 2, "size": ranked.len(), "category_ids": [music],
-               "jingle_category_id": jingles, "close_day": close_day, "close_hour": 12}),
-    )
-    .await;
-    let settings = Top30Settings {
-        close_day: u8::try_from(close_day).unwrap(),
-        close_hour: 12,
-        min_votes: 2,
-        size: u32::try_from(ranked.len()).unwrap(),
-        ..Top30Settings::default()
-    };
+    let reset_weekday = (today + 3) % 7 + 1;
+    let size = [3, 5, 10, 20, 30, 40, 50]
+        .into_iter()
+        .find(|size| *size >= ranked.len())
+        .unwrap_or(50);
+    let settings = json!({"name": "Top 30", "min_votes": 2, "size": size, "category_ids": [music],
+                          "jingle_category_id": jingles, "period": "week",
+                          "reset_weekday": reset_weekday, "reset_time": "12:00"});
+    let (status, top) = admin.send(Method::POST, "/tops", settings.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{top}");
+    let parsed: crate::tops::TopSettings = serde_json::from_value(settings.clone()).unwrap();
     let closed =
-        ChartWeek::latest_closed(jiff::Timestamp::now(), &settings, &jiff::tz::TimeZone::UTC)
+        crate::tops::latest_frozen(&parsed, &jiff::tz::TimeZone::UTC, jiff::Timestamp::now())
             .unwrap();
     for (rank, track) in ranked.iter().enumerate() {
         let started = closed.from.as_millisecond() as f64 / 1_000.0 + 3_600.0;
@@ -542,6 +543,7 @@ async fn top30_chart(station: &Station, admin: &Client, music: u64, jingles: u64
         .await
         .unwrap();
     }
+    (top["id"].as_u64().unwrap(), settings)
 }
 
 /// The hours of `show`: the current hour (UTC) today.
@@ -556,14 +558,25 @@ async fn this_hour(admin: &Client, show: &str) {
     .await;
 }
 
-async fn top30_this_hour(admin: &Client) {
-    this_hour(admin, "top30").await;
+/// The top's show: the current hour (UTC), today's day of the week; none
+/// with `on` off.
+async fn top30_this_hour(admin: &Client, top: &(u64, Value), on: bool) {
+    let now = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC);
+    let (day, hour) = (now.weekday().to_monday_one_offset(), now.hour());
+    let mut settings = top.1.clone();
+    settings["slot"] = if on {
+        json!({"every": "week", "weekday": day, "start": format!("{hour:02}:00"),
+               "end": format!("{:02}:00", hour + 1)})
+    } else {
+        Value::Null
+    };
+    put_ok(admin, &format!("/tops/{}", top.0), settings).await;
 }
 
-/// The Top 30's programme on air: its items and the next one to queue.
+/// The top's programme on air: its items and the next one to queue.
 async fn top30_programme(pool: &sqlx::MySqlPool) -> Option<(Vec<u64>, u64)> {
     let row: Option<(String, u64)> = sqlx::query_as(
-        "SELECT CAST(programme AS CHAR), CAST(next_item AS UNSIGNED) FROM top30_shows
+        "SELECT CAST(programme AS CHAR), CAST(next_item AS UNSIGNED) FROM top_shows
          ORDER BY opens_at DESC LIMIT 1",
     )
     .fetch_optional(pool)
@@ -579,6 +592,31 @@ async fn top30_programme(pool: &sqlx::MySqlPool) -> Option<(Vec<u64>, u64)> {
         .map(|item| item["track_id"].as_u64().unwrap())
         .collect();
     Some((items, next))
+}
+
+/// Writes a top's stored settings with an unknown field, as a restore, an
+/// import or a downgrade can leave them. Returns what they were.
+async fn corrupt_top(pool: &sqlx::MySqlPool, top: u64) -> String {
+    let before: String = sqlx::query_scalar("SELECT CAST(settings AS CHAR) FROM tops WHERE id = ?")
+        .bind(top)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE tops SET settings = JSON_SET(settings, '$.unknown_field', 1) WHERE id = ?")
+        .bind(top)
+        .execute(pool)
+        .await
+        .unwrap();
+    before
+}
+
+async fn restore_top(pool: &sqlx::MySqlPool, top: u64, before: String) {
+    sqlx::query("UPDATE tops SET settings = ? WHERE id = ?")
+        .bind(before)
+        .bind(top)
+        .execute(pool)
+        .await
+        .unwrap();
 }
 
 /// Writes a station's settings group as stored, with an unknown field:
@@ -701,8 +739,8 @@ async fn never_off_air_with_every_module_on() {
     .await;
     assert_eq!(status, StatusCode::CREATED, "{asked}");
     put_ok(&admin, "/shows/dedications", json!({"hours": []})).await;
-    top30_chart(&station, &admin, setup.hits, setup.jingles, &h[..3]).await;
-    top30_this_hour(&admin).await;
+    let top = top30_chart(&station, &admin, setup.hits, setup.jingles, &h[..3]).await;
+    top30_this_hour(&admin, &top, true).await;
     let list = admin.get("/dedications").await;
     let id = list["dedications"][0]["id"].clone();
     let (status, accepted) = admin
@@ -727,7 +765,7 @@ async fn never_off_air_with_every_module_on() {
     )
     .await;
     if let Ok(first) = &mut played {
-        put_ok(&admin, "/shows/top30", json!({"hours": []})).await;
+        top30_this_hour(&admin, &top, false).await;
         put_ok(
             &admin,
             "/shows/match",
@@ -789,11 +827,9 @@ async fn never_off_air_with_every_module_on() {
     station.stop().await;
 }
 
-/// Scenario 2a: the Top 30's stored settings with an unknown field, in
-/// its hours before its programme is built; its show settings broken,
-/// outside its hours.
+/// Scenario 2a: a top's stored settings with an unknown field, outside
+/// its show and in it before its programme is built.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "off air: #221 a Top 30 settings error fails every fill (fill_show `?` in queue.rs)"]
 async fn never_off_air_with_the_top30_settings_corrupted() {
     let Some(station) = Station::start().await else {
         return;
@@ -811,34 +847,33 @@ async fn never_off_air_with_the_top30_settings_corrupted() {
         json!({"autofill": true, "min_queued": 2}),
     )
     .await;
-    top30_chart(&station, &admin, music, jingles, &t[..3]).await;
+    let top = top30_chart(&station, &admin, music, jingles, &t[..3]).await;
     let mut failures = Failures::default();
 
-    // Its show settings broken, outside its hours: read on every fill.
-    let before = corrupt_settings(&pool, "show_top30").await;
+    // Outside its show: read on every fill.
+    let before = corrupt_top(&pool, top.0).await;
     let watch = Watch::start(&station);
     let result = skip_through(&station, &admin, Skip::End, 4, Duration::ZERO).await;
-    failures.check("show_top30 settings broken, outside the hours", result);
-    failures.watched("show_top30 settings broken", watch);
-    restore_settings(&pool, "show_top30", before).await;
-    fed_within(&station, "show_top30 restored").await.unwrap();
+    failures.check("top settings broken, outside the show", result);
+    failures.watched("top settings broken", watch);
+    restore_top(&pool, top.0, before).await;
+    fed_within(&station, "top settings restored").await.unwrap();
 
-    // In its hours, its settings broken before the programme is built.
-    let before = corrupt_settings(&pool, "top30").await;
-    top30_this_hour(&admin).await;
+    // In its show, its settings broken before the programme is built.
+    top30_this_hour(&admin, &top, true).await;
+    let before = corrupt_top(&pool, top.0).await;
     let watch = Watch::start(&station);
     let result = skip_through(&station, &admin, Skip::End, 4, Duration::ZERO).await;
-    failures.check("top30 settings broken, in the hours", result);
-    failures.watched("top30 settings broken", watch);
-    restore_settings(&pool, "top30", before).await;
+    failures.check("top settings broken, in the show", result);
+    failures.watched("top settings broken in the show", watch);
+    restore_top(&pool, top.0, before).await;
     failures.assert();
     station.stop().await;
 }
 
-/// Scenario 2b: a Top 30 programme item made unplayable during the show
+/// Scenario 2b: a top's programme item made unplayable during the show
 /// (a cue override leaving less than 1 s): the show goes on without it.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "off air: #221 an unplayable Top 30 item fails every fill until the show ends"]
 async fn never_off_air_with_a_top30_item_made_unplayable() {
     let Some(station) = Station::start().await else {
         return;
@@ -870,8 +905,8 @@ async fn never_off_air_with_a_top30_item_made_unplayable() {
         json!({"autofill": true, "min_queued": 1}),
     )
     .await;
-    top30_chart(&station, &admin, music, jingles, &ranked).await;
-    top30_this_hour(&admin).await;
+    let top = top30_chart(&station, &admin, music, jingles, &ranked).await;
+    top30_this_hour(&admin, &top, true).await;
     let (items, _) = eventually("the show built", Duration::from_secs(20), || async {
         top30_programme(&pool).await
     })
@@ -1093,10 +1128,8 @@ async fn never_off_air_with_bad_stored_data() {
         "station",
         "medley_categories",
         "station_modules",
-        "show_top30",
         "show_match",
         "match",
-        "top30",
     ] {
         let before = corrupt_settings(&pool, name).await;
         station.state.stations.first().engine.clear().await.unwrap();
@@ -1402,7 +1435,7 @@ async fn never_off_air_with_the_queue_changed_during_a_match() {
 }
 
 /// Scenario 8b: the queue cleared, tracks skipped and removed during the
-/// Top 30.
+/// show of a top.
 #[tokio::test(flavor = "multi_thread")]
 async fn never_off_air_with_the_queue_changed_during_the_top30() {
     let Some(station) = Station::start().await else {
@@ -1435,8 +1468,8 @@ async fn never_off_air_with_the_queue_changed_during_the_top30() {
         json!({"autofill": true, "min_queued": 2}),
     )
     .await;
-    top30_chart(&station, &admin, music, jingles, &ranked).await;
-    top30_this_hour(&admin).await;
+    let top = top30_chart(&station, &admin, music, jingles, &ranked).await;
+    top30_this_hour(&admin, &top, true).await;
     eventually("the show built", Duration::from_secs(20), || async {
         top30_programme(&pool).await
     })
