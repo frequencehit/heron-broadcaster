@@ -4,7 +4,8 @@
 // (with the intro and the countdowns of the deck on air), the last track of
 // a category type, the listeners, the next fixed time, the queue, the
 // outputs, the machine's load and the station's clock, as each user chooses
-// in Account › Status bar.
+// in Account › Status bar; with several stations, a button opening a bar
+// per other station.
 
 import { useQuery } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useState } from "react";
@@ -20,10 +21,12 @@ import { here, useStation } from "../lib/station";
 import {
   type Countdown,
   type DeckSummary,
+  type OtherStation,
   type StatusBarSettings,
   countdownText,
   listenersText,
   nextFixedTime,
+  otherStations,
   outputsOf,
   queueLength,
   recordOf,
@@ -31,6 +34,85 @@ import {
   summarizeSystem,
   whenOf,
 } from "../lib/statusbar";
+import { useStations } from "./Stations";
+
+/** Whether the other stations' bars are open, kept per browser. */
+const OPEN_KEY = "heron.statusbar.stations";
+
+function storedOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) === "open";
+  } catch {
+    return false;
+  }
+}
+
+function keepOpen(open: boolean) {
+  try {
+    localStorage.setItem(OPEN_KEY, open ? "open" : "closed");
+  } catch {
+    // Storage unavailable: the choice lasts until the page reloads.
+  }
+}
+
+/** Another station's bar: the deck on air and the time left, or why it is in trouble. */
+function StationRow({
+  station,
+  colors,
+  onSwitch,
+}: Readonly<{ station: OtherStation; colors: CSSProperties; onSwitch?: ((id: number) => void) | undefined }>) {
+  const deck = station.onAir;
+  const trouble =
+    station.trouble === "engine"
+      ? t("statusbar.engine")
+      : station.trouble === "nothing"
+        ? t("statusbar.nothingOnAir")
+        : station.trouble === "outputs"
+          ? t("statusbar.outputsDownShort", { names: station.outputsDown.join(", ") })
+          : null;
+  const left = deck ? `−${duration(deck.left)}` : "";
+  return (
+    <div
+      className={`statusbar statusbar-row ${station.trouble ? "statusbar-row-trouble" : "statusbar-row-ok"}`}
+      role="group"
+      aria-label={station.code}
+    >
+      {onSwitch ? (
+        <button
+          type="button"
+          className="statusbar-row-code"
+          title={t("statusbar.switchTo", { code: station.code })}
+          onClick={() => onSwitch(station.id)}
+        >
+          {station.code}
+        </button>
+      ) : (
+        <span className="statusbar-row-code">{station.code}</span>
+      )}
+      {deck && (
+        <span className={`statusbar-deck statusbar-on-air statusbar-deck-${deck.letter.toLowerCase()}`} style={colors}>
+          <span className="visually-hidden">
+            {t("statusbar.otherOnAir", { deck: deck.letter, track: deck.text, left })}
+          </span>
+          <span className="statusbar-deck-progress" aria-hidden="true" style={{ width: `${(deck.progress * 100).toFixed(2)}%` }} />
+          <span className="statusbar-deck-letter" aria-hidden="true">
+            {deck.letter}
+          </span>
+          <span className="statusbar-deck-symbol" aria-hidden="true">
+            {deck.paused ? "⏸" : "▶"}
+          </span>
+          <span className="statusbar-deck-text" aria-hidden="true">
+            {deck.text}
+          </span>
+          <span className="statusbar-deck-time" aria-hidden="true">
+            {left}
+          </span>
+        </span>
+      )}
+      {trouble && <span className="statusbar-part statusbar-bad">{trouble}</span>}
+    </div>
+  );
+}
 
 /** The time now, in the clock `positionNow` uses, moved on once a second. */
 function useNow() {
@@ -204,8 +286,13 @@ function NextFixed({ now }: Readonly<{ now: number }>) {
 /**
  * The status bar. `settings` and `preview`: the one in Account › Status
  * bar, which shows settings not saved yet and stays in its place.
+ * `onSwitch`: what a click on another station's code does.
  */
-export function StatusBar({ settings: draft, preview = false }: Readonly<{ settings?: StatusBarSettings; preview?: boolean }>) {
+export function StatusBar({
+  settings: draft,
+  preview = false,
+  onSwitch,
+}: Readonly<{ settings?: StatusBarSettings; preview?: boolean; onSwitch?: ((id: number) => void) | undefined }>) {
   const user = useUser();
   const settings = draft ?? user.status_bar;
   const module = useModule("status_bar");
@@ -217,6 +304,10 @@ export function StatusBar({ settings: draft, preview = false }: Readonly<{ setti
   const system = useLive((live) => live.system);
   const listeners = useListenersNow();
   const statistics = useModule("listener_statistics");
+  const others = useLive((live) => live.stations);
+  const stationId = useStation();
+  const code = useStations().find((station) => station.id === stationId)?.code;
+  const [open, setOpen] = useState(storedOpen);
 
   // The page takes its room back when there is no bar.
   useEffect(() => {
@@ -250,14 +341,49 @@ export function StatusBar({ settings: draft, preview = false }: Readonly<{ setti
   const summary = system ? summarizeSystem(system) : null;
   const record = recordOf(listeners.data?.record);
   const outputs = player ? outputsOf(player.outputs) : null;
+  const several = others !== null && others.stations.length > 0;
+  const stations = several ? otherStations(others.stations, settings, wallNow - others.receivedAt) : null;
+  const toggle = () => {
+    setOpen(!open);
+    // The preview's button is a try: the bar's choice stays.
+    if (!preview) {
+      keepOpen(!open);
+    }
+  };
 
   return (
+    <div className={`statusbar-dock${preview ? " statusbar-preview" : ""}`}>
+      {open && stations && stations.shown.length > 0 && (
+        <div className="statusbar-rows">
+          {stations.shown.map((station) => (
+            <StationRow key={station.id} station={station} colors={colors} onSwitch={preview ? undefined : onSwitch} />
+          ))}
+        </div>
+      )}
     <div
       className={`statusbar${connected ? "" : " statusbar-offline"}${preview ? " statusbar-preview" : ""}`}
       role="status"
       aria-live="off"
       aria-label={t("statusbar.label")}
     >
+      {stations && (
+        <button
+          type="button"
+          className={`statusbar-station${!open && stations.inTrouble ? " statusbar-station-trouble" : ""}`}
+          aria-expanded={open}
+          aria-label={t(open ? "statusbar.closeStations" : "statusbar.openStations", { count: stations.inTrouble })}
+          onClick={toggle}
+        >
+          <span aria-hidden="true">
+            {code ?? "–"} {open ? "▾" : "▴"}
+          </span>
+          {!open && stations.inTrouble > 0 && (
+            <span className="statusbar-bad" aria-hidden="true">
+              {t("statusbar.down", { count: stations.inTrouble })}
+            </span>
+          )}
+        </button>
+      )}
       {settings.decks &&
         (player === null ? (
           <span className="statusbar-deck">{t("statusbar.engine")}</span>
@@ -301,6 +427,7 @@ export function StatusBar({ settings: draft, preview = false }: Readonly<{ setti
       )}
       {settings.station_time && <span className="statusbar-part statusbar-clock">{clockTime(now)}</span>}
       {!connected && <span className="statusbar-part">{t("statusbar.offline")}</span>}
+    </div>
     </div>
   );
 }

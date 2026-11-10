@@ -13,6 +13,7 @@ import { ME_KEY, useAction, useUser } from "../lib/session";
 import { useStation } from "../lib/station";
 import { DECK_TIMES, type StatusBarSettings, deckTime } from "../lib/statusbar";
 import { StatusBar } from "./StatusBar";
+import { useStations } from "./Stations";
 import { Card, NumberInput, Segmented } from "./ui";
 
 /** The parts that are a plain switch, in the bar's order (the decks and the history have their own choices). */
@@ -126,6 +127,7 @@ export function StatusBarSettingsCard() {
   const station = useStation();
   const [draft, setDraft] = useState<StatusBarSettings>(user.status_bar);
   const [phone, setPhone] = useState(false);
+  const others = useStations().filter((other) => other.id !== station);
   const types = useQuery({ queryKey: ["category-types"], queryFn: () => unwrap(api.GET("/api/v1/category-types")) });
   const save = useAction(
     // A field left out takes its default: `{}` restores them all.
@@ -305,6 +307,34 @@ export function StatusBarSettingsCard() {
               />
               <p className="hint">{t("statusbarSettings.colorsHint")}</p>
             </fieldset>
+            {others.length > 0 && (
+              <fieldset className="stack statusbar-fieldset">
+                <legend className="statusbar-group">{t("statusbarSettings.stations")}</legend>
+                <p className="hint">{t("statusbarSettings.stationsHint")}</p>
+                {others.map((other) => (
+                  <Check
+                    key={other.id}
+                    checked={!draft.hidden_stations.includes(other.id)}
+                    onChange={(shown) =>
+                      change({
+                        hidden_stations: shown
+                          ? draft.hidden_stations.filter((id) => id !== other.id)
+                          : [...draft.hidden_stations, other.id],
+                      })
+                    }
+                  >
+                    {other.name} <span className="badge">{other.code}</span>
+                  </Check>
+                ))}
+                <Check
+                  checked={draft.station_trouble}
+                  onChange={(station_trouble) => change({ station_trouble })}
+                  hint={t("statusbarSettings.stationTroubleHint")}
+                >
+                  {t("statusbarSettings.stationTrouble")}
+                </Check>
+              </fieldset>
+            )}
             <div>
               <button
                 type="button"

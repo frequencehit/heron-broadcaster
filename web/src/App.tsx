@@ -399,7 +399,7 @@ function Shell() {
           )}
         </main>
       </div>
-      {station !== null && <StatusBar key={station} />}
+      {station !== null && <StatusBar key={station} onSwitch={switchTo} />}
     </div>
   );
 }

@@ -4,7 +4,7 @@
 // listeners and their record, the next fixed time, the queue, the outputs
 // and the machine's load, as short texts, following each user's settings.
 
-import type { DeckState, OutputStatus, QueueEntry, Schemas, SystemLoad } from "../api";
+import type { DeckState, OutputStatus, QueueEntry, Schemas, StationSummary, SystemLoad } from "../api";
 import { locale, number } from "../i18n";
 import { duration, timeZone, trackName } from "./format";
 import { introFromCueIn } from "./intro";
@@ -34,6 +34,8 @@ export const DEFAULT_STATUS_BAR: StatusBarSettings = {
   end_seconds: 10,
   intro_color: null,
   track_color: null,
+  hidden_stations: [],
+  station_trouble: true,
 };
 
 /** The formats of the time on the decks, in the order the settings list them. */
@@ -329,4 +331,60 @@ export function summarizeSystem(system: SystemLoad): SystemSummary {
     memLevel: levelOf(system.mem_percent),
     loadLevel: levelOf(perCore * 100),
   };
+}
+
+/** Why another station is in trouble; `null` when it is not. */
+export type Trouble = "engine" | "nothing" | "outputs";
+
+export function troubleOf(station: StationSummary): Trouble | null {
+  if (!station.reachable) {
+    return "engine";
+  }
+  if (!station.on_air) {
+    return "nothing";
+  }
+  return station.outputs_down.length > 0 ? "outputs" : null;
+}
+
+/** Another station as its bar shows it: the deck on air and the time left, at `elapsed` ms after the message. */
+export interface OtherStation {
+  id: number;
+  code: string;
+  trouble: Trouble | null;
+  outputsDown: string[];
+  onAir: { letter: "A" | "B"; text: string; left: number; progress: number; paused: boolean } | null;
+}
+
+/**
+ * The other stations the station button opens, as the settings say (the
+ * hidden ones left out, unless in trouble and `station_trouble`), and how
+ * many of those it counts are in trouble.
+ */
+export function otherStations(
+  stations: readonly StationSummary[],
+  settings: Pick<StatusBarSettings, "hidden_stations" | "station_trouble">,
+  elapsed: number,
+): { shown: OtherStation[]; inTrouble: number } {
+  const shown: OtherStation[] = [];
+  for (const station of stations) {
+    const trouble = troubleOf(station);
+    const hidden = settings.hidden_stations.includes(station.id);
+    if (hidden && !(trouble && settings.station_trouble)) {
+      continue;
+    }
+    const deck = station.on_air;
+    let onAir: OtherStation["onAir"] = null;
+    if (deck) {
+      const position = Math.min(deck.position_ms + (station.paused ? 0 : elapsed), deck.next_start_ms);
+      onAir = {
+        letter: deck.deck === "b" ? "B" : "A",
+        text: trackName(deck),
+        left: Math.max(0, deck.next_start_ms - position),
+        progress: deck.next_start_ms > 0 ? Math.min(1, position / deck.next_start_ms) : 0,
+        paused: station.paused,
+      };
+    }
+    shown.push({ id: station.id, code: station.code, trouble, outputsDown: station.outputs_down, onAir });
+  }
+  return { shown, inTrouble: shown.filter((station) => station.trouble).length };
 }

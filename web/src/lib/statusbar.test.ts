@@ -10,11 +10,13 @@ import {
   levelOf,
   listenersText,
   nextFixedTime,
+  otherStations,
   outputsOf,
   queueLength,
   recordOf,
   summarizeDeck,
   summarizeSystem,
+  troubleOf,
   whenOf,
 } from "./statusbar";
 
@@ -287,3 +289,49 @@ describe("recordOf", () => {
     expect(recordOf(undefined)).toBeNull();
   });
 });
+
+describe("the other stations", () => {
+  const summary = (id: number, over: Partial<Schemas["StationSummary"]> = {}): Schemas["StationSummary"] => ({
+    id,
+    code: `s${id}`,
+    reachable: true,
+    paused: false,
+    on_air: {
+      deck: "b",
+      artist: "Cerrone",
+      title: "Supernature",
+      path: "x.mp3",
+      position_ms: 60_000,
+      next_start_ms: 200_000,
+    },
+    outputs_down: [],
+    ...over,
+  });
+
+  it("says why a station is in trouble", () => {
+    expect(troubleOf(summary(1))).toBeNull();
+    expect(troubleOf(summary(1, { reachable: false, on_air: null }))).toBe("engine");
+    expect(troubleOf(summary(1, { on_air: null }))).toBe("nothing");
+    expect(troubleOf(summary(1, { outputs_down: ["AAC"] }))).toBe("outputs");
+  });
+
+  it("moves the time left on since the message, unless paused", () => {
+    const [moving] = otherStations([summary(2)], DEFAULT_STATUS_BAR, 5_000).shown;
+    expect(moving?.onAir).toEqual({ letter: "B", text: "Cerrone – Supernature", left: 135_000, progress: 0.325, paused: false });
+    const [still] = otherStations([summary(2, { paused: true })], DEFAULT_STATUS_BAR, 5_000).shown;
+    expect(still?.onAir?.left).toBe(140_000);
+    const [past] = otherStations([summary(2)], DEFAULT_STATUS_BAR, 500_000).shown;
+    expect(past?.onAir?.left).toBe(0);
+  });
+
+  it("leaves out the hidden stations, unless in trouble and flagged", () => {
+    const stations = [summary(2), summary(3, { reachable: false, on_air: null }), summary(4, { on_air: null })];
+    const settings = { ...DEFAULT_STATUS_BAR, hidden_stations: [2, 3] };
+    const flagged = otherStations(stations, settings, 0);
+    expect(flagged.shown.map((station) => station.code)).toEqual(["s3", "s4"]);
+    expect(flagged.inTrouble).toBe(2);
+    const quiet = otherStations(stations, { ...settings, station_trouble: false }, 0);
+    expect([quiet.shown.map((station) => station.code), quiet.inTrouble]).toEqual([["s4"], 1]);
+  });
+});
+

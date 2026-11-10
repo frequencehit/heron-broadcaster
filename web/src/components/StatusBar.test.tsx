@@ -49,7 +49,12 @@ describe("StatusBar", () => {
         record: { listeners: 128, day: "2026-10-25" },
       },
       "GET /api/v1/stations/{station_id}/shows": [],
+      "GET /api/v1/stations": [
+        { id: 1, name: "FH", code: "fh", enabled: true, position: 0 },
+        { id: 2, name: "FH 90", code: "fh90", enabled: true, position: 1 },
+      ],
     });
+    localStorage.clear();
   });
   afterEach(() => {
     stopLive();
@@ -276,5 +281,64 @@ describe("StatusBar", () => {
     expect([outputs.className.includes("statusbar-bad"), outputs.getAttribute("title")]).toEqual([true, "Not connected: AAC"]);
     const next = await screen.findByText("Match in 12 min");
     expect(next.getAttribute("href")).toBe("/shows/match");
+  });
+
+  const others = (stations: unknown[]) => ({ type: "stations", at_unix_ms: 0, stations });
+  const fh90 = (over: object = {}) => ({
+    id: 2,
+    code: "fh90",
+    reachable: true,
+    paused: false,
+    on_air: { deck: "b", artist: "Cerrone", title: "Love in C Minor", path: "x.mp3", position_ms: 39_000, next_start_ms: 200_000 },
+    outputs_down: [],
+    ...over,
+  });
+
+  it("opens a bar per other station from the station button, kept open, a click switching to it", async () => {
+    const onSwitch = vi.fn();
+    renderApp(<StatusBar onSwitch={onSwitch} />);
+    const socket = open();
+    socket.receive(state(both));
+    expect(screen.queryByRole("button", { expanded: false })).toBeNull();
+    socket.receive(others([fh90()]));
+    const button = await screen.findByRole("button", { name: "Open the other stations' bars, 0 in trouble" });
+    await waitFor(() => expect(button.textContent).toBe("fh ▴"));
+    expect(screen.queryByRole("group", { name: "fh90" })).toBeNull();
+
+    act(() => button.click());
+    const row = screen.getByRole("group", { name: "fh90" });
+    expect(row.textContent).toContain("Cerrone – Love in C Minor");
+    expect(row.textContent).toContain("−2:41");
+    expect(localStorage.getItem("heron.statusbar.stations")).toBe("open");
+    act(() => screen.getByRole("button", { name: "fh90" }).click());
+    expect(onSwitch).toHaveBeenCalledWith(2);
+  });
+
+  it("says why another station is in trouble, and counts it on the closed button", () => {
+    renderApp(<StatusBar />, as({ hidden_stations: [2] }));
+    const socket = open();
+    socket.receive(state(both));
+    socket.receive(others([fh90({ reachable: false, on_air: null })]));
+    const button = screen.getByRole("button", { name: "Open the other stations' bars, 1 in trouble" });
+    expect(button.className).toContain("statusbar-station-trouble");
+    expect(screen.getByText("1 down")).toBeTruthy();
+    act(() => button.click());
+    // Hidden, but in trouble: it shows.
+    expect(screen.getByRole("group", { name: "fh90" }).textContent).toContain("engine ?");
+    socket.receive(others([fh90({ outputs_down: ["AAC"] })]));
+    expect(screen.getByRole("group", { name: "fh90" }).textContent).toContain("outputs down: AAC");
+    // Back to normal: hidden again.
+    socket.receive(others([fh90()]));
+    expect(screen.queryByRole("group", { name: "fh90" })).toBeNull();
+  });
+
+  it("leaves the bar's choice alone from the preview", () => {
+    renderApp(<StatusBar settings={DEFAULT_STATUS_BAR} preview />);
+    const socket = open();
+    socket.receive(state(both));
+    socket.receive(others([fh90()]));
+    act(() => screen.getByRole("button", { expanded: false }).click());
+    expect(screen.getByRole("group", { name: "fh90" })).toBeTruthy();
+    expect(localStorage.getItem("heron.statusbar.stations")).toBeNull();
   });
 });

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // The live WebSocket (/api/v1/live): decks, queue, outputs, positions,
-// levels, track changes, the deck EQ and the AGC chain, kept in one store that components read slices
-// of. Reconnects with a growing delay when the connection drops.
+// levels, track changes, the deck EQ and the AGC chain, and the other
+// stations in short for the status bar, kept in one store that components
+// read slices of. Reconnects with a growing delay when the connection drops.
 
 import { useSyncExternalStore } from "react";
 import type {
@@ -12,6 +13,7 @@ import type {
   Levels,
   LiveMessage,
   PlayerState,
+  StationSummary,
   SystemLoad,
   TrackEvent,
 } from "../api";
@@ -20,6 +22,13 @@ import { stationUrl } from "./station";
 export interface Positions {
   decks: DeckPosition[];
   /** `performance.now()` when they arrived, to move them on between messages. */
+  receivedAt: number;
+}
+
+/** The other stations the user sees, in short (docs/web.md#status-bar). */
+export interface OtherStations {
+  stations: StationSummary[];
+  /** `performance.now()` when they arrived, to move their time on between messages. */
   receivedAt: number;
 }
 
@@ -37,6 +46,8 @@ export interface LiveState {
   agc: AgcSettings | null;
   /** The machine's load, sent to operators and admins only: `null` otherwise. */
   system: SystemLoad | null;
+  /** The other stations, for a user who sees several: `null` otherwise, and before the first message. */
+  stations: OtherStations | null;
 }
 
 const MAX_EVENTS = 20;
@@ -51,6 +62,7 @@ const EMPTY: LiveState = {
   eq: null,
   agc: null,
   system: null,
+  stations: null,
 };
 let state: LiveState = EMPTY;
 const listeners = new Set<() => void>();
@@ -91,6 +103,9 @@ function handle(message: LiveMessage) {
       set({ system });
       break;
     }
+    case "stations":
+      set({ stations: { stations: message.stations, receivedAt: performance.now() } });
+      break;
   }
 }
 
@@ -99,7 +114,7 @@ function connect() {
     return;
   }
   const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${scheme}://${window.location.host}${stationUrl("live")}`);
+  const ws = new WebSocket(`${scheme}://${window.location.host}${stationUrl("live")}?stations=true`);
   socket = ws;
   // A socket closed by stopLive (another station, or signed out) may still
   // deliver a message or its close: they are not this connection's.
@@ -126,7 +141,7 @@ function connect() {
     }
     socket = null;
     // Changes made while disconnected are not known: read them again.
-    set({ connected: false, levels: null, eq: null, agc: null, system: null });
+    set({ connected: false, levels: null, eq: null, agc: null, system: null, stations: null });
     if (wanted) {
       retry = setTimeout(connect, delay);
       delay = Math.min(delay * 2, MAX_DELAY_MS);

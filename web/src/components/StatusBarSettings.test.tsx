@@ -23,6 +23,10 @@ function api(modules = ALL_ON) {
     "GET /api/v1/stations/{station_id}/listeners/now": { outputs: [], total: 3 },
     "GET /api/v1/stations/{station_id}/shows": [],
     "GET /api/v1/stations/{id}/modules": { on: modules, own: modules },
+    "GET /api/v1/stations": [
+      { id: 1, name: "FH", code: "fh", enabled: true, position: 0 },
+      { id: 2, name: "FH 90", code: "fh90", enabled: true, position: 1 },
+    ],
     [PREFERENCES]: (options: { body: { status_bar: Partial<StatusBarSettings> } }): User => ({
       ...user(),
       status_bar: { ...DEFAULT_STATUS_BAR, ...options.body.status_bar },
@@ -115,5 +119,16 @@ describe("Account › Status bar", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: t("statusbarSettings.show") }));
     expect(screen.getByText(t("statusbarSettings.hidden"))).toBeTruthy();
     await waitFor(() => expect(lastSaved().show).toBe(false));
+  });
+
+  it("chooses the other stations the button opens, and whether trouble shows anyway", async () => {
+    renderApp(<StatusBarSettingsCard />);
+    const fh90 = await screen.findByRole("checkbox", { name: /FH 90/ });
+    expect((fh90 as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByRole("checkbox", { name: /^FH fh$/ })).toBeNull();
+    fireEvent.click(fh90);
+    await waitFor(() => expect(lastSaved().hidden_stations).toEqual([2]));
+    fireEvent.click(screen.getByRole("checkbox", { name: new RegExp(t("statusbarSettings.stationTrouble")) }));
+    await waitFor(() => expect(lastSaved()).toMatchObject({ hidden_stations: [2], station_trouble: false }));
   });
 });
