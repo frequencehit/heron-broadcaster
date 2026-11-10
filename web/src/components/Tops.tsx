@@ -33,10 +33,12 @@ import {
   periodLabel,
   scoreLabel,
   scoreParts,
+  slotDays,
   slotLabel,
   validSlot,
   validTime,
   weekdayName,
+  weekdayShort,
 } from "../lib/tops";
 import { Notifications, type Update, Website } from "../pages/Show";
 import { LikedCell } from "./Likes";
@@ -623,7 +625,7 @@ function PastCharts({ top }: Readonly<{ top: TopView }>) {
   );
 }
 
-const DEFAULT_SLOT: TopSlot = { every: "week", weekday: 7, nth: null, start: "18:00", end: "20:00" };
+const DEFAULT_SLOT: TopSlot = { every: "week", weekdays: [7], nth: null, start: "18:00", end: "20:00" };
 const DEFAULT_WEBSITE: ShowSettings["website"] = {
   title: "",
   color: "#c62828",
@@ -710,17 +712,21 @@ function SettingsForm({ top }: Readonly<{ top: TopView }>) {
     webhooks: top.webhooks,
   };
   const today = new Date().toISOString().slice(0, 10);
-  const when = slot ? (slot.every === "day" ? "day" : slot.every === "week" ? "week" : (slot.nth ?? "first")) : "none";
+  const when = slot ? (slot.every === "month" ? (slot.nth ?? "first") : "week") : "none";
+  // Settings saved before (every day, a single day) in the form of days.
+  const days = slot ? slotDays(slot) : [];
   const setWhen = (value: string) => {
     if (value === "none") {
       set({ slot: null });
-    } else if (value === "day") {
-      setSlot({ every: "day", weekday: null, nth: null });
     } else if (value === "week") {
-      setSlot({ every: "week", weekday: slot?.weekday ?? 7, nth: null });
+      setSlot({ every: "week", weekdays: slot ? days : [7], weekday: null, nth: null });
     } else {
-      setSlot({ every: "month", weekday: slot?.weekday ?? 7, nth: value as Nth });
+      setSlot({ every: "month", weekdays: slot ? days : [7], weekday: null, nth: value as Nth });
     }
+  };
+  const toggleDay = (day: number) => {
+    const next = days.includes(day) ? days.filter((other) => other !== day) : [...days, day].sort((a, b) => a - b);
+    setSlot({ every: slot?.every === "month" ? "month" : "week", weekdays: next, weekday: null });
   };
   return (
     <>
@@ -878,23 +884,34 @@ function SettingsForm({ top }: Readonly<{ top: TopView }>) {
       </Card>
 
       <Card title={t("tops.section.show")}>
-        <div className="row" style={{ flexWrap: "wrap" }}>
+        <div className="row top-slot" style={{ flexWrap: "wrap" }}>
           <select className="input" aria-label={t("tops.when")} value={when} disabled={!canEdit} onChange={(e) => setWhen(e.target.value)}>
             <option value="none">{t("tops.noShow")}</option>
-            <option value="day">{t("tops.every.dayLabel")}</option>
-            <option value="week">{t("tops.every.week")}</option>
+            <option value="week">{t("tops.every.weekOption")}</option>
             {NTHS.map((nth) => (
               <option key={nth} value={nth}>
                 {nthOption(nth)}
               </option>
             ))}
           </select>
-          {slot && slot.every !== "day" && (
-            <>
-              {daySelect(slot.weekday ?? 7, (weekday) => setSlot({ weekday }), t("tops.weekday"))}
-              {slot.every === "month" && <span>{t("tops.ofMonth")}</span>}
-            </>
+          {slot && (
+            <div className="segmented" role="group" aria-label={t("tops.days")}>
+              {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                <button
+                  key={day}
+                  type="button"
+                  aria-pressed={days.includes(day)}
+                  aria-label={weekdayName(day)}
+                  title={weekdayName(day)}
+                  disabled={!canEdit}
+                  onClick={() => toggleDay(day)}
+                >
+                  {weekdayShort(day)}
+                </button>
+              ))}
+            </div>
           )}
+          {slot?.every === "month" && <span>{t("tops.ofMonth")}</span>}
           {slot && (
             <>
               <span>{t("tops.from")}</span>

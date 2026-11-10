@@ -3536,6 +3536,18 @@ ul.held {
   padding: 0;
 }
 
+/* The day and time of a reset sit on the line of their choice, at their
+   own width (a `.check` input is a box's size, an `.input` the line's). */
+.top-period .check .input {
+  width: auto;
+  height: auto;
+  flex: none;
+}
+
+.top-slot .input {
+  width: auto;
+}
+
 /* Dedications: the requests, their message, their actions. */
 .dedication-open {
   color: var(--good);

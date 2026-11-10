@@ -36366,8 +36366,17 @@
               "null"
             ],
             "format": "int32",
-            "description": "1 (Monday) to 7, for `week` and `month`.",
+            "description": "Settings saved before: a single day, read as `weekdays`.",
             "minimum": 0
+          },
+          "weekdays": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Its days, 1 (Monday) to 7, at least one: every week, or the `nth`\nof each in the month."
           }
         },
         "additionalProperties": false
