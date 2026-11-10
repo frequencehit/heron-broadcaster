@@ -6068,6 +6068,15 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "Send the other stations the user sees, in short (default false).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -13293,6 +13302,15 @@
             "name": "levels",
             "in": "query",
             "description": "Send levels ten times a second (default true).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "stations",
+            "in": "query",
+            "description": "Send the other stations the user sees, in short (default false).",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -28515,6 +28533,34 @@
               }
             ],
             "description": "The machine's load. Only operators and admins receive it."
+          },
+          {
+            "type": "object",
+            "description": "The other stations the user sees, in short (`?stations=true`).",
+            "required": [
+              "at_unix_ms",
+              "stations",
+              "type"
+            ],
+            "properties": {
+              "at_unix_ms": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "stations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StationSummary"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "stations"
+                ]
+              }
+            }
           }
         ],
         "description": "A message on the live WebSocket."
@@ -30016,6 +30062,48 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "OnAirSummary": {
+        "type": "object",
+        "description": "The deck on air of another station.",
+        "required": [
+          "deck",
+          "path",
+          "position_ms",
+          "next_start_ms"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deck": {
+            "$ref": "#/components/schemas/DeckName"
+          },
+          "next_start_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Where the next track starts, from the cue-in; the track's length\nwhen the engine does not say.",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string"
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "From the cue-in, at the message's `at_unix_ms`.",
+            "minimum": 0
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -34997,6 +35085,52 @@
           }
         ]
       },
+      "StationSummary": {
+        "type": "object",
+        "description": "Another station, in short: what its status bar needs.",
+        "required": [
+          "id",
+          "code",
+          "reachable",
+          "paused",
+          "outputs_down"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "on_air": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OnAirSummary",
+                "description": "The track listeners hear; `null` with nothing on air."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputs_down": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The names of its enabled outputs that are not connected."
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "reachable": {
+            "type": "boolean",
+            "description": "Its engine answers."
+          }
+        }
+      },
       "StationWindows": {
         "type": "object",
         "description": "The station's separation windows, in minutes (`rotation` settings); 0\nturns a rule off. Daypart separation is not among them: it is each\ncategory's.",
@@ -35270,6 +35404,16 @@
             "maximum": 60,
             "minimum": 1
           },
+          "hidden_stations": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "The stations the station button does not open, by ID: a station\nadded later shows.",
+            "default": []
+          },
           "history": {
             "type": "boolean",
             "description": "The last track played to its end.",
@@ -35346,6 +35490,11 @@
             "type": "boolean",
             "description": "The station's clock.",
             "default": false
+          },
+          "station_trouble": {
+            "type": "boolean",
+            "description": "A station in trouble shows on the station button, even hidden.",
+            "default": true
           },
           "system": {
             "type": "boolean",

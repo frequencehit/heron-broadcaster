@@ -9105,6 +9105,143 @@ async fn a_backup_keeps_the_whole_queue_on_air_and_an_older_one_turns_it_off() {
     station.stop().await;
 }
 
+/// The other stations the user sees, in short, on the live socket for the
+/// status bar (docs/web.md#status-bar): asked for, by role, enabled ones.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_live_socket_sums_up_the_other_stations() {
+    let Some(mut station) = Station::start().await else {
+        return;
+    };
+    let (_engine, _state_dir, second_url, grpc) = start_engine(station.library.path(), None).await;
+    station.tasks.push(grpc);
+    station.state.stations.set_engine("hits80", &second_url);
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    // A second station with its engine, and a third without: unreachable.
+    let mut ids = Vec::new();
+    for (name, code) in [("Hits 80", "hits80"), ("Talk", "talk")] {
+        let (status, body) = admin
+            .send(
+                Method::POST,
+                "/stations",
+                json!({"name": name, "code": code}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        ids.push(body["id"].as_u64().unwrap());
+    }
+    let (hits, talk) = (ids[0], ids[1]);
+
+    let open = async |client: &Client, path: &str| {
+        let url = format!("ws://{}/api/v1{path}", station.api);
+        let mut request = tungstenite::client::IntoClientRequest::into_client_request(url).unwrap();
+        request
+            .headers_mut()
+            .insert("cookie", client.cookie.as_deref().unwrap().parse().unwrap());
+        tokio_tungstenite::connect_async(request).await.unwrap().0
+    };
+    // The `stations` messages within `wait`, in order.
+    let stations_within = async |socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+                                 wait: Duration| {
+        let until = tokio::time::Instant::now() + wait;
+        let mut seen = Vec::new();
+        while let Ok(Some(Ok(message))) = tokio::time::timeout_at(until, socket.next()).await {
+            let message: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+            if message["type"] == "stations" {
+                seen.push(message);
+            }
+        }
+        seen
+    };
+
+    // Not asked for: none.
+    let mut socket = open(&admin, "/live?levels=false").await;
+    assert!(
+        stations_within(&mut socket, Duration::from_millis(1500))
+            .await
+            .is_empty()
+    );
+
+    // Asked for: the others, at most once a second; the one without an
+    // engine unreachable, the other on air once it plays.
+    let mut socket = open(&admin, "/live?levels=false&stations=true").await;
+    let seen = stations_within(&mut socket, Duration::from_millis(2500)).await;
+    assert!(!seen.is_empty() && seen.len() <= 3, "{seen:?}");
+    assert!(seen[0]["at_unix_ms"].is_u64());
+    let codes: Vec<&str> = seen[0]["stations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|station| station["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["hits80", "talk"]);
+    assert_eq!(
+        seen[0]["stations"][1],
+        json!({"id": talk, "code": "talk", "reachable": false, "paused": false,
+               "on_air": null, "outputs_down": []})
+    );
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let on_air = loop {
+        let seen = stations_within(&mut socket, Duration::from_millis(1200)).await;
+        if let Some(last) = seen
+            .last()
+            .filter(|last| last["stations"][0]["on_air"].is_object())
+        {
+            break last["stations"][0].clone();
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the second station on air: {seen:?}"
+        );
+    };
+    assert_eq!(
+        (on_air["id"].as_u64(), on_air["reachable"].as_bool()),
+        (Some(hits), Some(true))
+    );
+    let deck = &on_air["on_air"];
+    assert!(
+        deck["path"].is_string() && deck["position_ms"].is_u64(),
+        "{deck}"
+    );
+    assert!(deck["next_start_ms"].as_u64().unwrap() > 0, "{deck}");
+    assert!(deck.get("entry_id").is_none(), "{deck}");
+
+    // A viewer without a role on the others: nothing to sum up.
+    let mut socket = open(&viewer, "/live?levels=false&stations=true").await;
+    assert!(
+        stations_within(&mut socket, Duration::from_millis(1500))
+            .await
+            .is_empty()
+    );
+
+    // A disabled station is left out.
+    let mut socket = open(&admin, "/live?levels=false&stations=true").await;
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            &format!("/stations/{hits}"),
+            json!({"name": "Hits 80", "code": "hits80", "enabled": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let seen = stations_within(&mut socket, Duration::from_millis(1200)).await;
+        if seen.last().is_some_and(|last| {
+            last["stations"].as_array().unwrap().len() == 1 && last["stations"][0]["code"] == "talk"
+        }) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the disabled station left out: {seen:?}"
+        );
+    }
+    station.stop().await;
+}
+
 /// Each user's status bar settings (docs/web.md#status-bar): the defaults,
 /// replaced whole, checked, in backups; its module; the history it reads.
 #[tokio::test(flavor = "multi_thread")]
@@ -9127,7 +9264,8 @@ async fn the_status_bar_settings_and_the_last_track_of_a_type() {
             "outputs": false, "system": true, "station_time": false, "time": "elapsed",
             "intro_countdown": true, "intro_blink": true, "intro_seconds": 5,
             "end_countdown": true, "end_blink": false, "end_seconds": 10,
-            "intro_color": null, "track_color": null
+            "intro_color": null, "track_color": null, "hidden_stations": [],
+            "station_trouble": true
         })
     );
 
