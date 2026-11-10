@@ -392,8 +392,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Saves your preferences: the web UI's theme, language, width and whether
-         *     the On air page shows the whole queue.
+         * Saves your preferences: the web UI's theme, language, width, whether the
+         *     On air page shows the whole queue, and the status bar's settings.
          */
         put: operations["set_preferences"];
         post?: never;
@@ -8068,6 +8068,11 @@ export interface components {
              */
             position_ms: number;
         };
+        /**
+         * @description The time on the decks: what it shows, in that order.
+         * @enum {string}
+         */
+        DeckTime: "elapsed" | "elapsed_total" | "elapsed_remaining" | "elapsed_remaining_total" | "elapsed_total_remaining" | "remaining" | "remaining_total";
         /** @description A request, for operators. */
         Dedication: {
             artist?: string | null;
@@ -10399,7 +10404,7 @@ export interface components {
          * @description A module.
          * @enum {string}
          */
-        Module: "medleys" | "cover_art" | "listener_statistics" | "webhooks" | "restrictions" | "eq" | "processing" | "trash" | "review" | "artists" | "labels" | "dedications" | "match" | "top30" | "likes" | "certification";
+        Module: "medleys" | "cover_art" | "listener_statistics" | "webhooks" | "restrictions" | "eq" | "processing" | "trash" | "review" | "artists" | "labels" | "dedications" | "match" | "top30" | "likes" | "certification" | "status_bar";
         /**
          * @description Which modules are on. Stored as the `modules` settings (the
          *     installation) and the `station_modules` settings of each station; a
@@ -10435,6 +10440,8 @@ export interface components {
             restrictions: boolean;
             /** @default true */
             review: boolean;
+            /** @default true */
+            status_bar: boolean;
             /** @default false */
             top30: boolean;
             /** @default true */
@@ -11089,6 +11096,7 @@ export interface components {
             language?: string | null;
             /** @description The On air page shows the whole queue, editable there. */
             on_air_whole_queue?: boolean | null;
+            status_bar?: components["schemas"]["StatusBarSettings"] | null;
             theme?: components["schemas"]["Theme"] | null;
             width?: components["schemas"]["Width"] | null;
         };
@@ -12759,6 +12767,114 @@ export interface components {
             service: string;
             version: string;
         };
+        /**
+         * @description A user's status bar. Sent whole: a field left out takes its default,
+         *     so `{}` restores them all.
+         */
+        StatusBarSettings: {
+            /**
+             * @description The decks part.
+             * @default true
+             */
+            decks: boolean;
+            /** @default false */
+            end_blink: boolean;
+            /**
+             * @description The time left before the next track, on the deck on air, in its last
+             *     seconds.
+             * @default true
+             */
+            end_countdown: boolean;
+            /**
+             * Format: int32
+             * @description Its last seconds: 1 to 60.
+             * @default 10
+             */
+            end_seconds: number;
+            /**
+             * @description The last track played to its end.
+             * @default false
+             */
+            history: boolean;
+            /**
+             * Format: int64
+             * @description Of this category type only; `null`: of any type. *Song* (1) by
+             *     default.
+             * @default 1
+             */
+            history_type_id: number | null;
+            /**
+             * @description Its last seconds blink, rather than only turn to the alert colour.
+             * @default true
+             */
+            intro_blink: boolean;
+            /**
+             * @description The intro's colour on the decks' progress (`#rrggbb`); `null`: the
+             *     intro colour of the theme.
+             * @default null
+             */
+            intro_color: string | null;
+            /**
+             * @description `intro −0:07` on the deck on air until the vocals start.
+             * @default true
+             */
+            intro_countdown: boolean;
+            /**
+             * Format: int32
+             * @description Its last seconds: 1 to 60. On air's *vocals in* turns to the warning
+             *     colour from there too.
+             * @default 5
+             */
+            intro_seconds: number;
+            /**
+             * @description The listeners and their record (with listener statistics on).
+             * @default true
+             */
+            listeners: boolean;
+            /**
+             * @description The next show to open, or track at an exact time.
+             * @default true
+             */
+            next_fixed: boolean;
+            /**
+             * @description The deck on air only, rather than A and B.
+             * @default false
+             */
+            on_air_only: boolean;
+            /**
+             * @description How many outputs are connected.
+             * @default false
+             */
+            outputs: boolean;
+            /**
+             * @description How long the waiting tracks last.
+             * @default false
+             */
+            queue: boolean;
+            /**
+             * @description The bar at the bottom of every page.
+             * @default true
+             */
+            show: boolean;
+            /**
+             * @description The station's clock.
+             * @default false
+             */
+            station_time: boolean;
+            /**
+             * @description The machine's load (operators and admins only).
+             * @default true
+             */
+            system: boolean;
+            /** @default elapsed */
+            time: components["schemas"]["DeckTime"];
+            /**
+             * @description The track's colour on the decks' progress, past the intro
+             *     (`#rrggbb`); `null`: each deck's own colour.
+             * @default null
+             */
+            track_color: string | null;
+        };
         /** @description The stereo expander: widens programmes close to mono. */
         StereoExpanderSettings: {
             /**
@@ -13943,6 +14059,8 @@ export interface components {
              *     is admin on every station.
              */
             station_roles: components["schemas"]["StationRole"][];
+            /** @description The status bar's settings, the defaults filled in. */
+            status_bar: components["schemas"]["StatusBarSettings"];
             theme: components["schemas"]["Theme"];
             /** @description Their second factors, and whether their role requires one. */
             two_factor: components["schemas"]["TwoFactorStatus"];
@@ -17589,6 +17707,10 @@ export interface operations {
                 track_id?: number;
                 /** @description Leave out the FX player (jingles played over the music). */
                 exclude_fx?: boolean;
+                /** @description Only tracks in a category of this type (*Song*, *Jingle*…). */
+                category_type_id?: number;
+                /** @description Only plays that have ended: not the track on air. */
+                finished?: boolean;
                 /** @description 1 to 500, 50 by default. */
                 limit?: number;
             };
@@ -23315,6 +23437,10 @@ export interface operations {
                 track_id?: number;
                 /** @description Leave out the FX player (jingles played over the music). */
                 exclude_fx?: boolean;
+                /** @description Only tracks in a category of this type (*Song*, *Jingle*…). */
+                category_type_id?: number;
+                /** @description Only plays that have ended: not the track on air. */
+                finished?: boolean;
                 /** @description 1 to 500, 50 by default. */
                 limit?: number;
             };

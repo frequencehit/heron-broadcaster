@@ -21,6 +21,7 @@ use crate::auth::{
     create_session, is_https, session_cookie,
 };
 use crate::error::{ApiError, ApiResult, ErrorBody, is_duplicate};
+use crate::status_bar::StatusBarSettings;
 use crate::two_factor::login::{PENDING_COOKIE, PENDING_PATH};
 use crate::two_factor::{
     PENDING_SIGN_IN, SecondFactor, TwoFactorSettings, TwoFactorStatus, highest_role,
@@ -53,6 +54,8 @@ pub struct User {
     /// The On air page shows the whole queue, editable there, instead of
     /// its first tracks.
     pub on_air_whole_queue: bool,
+    /// The status bar's settings, the defaults filled in.
+    pub status_bar: StatusBarSettings,
     pub last_login_at_unix_ms: Option<i64>,
     pub created_at_unix_ms: i64,
     /// Their role on each station; a station left out is `none`. `role` is
@@ -248,17 +251,30 @@ type UserRow = (
     String,
     String,
     bool,
+    Option<String>,
     Option<i64>,
     i64,
 );
 
 const USER_COLUMNS: &str =
-    "id, username, CAST(role AS CHAR), enabled, CAST(theme AS CHAR), language, CAST(width AS CHAR), on_air_whole_queue,
+    "id, username, CAST(role AS CHAR), enabled, CAST(theme AS CHAR), language, CAST(width AS CHAR), on_air_whole_queue, status_bar,
     CAST(UNIX_TIMESTAMP(last_login_at) * 1000 AS SIGNED),
     CAST(UNIX_TIMESTAMP(created_at) * 1000 AS SIGNED)";
 
 fn user(
-    (id, username, role, enabled, theme, language, width, on_air_whole_queue, last_login, created): UserRow,
+    (
+        id,
+        username,
+        role,
+        enabled,
+        theme,
+        language,
+        width,
+        on_air_whole_queue,
+        status_bar,
+        last_login,
+        created,
+    ): UserRow,
 ) -> User {
     User {
         id,
@@ -269,6 +285,7 @@ fn user(
         language,
         width: Width::parse(&width),
         on_air_whole_queue,
+        status_bar: StatusBarSettings::parse(status_bar.as_deref()),
         last_login_at_unix_ms: last_login,
         created_at_unix_ms: created,
         station_roles: Vec::new(),
@@ -500,6 +517,10 @@ pub struct Preferences {
     /// The On air page shows the whole queue, editable there.
     #[serde(default)]
     pub on_air_whole_queue: Option<bool>,
+    /// The status bar's settings, replaced whole: a field left out takes
+    /// its default (`{}` restores them all).
+    #[serde(default)]
+    pub status_bar: Option<StatusBarSettings>,
 }
 
 /// `system`, or a language tag: a 2 or 3 letter language and optional
@@ -523,8 +544,8 @@ fn check_language(language: &str) -> ApiResult<()> {
     }
 }
 
-/// Saves your preferences: the web UI's theme, language, width and whether
-/// the On air page shows the whole queue.
+/// Saves your preferences: the web UI's theme, language, width, whether the
+/// On air page shows the whole queue, and the status bar's settings.
 #[utoipa::path(put, path = "/auth/preferences", tag = "auth",
     request_body = Preferences,
     responses((status = 200, body = User), (status = "4XX", body = ErrorBody)))]
@@ -536,15 +557,26 @@ async fn set_preferences(
     if let Some(language) = &preferences.language {
         check_language(language)?;
     }
+    if let Some(status_bar) = &preferences.status_bar {
+        status_bar.check()?;
+    }
+    let status_bar = preferences
+        .status_bar
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
     sqlx::query(
         "UPDATE users SET theme = COALESCE(?, theme), language = COALESCE(?, language),
-             width = COALESCE(?, width), on_air_whole_queue = COALESCE(?, on_air_whole_queue)
+             width = COALESCE(?, width), on_air_whole_queue = COALESCE(?, on_air_whole_queue),
+             status_bar = COALESCE(?, status_bar)
          WHERE id = ?",
     )
     .bind(preferences.theme.map(Theme::as_str))
     .bind(preferences.language)
     .bind(preferences.width.map(Width::as_str))
     .bind(preferences.on_air_whole_queue)
+    .bind(status_bar)
     .bind(user.id)
     .execute(&state.pool)
     .await?;
