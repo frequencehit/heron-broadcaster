@@ -6,6 +6,7 @@
 import type { DeckState, Schemas, SystemLoad } from "../api";
 import { locale, number } from "../i18n";
 import { duration, trackName } from "./format";
+import { INTRO_SOON_MS, introFromCueIn } from "./intro";
 
 export type Level = "ok" | "warn" | "bad";
 
@@ -25,19 +26,40 @@ export type DeckStatus = "playing" | "paused" | "empty";
 /** `on_air` for the deck listeners hear, `next` for the other one with a track loaded. */
 export type DeckBadge = "on_air" | "next";
 
+/** From how long before the next track starts its countdown shows. */
+export const END_SOON_MS = 10_000;
+
+/**
+ * What the deck on air counts down to, in place of the elapsed time: the
+ * vocals during the intro (`urgent` in its last seconds), or the next track
+ * in its last seconds.
+ */
+export interface Countdown {
+  kind: "intro" | "end";
+  /** Whole seconds left, rounded up: `−0:01` until it is reached. */
+  seconds: number;
+  urgent: boolean;
+}
+
 export interface DeckSummary {
   /** `A` or `B`. */
   letter: string;
   status: DeckStatus;
   /** `▶`, `⏸` or `—`. */
   symbol: string;
-  /** The track, with its elapsed time while one is loaded; empty for an empty deck. */
+  /** The track; empty for an empty deck. */
   text: string;
+  /** The elapsed time; empty for an empty deck. */
+  time: string;
+  /** On the deck on air only; `null` when nothing counts down. */
+  countdown: Countdown | null;
   onAir: boolean;
   /** `null` for an empty deck. */
   badge: DeckBadge | null;
   /** How far the track has played, from 0 to 1; `null` for an empty deck or an unknown length. */
   progress: number | null;
+  /** Where the vocals start, from 0 to 1 of the track; `null` without an intro or a length. */
+  intro: number | null;
 }
 
 const SYMBOLS: Record<DeckStatus, string> = { playing: "▶", paused: "⏸", empty: "—" };
@@ -51,21 +73,60 @@ export function summarizeDeck(
 ): DeckSummary {
   const track = deck?.entry?.track;
   if (!deck || !track) {
-    return { letter, status: "empty", symbol: SYMBOLS.empty, text: "", onAir: false, badge: null, progress: null };
+    return {
+      letter,
+      status: "empty",
+      symbol: SYMBOLS.empty,
+      text: "",
+      time: "",
+      countdown: null,
+      onAir: false,
+      badge: null,
+      progress: null,
+      intro: null,
+    };
   }
   const status: DeckStatus = paused ? "paused" : "playing";
   const position = positionMs ?? deck.position_ms;
-  const elapsed = duration(position);
-  const progress = deck.length_ms > 0 ? Math.min(Math.max(position / deck.length_ms, 0), 1) : null;
+  const length = deck.length_ms;
+  const progress = length > 0 ? Math.min(Math.max(position / length, 0), 1) : null;
+  const vocals = introFromCueIn(track);
+  const intro = vocals !== null && length > 0 ? Math.min(vocals / length, 1) : null;
   return {
     letter,
     status,
     symbol: SYMBOLS[status],
-    text: `${trackName(track)} ${elapsed}`,
+    text: trackName(track),
+    time: duration(position),
+    countdown: deck.on_air ? countdownOf(vocals, deck.entry?.next_start_ms ?? length, position) : null,
     onAir: deck.on_air,
     badge: deck.on_air ? "on_air" : "next",
     progress,
+    intro,
   };
+}
+
+/**
+ * What the deck on air counts down to at `position` (from the cue-in): the
+ * vocals at `vocals` while they have not started, else the next track at
+ * `nextStart` in its last seconds.
+ */
+export function countdownOf(vocals: number | null, nextStart: number, position: number): Countdown | null {
+  const seconds = (ms: number) => Math.ceil(ms / 1000);
+  if (vocals !== null && position < vocals) {
+    const left = vocals - position;
+    return { kind: "intro", seconds: seconds(left), urgent: left <= INTRO_SOON_MS };
+  }
+  const left = nextStart - position;
+  if (nextStart > 0 && left > 0 && left <= END_SOON_MS) {
+    return { kind: "end", seconds: seconds(left), urgent: true };
+  }
+  return null;
+}
+
+/** A countdown as the bar writes it: `−0:07`. */
+export function countdownText(countdown: Countdown): string {
+  return `−${duration(countdown.seconds * 1000)}`;
 }
 
 /** The listeners' total; a gap (`–`) when no server could be read, never 0. */

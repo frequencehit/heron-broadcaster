@@ -24,7 +24,7 @@ import { positionNow, useLive } from "../lib/live";
 import { useStationCategories } from "./Clocks";
 import { Link } from "../lib/router";
 import { useAction, useCan, useUser } from "../lib/session";
-import { introFromCueIn, jingleStart } from "../lib/intro";
+import { INTRO_SOON_MS, introFromCueIn, jingleStart } from "../lib/intro";
 import { here } from "../lib/station";
 
 /** Re-renders `fps` times a second while mounted. */
@@ -397,7 +397,7 @@ function Deck({
                 <div className="deck-times">
                   <span className="muted">{duration(position)}</span>
                   {intro !== null && position < intro && (
-                    <span className={intro - position <= 5_000 ? "intro-countdown soon" : "intro-countdown"}>
+                    <span className={intro - position <= INTRO_SOON_MS ? "intro-countdown soon" : "intro-countdown"}>
                       {t("dashboard.vocalsIn", { time: duration(intro - position, true) })}
                     </span>
                   )}

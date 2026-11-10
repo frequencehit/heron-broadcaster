@@ -62,7 +62,8 @@ describe("StatusBar", () => {
         { deck: "b", on_air: false, position_ms: 0, length_ms: 0, entry: null },
       ]),
     );
-    expect(screen.getByText("Jamiroquai – Space Cowboy 2:31")).toBeTruthy();
+    expect(screen.getByText("Jamiroquai – Space Cowboy")).toBeTruthy();
+    expect(screen.getByText("2:31")).toBeTruthy();
     expect(screen.getByText("[ON AIR]")).toBeTruthy();
     expect(screen.queryByText("[NEXT]")).toBeNull();
     // Deck A fills as its track plays; empty deck B has no fill.
@@ -88,8 +89,61 @@ describe("StatusBar", () => {
       ]),
     );
     expect(screen.getByText("[NEXT]")).toBeTruthy();
-    expect(screen.getByText("Daft Punk – Da Funk 0:00")).toBeTruthy();
+    expect(screen.getByText("Daft Punk – Da Funk")).toBeTruthy();
+    expect(screen.getByText("0:00")).toBeTruthy();
     expect(screen.getByText("Deck B: playing, NEXT, Daft Punk – Da Funk 0:00")).toBeTruthy();
+  });
+
+  it("colours the intro and counts down to the vocals on the deck on air, urgent in its last 5 seconds", () => {
+    renderApp(<StatusBar />);
+    const socket = open();
+    const withIntro = (artist: string, title: string) => ({
+      entry_id: 2,
+      track: { artist, title, path: "x.mp3", cue_in_ms: 1_000, cue_out_ms: 241_000, intro_ms: 21_000 },
+    });
+    const decks = (position: number) => [
+      { deck: "a", on_air: true, position_ms: position, length_ms: 240_000, entry: withIntro("Daft Punk", "One More Time") },
+      { deck: "b", on_air: false, position_ms: 0, length_ms: 240_000, entry: withIntro("Cerrone", "Supernature") },
+    ];
+    socket.receive(state(decks(12_500)));
+    // The intro is 20 s after the cue-in: its zone on both decks, played on A.
+    const zones = [...document.querySelectorAll<HTMLElement>(".statusbar-deck-intro")];
+    expect(zones.map((zone) => zone.style.width)).toEqual(["8.33%", "8.33%"]);
+    const played = [...document.querySelectorAll<HTMLElement>(".statusbar-deck-intro-progress")];
+    expect(played.map((zone) => zone.style.width)).toEqual(["5.21%"]);
+    // The countdown takes the place of the elapsed time on A only.
+    const countdown = screen.getByText("intro −0:08");
+    expect(countdown.className).toContain("statusbar-countdown-intro");
+    expect(screen.queryByText("0:12")).toBeNull();
+    expect(screen.getByText("0:00").className).toContain("statusbar-deck-elapsed");
+    expect(screen.getByText("Deck A: playing, ON AIR, Daft Punk – One More Time 0:12, intro, 8 seconds left")).toBeTruthy();
+    // The last 5 seconds are urgent: they blink (or stay outlined with reduced motion, in the stylesheet).
+    socket.receive(state(decks(16_000)));
+    expect(screen.getByText("intro −0:04").className).toContain("statusbar-countdown-urgent");
+    // Once the vocals start, the elapsed time is back.
+    socket.receive(state(decks(20_000)));
+    expect(screen.getByText("0:20").className).toContain("statusbar-deck-elapsed");
+  });
+
+  it("counts down the last 10 seconds before the next track starts", () => {
+    renderApp(<StatusBar />);
+    const socket = open();
+    const onAir = (position: number, nextStart: number | null) => ({
+      deck: "a",
+      on_air: true,
+      position_ms: position,
+      length_ms: 240_000,
+      entry: { ...track("Jamiroquai", "Space Cowboy"), next_start_ms: nextStart },
+    });
+    socket.receive(state([onAir(220_000, 230_500)]));
+    expect(screen.getByText("3:40").className).toContain("statusbar-deck-elapsed");
+    // The engine's transition, not the end of the track.
+    socket.receive(state([onAir(221_000, 230_500)]));
+    expect(screen.getByText("−0:10").className).toContain("statusbar-countdown-end");
+    expect(screen.getByText("Deck A: playing, ON AIR, Jamiroquai – Space Cowboy 3:41, next track in 10 seconds")).toBeTruthy();
+    // Without it, the end of the track.
+    socket.receive(state([onAir(231_000, null)]));
+    expect(screen.getByText("−0:09")).toBeTruthy();
   });
 
   it("shows a gap, not zero, when no server could be read", async () => {

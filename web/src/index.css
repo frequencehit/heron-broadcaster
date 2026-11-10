@@ -2744,6 +2744,29 @@ a.statusbar-deck:hover .statusbar-deck-text,
   transition: width 1s linear;
 }
 
+/* The intro (before the vocals), in the intro colour: hatched for all of
+   it, filled as far as it has played, over the deck's own fill. */
+.statusbar-deck-intro,
+.statusbar-deck-intro-progress {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: -1;
+}
+
+.statusbar-deck-intro {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--fx) 16%, transparent) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.statusbar-deck-intro-progress {
+  background: color-mix(in srgb, var(--fx) 32%, transparent);
+  box-shadow: inset 0 -2px var(--fx);
+  transition: width 1s linear;
+}
+
 .statusbar-badge {
   flex: none;
   font-weight: 700;
@@ -2770,9 +2793,48 @@ a.statusbar-deck:hover .statusbar-deck-text,
   text-overflow: ellipsis;
 }
 
+.statusbar-deck-time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
 .statusbar-on-air .statusbar-deck-text,
+.statusbar-on-air .statusbar-deck-time,
 .statusbar-on-air .statusbar-deck-symbol {
   color: var(--fg);
+}
+
+/* The countdowns of the deck on air: to the vocals, in the intro colour,
+   blinking in its last seconds; to the next track, in the warning colour. */
+.statusbar-on-air .statusbar-countdown-intro {
+  color: var(--fx);
+  font-weight: 700;
+}
+
+.statusbar-on-air .statusbar-countdown-urgent {
+  color: var(--bad);
+  font-weight: 700;
+  animation: statusbar-blink 1s steps(2, start) infinite;
+}
+
+.statusbar-on-air .statusbar-countdown-end {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+@keyframes statusbar-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* Without motion, the last seconds stay in the alert colour, outlined. */
+@media (prefers-reduced-motion: reduce) {
+  .statusbar-on-air .statusbar-countdown-urgent {
+    animation: none;
+    outline: 1px solid var(--bad);
+    outline-offset: 1px;
+  }
 }
 
 .statusbar-on-air .statusbar-deck-symbol {
@@ -2804,7 +2866,9 @@ a.statusbar-deck:hover .statusbar-deck-text,
     display: none;
   }
 
-  .statusbar-deck-text {
+  /* The titles and elapsed times go; the countdowns stay. */
+  .statusbar-deck-text,
+  .statusbar-deck-elapsed {
     display: none;
   }
 

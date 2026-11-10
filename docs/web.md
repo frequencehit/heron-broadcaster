@@ -241,11 +241,15 @@ The layout works from phone width up: below 760 px the navigation moves to a men
 
 A line one character high stays at the bottom of every page, in the monospace font. From left to right:
 
-- **Decks A and B:** the state (`▶` playing, `⏸` paused, `—` empty), a badge, then the artist and title with the elapsed time. The deck the listeners hear is marked `[ON AIR]` in red and is brighter, with a red `▶`; the other deck, when a track is loaded in it, is marked `[NEXT]`. Titles that do not fit are cut with an ellipsis. How far each deck's track has played fills its part from the left, behind the text, in a light shade of the deck's colour with a line of the full colour along the bottom. A click on a deck opens the On air page. `engine ?` replaces both while the engine is unreachable.
+- **Decks A and B:** the state (`▶` playing, `⏸` paused, `—` empty), a badge, then the artist and title with the elapsed time. The deck the listeners hear is marked `[ON AIR]` in red and is brighter, with a red `▶`; the other deck, when a track is loaded in it, is marked `[NEXT]`. Titles that do not fit are cut with an ellipsis. How far each deck's track has played fills its part from the left, behind the text, in a light shade of the deck's colour with a line of the full colour along the bottom; the part of a track before its vocals (its intro, from the cue-in, as On air reads it) is filled in the intro colour instead. On the deck on air, two countdowns take the place of the elapsed time:
+  - **To the vocals:** `intro −0:07` until the vocals start. Its last 5 seconds blink, or turn to the alert colour without blinking when the system asks to reduce motion.
+  - **To the next track:** in the last 10 seconds before the next track starts (the engine's transition, or the end of the track when the engine does not give it), the time left, `−0:09`, in the warning colour.
+
+  Screen readers get them in the deck's label. A click on a deck opens the On air page. `engine ?` replaces both while the engine is unreachable.
 - **Listeners:** the total of the current station, read like the [Statistics](statistics.md) page's: at most a minute old, and `–` when no server could be read (never `0`). Then the station's **record**: the highest peak of any day kept in its totals, today's included (`record 128`); hovering it gives the day. A click opens the Statistics page.
 - **System** (operators and admins): `cpu 12% mem 41% load 0.4 0.5 0.6`. The CPU and memory turn to the warning colour from 80 % and to the alert colour from 95 %. Viewers do not get this part.
 
-While the live connection is down the bar greys out and says `offline`. Below 760 px the system part goes first, then the titles shrink to the deck letter, its state and its badge. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
+While the live connection is down the bar greys out and says `offline`. Below 760 px the system part goes first, then the titles shrink to the deck letter, its state and its badge; the countdowns stay. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
 
 ### About
 
