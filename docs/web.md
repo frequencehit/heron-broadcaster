@@ -254,7 +254,7 @@ A line one character high stays at the bottom of every page, in the monospace fo
 - **System** (operators and admins): `cpu 12% mem 41% load 0.4 0.5 0.6`. The CPU and memory turn to the warning colour from 80 % and to the alert colour from 95 %. Viewers do not get this part, whatever they choose.
 - **Station time:** the station's clock, with the seconds.
 
-While the live connection is down the bar greys out and says `offline`. Below 760 px the system part goes first, then the titles and times shrink to the deck letter, its state and its badge, and the history, next fixed time, queue and station time go; the countdowns stay. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
+While the live connection is down the bar greys out and says `offline`. Below 760 px (the bar's own width, so that the preview shows it too) the system part goes first, then the decks shrink to their letter and state (the deck on air told by its red `▶`, and given the room), and the history, next fixed time, queue and station time go; the countdowns stay. It is a `status` region without live announcements: it changes too often to be read out, and each part carries a full label.
 
 **Account › Status bar** opens on a **preview** of the bar, live, at the width of a computer or of a phone, which follows each setting as it changes. Then:
 
