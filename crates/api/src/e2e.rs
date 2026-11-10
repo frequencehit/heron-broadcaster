@@ -10802,6 +10802,122 @@ async fn shows_keep_their_hours_apart_and_feed_the_gateway() {
     station.stop().await;
 }
 
+/// A show off (its module, or not enabled) leaves its hours to the
+/// others; turning it back on is refused while another show has them
+/// (docs/listener-interaction.md#shows-and-their-hours).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_show_off_leaves_its_hours_to_the_others() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let code = station.state.stations.first().code();
+    let both = json!({"dedications": true, "match": true});
+    let (status, _) = admin.send(Method::PUT, "/modules", both.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    let monday = |enabled: bool| json!({"enabled": enabled, "hours": [{"days": [1], "start_hour": 17, "end_hour": 18}]});
+    let tuesday = json!({"hours": [{"days": [2], "start_hour": 17, "end_hour": 18}]});
+    let (status, body) = admin
+        .send(Method::PUT, "/shows/dedications", monday(true))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = admin.send(Method::PUT, "/shows/match", monday(true)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "the dedications have Monday");
+
+    // Not enabled: the match takes its hours, and enabling it is refused.
+    let (status, body) = admin
+        .send(Method::PUT, "/shows/dedications", monday(false))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = admin.send(Method::PUT, "/shows/match", monday(true)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, refused) = admin
+        .send(Method::PUT, "/shows/dedications", monday(true))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains("17:00–18:00 on Monday belongs to the match"),
+        "{message}"
+    );
+    let saved = admin.get("/shows/dedications").await;
+    assert_eq!(saved["settings"]["enabled"], false, "nothing saved");
+
+    // Off for the station: the same.
+    let (status, _) = admin
+        .send(Method::PUT, "/shows/match", tuesday.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = admin
+        .send(Method::PUT, "/shows/dedications", monday(true))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"dedications": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = admin.send(Method::PUT, "/shows/match", monday(true)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, refused) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains(
+            "dedications cannot be turned on: 17:00–18:00 on Monday belongs to the match"
+        ),
+        "{message}"
+    );
+    let modules = admin.get("/stations/1/modules").await;
+    assert_eq!(modules["on"]["dedications"], false, "nothing saved");
+    // Turning another module off is not concerned.
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"dedications": false, "medleys": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = admin
+        .send(Method::PUT, "/shows/match", tuesday.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = admin
+        .send(Method::PUT, "/stations/1/modules", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Off for the installation: the same, naming the station.
+    let (status, _) = admin
+        .send(Method::PUT, "/modules", json!({"match": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = admin.send(Method::PUT, "/shows/match", monday(true)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, refused) = admin.send(Method::PUT, "/modules", both.clone()).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains(&format!("on {code}: dedications cannot be turned on")),
+        "{message}"
+    );
+    let modules = admin.get("/modules").await;
+    assert_eq!(modules["dedications"], false, "nothing saved");
+    let (status, _) = admin.send(Method::PUT, "/shows/match", tuesday).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = admin.send(Method::PUT, "/modules", both).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    station.stop().await;
+}
+
 #[tokio::test]
 async fn listeners_like_the_track_playing_only() {
     use heron_core::Module;

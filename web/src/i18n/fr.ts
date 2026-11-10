@@ -2980,7 +2980,7 @@ const fr = {
   "shows.help": "Quand et comment les auditeurs participent depuis le site de la station. Horaires dans le fuseau de la station ({zone}).",
   "shows.hours": "Horaires",
   "shows.enabled": "Ouverte pendant ses horaires",
-  "shows.hoursHelp": "Par heures pleines. Une heure appartient à une seule émission.",
+  "shows.hoursHelp": "Par heures pleines. Une heure appartient à une seule émission ; une émission coupée laisse ses heures aux autres.",
   "shows.openUntil": "Ouverte, jusqu'à {time}.",
   "shows.closedUntil": "Fermée, ouvre {time}.",
   "shows.neverOpen": "Fermée : aucun horaire.",

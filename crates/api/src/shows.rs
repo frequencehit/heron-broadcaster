@@ -9,11 +9,11 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use heron_core::Module;
 use heron_core::shows::{
     self, Change, HourRange, NotificationSettings, SHOWS, Show, ShowPublic, ShowSettings,
     ShowStatus, WebsiteSettings, Week,
 };
+use heron_core::{Module, Modules};
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 use serde::Serialize;
@@ -186,8 +186,11 @@ async fn put_show(
     settings.check(show).map_err(ApiError::Invalid)?;
     settings.complete(show);
     let pool = &state.pool;
-    for range in &settings.hours {
-        check_free(pool, station.id(), range, Some(show.module)).await?;
+    // A show not enabled holds no hours: it is checked when enabled again.
+    if settings.enabled {
+        for range in &settings.hours {
+            check_free(pool, station.id(), range, Some(show.module)).await?;
+        }
     }
     let webhooks: Vec<u64> = sqlx::query_scalar("SELECT id FROM webhooks WHERE station_id = ?")
         .bind(station.id())
@@ -212,9 +215,10 @@ async fn put_show(
 
 /// Refuses hours that another show of the station has (`409`, saying
 /// which): an hour belongs to one show at most. `module` is the show they
-/// are for (`None`: a top). The others' hours count even while they are
-/// off, so that turning them on finds them free; the tops' shows count
-/// with the whole hours they touch.
+/// are for (`None`: a top). Only the shows that are on count: a show whose
+/// module is off, or that is not enabled, leaves its hours to the others
+/// (turning it back on is checked then, [`check_turned_on`]). The tops'
+/// shows count with the whole hours they touch.
 pub(crate) async fn check_free(
     pool: &MySqlPool,
     station_id: u64,
@@ -222,24 +226,90 @@ pub(crate) async fn check_free(
     module: Option<Module>,
 ) -> ApiResult<()> {
     let week = Week::of(std::slice::from_ref(range));
-    let refuse = |day: u8, start: u8, end: u8, name: &str| {
-        ApiError::Conflict(format!(
-            "{start:02}:00–{end:02}:00 on {} belongs to {name}: an hour belongs to one show at most",
-            shows::day_name(day),
-        ))
-    };
-    for other in module_shows().filter(|other| Some(other.module) != module) {
-        let theirs = load(pool, station_id, other).await?;
-        let overlap = week.overlap(&Week::of(&theirs.hours));
-        if let Some((day, start, end)) = overlap.first() {
-            return Err(refuse(*day, *start, *end, other.module.name()));
+    let on = crate::modules::on_for(pool, station_id).await?;
+    for taker in hours_held(pool, station_id, &on).await? {
+        let theirs = taker.module == Module::Top30;
+        // A top against the tops: their own rule (`tops::same_slot`).
+        if (module.is_none() && theirs) || Some(taker.module) == module {
+            continue;
+        }
+        if let Some((day, start, end)) = week.overlap(&taker.week).first() {
+            return Err(ApiError::Conflict(format!(
+                "{start:02}:00–{end:02}:00 on {} belongs to {}: an hour belongs to one show at most",
+                shows::day_name(*day),
+                taker.name,
+            )));
         }
     }
-    if module.is_some() {
+    Ok(())
+}
+
+/// A show on, and the hours it holds.
+struct Taker {
+    module: Module,
+    /// As messages name it: `dedications`, `the top “Hits”`.
+    name: String,
+    week: Week,
+}
+
+/// The hours each show on (`on`) and enabled holds on a station: a show
+/// off holds none.
+async fn hours_held(pool: &MySqlPool, station_id: u64, on: &Modules) -> ApiResult<Vec<Taker>> {
+    let mut takers = Vec::new();
+    for show in module_shows().filter(|show| on.is_on(show.module)) {
+        let settings = load(pool, station_id, show).await?;
+        if settings.enabled && !settings.hours.is_empty() {
+            takers.push(Taker {
+                module: show.module,
+                name: show.module.name().to_owned(),
+                week: Week::of(&settings.hours),
+            });
+        }
+    }
+    if on.is_on(Module::Top30) {
         for (name, hours) in crate::tops::hours_taken(pool, station_id).await? {
-            let overlap = week.overlap(&Week::of(&[hours]));
-            if let Some((day, start, end)) = overlap.first() {
-                return Err(refuse(*day, *start, *end, &format!("the top “{name}”")));
+            takers.push(Taker {
+                module: Module::Top30,
+                name: format!("the top “{name}”"),
+                week: Week::of(&[hours]),
+            });
+        }
+    }
+    Ok(takers)
+}
+
+/// Refuses turning shows on (from `before` to `after`, what is on for the
+/// station) whose hours another show on has (`409`, saying which): a show
+/// off left them to the others. Two tops follow their own rule.
+pub(crate) async fn check_turned_on(
+    pool: &MySqlPool,
+    station_id: u64,
+    before: &Modules,
+    after: &Modules,
+) -> ApiResult<()> {
+    let turned_on = |module: Module| !before.is_on(module) && after.is_on(module);
+    if !SHOWS.iter().any(|show| turned_on(show.module)) {
+        return Ok(());
+    }
+    let takers = hours_held(pool, station_id, after).await?;
+    for (i, mine) in takers.iter().enumerate() {
+        for theirs in &takers[i + 1..] {
+            let both_tops = mine.module == Module::Top30 && theirs.module == Module::Top30;
+            if both_tops || !(turned_on(mine.module) || turned_on(theirs.module)) {
+                continue;
+            }
+            let (new, held) = if turned_on(mine.module) {
+                (mine, theirs)
+            } else {
+                (theirs, mine)
+            };
+            if let Some((day, start, end)) = new.week.overlap(&held.week).first() {
+                return Err(ApiError::Conflict(format!(
+                    "{} cannot be turned on: {start:02}:00–{end:02}:00 on {} belongs to {}: an hour belongs to one show at most",
+                    new.name,
+                    shows::day_name(*day),
+                    held.name,
+                )));
             }
         }
     }

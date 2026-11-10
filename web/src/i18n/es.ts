@@ -2973,7 +2973,7 @@ const es = {
   "shows.help": "Cuándo y cómo participan los oyentes desde la web de la emisora. Horario en la zona horaria de la emisora ({zone}).",
   "shows.hours": "Horario",
   "shows.enabled": "Abierto durante su horario",
-  "shows.hoursHelp": "En horas enteras. Una hora pertenece a un solo programa.",
+  "shows.hoursHelp": "En horas enteras. Una hora pertenece a un solo programa; un programa desactivado deja sus horas a los demás.",
   "shows.openUntil": "Abierto, hasta {time}.",
   "shows.closedUntil": "Cerrado, abre {time}.",
   "shows.neverOpen": "Cerrado: sin horario.",

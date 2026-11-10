@@ -6857,7 +6857,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "Turns modules on or off for the installation (a module left out takes\nits default: off for a show). Admins only.",
+        "summary": "Turns modules on or off for the installation (a module left out takes\nits default: off for a show). A show turned on while another show has\nits hours on a station is refused (`409`). Admins only.",
         "operationId": "put_modules",
         "requestBody": {
           "content": {
@@ -10822,7 +10822,7 @@
         "tags": [
           "stations"
         ],
-        "summary": "Turns modules on or off for a station (a module left out is on). A\nmodule off for the installation stays off. Admins of the station.",
+        "summary": "Turns modules on or off for a station (a module left out is on). A\nmodule off for the installation stays off. A show turned on while\nanother show has its hours is refused (`409`). Admins of the station.",
         "operationId": "put_station_modules",
         "parameters": [
           {
