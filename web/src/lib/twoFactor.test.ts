@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { User } from "../api";
+import { DEFAULT_STATUS_BAR } from "./statusbar";
 import { codesFile, digitsOf, groupSecret, mustEnrol, twoFactorState } from "./twoFactor";
 import { creationOptions, credentialJson, fromBase64url, requestOptions, toBase64url } from "./webauthn";
 
@@ -23,6 +24,7 @@ describe("two-factor state", () => {
       language: "en",
       width: "normal",
       on_air_whole_queue: false,
+      status_bar: DEFAULT_STATUS_BAR,
       created_at_unix_ms: 0,
       station_roles: [],
       two_factor: { totp: false, passkeys: 0, required: false },

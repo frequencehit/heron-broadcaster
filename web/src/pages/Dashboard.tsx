@@ -24,7 +24,7 @@ import { positionNow, useLive } from "../lib/live";
 import { useStationCategories } from "./Clocks";
 import { Link } from "../lib/router";
 import { useAction, useCan, useUser } from "../lib/session";
-import { INTRO_SOON_MS, introFromCueIn, jingleStart } from "../lib/intro";
+import { introFromCueIn, jingleStart } from "../lib/intro";
 import { here } from "../lib/station";
 
 /** Re-renders `fps` times a second while mounted. */
@@ -325,6 +325,8 @@ function Deck({
   const at = (ms: number) => `${Math.min(100, (ms / Math.max(1, cueOut)) * 100)}%`;
   const eq = useEqSettings().data;
   const shaping = isShaping(deck.deck === "fx" ? eq?.fx : eq?.music);
+  // From as many seconds as the status bar's countdown to the vocals (Account › Status bar).
+  const soonMs = useUser().status_bar.intro_seconds * 1000;
 
   return (
     <section
@@ -397,7 +399,7 @@ function Deck({
                 <div className="deck-times">
                   <span className="muted">{duration(position)}</span>
                   {intro !== null && position < intro && (
-                    <span className={intro - position <= INTRO_SOON_MS ? "intro-countdown soon" : "intro-countdown"}>
+                    <span className={intro - position <= soonMs ? "intro-countdown soon" : "intro-countdown"}>
                       {t("dashboard.vocalsIn", { time: duration(intro - position, true) })}
                     </span>
                   )}

@@ -5,7 +5,9 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startLive, stopLive } from "../lib/live";
 import { chooseStation } from "../lib/station";
-import { answer, renderApp } from "../test/render";
+import { ALL_ON } from "../lib/modules";
+import { DEFAULT_STATUS_BAR, type StatusBarSettings } from "../lib/statusbar";
+import { answer, renderApp, sent, user } from "../test/render";
 import { StatusBar } from "./StatusBar";
 
 /** A WebSocket the test drives. */
@@ -46,6 +48,7 @@ describe("StatusBar", () => {
         total: 42,
         record: { listeners: 128, day: "2026-10-25" },
       },
+      "GET /api/v1/stations/{station_id}/shows": [],
     });
   });
   afterEach(() => {
@@ -119,7 +122,7 @@ describe("StatusBar", () => {
     expect(screen.getByText("Deck A: playing, ON AIR, Daft Punk – One More Time 0:12, intro, 8 seconds left")).toBeTruthy();
     // The last 5 seconds are urgent: they blink (or stay outlined with reduced motion, in the stylesheet).
     socket.receive(state(decks(16_000)));
-    expect(screen.getByText("intro −0:04").className).toContain("statusbar-countdown-urgent");
+    expect(screen.getByText("intro −0:04").className).toContain("statusbar-countdown-blink");
     // Once the vocals start, the elapsed time is back.
     socket.receive(state(decks(20_000)));
     expect(screen.getByText("0:20").className).toContain("statusbar-deck-elapsed");
@@ -147,7 +150,10 @@ describe("StatusBar", () => {
   });
 
   it("shows a gap, not zero, when no server could be read", async () => {
-    answer({ "GET /api/v1/stations/{station_id}/listeners/now": { outputs: [], total: null } });
+    answer({
+      "GET /api/v1/stations/{station_id}/listeners/now": { outputs: [], total: null },
+      "GET /api/v1/stations/{station_id}/shows": [],
+    });
     renderApp(<StatusBar />);
     open().receive(state([]));
     await waitFor(() => expect(screen.getByText("listeners –")).toBeTruthy());
@@ -178,5 +184,97 @@ describe("StatusBar", () => {
     act(() => socket.onclose?.());
     expect(screen.getByText("offline")).toBeTruthy();
     expect(screen.getByRole("status").className).toContain("statusbar-offline");
+  });
+
+  const as = (settings: Partial<StatusBarSettings>) => ({ ...user(), status_bar: { ...DEFAULT_STATUS_BAR, ...settings } });
+  const both = [
+    { deck: "a", on_air: true, position_ms: 83_000, length_ms: 240_000, entry: track("Jamiroquai", "Space Cowboy") },
+    { deck: "b", on_air: false, position_ms: 0, length_ms: 200_000, entry: track("Daft Punk", "Da Funk") },
+  ];
+
+  it("follows the user's settings: the deck on air only, the time chosen, the parts left out", () => {
+    renderApp(<StatusBar />, as({ on_air_only: true, time: "elapsed_remaining_total", listeners: false, system: false }));
+    const socket = open();
+    socket.receive(state(both));
+    socket.receive(SYSTEM);
+    expect(screen.getByText("Jamiroquai – Space Cowboy")).toBeTruthy();
+    expect(screen.queryByText("Daft Punk – Da Funk")).toBeNull();
+    expect(screen.getByText("1:23 / −2:37 / 4:00")).toBeTruthy();
+    expect(screen.queryByText(/^listeners/)).toBeNull();
+    expect(screen.queryByText(/^cpu/)).toBeNull();
+  });
+
+  it("takes the colours chosen for the track and the intro", () => {
+    renderApp(<StatusBar />, as({ track_color: "#112233", intro_color: "#445566" }));
+    open().receive(state(both));
+    const deck = document.querySelector<HTMLElement>(".statusbar-deck-a")!;
+    expect(deck.style.getPropertyValue("--deck")).toBe("#112233");
+    expect(deck.style.getPropertyValue("--statusbar-intro")).toBe("#445566");
+  });
+
+  it("goes, and gives the page its room back, when the user or the module turns it off; the preview stays", async () => {
+    const { unmount } = renderApp(<StatusBar />, as({ show: false }));
+    open().receive(state(both));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.documentElement.dataset.statusbar).toBe("off");
+    unmount();
+    stopLive();
+    renderApp(<StatusBar settings={{ ...DEFAULT_STATUS_BAR, show: false }} preview />);
+    open().receive(state(both));
+    expect(screen.getByRole("status").className).toContain("statusbar-preview");
+    expect(document.documentElement.dataset.statusbar).toBeUndefined();
+  });
+
+  it("goes for every user when the station turns its module off", async () => {
+    answer({
+      "GET /api/v1/stations/{station_id}/listeners/now": { outputs: [], total: 1 },
+      "GET /api/v1/stations/{station_id}/shows": [],
+      "GET /api/v1/stations/{id}/modules": { on: { ...ALL_ON, status_bar: false }, own: { ...ALL_ON, status_bar: false } },
+    });
+    renderApp(<StatusBar />);
+    open().receive(state(both));
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(document.documentElement.dataset.statusbar).toBe("off");
+  });
+
+  it("shows the last track of a type, the queue, the outputs and the next fixed time", async () => {
+    const now = Date.now();
+    answer({
+      "GET /api/v1/stations/{station_id}/listeners/now": { outputs: [], total: 1 },
+      "GET /api/v1/stations/{station_id}/history": [{ id: 9, artist: "Justice", title: "D.A.N.C.E.", deck: "a", source: "rotation", started_at_unix_ms: 0 }],
+      "GET /api/v1/stations/{station_id}/shows": [
+        {
+          module: "match",
+          settings: { enabled: true, website: { title: "" } },
+          status: { open: false, next_opening_unix_ms: now + 12 * 60_000 - 1_000 },
+        },
+      ],
+    });
+    renderApp(<StatusBar />, as({ history: true, history_type_id: 2, queue: true, outputs: true, listeners: false }));
+    open().receive({
+      type: "state",
+      player: {
+        decks: both,
+        paused: false,
+        underruns: 0,
+        queue: [
+          { entry_id: 5, next_start_ms: 175_000, track: { path: "a.mp3", cue_in_ms: 0, cue_out_ms: 180_000 } },
+          { entry_id: 6, track: { path: "b.mp3", cue_in_ms: 0, cue_out_ms: 125_000 } },
+        ],
+        outputs: [
+          { id: 1, name: "MP3", enabled: true, state: "connected", bytes_sent: 0, dropped_chunks: 0 },
+          { id: 2, name: "AAC", enabled: true, state: "reconnecting", bytes_sent: 0, dropped_chunks: 0 },
+        ],
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Justice – D.A.N.C.E.")).toBeTruthy());
+    expect(sent("GET /api/v1/stations/{station_id}/history")[0]?.options).toMatchObject({
+      params: { query: { finished: true, limit: 1, category_type_id: 2 } },
+    });
+    expect(screen.getByText("queue 5:00").getAttribute("href")).toBe("/queue");
+    const outputs = screen.getByText("outputs 1/2");
+    expect([outputs.className.includes("statusbar-bad"), outputs.getAttribute("title")]).toEqual([true, "Not connected: AAC"]);
+    const next = await screen.findByText("Match in 12 min");
+    expect(next.getAttribute("href")).toBe("/shows/match");
   });
 });
