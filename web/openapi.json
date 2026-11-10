@@ -1038,7 +1038,7 @@
         "tags": [
           "auth"
         ],
-        "summary": "Saves your preferences: the web UI's theme, language, width and whether\nthe On air page shows the whole queue.",
+        "summary": "Saves your preferences: the web UI's theme, language, width, whether the\nOn air page shows the whole queue, and the status bar's settings.",
         "operationId": "set_preferences",
         "requestBody": {
           "content": {
@@ -4378,6 +4378,26 @@
             "name": "exclude_fx",
             "in": "query",
             "description": "Leave out the FX player (jingles played over the music).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "category_type_id",
+            "in": "query",
+            "description": "Only tracks in a category of this type (*Song*, *Jingle*…).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "finished",
+            "in": "query",
+            "description": "Only plays that have ended: not the track on air.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -12409,6 +12429,26 @@
             "name": "exclude_fx",
             "in": "query",
             "description": "Leave out the FX player (jingles played over the music).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "category_type_id",
+            "in": "query",
+            "description": "Only tracks in a category of this type (*Song*, *Jingle*…).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "finished",
+            "in": "query",
+            "description": "Only plays that have ended: not the track on air.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -24064,6 +24104,19 @@
           }
         }
       },
+      "DeckTime": {
+        "type": "string",
+        "description": "The time on the decks: what it shows, in that order.",
+        "enum": [
+          "elapsed",
+          "elapsed_total",
+          "elapsed_remaining",
+          "elapsed_remaining_total",
+          "elapsed_total_remaining",
+          "remaining",
+          "remaining_total"
+        ]
+      },
       "Dedication": {
         "type": "object",
         "description": "A request, for operators.",
@@ -29411,7 +29464,8 @@
           "match",
           "top30",
           "likes",
-          "certification"
+          "certification",
+          "status_bar"
         ]
       },
       "Modules": {
@@ -29467,6 +29521,10 @@
             "default": true
           },
           "review": {
+            "type": "boolean",
+            "default": true
+          },
+          "status_bar": {
             "type": "boolean",
             "default": true
           },
@@ -31089,6 +31147,17 @@
               "null"
             ],
             "description": "The On air page shows the whole queue, editable there."
+          },
+          "status_bar": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusBarSettings",
+                "description": "The status bar's settings, replaced whole: a field left out takes\nits default (`{}` restores them all)."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "theme": {
             "oneOf": [
@@ -35175,6 +35244,130 @@
           }
         }
       },
+      "StatusBarSettings": {
+        "type": "object",
+        "description": "A user's status bar. Sent whole: a field left out takes its default,\nso `{}` restores them all.",
+        "properties": {
+          "decks": {
+            "type": "boolean",
+            "description": "The decks part.",
+            "default": true
+          },
+          "end_blink": {
+            "type": "boolean",
+            "default": false
+          },
+          "end_countdown": {
+            "type": "boolean",
+            "description": "The time left before the next track, on the deck on air, in its last\nseconds.",
+            "default": true
+          },
+          "end_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its last seconds: 1 to 60.",
+            "default": 10,
+            "maximum": 60,
+            "minimum": 1
+          },
+          "history": {
+            "type": "boolean",
+            "description": "The last track played to its end.",
+            "default": false
+          },
+          "history_type_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Of this category type only; `null`: of any type. *Song* (1) by\ndefault.",
+            "default": 1,
+            "minimum": 0
+          },
+          "intro_blink": {
+            "type": "boolean",
+            "description": "Its last seconds blink, rather than only turn to the alert colour.",
+            "default": true
+          },
+          "intro_color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The intro's colour on the decks' progress (`#rrggbb`); `null`: the\nintro colour of the theme.",
+            "default": null,
+            "pattern": "^#[0-9a-f]{6}$"
+          },
+          "intro_countdown": {
+            "type": "boolean",
+            "description": "`intro −0:07` on the deck on air until the vocals start.",
+            "default": true
+          },
+          "intro_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its last seconds: 1 to 60. On air's *vocals in* turns to the warning\ncolour from there too.",
+            "default": 5,
+            "maximum": 60,
+            "minimum": 1
+          },
+          "listeners": {
+            "type": "boolean",
+            "description": "The listeners and their record (with listener statistics on).",
+            "default": true
+          },
+          "next_fixed": {
+            "type": "boolean",
+            "description": "The next show to open, or track at an exact time.",
+            "default": true
+          },
+          "on_air_only": {
+            "type": "boolean",
+            "description": "The deck on air only, rather than A and B.",
+            "default": false
+          },
+          "outputs": {
+            "type": "boolean",
+            "description": "How many outputs are connected.",
+            "default": false
+          },
+          "queue": {
+            "type": "boolean",
+            "description": "How long the waiting tracks last.",
+            "default": false
+          },
+          "show": {
+            "type": "boolean",
+            "description": "The bar at the bottom of every page.",
+            "default": true
+          },
+          "station_time": {
+            "type": "boolean",
+            "description": "The station's clock.",
+            "default": false
+          },
+          "system": {
+            "type": "boolean",
+            "description": "The machine's load (operators and admins only).",
+            "default": true
+          },
+          "time": {
+            "$ref": "#/components/schemas/DeckTime",
+            "default": "elapsed"
+          },
+          "track_color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The track's colour on the decks' progress, past the intro\n(`#rrggbb`); `null`: each deck's own colour.",
+            "default": null,
+            "pattern": "^#[0-9a-f]{6}$"
+          }
+        },
+        "additionalProperties": false
+      },
       "StereoExpanderSettings": {
         "type": "object",
         "description": "The stereo expander: widens programmes close to mono.",
@@ -38302,6 +38495,7 @@
           "language",
           "width",
           "on_air_whole_queue",
+          "status_bar",
           "created_at_unix_ms",
           "station_roles",
           "two_factor"
@@ -38343,6 +38537,10 @@
               "$ref": "#/components/schemas/StationRole"
             },
             "description": "Their role on each station; a station left out is `none`. `role` is\nthe shared role (the library, what stations share); a shared admin\nis admin on every station."
+          },
+          "status_bar": {
+            "$ref": "#/components/schemas/StatusBarSettings",
+            "description": "The status bar's settings, the defaults filled in."
           },
           "theme": {
             "$ref": "#/components/schemas/Theme"

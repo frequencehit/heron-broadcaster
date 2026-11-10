@@ -241,6 +241,8 @@ const TABLES: &[Table] = &[
             Plain("width"),
             // Not in older files: off.
             Plain("on_air_whole_queue"),
+            // Not in older files: the defaults.
+            Json("status_bar"),
         ],
         Mode::Upsert,
         &["username"],

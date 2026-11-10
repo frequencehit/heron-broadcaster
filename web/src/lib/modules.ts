@@ -55,6 +55,7 @@ export const MODULES: ModuleEntry[] = [
     help: "modules.certificationHelp",
     off: "modules.certificationOff",
   },
+  { key: "status_bar", label: "modules.statusBar", help: "modules.statusBarHelp", off: "modules.statusBarOff" },
 ];
 
 /**
@@ -78,6 +79,7 @@ export const ALL_ON: Modules = {
   top30: false,
   likes: true,
   certification: false,
+  status_bar: true,
 };
 
 export function moduleKey(station: number | null): readonly unknown[] {

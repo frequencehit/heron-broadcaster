@@ -3,12 +3,6 @@
 // Intros: where the vocals start in a track, and where a jingle played over
 // the intro starts (as the engine places it: ending where the vocals start).
 
-/**
- * From how long before the vocals their countdown turns urgent: On air's
- * *vocals in* and the status bar's `intro −0:05`.
- */
-export const INTRO_SOON_MS = 5_000;
-
 /** What these need of a queued track. */
 export interface IntroTrack {
   cue_in_ms: number;

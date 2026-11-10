@@ -10,6 +10,7 @@ import { afterEach, vi } from "vitest";
 import { type Role, type User, api } from "../api";
 import { ToastProvider } from "../components/ui";
 import { UserContext } from "../lib/session";
+import { DEFAULT_STATUS_BAR } from "../lib/statusbar";
 
 // jsdom has <dialog> without its modal methods.
 if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.showModal) {
@@ -93,6 +94,7 @@ export function user(role: Role = "admin"): User {
     language: "en",
     width: "normal",
     on_air_whole_queue: false,
+    status_bar: { ...DEFAULT_STATUS_BAR },
     created_at_unix_ms: 0,
     station_roles: [],
     two_factor: { totp: false, passkeys: 0, required: false },

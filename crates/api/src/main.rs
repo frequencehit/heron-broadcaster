@@ -53,6 +53,7 @@ mod settings;
 mod shows;
 mod staging;
 mod stations;
+mod status_bar;
 mod sync;
 mod system;
 mod tops;

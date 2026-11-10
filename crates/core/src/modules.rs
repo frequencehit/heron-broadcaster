@@ -33,10 +33,12 @@ pub enum Module {
     /// The stream servers' access logs, kept and exported for audience
     /// certification (`docs/certification.md`, #189). Off by default.
     Certification,
+    /// The status bar at the bottom of every page (`docs/web.md#status-bar`).
+    StatusBar,
 }
 
 impl Module {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Medleys,
         Self::CoverArt,
         Self::ListenerStatistics,
@@ -53,6 +55,7 @@ impl Module {
         Self::Top30,
         Self::Likes,
         Self::Certification,
+        Self::StatusBar,
     ];
 
     /// The show modules, which listeners take part in from the website.
@@ -87,6 +90,7 @@ impl Module {
             Self::Top30 => "top30",
             Self::Likes => "likes",
             Self::Certification => "certification",
+            Self::StatusBar => "status_bar",
         }
     }
 
@@ -109,6 +113,7 @@ impl Module {
             Self::Top30 => "the tops",
             Self::Likes => "likes",
             Self::Certification => "audience certification",
+            Self::StatusBar => "the status bar",
         }
     }
 
@@ -149,6 +154,7 @@ pub struct Modules {
     pub top30: bool,
     pub likes: bool,
     pub certification: bool,
+    pub status_bar: bool,
 }
 
 impl Default for Modules {
@@ -170,6 +176,7 @@ impl Default for Modules {
             top30: false,
             likes: true,
             certification: false,
+            status_bar: true,
         }
     }
 }
@@ -198,6 +205,7 @@ impl Modules {
         top30: true,
         likes: true,
         certification: true,
+        status_bar: true,
     };
 
     pub fn is_on(&self, module: Module) -> bool {
@@ -218,6 +226,7 @@ impl Modules {
             Module::Top30 => self.top30,
             Module::Likes => self.likes,
             Module::Certification => self.certification,
+            Module::StatusBar => self.status_bar,
         }
     }
 
@@ -254,6 +263,7 @@ impl Modules {
             Module::Top30 => &mut self.top30,
             Module::Likes => &mut self.likes,
             Module::Certification => &mut self.certification,
+            Module::StatusBar => &mut self.status_bar,
         };
         *field = on;
     }
@@ -275,6 +285,7 @@ impl Modules {
             top30: self.top30 && station.top30,
             likes: self.likes && station.likes,
             certification: self.certification && station.certification,
+            status_bar: self.status_bar && station.status_bar,
             ..self
         }
     }

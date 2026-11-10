@@ -9105,6 +9105,185 @@ async fn a_backup_keeps_the_whole_queue_on_air_and_an_older_one_turns_it_off() {
     station.stop().await;
 }
 
+/// Each user's status bar settings (docs/web.md#status-bar): the defaults,
+/// replaced whole, checked, in backups; its module; the history it reads.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_status_bar_settings_and_the_last_track_of_a_type() {
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let pool = &station.state.pool;
+    let admin = station.signed_in("admin").await;
+    let viewer = station.signed_in("viewer").await;
+    let t = station.tracks.clone();
+
+    // The defaults, filled in.
+    let me = admin.get("/auth/me").await;
+    assert_eq!(
+        me["status_bar"],
+        json!({
+            "show": true, "decks": true, "on_air_only": false, "history": false,
+            "history_type_id": 1, "listeners": true, "next_fixed": true, "queue": false,
+            "outputs": false, "system": true, "station_time": false, "time": "elapsed",
+            "intro_countdown": true, "intro_blink": true, "intro_seconds": 5,
+            "end_countdown": true, "end_blink": false, "end_seconds": 10,
+            "intro_color": null, "track_color": null
+        })
+    );
+
+    // Replaced whole: a field left out takes its default.
+    let (status, me) = admin
+        .send(
+            Method::PUT,
+            "/auth/preferences",
+            json!({"status_bar": {"queue": true, "time": "remaining_total", "intro_seconds": 3,
+                                  "intro_color": "#123abc", "history_type_id": null}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{me}");
+    let bar = &me["status_bar"];
+    assert_eq!(
+        (
+            &bar["queue"],
+            &bar["time"],
+            &bar["intro_seconds"],
+            &bar["intro_color"]
+        ),
+        (
+            &json!(true),
+            &json!("remaining_total"),
+            &json!(3),
+            &json!("#123abc")
+        )
+    );
+    assert_eq!(
+        (&bar["end_seconds"], &bar["history_type_id"]),
+        (&json!(10), &Value::Null)
+    );
+    // Another preference keeps them; another user keeps theirs.
+    let (status, me) = admin
+        .send(Method::PUT, "/auth/preferences", json!({"theme": "dark"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["status_bar"]["intro_seconds"], 3);
+    assert_eq!(viewer.get("/auth/me").await["status_bar"]["queue"], false);
+    for refused in [
+        json!({"intro_seconds": 0}),
+        json!({"end_seconds": 61}),
+        json!({"track_color": "#FFF"}),
+        json!({"intro_color": "red"}),
+        json!({"time": "total"}),
+        json!({"later": true}),
+    ] {
+        let (status, body) = admin
+            .send(
+                Method::PUT,
+                "/auth/preferences",
+                json!({"status_bar": refused.clone()}),
+            )
+            .await;
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{refused}: {body}"
+        );
+    }
+    assert_eq!(
+        admin.get("/auth/me").await["status_bar"]["intro_seconds"],
+        3,
+        "nothing saved"
+    );
+
+    // In backups.
+    let (status, backup) = admin.send(Method::POST, "/backups", json!({})).await;
+    assert_eq!(status, StatusCode::CREATED, "{backup}");
+    let name = backup["name"].as_str().unwrap();
+    let file = admin.get(&format!("/backups/{name}/config")).await;
+    let users = file["tables"]["users"].as_array().unwrap();
+    let saved = users
+        .iter()
+        .find(|user| user["username"] == "admin")
+        .unwrap();
+    assert_eq!(saved["status_bar"]["intro_color"], "#123abc", "{saved}");
+
+    // `{}` restores the defaults.
+    let (status, me) = admin
+        .send(Method::PUT, "/auth/preferences", json!({"status_bar": {}}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["status_bar"], viewer.get("/auth/me").await["status_bar"]);
+
+    // Its module: on by default, and turned off like any other.
+    assert_eq!(admin.get("/modules").await["status_bar"], true);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"status_bar": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        viewer.get("/stations/1/modules").await["on"]["status_bar"],
+        false
+    );
+
+    // The last track played to its end, of a category type: an hour ago
+    // and before, out of the engine's way.
+    sqlx::query(
+        "INSERT INTO categories (id, name, type_id) VALUES (201, 'Songs', 1), (202, 'Jingles', 2)",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    for (track, category) in [(t[0], 201), (t[1], 202), (t[2], 201)] {
+        sqlx::query("INSERT INTO track_categories (track_id, category_id) VALUES (?, ?)")
+            .bind(track)
+            .bind(category)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+    // t2 has not ended (minutes 60), the jingle t1 is the latest to have.
+    for (track, minutes, ended) in [(t[0], 90, true), (t[1], 70, true), (t[2], 65, false)] {
+        sqlx::query(
+            "INSERT INTO play_history (station_id, track_id, started_at, ended_at, deck, source)
+             VALUES (1, ?, NOW(6) - INTERVAL ? MINUTE,
+                     IF(?, NOW(6) - INTERVAL ? MINUTE, NULL), 'a', 'rotation')",
+        )
+        .bind(track)
+        .bind(minutes)
+        .bind(ended)
+        .bind(minutes - 1)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+    let before = jiff::Timestamp::now().as_millisecond() - 3_600_000;
+    let last = |query: String| {
+        let viewer = &viewer;
+        async move {
+            let plays = viewer
+                .get(&format!("/history?before={before}&limit=1{query}"))
+                .await;
+            plays[0]["track_id"].clone()
+        }
+    };
+    assert_eq!(last(String::new()).await, json!(t[2]));
+    assert_eq!(last("&finished=true".to_owned()).await, json!(t[1]));
+    assert_eq!(
+        last("&finished=true&category_type_id=1".to_owned()).await,
+        json!(t[0])
+    );
+    assert_eq!(last("&category_type_id=1".to_owned()).await, json!(t[2]));
+    assert_eq!(last("&category_type_id=2".to_owned()).await, json!(t[1]));
+    let none = viewer
+        .get(&format!("/history?before={before}&category_type_id=3"))
+        .await;
+    assert_eq!(none, json!([]));
+    station.stop().await;
+}
+
 /// A configuration file from before the width choice: a user with the
 /// whole width (`full_width`) gets it back as `full`.
 #[tokio::test(flavor = "multi_thread")]
@@ -10168,12 +10347,12 @@ async fn modules_are_turned_off_and_on_again() {
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
                         "dedications": false, "match": false, "top30": false, "likes": true,
-                        "certification": false});
+                        "certification": false, "status_bar": true});
     let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
                         "dedications": true, "match": true, "top30": true, "likes": true,
-                        "certification": true});
+                        "certification": true, "status_bar": true});
 
     // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);

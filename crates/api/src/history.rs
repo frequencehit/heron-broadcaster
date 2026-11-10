@@ -383,6 +383,11 @@ pub struct HistoryQuery {
     /// Leave out the FX player (jingles played over the music).
     #[serde(default)]
     pub exclude_fx: bool,
+    /// Only tracks in a category of this type (*Song*, *Jingle*…).
+    pub category_type_id: Option<u64>,
+    /// Only plays that have ended: not the track on air.
+    #[serde(default)]
+    pub finished: bool,
     /// 1 to 500, 50 by default.
     pub limit: Option<u32>,
 }
@@ -501,6 +506,17 @@ async fn list_history(
     }
     if query.exclude_fx {
         sql.push(" AND h.deck <> 'fx'");
+    }
+    if let Some(type_id) = query.category_type_id {
+        sql.push(
+            " AND h.track_id IN (SELECT tc.track_id FROM track_categories tc
+                JOIN categories c ON c.id = tc.category_id WHERE c.type_id = ",
+        )
+        .push_bind(type_id)
+        .push(")");
+    }
+    if query.finished {
+        sql.push(" AND h.ended_at IS NOT NULL");
     }
     sql.push(" ORDER BY h.started_at DESC, h.id DESC LIMIT ")
         .push_bind(limit);

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Your account: theme, language, width, the whole queue on On air, password, second factors and API tokens.
+// Your account: theme, language, width, the whole queue on On air, the status bar, password, second factors and API tokens.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { type Theme, type Width, api, done, unwrap } from "../api";
+import { StatusBarSettingsCard } from "../components/StatusBarSettings";
 import { TwoFactorCard } from "../components/TwoFactor";
 import { Banner, Card, ConfirmButton, Empty, Field, Icon, NumberInput, PageHead, Segmented } from "../components/ui";
 import { LANGUAGES, type LanguageSetting, resolve, rich, setLanguage, t, toSetting } from "../i18n";
@@ -29,6 +30,7 @@ export function Account() {
         />
         <PasswordCard />
       </div>
+      <StatusBarSettingsCard />
       <TwoFactorCard />
       <TokensCard />
     </>
