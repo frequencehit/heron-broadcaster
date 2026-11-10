@@ -11636,6 +11636,20 @@ async fn a_top_that_fails_never_stops_the_queue() {
     assert_eq!(status, StatusCode::OK);
     let (status, _) = admin.request(Method::DELETE, "/queue", None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+    eventually("nothing on air", Duration::from_secs(20), || async {
+        let open: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM play_history WHERE ended_at IS NULL AND track_id IS NOT NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (open == 0).then_some(())
+    })
+    .await;
+    sqlx::query("DELETE FROM play_history")
+        .execute(pool)
+        .await
+        .unwrap();
     let (status, _) = admin
         .send(Method::PUT, "/modules", json!({"top30": true}))
         .await;
@@ -11704,7 +11718,7 @@ async fn a_top_that_fails_never_stops_the_queue() {
          WHERE station_id = 1 AND track_id IS NOT NULL AND started_at >= FROM_UNIXTIME(?)
          ORDER BY id",
     )
-    .bind(at as f64 / 1_000.0 - 5.0)
+    .bind(at as f64 / 1_000.0)
     .fetch_all(pool)
     .await
     .unwrap();
