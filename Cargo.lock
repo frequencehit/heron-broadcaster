@@ -2173,7 +2173,7 @@ checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "heron-analysis"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "ebur128",
@@ -2194,7 +2194,7 @@ dependencies = [
 
 [[package]]
 name = "heron-analyzer"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2210,7 +2210,7 @@ dependencies = [
 
 [[package]]
 name = "heron-api"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "age",
  "anyhow",
@@ -2271,7 +2271,7 @@ dependencies = [
 
 [[package]]
 name = "heron-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "blake3",
  "jiff",
@@ -2282,7 +2282,7 @@ dependencies = [
 
 [[package]]
 name = "heron-dsp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "audioadapter-buffers",
  "rubato 5.0.1",
@@ -2292,7 +2292,7 @@ dependencies = [
 
 [[package]]
 name = "heron-engine"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2321,7 +2321,7 @@ dependencies = [
 
 [[package]]
 name = "heron-librarian"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2350,7 +2350,7 @@ dependencies = [
 
 [[package]]
 name = "heron-library"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "blake3",
  "heron-core",
@@ -2369,7 +2369,7 @@ dependencies = [
 
 [[package]]
 name = "heron-outputs"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -2391,7 +2391,7 @@ dependencies = [
 
 [[package]]
 name = "heron-proto"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "prost",
  "protox",
@@ -2402,7 +2402,7 @@ dependencies = [
 
 [[package]]
 name = "heron-public"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2427,7 +2427,7 @@ dependencies = [
 
 [[package]]
 name = "heron-rotation"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "jiff",
  "serde",
@@ -2438,7 +2438,7 @@ dependencies = [
 
 [[package]]
 name = "heron-service"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "clap",

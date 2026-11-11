@@ -32,7 +32,7 @@ Listeners want to take part: ask for a song with a dedication, choose the next s
 - `heron-core`: the show modules, opening hours and their checks.
 - `heron-api`: `GET`, `PUT /stations/{id}/shows/{module}`, `GET /stations/{id}/shows`; `GET /gateway/state` and the gateway's token check; the show events in webhooks; the station's `gateway_url`.
 - `heron-web`: the *Shows* section and its pages, translations (all catalogs).
-- Docs: [Listener interaction](../listener-interaction.md), [API](../api.md#the-public-gateway), [Web UI](../web.md#shows), [Modules](../modules.md), [Architecture](../architecture.md), [Monitoring](../monitoring.md#heron-public), [Upgrading](../upgrading.md#edge).
+- Docs: [Listener interaction](../listener-interaction.md), [API](../api.md#the-public-gateway), [Web UI](../web.md#shows), [Modules](../modules.md), [Architecture](../architecture.md), [Monitoring](../monitoring.md#heron-public), [Upgrading](../upgrading.md#030-to-040).
 
 ## Acceptance criteria
 

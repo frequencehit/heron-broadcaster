@@ -70,18 +70,18 @@ The services run the `latest` release by default; `edge` follows `main`. To pin 
 ```yaml
 services:
   heron-api:
-    image: ghcr.io/dehy/heron-api:0.3.0
+    image: ghcr.io/dehy/heron-api:0.4.0
   heron-analyzer:
-    image: ghcr.io/dehy/heron-analyzer:0.3.0
+    image: ghcr.io/dehy/heron-analyzer:0.4.0
   heron-librarian:
-    image: ghcr.io/dehy/heron-librarian:0.3.0
+    image: ghcr.io/dehy/heron-librarian:0.4.0
   heron-engine:
-    image: ghcr.io/dehy/heron-engine:0.3.0
+    image: ghcr.io/dehy/heron-engine:0.4.0
   heron-web:
-    image: ghcr.io/dehy/heron-web:0.3.0
+    image: ghcr.io/dehy/heron-web:0.4.0
 ```
 
-Then `docker compose pull && docker compose up -d --wait`. Setting `HERON_VERSION=0.2.0` in `.env` does the same for all five services at once. A fork's CI publishes its own images, under `ghcr.io/<owner>`: set `HERON_REGISTRY=ghcr.io/<owner>` in `.env` to run them. To upgrade, change the version and run the same two commands; migrations run when `heron-api` starts. Restarting the engine this way leaves a few seconds of fallback on the stream; `scripts/upgrade.sh` instead hands the stream over from the running engine to the new one, without a gap for the listeners. See [Upgrading](docs/upgrading.md), for Compose and Swarm, and the [changelog](CHANGELOG.md) for what each release brings.
+Then `docker compose pull && docker compose up -d --wait`. Setting `HERON_VERSION=0.4.0` in `.env` does the same for all five services at once. A fork's CI publishes its own images, under `ghcr.io/<owner>`: set `HERON_REGISTRY=ghcr.io/<owner>` in `.env` to run them. To upgrade, change the version and run the same two commands; migrations run when `heron-api` starts. Restarting the engine this way leaves a few seconds of fallback on the stream; `scripts/upgrade.sh` instead hands the stream over from the running engine to the new one, without a gap for the listeners. See [Upgrading](docs/upgrading.md), for Compose and Swarm, and the [changelog](CHANGELOG.md) for what each release brings.
 
 Point `HERON_MUSIC_DIR` at your music: new and changed files are picked up automatically, and the **Tracks** page shows them as they are analyzed. See [Import and analysis](docs/analysis.md).
 

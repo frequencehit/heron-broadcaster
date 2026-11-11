@@ -2,9 +2,9 @@
 
 What changed in each release of Heron. Before upgrading, read the release's notes in [Upgrading](docs/upgrading.md#release-notes).
 
-## Edge
+## 0.4.0 – 2026-11-11
 
-What `main` has since the last release: it is published as the `edge` images. Read the [Edge upgrade notes](docs/upgrading.md#edge) first.
+Listener interaction (M18: the public gateway `heron-public`, likes, tops, dedications and the match) and audience certification (M19: access logs and deliveries by FTPS) as modules, rotation rules (play ratio, daypart separation, draw depth, linked slots, exact times), cover art, two-factor authentication, stream servers, an audience report on the Statistics page, and a status bar set per user, for several stations. Upgrading from 0.3.0 keeps the station on air: see [0.3.0 to 0.4.0](docs/upgrading.md#030-to-040).
 
 ### Added
 
@@ -73,9 +73,9 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - **Back to the file's tags is gone**, from the track's page, the track list and the API (`POST /tracks/tag-overrides/clear`). To have the files carry the tags kept in Heron, see *Write the tags kept in Heron into the files* above.
 - **Relaxation steps** are numbered 0 to 12: daypart separation comes in at steps 3 and 4, so artist, title, track and the fallback category moved two steps. The picks already logged were renumbered.
 - **A disabled track does not play at all** any more: it cannot be queued by hand, and the queue manager takes it out of the queue. Before, it was only left out of rotation.
-- **Cover images are files** on a new `covers` volume (`HERON_COVERS_DIR`) shared by `heron-api` and `heron-librarian`, not in the database: the database keeps what is known of each image (hash, size), and its dump no longer holds images. The API moves the images of an earlier edge build to the volume when it starts, once ([Upgrading – Edge](docs/upgrading.md#edge)). The configuration file still holds the covers set by hand and the station logos with their images, and older files restore as before.
+- **Cover images are files** on a new `covers` volume (`HERON_COVERS_DIR`) shared by `heron-api` and `heron-librarian`, not in the database: the database keeps what is known of each image (hash, size), and its dump no longer holds images. The API moves the images of an earlier edge build to the volume when it starts, once ([Upgrading – 0.3.0 to 0.4.0](docs/upgrading.md#030-to-040)). The configuration file still holds the covers set by hand and the station logos with their images, and older files restore as before.
 - **Listener statistics read each stream server once a minute**, for all its mounts, instead of once per output.
-- **Outputs in the API** give a `server_id` and only their mount in `config`; their `statistics` (the admin credentials) moved to the stream server. A migration groups the existing outputs into servers ([Upgrading – Edge](docs/upgrading.md#edge)).
+- **Outputs in the API** give a `server_id` and only their mount in `config`; their `statistics` (the admin credentials) moved to the stream server. A migration groups the existing outputs into servers ([Upgrading – 0.3.0 to 0.4.0](docs/upgrading.md#030-to-040)).
 - **Settings** are in tabs: *Station*, *Programming*, *Audio*, *Library* and *Statistics*.
 - **Page width** (Account › Display): *Normal*, *80 %* or *100 %* of the window, instead of a *whole width* checkbox. The API's `full_width` is now `width` (`normal`, `wide` or `full`); a migration and older configuration backups turn `full_width` into `full`.
 - **The track list's bar**: search on its own line, then the station, category, play ratio and sort menus, each with its name above it; the status menu (playable, missing, silent…) and the daypart separation filter moved to *More filters*, which opens by itself when one of them is set (as from the library's *missing* or *silent* links).
@@ -98,6 +98,11 @@ What `main` has since the last release: it is published as the `edge` images. Re
 - A user with the whole width in an older backup (`full_width`, written as `1`) gets the *100 %* width back on restore, not the normal one.
 - **Statistics:** devices and players are no longer added to *Other* below 5 listeners a day: a small station saw only *Other*. Countries keep that floor. *Today* is at the top of the page.
 - **Rotation planned weeks ahead after a fallback track:** an unanalyzed file of the fallback directory reports no length, sent as the largest number, and the picks after it were planned about 50 days later (dated so in the rotation log, with their rules and exact times wrong). Planning and the queue's expected starts now take a usual track's length for it, and a cued fallback track, which gives way to anything queued, no longer counts.
+
+### Not yet
+
+- The rest of M11: Opus and Vorbis, HLS, Shoutcast, file recording, an external process pipe and live DJ input. HE-AAC works through the external FFmpeg encoder only.
+- Certification deliveries by SFTP (M19): FTPS only for now.
 
 ## 0.3.0 – 2026-11-05
 

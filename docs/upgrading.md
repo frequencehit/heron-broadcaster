@@ -235,9 +235,15 @@ A new engine can only take over from an engine that speaks the same handover pro
 
 What each release asks of an upgrade, on top of the steps above. What it brings is in the [changelog](../CHANGELOG.md).
 
-### Edge
+### 0.3.0 to 0.4.0
 
-The engines, the API and the web interface are upgraded as usual. A few things to know:
+The upgrade is done on air with `scripts/upgrade.sh 0.4.0` (or `--swarm <stack> 0.4.0`): the handover protocol has not changed, so the 0.4.0 engine of each station takes over from the 0.3.0 one without a gap.
+
+1. **Back up the database** (see above): `heron-api` runs 28 more migrations when it starts, some of them long on a large library (cover images, listener totals), and going back to 0.3.0 needs the backup.
+2. **Update the deployment files.** `docker-compose.yml` now has MariaDB upgrade its own tables (`MARIADB_AUTO_UPGRADE`), a `covers` volume shared by `heron-api` and `heron-librarian`, two read-only folders in `heron-api` (`HERON_GEOIP_FOLDER`, `./data/geoip`, and `HERON_ACCESS_LOGS_FOLDER`, `./data/access-logs`) and a new service, `heron-public`, in the `public` profile (below). Take the 0.4.0 `docker-compose.yml` (`git checkout v0.4.0`) and the new lines of `.env.example`; for Swarm, add the same volume, folders and environment to the stack file. Create both folders before the first start.
+3. **Upgrade:** `scripts/upgrade.sh 0.4.0`. It upgrades the services that run: start `heron-public` afterwards, if the station uses the shows.
+
+A few things to know:
 
 - **MariaDB's own tables are upgraded when its version changes.** The `mariadb` service of `docker-compose.yml` now sets `MARIADB_AUTO_UPGRADE`, so the image runs `mariadb-upgrade` when it starts on data of an older version. Without it, the database works but `mariadb-dump` fails, and backups have no database dump: *Column count of mysql.proc is wrong … Please use mariadb-upgrade*. A database already moved to 12.3 without it is fixed with:
 
