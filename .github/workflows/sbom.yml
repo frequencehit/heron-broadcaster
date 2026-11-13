@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Generates CycloneDX SBOMs of the source and of the published images and
+# uploads them to Dependency-Track. Signs in with the job's GitHub OIDC token
+# (workload identity federation, Dependency-Track >= 5.2): no secret to store.
+# See docs/conventions.md.
+name: SBOM
+
+on:
+  # The source: on each push to main or of a vX.Y.Z tag.
+  push:
+    branches: [main]
+    tags: ['v*']
+  # The images: once CI has published those of such a push. No checkout here:
+  # a workflow_run job is privileged.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # lets the jobs request an OIDC token for Dependency-Track
+  packages: read # pulls the images from GHCR
+
+env:
+  # The commit and branch or tag CI ran on, or the dispatched ones.
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  # main on pushes to main, vX.Y.Z on releases
+  VERSION: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+
+jobs:
+  source:
+    # Forks have no access to this Dependency-Track server.
+    if: >-
+      github.repository == 'dehy/heron-broadcaster' &&
+      github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Scans the checkout's lockfiles and manifests.
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: bom.json
+          upload-artifact: false
+
+      - uses: DependencyTrack/gh-upload-sbom@331f980a6eba119842052f447c54b09e4888b4c6 # v4.3.0
+        with:
+          server-hostname: dtrack.admds.net
+          workload-identity-provider: github-actions
+          service-account: github-ci
+          oidc-audience: https://dtrack.admds.net
+          project-name: ${{ github.event.repository.name }}
+          project-version: ${{ env.VERSION }}
+          is-latest: ${{ startsWith(env.VERSION, 'v') }}
+          project-tags: github,${{ github.repository_owner }}
+          bom-filename: bom.json
+          auto-create: true
+
+  images:
+    name: Image ${{ matrix.image }}
+    # The source project is the images' parent: it must exist first. After a
+    # push, the source job ran when the push did, long before CI published the
+    # images; when started by hand, this job waits for it.
+    needs: [source]
+    # Only pushes that passed CI have published images.
+    if: >-
+      !cancelled() && needs.source.result != 'failure' &&
+      github.repository == 'dehy/heron-broadcaster' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [heron-api, heron-analyzer, heron-librarian, heron-engine, heron-web]
+    steps:
+      # The image CI published for this commit; GHCR names are lowercase.
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}:sha-${SHA::7}" >> "$GITHUB_ENV"
+
+      # Scans the image's OS packages and binaries (linux/amd64).
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.IMAGE }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: cyclonedx-json
+          output-file: bom.json
+          upload-artifact: false
+
+      - uses: DependencyTrack/gh-upload-sbom@331f980a6eba119842052f447c54b09e4888b4c6 # v4.3.0
+        with:
+          server-hostname: dtrack.admds.net
+          workload-identity-provider: github-actions
+          service-account: github-ci
+          oidc-audience: https://dtrack.admds.net
+          project-name: ${{ matrix.image }}
+          project-version: ${{ env.VERSION }}
+          is-latest: ${{ startsWith(env.VERSION, 'v') }}
+          project-tags: github,${{ github.repository_owner }},image
+          parent-name: ${{ github.event.repository.name }}
+          parent-version: ${{ env.VERSION }}
+          bom-filename: bom.json
+          auto-create: true
