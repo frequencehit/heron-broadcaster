@@ -95,7 +95,7 @@ The *Shows* section of the menu has a page per [show](listener-interaction.md) t
 
 **Featured artist** has three tabs (see [Featured artist](listener-interaction.md#featured-artist)):
 
-- **Planning**: the coming 12 weeks (or 31 days), the current one first, each with its artist, chosen by name among the library's artists, or *no artist*; past ones below, unchanged
+- **Planning**: this week and the next 12 (or today and the next 31 days), each with its artist, chosen by name among the library's artists, or *no artist*, with how many have none
 - **Today**: the day's times, each with its jingle and track (planned, queued or played, and when), or why it was passed over
 - **Settings**: the hours; the minutes of each hour (`:00`, `:15`, `:30`, `:45`), by week or by day, the window before and after each time, the jingle category; the notifications, with `{artist}`
 
