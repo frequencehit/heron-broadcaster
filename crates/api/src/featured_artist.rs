@@ -10,7 +10,7 @@
 //! ([`heron_rotation::ShowTime`]): the queue manager gives them to it with
 //! the library ([`show_times`]).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Duration;
 
 use axum::Json;
@@ -293,7 +293,7 @@ async fn show_picks(
     .await?;
     let mut picks: HashMap<i64, Vec<ShowPick>> = HashMap::new();
     for (at, track, linked, planned, started) in rows {
-        let jingle = linked.as_deref() == Some("true");
+        let jingle = matches!(linked.as_deref(), Some("true" | "1"));
         picks
             .entry(at)
             .or_default()
@@ -809,15 +809,19 @@ async fn get_featured_day(
         .bind(track)
         .fetch_one(pool)
         .await?;
-        coming.push((last, *track));
+        // A track queued counts as played at its planned time.
+        let queued = picks
+            .values()
+            .flatten()
+            .filter(|(id, _, _, _)| *id == Some(*track))
+            .map(|(_, _, planned, _)| *planned)
+            .max();
+        coming.push((last.max(queued), *track));
     }
+    // Each time to come plays the least recently played, which then goes
+    // last: they follow one another in this order.
     coming.sort();
-    let mut used: HashSet<u64> = picks
-        .values()
-        .flatten()
-        .filter(|(_, jingle, _, _)| !jingle)
-        .filter_map(|(track, _, _, _)| *track)
-        .collect();
+    let mut next_coming = 0;
     let now = Timestamp::now().as_millisecond();
     let mut ids: Vec<u64> = candidates.clone();
     ids.extend(
@@ -877,13 +881,9 @@ async fn get_featured_day(
                 )
             } else {
                 let next = coming
-                    .iter()
-                    .find(|(_, track)| !used.contains(track))
-                    .or_else(|| coming.first())
+                    .get(next_coming % coming.len().max(1))
                     .map(|(_, track)| *track);
-                if let Some(next) = next {
-                    used.insert(next);
-                }
+                next_coming += 1;
                 (
                     TimeStatus::Planned,
                     None,
