@@ -484,6 +484,8 @@ A station puts an artist forward: on the days and hours it chooses, at set minut
 
 *Shows › Featured artist*, for operators:
 
+[![The Planning tab: an artist per week, the weeks without one counted](images/featured-artist.png)](images/featured-artist.png)
+
 - **Planning**: this week and the next 12 (or today and the next 31 days), an artist chosen for each among the library's artists, by name, or taken out.
 - **Today**: the day's times, with the track planned or played at each, its jingle, and what was passed over and why.
 - **Settings**: hours, minutes, by week or by day, the window, the jingle category, and the website and notifications every show has.
