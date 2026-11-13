@@ -27,7 +27,8 @@
 
   var TEXT = {
     en: {
-      names: { dedications: "Dedications", match: "The match", top30: "Top", likes: "Do you like it?" },
+      names: { dedications: "Dedications", match: "The match", top30: "Top", likes: "Do you like it?", featured_artist: "Featured artist" },
+      featured_artist: { week: "Artist of the week", day: "Artist of the day", next: "Next at {hour}", none: "No featured artist right now." },
       until: "Until {hour}",
       likes: {
         sub: "Only the track playing can be voted on",
@@ -120,7 +121,8 @@
       },
     },
     fr: {
-      names: { dedications: "Dédicaces", match: "Le match", top30: "Top", likes: "Vous aimez ?" },
+      names: { dedications: "Dédicaces", match: "Le match", top30: "Top", likes: "Vous aimez ?", featured_artist: "L'artiste à l'honneur" },
+      featured_artist: { week: "L'artiste de la semaine", day: "L'artiste du jour", next: "Prochain passage à {hour}", none: "Pas d'artiste à l'honneur pour le moment." },
       until: "Jusqu'à {hour}",
       likes: {
         sub: "On ne vote que pour le titre en cours",
@@ -213,7 +215,8 @@
       },
     },
     es: {
-      names: { dedications: "Dedicatorias", match: "El duelo", top30: "Top", likes: "¿Te gusta?" },
+      names: { dedications: "Dedicatorias", match: "El duelo", top30: "Top", likes: "¿Te gusta?", featured_artist: "Artista destacado" },
+      featured_artist: { week: "El artista de la semana", day: "El artista del día", next: "Próximo a las {hour}", none: "Ningún artista destacado por ahora." },
       until: "Hasta las {hour}",
       likes: {
         sub: "Solo se vota la canción que suena",
@@ -306,7 +309,8 @@
       },
     },
     de: {
-      names: { dedications: "Widmungen", match: "Das Duell", top30: "Top", likes: "Gefällt's dir?" },
+      names: { dedications: "Widmungen", match: "Das Duell", top30: "Top", likes: "Gefällt's dir?", featured_artist: "Künstler im Fokus" },
+      featured_artist: { week: "Künstler der Woche", day: "Künstler des Tages", next: "Nächstes Mal um {hour}", none: "Gerade kein Künstler im Fokus." },
       until: "Bis {hour}",
       likes: {
         sub: "Abgestimmt wird nur über den laufenden Titel",
@@ -656,6 +660,24 @@
       var counts = top.state.votes_count_for_unix_ms;
       var weekday = new Intl.DateTimeFormat(lang, { weekday: "long", timeZone: top.timezone || state.timezone }).format(counts);
       body.appendChild(el("p", "muted", fill(t.top30.votesFor, { name: top.title || top.state.name || t.names.top30, day: weekday })));
+    }
+  };
+
+  // Featured artist (docs/listener-interaction.md#featured-artist): the
+  // artist of the week or the day, and its next time today.
+  RENDERERS.featured_artist = function (body, show, state) {
+    var featured = show.state || {};
+    if (!featured.artist) {
+      body.appendChild(el("p", "muted", t.featured_artist.none));
+      return;
+    }
+    body.appendChild(el("p", "muted", featured.by === "day" ? t.featured_artist.day : t.featured_artist.week));
+    var who = el("p", "track");
+    who.appendChild(el("strong", "", featured.artist));
+    body.appendChild(who);
+    if (featured.next_at_unix_ms) {
+      var zone = show.timezone || state.timezone;
+      body.appendChild(el("p", "muted", fill(t.featured_artist.next, { hour: hour(featured.next_at_unix_ms, zone) })));
     }
   };
 

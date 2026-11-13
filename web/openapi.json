@@ -4037,6 +4037,241 @@
         }
       }
     },
+    "/api/v1/featured-artist/day": {
+      "get": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "The day's times, each with its jingle and track (planned, queued or\nplayed), or why nothing played.",
+        "operationId": "get_featured_day",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "description": "`YYYY-MM-DD`; today by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Day"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/featured-artist/planning": {
+      "get": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "The planning: each week (or day) from `from` to `to`, with its artist\nor none.",
+        "operationId": "get_featured_planning",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The first date (`YYYY-MM-DD`): this week, or today, by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The last date: 12 weeks, or 31 days, after the first by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Planning"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/featured-artist/planning/{date}": {
+      "put": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "Plans the artist of the week of that Monday, or of that day. Operators.",
+        "operationId": "put_featured_entry",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "description": "The Monday of the week, or the day (YYYY-MM-DD)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningEntry"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "Takes the artist out of the week or the day. Operators.",
+        "operationId": "delete_featured_entry",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "description": "The Monday of the week, or the day (YYYY-MM-DD)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/featured-artist/settings": {
+      "get": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "The station's Featured artist settings.",
+        "operationId": "get_featured_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "Replaces them. The jingle category must be the station's (`422`).\nOperators.",
+        "operationId": "put_featured_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeaturedSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gateway/state": {
       "get": {
         "tags": [
@@ -9667,7 +9902,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or likes",
+            "description": "dedications, match, featured_artist or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -9705,7 +9940,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or likes",
+            "description": "dedications, match, featured_artist or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -12370,6 +12605,299 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Recalculated"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/featured-artist/day": {
+      "get": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "The day's times, each with its jingle and track (planned, queued or\nplayed), or why nothing played.",
+        "operationId": "get_featured_day_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "description": "`YYYY-MM-DD`; today by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Day"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/featured-artist/planning": {
+      "get": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "The planning: each week (or day) from `from` to `to`, with its artist\nor none.",
+        "operationId": "get_featured_planning_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The first date (`YYYY-MM-DD`): this week, or today, by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The last date: 12 weeks, or 31 days, after the first by default.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Planning"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/featured-artist/planning/{date}": {
+      "put": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "Plans the artist of the week of that Monday, or of that day. Operators.",
+        "operationId": "put_featured_entry_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "description": "The Monday of the week, or the day (YYYY-MM-DD)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningEntry"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "Takes the artist out of the week or the day. Operators.",
+        "operationId": "delete_featured_entry_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "description": "The Monday of the week, or the day (YYYY-MM-DD)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stations/{station_id}/featured-artist/settings": {
+      "get": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "The station's Featured artist settings.",
+        "operationId": "get_featured_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedSettings"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "featured_artist"
+        ],
+        "summary": "Replaces them. The jingle category must be the station's (`422`).\nOperators.",
+        "operationId": "put_featured_settings_on_station",
+        "parameters": [
+          {
+            "name": "station_id",
+            "in": "path",
+            "description": "The station's ID",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeaturedSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedSettings"
                 }
               }
             }
@@ -15950,7 +16478,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or likes",
+            "description": "dedications, match, featured_artist or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -15997,7 +16525,7 @@
           {
             "name": "module",
             "in": "path",
-            "description": "dedications, match or likes",
+            "description": "dedications, match, featured_artist or likes",
             "required": true,
             "schema": {
               "type": "string"
@@ -22241,6 +22769,14 @@
           }
         }
       },
+      "By": {
+        "type": "string",
+        "description": "An artist per week, from Monday to Sunday, or per day.",
+        "enum": [
+          "week",
+          "day"
+        ]
+      },
       "CalculationDetail": {
         "allOf": [
           {
@@ -23960,6 +24496,121 @@
           }
         }
       },
+      "Day": {
+        "type": "object",
+        "required": [
+          "date",
+          "times"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artist_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "date": {
+            "type": "string"
+          },
+          "times": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DayTime"
+            }
+          }
+        }
+      },
+      "DayTime": {
+        "type": "object",
+        "required": [
+          "at_unix_ms",
+          "status"
+        ],
+        "properties": {
+          "at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "jingle": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DayTrack"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it was passed over, or plays nothing."
+          },
+          "started_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TimeStatus"
+          },
+          "track": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DayTrack"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "DayTrack": {
+        "type": "object",
+        "required": [
+          "track_id"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "length_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "DaypartFrom": {
         "type": "string",
         "description": "Where a daypart value comes from: the slot's category, or the track's\nown, which replaces it.",
@@ -25311,6 +25962,20 @@
           }
         }
       },
+      "EntryInput": {
+        "type": "object",
+        "required": [
+          "artist_id"
+        ],
+        "properties": {
+          "artist_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "EqPreset": {
         "type": "object",
         "required": [
@@ -25894,6 +26559,14 @@
               "null"
             ]
           },
+          "show_at_unix_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "A show's pick (its jingle or its track) for its time (Unix ms),\noutside the clock: the Featured artist's."
+          },
           "skipped_slots": {
             "type": "array",
             "items": {
@@ -26003,6 +26676,52 @@
           "logarithmic",
           "exponential"
         ]
+      },
+      "FeaturedSettings": {
+        "type": "object",
+        "description": "The show's own settings.",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/By",
+            "default": "week"
+          },
+          "jingle_category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The jingle before the track, a category of the station; `None`:\nnone.",
+            "default": null,
+            "minimum": 0
+          },
+          "minutes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Of each hour of its hours: some of 0, 15, 30 and 45.",
+            "default": [
+              0
+            ]
+          },
+          "window_after_s": {
+            "type": "integer",
+            "format": "int32",
+            "default": 30,
+            "minimum": 0
+          },
+          "window_before_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How early and how late the jingle (or the track) may start, in\nseconds, 0 to 300.",
+            "default": 10,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "FetchRequest": {
         "type": "object",
@@ -29511,7 +30230,8 @@
           "top30",
           "likes",
           "certification",
-          "status_bar"
+          "status_bar",
+          "featured_artist"
         ]
       },
       "Modules": {
@@ -29537,6 +30257,10 @@
           "eq": {
             "type": "boolean",
             "default": true
+          },
+          "featured_artist": {
+            "type": "boolean",
+            "default": false
           },
           "labels": {
             "type": "boolean",
@@ -30861,6 +31585,56 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "Planning": {
+        "type": "object",
+        "required": [
+          "by",
+          "entries"
+        ],
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/By"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanningEntry"
+            }
+          }
+        }
+      },
+      "PlanningEntry": {
+        "type": "object",
+        "description": "A week or a day of the planning.",
+        "required": [
+          "date",
+          "current"
+        ],
+        "properties": {
+          "artist": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artist_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The week or day of today."
+          },
+          "date": {
+            "type": "string",
+            "description": "The Monday of the week, or the day (`YYYY-MM-DD`)."
           }
         }
       },
@@ -36496,6 +37270,16 @@
           "dark"
         ]
       },
+      "TimeStatus": {
+        "type": "string",
+        "enum": [
+          "planned",
+          "queued",
+          "played",
+          "passed_over",
+          "none"
+        ]
+      },
       "TodoCounts": {
         "type": "object",
         "description": "What there is to do on the library: the counts of the *To do* page.",
@@ -39638,6 +40422,10 @@
     {
       "name": "certification",
       "description": "The stream servers' access logs, kept and exported for audience certification"
+    },
+    {
+      "name": "featured_artist",
+      "description": "At set minutes of its hours, a track of the artist of the week or the day, at an exact time"
     },
     {
       "name": "top30",

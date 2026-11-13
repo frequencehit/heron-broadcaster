@@ -79,6 +79,7 @@ pub fn module_of(path: &str) -> Option<Module> {
         ["tops", ..] => Module::Top30,
         ["dedications", ..] => Module::Dedications,
         ["match", ..] => Module::Match,
+        ["featured-artist", ..] => Module::FeaturedArtist,
         ["certification", ..]
         | ["settings", "certification"]
         | ["stream-servers", _, "access-log", ..] => Module::Certification,

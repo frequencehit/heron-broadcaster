@@ -48,6 +48,7 @@ export const MODULES: ModuleEntry[] = [
   { key: "dedications", label: "nav.dedications", help: "modules.dedicationsHelp", off: "modules.showOff" },
   { key: "match", label: "nav.match", help: "modules.matchHelp", off: "modules.showOff" },
   { key: "top30", label: "nav.top30", help: "modules.top30Help", off: "modules.showOff" },
+  { key: "featured_artist", label: "nav.featuredArtist", help: "modules.featuredArtistHelp", off: "modules.showOff" },
   { key: "likes", label: "nav.likes", help: "modules.likesHelp", off: "modules.likesOff" },
   {
     key: "certification",
@@ -80,6 +81,7 @@ export const ALL_ON: Modules = {
   likes: true,
   certification: false,
   status_bar: true,
+  featured_artist: false,
 };
 
 export function moduleKey(station: number | null): readonly unknown[] {

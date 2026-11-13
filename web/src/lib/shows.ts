@@ -8,7 +8,7 @@ import type { Schemas } from "../api";
 import type { IconName } from "../components/ui";
 import type { PlainKey } from "../i18n";
 
-export type ShowKey = "dedications" | "match" | "top30" | "likes";
+export type ShowKey = "dedications" | "match" | "top30" | "featured_artist" | "likes";
 export type ShowSettings = Schemas["ShowSettings"];
 export type HourRange = Schemas["HourRange"];
 export type ShowView = Schemas["ShowView"];
@@ -18,6 +18,7 @@ export const SHOWS: { key: ShowKey; label: PlainKey; icon: IconName; hours: bool
   { key: "dedications", label: "nav.dedications", icon: "mic", hours: true },
   { key: "match", label: "nav.match", icon: "bolt", hours: true },
   { key: "top30", label: "nav.top30", icon: "chart", hours: true },
+  { key: "featured_artist", label: "nav.featuredArtist", icon: "star", hours: true },
   // Open all the time: no hours, no notifications.
   { key: "likes", label: "nav.likes", icon: "like", hours: false },
 ];
@@ -73,6 +74,8 @@ export function ownPlaceholders(key: string): string[] {
       return ["artist", "title", "from", "to", "message", "time"];
     case "match":
       return ["title1", "artist1", "title2", "artist2", "close", "winner", "loser", "percent", "votes"];
+    case "featured_artist":
+      return ["artist"];
     default:
       return [];
   }
@@ -109,6 +112,8 @@ export function ownExample(key: string): Record<string, string> {
         percent: "58 %",
         votes: "79",
       };
+    case "featured_artist":
+      return { artist: "Mira Solano" };
     default:
       return {};
   }

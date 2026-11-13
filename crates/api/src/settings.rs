@@ -310,7 +310,7 @@ impl EngineManagement {
 
 /// The settings groups each station has its own of, in `station_settings`
 /// (docs/stations.md#settings). The others are shared, in `settings`.
-pub const PER_STATION: [&str; 17] = [
+pub const PER_STATION: [&str; 19] = [
     "station",
     "stream_details",
     "playout",
@@ -325,9 +325,11 @@ pub const PER_STATION: [&str; 17] = [
     "show_match",
     "show_top30",
     "show_likes",
+    "show_featured_artist",
     "top30",
     "dedications",
     "match",
+    "featured_artist",
 ];
 
 fn shared(name: &str) {

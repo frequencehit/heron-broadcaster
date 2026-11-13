@@ -312,6 +312,26 @@ impl Clock {
     }
 }
 
+/// A show's exact time, outside the clocks: the Featured artist's
+/// (`docs/listener-interaction.md#featured-artist`). At it, the clock
+/// pauses: the show's jingle and track play, then the clock goes on with
+/// the slot it was at.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShowTime {
+    /// The time (Unix ms).
+    pub at_ms: i64,
+    /// Its soft window: how early and how late the show's pick may start,
+    /// in seconds.
+    pub before_s: u32,
+    pub after_s: u32,
+    /// The tracks it plays one of, the least recently played first.
+    pub tracks: Vec<TrackId>,
+    /// Its jingle's category, played right before the track.
+    pub jingle_category: Option<CategoryId>,
+    /// Already queued or played (the rotation log says so).
+    pub done: bool,
+}
+
 /// Everything rotation needs to know about the station.
 #[derive(Clone, Debug)]
 pub struct Library {
@@ -342,6 +362,9 @@ pub struct Library {
     pub medley_category: Option<CategoryId>,
     /// Rendered medleys' tracks and how they can be shortened.
     pub medleys: HashMap<TrackId, Medley>,
+    /// The shows' exact times, in order: set by the caller after
+    /// [`Library::new`].
+    pub show_times: Vec<ShowTime>,
 }
 
 /// Library pieces, before [`Library::new`] ties them together.
@@ -437,6 +460,7 @@ impl Library {
             modules_off: parts.modules_off.into_iter().collect(),
             medley_category: parts.medley_category,
             medleys: parts.medleys.into_iter().collect(),
+            show_times: Vec::new(),
         }
     }
 

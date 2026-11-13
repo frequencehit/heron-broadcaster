@@ -144,7 +144,8 @@ async fn forget_unused(pool: &MySqlPool) -> ApiResult<()> {
            AND NOT EXISTS (SELECT 1 FROM artist_similar s
                            WHERE s.artist_id = artists.id OR s.similar_id = artists.id)
            AND NOT EXISTS (SELECT 1 FROM restrictions r
-                           WHERE r.target = 'artist' AND r.target_id = artists.id)",
+                           WHERE r.target = 'artist' AND r.target_id = artists.id)
+           AND NOT EXISTS (SELECT 1 FROM featured_artists f WHERE f.artist_id = artists.id)",
     )
     .execute(pool)
     .await?
@@ -580,6 +581,11 @@ async fn merge_artist(
         .bind(gone)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("UPDATE featured_artists SET artist_id = ? WHERE artist_id = ?")
+        .bind(keep)
+        .bind(gone)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM artists WHERE id = ?")
         .bind(gone)
         .execute(&mut *tx)
@@ -658,8 +664,10 @@ async fn move_name(
         "DELETE FROM artists WHERE id = ?
            AND NOT EXISTS (SELECT 1 FROM artist_names WHERE artist_id = ?)
            AND NOT EXISTS (SELECT 1 FROM track_artists WHERE artist_id = ?)
-           AND NOT EXISTS (SELECT 1 FROM restrictions WHERE target = 'artist' AND target_id = ?)",
+           AND NOT EXISTS (SELECT 1 FROM restrictions WHERE target = 'artist' AND target_id = ?)
+           AND NOT EXISTS (SELECT 1 FROM featured_artists WHERE artist_id = ?)",
     )
+    .bind(from)
     .bind(from)
     .bind(from)
     .bind(from)
