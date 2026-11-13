@@ -78,3 +78,16 @@ Asked after the first weeks of the Top 30: several charts per station, by plays 
 - [ ] A top that fails is left out of the queue fill with a warning, and rotation fills; an item that cannot play is passed over and the programme goes on.
 - [ ] The web interface: *Tops*, the list with each top's period, score, show, next show and a warning when it gives way; per top, *Chart* (plays, likes, the score in two parts, the ranks after the size greyed, the tracks without enough votes), *The show*, *Past charts* and *Settings*. The show's days are buttons, Monday to Sunday, as the Match's hours; the period's day and time sit on one line with their choice. All four catalogs.
 - [ ] Tests: periods, resets and freezes; the score and its ties; recurrences and the precedence between tops; the migration; the API end to end; corrupt top settings with the queue still filling; an unplayable item passed over during a show; the web pages.
+
+## Featured artist
+
+A show of its own (`featured_artist`): at set minutes of its hours, a track of the artist of the week, or of the day, at a soft exact time, after a jingle if any ([Listener interaction – Featured artist](../listener-interaction.md#featured-artist)).
+
+- [ ] Its hours are a show's, whole hours held like the Match's and the Dedications'; its minutes are some of `:00`, `:15`, `:30`, `:45`; outside them, or turned off, it plays nothing.
+- [ ] A planning by week (Monday to Sunday) or by day, filled ahead; a week or day without an artist plays nothing; going from one to the other keeps what was planned.
+- [ ] At each time, the jingle (if any) and the artist's track start in the show's window, as a soft exact time: rotation plans the tracks before it to land, and the clock pauses then goes on with its slot. A clock slot's exact time whose window meets it comes first, the show's track right after.
+- [ ] The track: the artist's (any name, featuring included), music, the least recently played first, not twice in the day while others are left; restrictions apply, separation rules do not, but count it for the tracks around it; none: nothing plays and the rotation log says why. The jingle: of the jingle category, in turn, linked to the track.
+- [ ] A show that fails is left out with a warning, and rotation fills as without it.
+- [ ] The web interface: *Shows › Featured artist* with *Planning* (an artist per week or day, by name), *Today* and *Settings*; the widget shows the artist and its next time; `{artist}` in the notifications. All four catalogs.
+- [ ] Tests: the times of an hour from its minutes; the planning by week and by day; the planner (a time landing, a clock exact time meeting it, no artist, no track left, the jingle); the API end to end; the web pages.
+

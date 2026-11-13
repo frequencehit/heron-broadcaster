@@ -2,6 +2,14 @@
 
 What changed in each release of Heron. Before upgrading, read the release's notes in [Upgrading](docs/upgrading.md#release-notes).
 
+## Edge
+
+What `main` has since the last release: it is published as the `edge` images. Read the [Edge upgrade notes](docs/upgrading.md#edge) first.
+
+### Added
+
+- **Featured artist**, a show (`featured_artist`): on the days and hours it chooses, at `:00`, `:15`, `:30` or `:45` of each hour, a track of the artist of the week, or of the day, from a planning filled in ahead, plays at a soft exact time, after a jingle of its category if any ([Listener interaction – Featured artist](docs/listener-interaction.md#featured-artist)).
+
 ## 0.4.0 – 2026-11-11
 
 Listener interaction (M18: the public gateway `heron-public`, likes, tops, dedications and the match) and audience certification (M19: access logs and deliveries by FTPS) as modules, rotation rules (play ratio, daypart separation, draw depth, linked slots, exact times), cover art, two-factor authentication, stream servers, an audience report on the Statistics page, and a status bar set per user, for several stations. Upgrading from 0.3.0 keeps the station on air: see [0.3.0 to 0.4.0](docs/upgrading.md#030-to-040).

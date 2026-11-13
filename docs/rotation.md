@@ -162,6 +162,7 @@ Without an exact time, the track playing at the top of the hour plays to its end
   - **Late tolerance:** a track ending inside the window plays to its end and the slot follows. A track that would end later is faded out at the end of the window, over 1.5 s, as in hard mode.
   - **Fill with a medley** (off by default): when the last track rotation could plan ends before the window, the gap is filled with one of the station's [medleys](medleys.md#shortened-plays), the one landing inside the window with the fewest parts left out, shortened from its end when too long. The usual rules apply to it (separation, restrictions, play ratio, never two in a row), and the medleys module must be on for the station.
   - **When nothing fits** (no medley, or the option off): a track of the station's **filler category** (`filler_category_id` in the `rotation` settings: short jingles, liners), else the slot starts early, the rotation log saying so.
+- **A show's exact time:** the [Featured artist](listener-interaction.md#featured-artist) adds soft exact times to its hours, outside the clocks: rotation plans for them as for a slot's, the clock pausing while the show's jingle and track play. A clock slot's exact time whose window meets one of them comes first, and the show's track follows it.
 - **Live** ([M11](roadmap/m11-sinks-live-dj.md)): an exact time will not cut a live DJ, unless the slot's *cut live* option is on (ad breaks). The option is stored with the slot; it does nothing until live DJs exist.
 
 How rotation plans for it:
