@@ -47,6 +47,7 @@ import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
 import { LikesWeekCard } from "./components/Likes";
 import { DedicationsPage } from "./components/Dedications";
+import { FeaturedArtistPage } from "./components/FeaturedArtist";
 import { MatchPage } from "./components/Match";
 import { TopPage, TopsPage } from "./components/Tops";
 import { ShowPage } from "./pages/Show";
@@ -145,6 +146,9 @@ function pageAt(pathname: string): ReactNode {
   }
   if (show?.module === "dedications") {
     return <DedicationsPage />;
+  }
+  if (show?.module === "featured_artist") {
+    return <FeaturedArtistPage />;
   }
   if (show?.module === "likes") {
     return <ShowPage module="likes" tabs={<LikesWeekCard />} />;

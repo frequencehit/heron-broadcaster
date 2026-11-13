@@ -1,6 +1,6 @@
 # Listener interaction
 
-Listeners take part from the station's website: they ask for a song with a dedication, choose the next song, say whether they like the track playing. Each of these is a **show module** (*Dedications*, *Match*, *Tops*, and *Likes*), built on the common base described here: a public gateway, opening hours, a page and a widget for the website, and notifications. Built in [M18](roadmap/m18-listener-interaction.md); each show adds its own part on top.
+Listeners take part from the station's website: they ask for a song with a dedication, choose the next song, say whether they like the track playing. Each of these is a **show module** (*Dedications*, *Match*, *Tops*, *Featured artist* and *Likes*), built on the common base described here: a public gateway, opening hours, a page and a widget for the website, and notifications. Built in [M18](roadmap/m18-listener-interaction.md); each show adds its own part on top.
 
 ## The pieces
 
@@ -78,7 +78,7 @@ Reads answer any origin (`Access-Control-Allow-Origin: *`), like the API's publi
 
 ## Shows and their hours
 
-The shows are [modules](modules.md): *Dedications* (`dedications`), *Match* (`match`), *Tops* (`top30`), off until an admin turns them on, and *Likes* (`likes`), on by default. Each has, per station, its settings (`GET`, `PUT /stations/{id}/shows/{module}`, operators):
+The shows are [modules](modules.md): *Dedications* (`dedications`), *Match* (`match`), *Tops* (`top30`), *Featured artist* (`featured_artist`), off until an admin turns them on, and *Likes* (`likes`), on by default. Each has, per station, its settings (`GET`, `PUT /stations/{id}/shows/{module}`, operators):
 
 - **Opening hours**, in **whole hours**, in the station's time zone: ranges of days and hours (Monday to Friday, 17:00 to 18:00; up to 24:00). `enabled` off closes the show whatever its hours.
 - **An hour belongs to one show at most**, among the shows that are on: saving hours that another show of the station has is refused (`409`, saying which hours and which show). A show that is **off** (its module turned off for the station or the installation) or **not enabled** holds no hours: another show can take them. Turning it back on (its module, or `enabled`) is then refused (`409`, saying which hours and which show) until one of the two moves.
@@ -459,6 +459,51 @@ When the winner plays, the public `now-playing` (and the gateway's state) says s
 - **Per device**, the device's hash and its vote on a match, so that a device changes its vote instead of adding one: deleted an hour after the match closes, and a day after the vote at the latest. No IP address.
 
 The matches are in the database dump of the [backups](backups.md); the settings are in the configuration file.
+
+## Featured artist
+
+A station puts an artist forward: on the days and hours it chooses, at set minutes of each hour (*midday, 13:00, 14:00 and 15:00*, or *a quarter past, half past and a quarter to*), a track of **the artist of the week**, or **of the day**, plays at an exact time, after a jingle if the station has one. Module `featured_artist`, off until an admin turns it on.
+
+### When it plays
+
+- **Its hours** are a show's [opening hours](#shows-and-their-hours): days of the week and whole hours, in the station's time zone (*Monday to Friday, 12:00 to 16:00*). Like every show's, they belong to it: hours the Match, the Dedications or a top's show have are refused (`409`, saying which), and the other way round.
+- **Its minutes**, in each of those hours: `:00`, `:15`, `:30`, `:45`, any of them (one at least). *12:00 to 16:00* with `:00` plays at 12:00, 13:00, 14:00 and 15:00; with `:15`, `:30` and `:45`, three times an hour. These are **its times**.
+- **The artist** comes from its **planning**, filled in ahead: **by week** (an artist from Monday to Sunday) or **by day** (an artist per date), as the station chooses. A week or a day without an artist plays nothing at its times: the clocks play as usual, and the show's page lists the coming weeks or days without one. Changing from weeks to days, or back, keeps what was planned the other way, unused until the station goes back to it.
+
+### On air
+
+- **An exact time the show adds to the hour**, soft, as a clock slot's ([Rotation – Exact times](rotation.md#exact-times)): rotation plans the tracks before it so that the last one ends in its **window** (from 10 seconds before the time to 30 seconds after it by default, 0 to 300 each, set by the show), with the fills and their fit search, and the station's medleys or filler category when nothing lands. A track that would end after the window is faded out at its end, over 1.5 s.
+- **The clock pauses**: at the time, the jingle and the artist's track play, then the clock goes on with the slot it was at. It is not a slot of the clock: the clock's own slots, their exact times and its balance stay as they are, two or four minutes later.
+- **A clock's exact time comes first**: when the window of a clock slot's exact time (a news flash at `:00:00`, an ad break at `:15:00`) meets the show's, the clock's slot plays at its time, and the show's track right after it (and after its linked slot), without a window of its own.
+- **The track**, among the station's library: the tracks of the artist (any of its [names](rotation.md#artists-with-several-names), featuring included) in a category whose type sends its metadata (music), the one played least recently on the station first: a track played that day is left for the others while there are any. **Restrictions apply** at its planned time; **separation rules do not** to it (the artist plays every quarter of an hour, if the station wants), but they count it for the tracks around it, as any play: rotation keeps the artist and the track out of the picks next to it. A track that cannot play (disabled, missing, nothing audible) is passed over. None left: nothing plays at that time, the show's *Today* tab says so, and the clock goes on.
+- **The jingle**, optional: a jingle of the show's **jingle category** (*Jingles "featured artist"*, say), linked to the track as the jingle of a [linked slot](rotation.md#linked-slots) is: it starts at the time, the pair landing in the window, and never plays without the track. Without a jingle left, the track plays alone. Its jingles are picked in turn, the least recently played first. Its category's type says where it plays (over the intro: the FX player). Without a jingle category, the track plays alone.
+- **In the queue**: the jingle and the track are queued as rotation's picks, as the queue needs them, and logged in the rotation log as the show's. They are rotation's plays in the history. With autofill off, nothing is queued: the show does not play either.
+- **Never off air**: a show that fails (settings it cannot read, a planning it cannot parse) is logged as a warning and left out: rotation fills the queue as without it.
+
+### In Heron
+
+*Shows › Featured artist*, for operators:
+
+[![The Planning tab: an artist per week, the weeks without one counted](images/featured-artist.png)](images/featured-artist.png)
+
+- **Planning**: this week and the next 12 (or today and the next 31 days), an artist chosen for each among the library's artists, by name, or taken out.
+- **Today**: the day's times, with the track planned or played at each, its jingle, and what was passed over and why.
+- **Settings**: hours, minutes, by week or by day, the window, the jingle category, and the website and notifications every show has.
+
+### Notifications
+
+The common `show.upcoming`, `show.started` and `show.ended`, at the show's hours, with `{artist}`: the artist of the week or the day.
+
+### On the website
+
+The page and the small widget (`featured_artist`) show the artist of the week or the day, and the next time it plays (*Featured artist of the week: Daft Punk, next at 14:15*). Outside its hours, or without an artist, the closed message, or nothing.
+
+### What is kept
+
+- **The planning**, with each week or day and its artist: a year after its week or day is over, it is deleted.
+- Its plays are rotation's, in the history and the rotation log, kept as theirs.
+
+The planning is in the database dump of the [backups](backups.md); the settings are in the configuration file.
 
 ## Personal data
 

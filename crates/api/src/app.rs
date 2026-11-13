@@ -99,6 +99,7 @@ pub struct AppState {
         (name = "dedications", description = "Listeners' requests for a track with a message, accepted into the queue or refused"),
         (name = "match", description = "Listeners vote for the next track between two, every few tracks"),
         (name = "certification", description = "The stream servers' access logs, kept and exported for audience certification"),
+        (name = "featured_artist", description = "At set minutes of its hours, a track of the artist of the week or the day, at an exact time"),
         (name = "top30", description = "The tops: the charts of the most played and liked tracks, each played on air in its show"),
         (name = "gateway", description = "For heron-public, the shows' public gateway, with the gateway token only"),
     )
@@ -165,6 +166,7 @@ fn api() -> OpenApiRouter<AppState> {
         .merge(crate::tops::router())
         .merge(crate::dedications::router())
         .merge(crate::matches::router())
+        .merge(crate::featured_artist::router())
         .merge(crate::certification::router())
         .merge(crate::gateway::router())
 }

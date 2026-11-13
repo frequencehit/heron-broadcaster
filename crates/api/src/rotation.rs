@@ -281,7 +281,7 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
     .bind(station_id)
     .fetch_all(pool)
     .await?;
-    Ok(Library::new(
+    let mut library = Library::new(
         LibraryParts {
             tracks,
             categories,
@@ -306,7 +306,24 @@ pub async fn load_library(pool: &MySqlPool, station_id: u64) -> ApiResult<Librar
             },
         },
         station.time_zone(),
-    ))
+    );
+    // The Featured artist's times. A show that fails never stops the
+    // music: rotation plays as without it.
+    library.show_times = match crate::featured_artist::show_times(
+        pool,
+        station_id,
+        &library,
+        now_ms(),
+    )
+    .await
+    {
+        Ok(times) => times,
+        Err(error) => {
+            tracing::warn!(station = station_id, %error, "cannot read the featured artist: rotation plays without it");
+            Vec::new()
+        }
+    };
+    Ok(library)
 }
 
 /// A medley whose file lasts longer or shorter than its layout by more

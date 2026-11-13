@@ -35,10 +35,13 @@ pub enum Module {
     Certification,
     /// The status bar at the bottom of every page (`docs/web.md#status-bar`).
     StatusBar,
+    /// A show: at set minutes of its hours, a track of the artist of the
+    /// week or the day (`docs/listener-interaction.md#featured-artist`).
+    FeaturedArtist,
 }
 
 impl Module {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Medleys,
         Self::CoverArt,
         Self::ListenerStatistics,
@@ -56,10 +59,17 @@ impl Module {
         Self::Likes,
         Self::Certification,
         Self::StatusBar,
+        Self::FeaturedArtist,
     ];
 
     /// The show modules, which listeners take part in from the website.
-    pub const SHOWS: [Self; 4] = [Self::Dedications, Self::Match, Self::Top30, Self::Likes];
+    pub const SHOWS: [Self; 5] = [
+        Self::Dedications,
+        Self::Match,
+        Self::Top30,
+        Self::Likes,
+        Self::FeaturedArtist,
+    ];
 
     /// Whether it is a show (`docs/listener-interaction.md`).
     pub fn is_show(self) -> bool {
@@ -91,6 +101,7 @@ impl Module {
             Self::Likes => "likes",
             Self::Certification => "certification",
             Self::StatusBar => "status_bar",
+            Self::FeaturedArtist => "featured_artist",
         }
     }
 
@@ -114,6 +125,7 @@ impl Module {
             Self::Likes => "likes",
             Self::Certification => "audience certification",
             Self::StatusBar => "the status bar",
+            Self::FeaturedArtist => "the featured artist",
         }
     }
 
@@ -155,6 +167,7 @@ pub struct Modules {
     pub likes: bool,
     pub certification: bool,
     pub status_bar: bool,
+    pub featured_artist: bool,
 }
 
 impl Default for Modules {
@@ -177,6 +190,7 @@ impl Default for Modules {
             likes: true,
             certification: false,
             status_bar: true,
+            featured_artist: false,
         }
     }
 }
@@ -206,6 +220,7 @@ impl Modules {
         likes: true,
         certification: true,
         status_bar: true,
+        featured_artist: true,
     };
 
     pub fn is_on(&self, module: Module) -> bool {
@@ -227,6 +242,7 @@ impl Modules {
             Module::Likes => self.likes,
             Module::Certification => self.certification,
             Module::StatusBar => self.status_bar,
+            Module::FeaturedArtist => self.featured_artist,
         }
     }
 
@@ -264,6 +280,7 @@ impl Modules {
             Module::Likes => &mut self.likes,
             Module::Certification => &mut self.certification,
             Module::StatusBar => &mut self.status_bar,
+            Module::FeaturedArtist => &mut self.featured_artist,
         };
         *field = on;
     }
@@ -286,6 +303,7 @@ impl Modules {
             likes: self.likes && station.likes,
             certification: self.certification && station.certification,
             status_bar: self.status_bar && station.status_bar,
+            featured_artist: self.featured_artist && station.featured_artist,
             ..self
         }
     }
@@ -330,6 +348,10 @@ mod tests {
                 .all(|module| !stored.is_on(*module))
         );
         assert!(stored.is_on(Module::Likes), "likes are on by default");
+        assert!(
+            !stored.is_on(Module::FeaturedArtist),
+            "a show, off by default"
+        );
         assert!(!stored.is_on(Module::Certification), "off until turned on");
         assert_eq!(Modules::parse(Some("not json")), Modules::default());
     }

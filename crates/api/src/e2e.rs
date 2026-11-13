@@ -10485,12 +10485,12 @@ async fn modules_are_turned_off_and_on_again() {
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
                         "dedications": false, "match": false, "top30": false, "likes": true,
-                        "certification": false, "status_bar": true});
+                        "certification": false, "status_bar": true, "featured_artist": false});
     let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
                         "dedications": true, "match": true, "top30": true, "likes": true,
-                        "certification": true, "status_bar": true});
+                        "certification": true, "status_bar": true, "featured_artist": true});
 
     // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);
@@ -11232,6 +11232,235 @@ async fn a_show_off_leaves_its_hours_to_the_others() {
     assert_eq!(status, StatusCode::OK, "{body}");
     let (status, _) = admin.send(Method::PUT, "/modules", json!({})).await;
     assert_eq!(status, StatusCode::OK);
+    station.stop().await;
+}
+
+#[tokio::test]
+async fn the_featured_artist_plays_its_track_at_its_times() {
+    use heron_core::Module;
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let pool = &station.db.pool;
+    let t = station.tracks.clone();
+    // Off until turned on: its routes answer 404.
+    let (status, _) = admin
+        .request(Method::GET, "/featured-artist/settings", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/modules",
+            json!({"featured_artist": true, "match": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    crate::artists::link_pending(pool).await.unwrap();
+    let artist: u64 = sqlx::query_scalar("SELECT artist_id FROM track_artists WHERE track_id = ?")
+        .bind(t[2])
+        .fetch_one(pool)
+        .await
+        .unwrap();
+
+    // Its hours: today, this hour and the next; the match cannot have them.
+    let station_settings: crate::settings::StationSettings =
+        crate::settings::load_for(pool, 1, "station").await.unwrap();
+    let tz = station_settings.time_zone();
+    let now = jiff::Timestamp::now().to_zoned(tz.clone());
+    let day = now.weekday().to_monday_one_offset();
+    let hour = now.hour();
+    let hours =
+        json!({"hours": [{"days": [day], "start_hour": hour, "end_hour": (hour + 2).min(24)}]});
+    let (status, body) = admin
+        .send(Method::PUT, "/shows/featured_artist", hours.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, refused) = admin.send(Method::PUT, "/shows/match", hours).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("belongs to the featured artist"),
+        "{refused}"
+    );
+
+    // Its settings, checked.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/featured-artist/settings",
+            json!({"minutes": [10]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/featured-artist/settings",
+            json!({"minutes": [0], "jingle_category_id": 999}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, body) = admin
+        .send(
+            Method::PUT,
+            "/featured-artist/settings",
+            json!({"minutes": [45, 0, 15, 30], "by": "day"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["minutes"], json!([0, 15, 30, 45]));
+
+    // The planning, by day: today's artist; a day over is refused.
+    let today = now.date();
+    let yesterday = today.yesterday().unwrap();
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/featured-artist/planning/{yesterday}"),
+            json!({"artist_id": artist}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/featured-artist/planning/{today}"),
+            json!({"artist_id": 999_999}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, entry) = admin
+        .send(
+            Method::PUT,
+            &format!("/featured-artist/planning/{today}"),
+            json!({"artist_id": artist}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{entry}");
+    assert_eq!(entry["current"], true);
+    let planning = admin.get("/featured-artist/planning").await;
+    assert_eq!(planning["by"], "day");
+    assert_eq!(
+        planning["entries"].as_array().unwrap().len(),
+        32,
+        "{planning}"
+    );
+    assert_eq!(planning["entries"][0]["artist"], "Artist 3");
+    assert_eq!(planning["entries"][1]["artist_id"], Value::Null);
+    // By week, an artist is planned on its Monday.
+    let monday = today
+        .checked_add(jiff::ToSpan::days(
+            7 - i64::from(today.weekday().to_monday_zero_offset()),
+        ))
+        .unwrap();
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/featured-artist/settings",
+            json!({"minutes": [0, 15, 30, 45], "by": "week"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let tuesday = monday.tomorrow().unwrap();
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/featured-artist/planning/{tuesday}"),
+            json!({"artist_id": artist}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            &format!("/featured-artist/planning/{monday}"),
+            json!({"artist_id": artist}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = admin
+        .request(
+            Method::DELETE,
+            &format!("/featured-artist/planning/{monday}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    // Back to days: today's artist was kept.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/featured-artist/settings",
+            json!({"minutes": [0, 15, 30, 45], "by": "day"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Rotation has its times, with the artist's track, and plays it at one.
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert!(!library.show_times.is_empty());
+    let time = library.show_times.last().unwrap().clone();
+    assert_eq!(time.tracks, [t[2]]);
+    assert!(!time.done);
+    let history = heron_rotation::History::default();
+    let mut rng = heron_rotation::Rng::new(1);
+    let pick = heron_rotation::next(&library, &history, time.at_ms - 1_000, None, &mut rng)
+        .expect("a pick");
+    assert_eq!(pick.track, t[2]);
+    assert_eq!(pick.explanation.show_at_unix_ms, Some(time.at_ms));
+    assert_eq!(pick.position, None, "outside the clock");
+    // Logged, it is done.
+    crate::rotation::record_pick(pool, 1, &pick, None)
+        .await
+        .unwrap();
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    let again = library
+        .show_times
+        .iter()
+        .find(|other| other.at_ms == time.at_ms)
+        .unwrap();
+    assert!(again.done);
+
+    // The day: its times, the one logged queued, the others planned.
+    let day = admin.get("/featured-artist/day").await;
+    assert_eq!(day["artist"], "Artist 3");
+    let times = day["times"].as_array().unwrap();
+    assert!(!times.is_empty());
+    let logged = times
+        .iter()
+        .find(|entry| entry["at_unix_ms"] == json!(time.at_ms))
+        .unwrap();
+    assert_eq!(logged["status"], "queued", "{day}");
+    assert_eq!(logged["track"]["track_id"], json!(t[2]));
+
+    // The widget: the artist of the day.
+    let shows = crate::shows::public_shows(pool, 1).await.unwrap();
+    let featured = shows
+        .iter()
+        .find(|show| show.module == Module::FeaturedArtist)
+        .unwrap();
+    assert_eq!(featured.state["artist"], "Artist 3");
+
+    // Turned off: nothing for rotation, the planning kept.
+    let (status, _) = admin
+        .send(
+            Method::PUT,
+            "/stations/1/modules",
+            json!({"featured_artist": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let library = crate::rotation::load_library(pool, 1).await.unwrap();
+    assert!(library.show_times.is_empty());
+    let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM featured_artists")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(kept, 1);
     station.stop().await;
 }
 

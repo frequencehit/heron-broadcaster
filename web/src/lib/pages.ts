@@ -49,6 +49,14 @@ export const PAGES: Page[] = [
   { path: "/shows/dedications", label: "nav.dedications", icon: "mic", section: "nav.shows", station: true, module: "dedications" },
   { path: "/shows/match", label: "nav.match", icon: "bolt", section: "nav.shows", station: true, module: "match" },
   { path: "/shows/top30", label: "nav.top30", icon: "chart", section: "nav.shows", station: true, module: "top30" },
+  {
+    path: "/shows/featured_artist",
+    label: "nav.featuredArtist",
+    icon: "star",
+    section: "nav.shows",
+    station: true,
+    module: "featured_artist",
+  },
   { path: "/shows/likes", label: "nav.likes", icon: "like", section: "nav.shows", station: true, module: "likes" },
   {
     path: "/playout",

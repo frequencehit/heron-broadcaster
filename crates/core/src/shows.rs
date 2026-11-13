@@ -33,7 +33,7 @@ pub struct Show {
     pub placeholders: &'static [&'static str],
 }
 
-pub const SHOWS: [Show; 4] = [
+pub const SHOWS: [Show; 5] = [
     // Each accepted dedication as it plays, with its message; each one
     // accepted (#131).
     Show {
@@ -100,6 +100,14 @@ pub const SHOWS: [Show; 4] = [
         events: &[],
         placeholders: &[],
     },
+    // The common events only, with the artist of the week or the day.
+    Show {
+        module: Module::FeaturedArtist,
+        name: "Featured artist",
+        has_hours: true,
+        events: &[],
+        placeholders: &["artist"],
+    },
 ];
 
 /// The notification events every show has, with their default message.
@@ -154,6 +162,7 @@ impl Show {
             Module::Dedications => "show_dedications",
             Module::Match => "show_match",
             Module::Likes => "show_likes",
+            Module::FeaturedArtist => "show_featured_artist",
             _ => "show_top30",
         }
     }

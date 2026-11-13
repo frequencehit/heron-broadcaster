@@ -19,7 +19,7 @@ use crate::restrict::{Subject, forbidding};
 use crate::rules::{AcrossWindows, FALLBACK_STEP, LAST_STEP, Windows, describe_step};
 use crate::{
     ArtistId, CategoryId, Clock, ClockId, Elsewhere, History, Library, Method, Position, Rng,
-    ScheduleId, StationId, Track, TrackId,
+    ScheduleId, ShowTime, StationId, Track, TrackId,
 };
 
 /// The next track, where it sits in the clock and why it was picked.
@@ -159,6 +159,10 @@ pub struct Explanation {
     /// and how the best one meets it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lookahead: Option<LookaheadLog>,
+    /// A show's pick (its jingle or its track) for its time (Unix ms),
+    /// outside the clock: the Featured artist's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_at_unix_ms: Option<i64>,
 }
 
 /// A track another station's play or planned track held back.
@@ -870,6 +874,7 @@ fn fill(
             exact: None,
             fill: None,
             lookahead: None,
+            show_at_unix_ms: None,
         };
         return Ok((track.id, explanation, cut));
     }
@@ -1148,7 +1153,16 @@ fn next_exact(
         at_ms,
         previous_start,
         &mut Vec::new(),
-    )?;
+    );
+    let show = show_upcoming(library, history, at_ms, previous_start, last);
+    // A show's time due now is played, not aimed at.
+    if show
+        .as_ref()
+        .is_some_and(|show| matches!(show.status, Status::Due { .. }))
+    {
+        return None;
+    }
+    let upcoming = aim(upcoming, show, clock)?;
     if upcoming.status != Status::Ahead {
         return None;
     }
@@ -1226,9 +1240,157 @@ struct Upcoming<'c> {
     exact: ExactTime,
     window: Window,
     status: Status,
+    /// A show's time, outside the clock: the clock pauses for it
+    /// (`index` and `offset` mean nothing then).
+    show: Option<ShowUp<'c>>,
+}
+
+/// A show's time ahead of a pick, and where it stands.
+#[derive(Clone, Copy)]
+struct ShowUp<'c> {
+    time: &'c ShowTime,
+    /// It follows a clock slot's exact time whose window meets its own:
+    /// it plays right after that slot, without a window of its own.
+    after_clock: bool,
+    hour_start: i64,
+    exact: ExactTime,
+    window: Window,
+    status: Status,
+}
+
+impl<'c> ShowUp<'c> {
+    /// As the clock's exact times are aimed at, in `clock`'s run.
+    fn upcoming(self, clock: &'c Clock) -> Upcoming<'c> {
+        Upcoming {
+            clock,
+            index: usize::MAX,
+            offset: None,
+            hour_start: self.hour_start,
+            exact: self.exact,
+            window: self.window,
+            status: self.status,
+            show: Some(self),
+        }
+    }
 }
 
 const HOUR_MS: i64 = 3_600_000;
+
+/// How far before its window a play of a show's track counts for it: its
+/// planned start may move earlier once queued.
+const SHOW_DONE_SLACK_MS: i64 = 10 * 60_000;
+
+/// The first show time a pick at `at_ms` has not played yet, and where it
+/// stands (`docs/listener-interaction.md#featured-artist`).
+fn show_upcoming<'c>(
+    library: &'c Library,
+    history: &History,
+    at_ms: i64,
+    previous_start: Option<i64>,
+    last: Option<&Position>,
+) -> Option<ShowUp<'c>> {
+    for time in &library.show_times {
+        if time.done {
+            continue;
+        }
+        let hour_start = hour_start_of(library, time.at_ms);
+        let at_s = u32::try_from((time.at_ms - hour_start) / 1_000).unwrap_or(0);
+        let exact = ExactTime {
+            at_s,
+            mode: ExactMode::Soft,
+            before_s: time.before_s,
+            after_s: time.after_s,
+            medley_fill: true,
+            cut_live: false,
+        };
+        let window = exact.window(time.at_ms);
+        // The clock of its hour: a slot's exact time meeting its window
+        // comes first.
+        let hour_clock = library.clock_at(&library.local(time.at_ms));
+        let met = hour_clock.and_then(|clock| {
+            clock_window_meeting(clock, hour_start, window).map(|(index, met)| (clock, index, met))
+        });
+        let from_ms = met.map_or(window.from_ms, |(_, _, met)| {
+            met.from_ms.min(window.from_ms)
+        });
+        let played = history.plays().iter().any(|play| {
+            play.start_ms >= from_ms - SHOW_DONE_SLACK_MS
+                && play.track.is_some_and(|track| time.tracks.contains(&track))
+        });
+        if played {
+            continue;
+        }
+        let status = match met {
+            // Right after the clock's exact slot: once it played, early
+            // or on time, or its window started.
+            Some((met_clock, index, met)) => {
+                let slot_played = last.is_some_and(|last| {
+                    last.clock_id == met_clock.id
+                        && last.hour_start_unix_ms == hour_start
+                        && last.slot as usize >= index
+                });
+                if at_ms >= hour_start + HOUR_MS {
+                    Status::Missed
+                } else if slot_played || previous_start.is_some_and(|start| start >= met.from_ms) {
+                    Status::Due {
+                        start: at_ms,
+                        faded: false,
+                    }
+                } else {
+                    Status::Ahead
+                }
+            }
+            None => status(window, at_ms, previous_start),
+        };
+        if status == Status::Missed {
+            continue;
+        }
+        return Some(ShowUp {
+            time,
+            after_clock: met.is_some(),
+            hour_start,
+            exact,
+            window,
+            status,
+        });
+    }
+    None
+}
+
+/// The window of a slot's exact time in `clock`'s hour that meets
+/// `window`, if any, and its slot.
+fn clock_window_meeting(clock: &Clock, hour_start: i64, window: Window) -> Option<(usize, Window)> {
+    (0..clock.slots.len())
+        .filter(|&index| !clock.follows_linked(index))
+        .filter_map(|index| {
+            let exact = clock.exact(index)?;
+            Some((
+                index,
+                exact.window(hour_start + i64::from(exact.at_s) * 1_000),
+            ))
+        })
+        .find(|(_, other)| other.from_ms <= window.cut_ms && window.from_ms <= other.cut_ms)
+}
+
+/// What a pick aims at: the clock's exact time, or a show's when it comes
+/// first. A show's time following a clock's exact slot is never aimed at.
+fn aim<'c>(
+    upcoming: Option<Upcoming<'c>>,
+    show: Option<ShowUp<'c>>,
+    clock: &'c Clock,
+) -> Option<Upcoming<'c>> {
+    let Some(show) = show.filter(|show| show.status == Status::Ahead && !show.after_clock) else {
+        return upcoming;
+    };
+    match upcoming {
+        Some(upcoming)
+            if upcoming.status != Status::Ahead || upcoming.window.at_ms <= show.window.at_ms =>
+        {
+            Some(upcoming)
+        }
+        _ => Some(show.upcoming(clock)),
+    }
+}
 
 /// The next exact time from `first` in this run of `clock` (the slots whose
 /// time has passed are added to `missed`), else the next hour's first slot.
@@ -1272,6 +1434,7 @@ fn upcoming<'c>(
                     exact,
                     window,
                     status,
+                    show: None,
                 });
             }
         }
@@ -1293,6 +1456,7 @@ fn upcoming<'c>(
             exact,
             window,
             status,
+            show: None,
         }),
     }
 }
@@ -1470,6 +1634,11 @@ impl Picker<'_, '_> {
         start: i64,
         faded: bool,
     ) -> Result<Pick, (Vec<(usize, SkipReason)>, usize)> {
+        if let Some(show) = upcoming.show {
+            return self
+                .show(&show, start, faded)
+                .ok_or_else(|| (Vec::new(), 1));
+        }
         let mut pick = self.group(
             upcoming.clock,
             upcoming.index,
@@ -1485,6 +1654,102 @@ impl Picker<'_, '_> {
         ));
         pick.start_at_ms = Some(upcoming.window.cut_ms);
         Ok(pick)
+    }
+
+    /// A show's pick at `start`: its jingle, if it has one left, then
+    /// one of its tracks, the least recently played first; restrictions
+    /// apply, separation rules do not. Outside the clock: no position.
+    /// `None` when none of its tracks can play.
+    fn show(&mut self, show: &ShowUp<'_>, start: i64, faded: bool) -> Option<Pick> {
+        let library = self.library;
+        let time = show.time;
+        let jingle = time.jingle_category.and_then(|category| {
+            if library.modules_off.contains(&category) {
+                return None;
+            }
+            let call = SlotCall {
+                call: Call::new(library, Some(category), None),
+                method: Method::LeastRecentlyPlayed,
+                enforce_rules: false,
+                draw: None,
+                first_only: true,
+                after_previous: false,
+            };
+            fill(
+                library,
+                self.history,
+                start,
+                &call,
+                self.held_by_ratio,
+                self.rng,
+                None,
+            )
+            .ok()
+            .filter(|(_, explanation, _)| explanation.category_id == Some(category))
+        });
+        let mut history = self.history.clone();
+        let track_at = match &jingle {
+            Some((track, _, _)) => {
+                let track = library.tracks.get(track)?;
+                history.push(crate::Play::of(track, start));
+                start + i64::from(track.next_ms())
+            }
+            None => start,
+        };
+        let mut call = Call::new(library, None, None);
+        call.pool
+            .retain(|(track, _)| time.tracks.contains(&track.id));
+        let call = SlotCall {
+            call,
+            method: Method::LeastRecentlyPlayed,
+            enforce_rules: false,
+            draw: None,
+            first_only: false,
+            after_previous: true,
+        };
+        let (track, explanation, _) = fill(
+            library,
+            &history,
+            track_at,
+            &call,
+            self.held_by_ratio,
+            self.rng,
+            None,
+        )
+        .ok()?;
+        // The fallback category never stands in for the artist.
+        if !time.tracks.contains(&track) {
+            return None;
+        }
+        let shown = |mut explanation: Explanation, at_ms| {
+            explanation.show_at_unix_ms = Some(time.at_ms);
+            Pick {
+                track: 0,
+                position: None,
+                explanation: self.named(explanation, at_ms),
+                linked: None,
+                medley_cut: None,
+                start_at_ms: None,
+            }
+        };
+        let mut pick = Pick {
+            track,
+            ..shown(explanation, track_at)
+        };
+        if let Some((jingle, explanation, _)) = jingle {
+            let mut first = Pick {
+                track: jingle,
+                ..shown(explanation, start)
+            };
+            first.explanation.linked = true;
+            first.linked = Some(Box::new(pick));
+            pick = first;
+        }
+        if !show.after_clock {
+            pick.explanation.exact = Some(ExactLog::new(&show.exact, show.window, start, faded));
+            pick.start_at_ms = Some(show.window.cut_ms);
+        }
+        Some(pick)
     }
 
     /// Fills the gap before `upcoming`'s window: a medley landing in it
@@ -1585,7 +1850,17 @@ pub(crate) fn pick(
         rng,
         steer,
     };
-    let Some(clock) = library.clock_at(&local) else {
+    let previous_start = history.previous(at_ms).map(|play| play.start_ms);
+    let clock = library.clock_at(&local);
+    // A show's time due now: the clock pauses for it.
+    let show = show_upcoming(library, history, at_ms, previous_start, last);
+    if let Some(due) = show.as_ref()
+        && let Status::Due { start, faded } = due.status
+        && let Some(pick) = picker.show(due, start, faded)
+    {
+        return Some(pick);
+    }
+    let Some(clock) = clock else {
         let slot = SlotCall {
             call: Call::new(library, None, None),
             method: Method::LeastRecentlyPlayed,
@@ -1627,9 +1902,8 @@ pub(crate) fn pick(
         pick.explanation.skipped_slots = skipped;
         Some(pick)
     };
-    let previous_start = history.previous(at_ms).map(|play| play.start_ms);
     let mut missed = Vec::new();
-    let mut upcoming = upcoming(
+    let upcoming = upcoming(
         library,
         clock,
         first,
@@ -1639,6 +1913,7 @@ pub(crate) fn pick(
         previous_start,
         &mut missed,
     );
+    let mut upcoming = aim(upcoming, show, clock);
     let mut k = 0;
     if let Some(due) = upcoming.as_ref()
         && let Status::Due { start, faded } = due.status
@@ -3319,5 +3594,183 @@ mod tests {
             (draw.pct, draw.start_pct, draw.max_pct, draw.tracks),
             (40, 40, 60, 3)
         );
+    }
+
+    /// The picks from `from_ms` for `minutes`, in play order, each played
+    /// as planned.
+    fn played(library: &Library, from_ms: i64, minutes: i64) -> Vec<Pick> {
+        let mut history = History::default();
+        let mut last = None;
+        let mut plan = None;
+        let mut rng = Rng::new(7);
+        let mut at = from_ms;
+        let mut picks = Vec::new();
+        while at < from_ms + minutes * MIN {
+            let Some(pick) =
+                next_planned(library, &history, at, last.as_ref(), &mut rng, &mut plan).pick
+            else {
+                break;
+            };
+            for pick in pick.into_picks() {
+                let start = pick.explanation.at_unix_ms;
+                history.push(Play::of(&library.tracks[&pick.track], start));
+                at = start + i64::from(pick.next_ms(library));
+                if pick.position.is_some() {
+                    last = pick.position;
+                }
+                picks.push(pick);
+            }
+        }
+        picks
+    }
+
+    /// Two slots, of categories 1 and 2, with tracks of 3 to 4 minutes 20,
+    /// and the artist's tracks in category 3.
+    fn featured(times: &[i64], jingle: Option<CategoryId>) -> Library {
+        let mut library = library(vec![
+            slot(1, Method::LeastRecentlyPlayed),
+            slot(2, Method::LeastRecentlyPlayed),
+        ]);
+        for (id, track) in &mut library.tracks {
+            track.length_ms = 180_000
+                + u32::try_from(*id % 5).unwrap() * 20_000
+                + u32::try_from(*id).unwrap() * 1_000;
+        }
+        library.show_times = times
+            .iter()
+            .map(|&at_ms| ShowTime {
+                at_ms,
+                before_s: 10,
+                after_s: 30,
+                tracks: vec![11, 12, 13],
+                jingle_category: jingle,
+                done: false,
+            })
+            .collect();
+        library
+    }
+
+    #[test]
+    fn a_show_time_plays_in_its_window_and_the_clock_goes_on() {
+        let at = 9 * HOUR + 15 * MIN;
+        let library = featured(&[at], None);
+        let picks = played(&library, 9 * HOUR, 40);
+        let shown: Vec<_> = picks
+            .iter()
+            .filter(|pick| pick.explanation.show_at_unix_ms == Some(at))
+            .collect();
+        assert_eq!(shown.len(), 1, "{picks:#?}");
+        let show = shown[0];
+        assert!([11, 12, 13].contains(&show.track));
+        assert_eq!(show.position, None);
+        let exact = show.explanation.exact.unwrap();
+        assert!(exact.in_window, "{exact:?}");
+        assert_eq!(show.start_at_ms, Some(at + 30_000));
+        // The clock pauses: the slot after the one before the show.
+        let index = picks
+            .iter()
+            .position(|pick| pick.explanation.show_at_unix_ms.is_some())
+            .unwrap();
+        let before = picks[index - 1].position.unwrap().slot;
+        let after = picks[index + 1].position.unwrap().slot;
+        assert_eq!(after, (before + 1) % 2);
+    }
+
+    #[test]
+    fn a_show_time_plays_its_jingle_first_and_the_least_recently_played_track() {
+        let times = [
+            9 * HOUR + 15 * MIN,
+            9 * HOUR + 30 * MIN,
+            9 * HOUR + 45 * MIN,
+        ];
+        let mut library = featured(&times, Some(2));
+        library.clocks.get_mut(&1).unwrap().slots = vec![slot(1, Method::LeastRecentlyPlayed)];
+        let picks = played(&library, 9 * HOUR, 60);
+        let mut tracks = Vec::new();
+        for at in times {
+            let shown: Vec<_> = picks
+                .iter()
+                .filter(|pick| pick.explanation.show_at_unix_ms == Some(at))
+                .collect();
+            assert_eq!(shown.len(), 2, "{at}: {picks:#?}");
+            // The jingle, linked to the track, with the exact time.
+            assert!((6..=10).contains(&shown[0].track));
+            assert!(shown[0].explanation.linked);
+            assert!(
+                shown[0]
+                    .explanation
+                    .exact
+                    .is_some_and(|exact| exact.in_window)
+            );
+            assert!(shown[1].explanation.exact.is_none());
+            tracks.push(shown[1].track);
+        }
+        // A different track each time, while there are any.
+        tracks.sort_unstable();
+        assert_eq!(tracks, [11, 12, 13]);
+    }
+
+    #[test]
+    fn a_clock_exact_time_comes_first_and_the_show_follows_it() {
+        let at = 9 * HOUR + 15 * MIN;
+        let mut library = featured(&[at], None);
+        let mut flash = slot(2, Method::LeastRecentlyPlayed);
+        flash.exact = Some(ExactTime {
+            at_s: 15 * 60,
+            mode: ExactMode::Hard,
+            before_s: 10,
+            after_s: 30,
+            medley_fill: false,
+            cut_live: false,
+        });
+        library.clocks.get_mut(&1).unwrap().slots = vec![
+            slot(1, Method::LeastRecentlyPlayed),
+            slot(1, Method::LeastRecentlyPlayed),
+            slot(1, Method::LeastRecentlyPlayed),
+            flash,
+        ];
+        let picks = played(&library, 9 * HOUR, 40);
+        let index = picks
+            .iter()
+            .position(|pick| pick.explanation.show_at_unix_ms == Some(at))
+            .expect("the show plays");
+        let flash = &picks[index - 1];
+        let seen: Vec<_> = picks
+            .iter()
+            .map(|pick| {
+                (
+                    (pick.explanation.at_unix_ms - 9 * HOUR) / 1_000,
+                    pick.position.map(|p| p.slot),
+                    pick.explanation.exact.is_some(),
+                    pick.explanation.show_at_unix_ms.is_some(),
+                )
+            })
+            .collect();
+        assert_eq!(flash.position.unwrap().slot, 3, "{seen:?}");
+        assert!(flash.explanation.exact.is_some());
+        // Without a window of its own.
+        assert!(picks[index].explanation.exact.is_none());
+        assert_eq!(picks[index].start_at_ms, None);
+    }
+
+    #[test]
+    fn a_show_time_done_or_without_a_track_plays_nothing() {
+        let at = 9 * HOUR + 15 * MIN;
+        let mut library = featured(&[at], None);
+        library.show_times[0].done = true;
+        assert!(
+            played(&library, 9 * HOUR, 40)
+                .iter()
+                .all(|pick| pick.explanation.show_at_unix_ms.is_none())
+        );
+        library.show_times[0].done = false;
+        library.show_times[0].tracks = vec![99];
+        let picks = played(&library, 9 * HOUR, 40);
+        assert!(
+            picks
+                .iter()
+                .all(|pick| pick.explanation.show_at_unix_ms.is_none())
+        );
+        assert!(picks.iter().all(|pick| pick.position.is_some()));
     }
 }

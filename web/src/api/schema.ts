@@ -1473,6 +1473,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/featured-artist/day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The day's times, each with its jingle and track (planned, queued or
+         *     played), or why nothing played.
+         */
+        get: operations["get_featured_day"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/featured-artist/planning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The planning: each week (or day) from `from` to `to`, with its artist
+         *     or none.
+         */
+        get: operations["get_featured_planning"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/featured-artist/planning/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Plans the artist of the week of that Monday, or of that day. Operators. */
+        put: operations["put_featured_entry"];
+        post?: never;
+        /** Takes the artist out of the week or the day. Operators. */
+        delete: operations["delete_featured_entry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/featured-artist/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's Featured artist settings. */
+        get: operations["get_featured_settings"];
+        /**
+         * Replaces them. The jingle category must be the station's (`422`).
+         *     Operators.
+         */
+        put: operations["put_featured_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gateway/state": {
         parameters: {
             query?: never;
@@ -4267,6 +4346,85 @@ export interface paths {
          *     nothing can be replaced.
          */
         post: operations["recalculate_exact_time_on_station"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/featured-artist/day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The day's times, each with its jingle and track (planned, queued or
+         *     played), or why nothing played.
+         */
+        get: operations["get_featured_day_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/featured-artist/planning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The planning: each week (or day) from `from` to `to`, with its artist
+         *     or none.
+         */
+        get: operations["get_featured_planning_on_station"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/featured-artist/planning/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Plans the artist of the week of that Monday, or of that day. Operators. */
+        put: operations["put_featured_entry_on_station"];
+        post?: never;
+        /** Takes the artist out of the week or the day. Operators. */
+        delete: operations["delete_featured_entry_on_station"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stations/{station_id}/featured-artist/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The station's Featured artist settings. */
+        get: operations["get_featured_settings_on_station"];
+        /**
+         * Replaces them. The jingle category must be the station's (`422`).
+         *     Operators.
+         */
+        put: operations["put_featured_settings_on_station"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7281,6 +7439,11 @@ export interface components {
              */
             min_free_bytes: number;
         };
+        /**
+         * @description An artist per week, from Monday to Sunday, or per day.
+         * @enum {string}
+         */
+        By: "week" | "day";
         /** @description A calculation with its attempts. */
         CalculationDetail: components["schemas"]["CalculationSummary"] & {
             /**
@@ -7978,6 +8141,32 @@ export interface components {
             /** @description `SELECT VERSION()`, e.g. `12.3.1-MariaDB`. */
             version?: string | null;
         };
+        Day: {
+            artist?: string | null;
+            /** Format: int64 */
+            artist_id?: number | null;
+            date: string;
+            times: components["schemas"]["DayTime"][];
+        };
+        DayTime: {
+            /** Format: int64 */
+            at_unix_ms: number;
+            jingle?: components["schemas"]["DayTrack"] | null;
+            /** @description Why it was passed over, or plays nothing. */
+            reason?: string | null;
+            /** Format: int64 */
+            started_at_unix_ms?: number | null;
+            status: components["schemas"]["TimeStatus"];
+            track?: components["schemas"]["DayTrack"] | null;
+        };
+        DayTrack: {
+            artist?: string | null;
+            /** Format: int64 */
+            length_ms?: number | null;
+            title?: string | null;
+            /** Format: int64 */
+            track_id: number;
+        };
         /**
          * @description Where a daypart value comes from: the slot's category, or the track's
          *     own, which replaces it.
@@ -8544,6 +8733,10 @@ export interface components {
         EnqueueResponse: {
             entry_ids: number[];
         };
+        EntryInput: {
+            /** Format: int64 */
+            artist_id: number;
+        };
         EqPreset: {
             /** @description Gain of each band in dB, from 60 Hz up. */
             gains_db: number[];
@@ -8800,6 +8993,12 @@ export interface components {
             restricted: number;
             schedule_id?: components["schemas"]["u64"] | null;
             schedule_name?: string | null;
+            /**
+             * Format: int64
+             * @description A show's pick (its jingle or its track) for its time (Unix ms),
+             *     outside the clock: the Featured artist's.
+             */
+            show_at_unix_ms?: number | null;
             /** @description Slots passed over because nothing could be picked, even relaxed. */
             skipped_slots: components["schemas"]["SkippedSlot"][];
             /**
@@ -8852,6 +9051,37 @@ export interface components {
          * @enum {string}
          */
         FadeCurve: "linear" | "s_curve" | "logarithmic" | "exponential";
+        /** @description The show's own settings. */
+        FeaturedSettings: {
+            /** @default week */
+            by: components["schemas"]["By"];
+            /**
+             * Format: int64
+             * @description The jingle before the track, a category of the station; `None`:
+             *     none.
+             * @default null
+             */
+            jingle_category_id: number | null;
+            /**
+             * @description Of each hour of its hours: some of 0, 15, 30 and 45.
+             * @default [
+             *       0
+             *     ]
+             */
+            minutes: number[];
+            /**
+             * Format: int32
+             * @default 30
+             */
+            window_after_s: number;
+            /**
+             * Format: int32
+             * @description How early and how late the jingle (or the track) may start, in
+             *     seconds, 0 to 300.
+             * @default 10
+             */
+            window_before_s: number;
+        };
         FetchRequest: {
             /**
              * @description Shows the results as candidates even when one is sure, and looks up
@@ -10410,7 +10640,7 @@ export interface components {
          * @description A module.
          * @enum {string}
          */
-        Module: "medleys" | "cover_art" | "listener_statistics" | "webhooks" | "restrictions" | "eq" | "processing" | "trash" | "review" | "artists" | "labels" | "dedications" | "match" | "top30" | "likes" | "certification" | "status_bar";
+        Module: "medleys" | "cover_art" | "listener_statistics" | "webhooks" | "restrictions" | "eq" | "processing" | "trash" | "review" | "artists" | "labels" | "dedications" | "match" | "top30" | "likes" | "certification" | "status_bar" | "featured_artist";
         /**
          * @description Which modules are on. Stored as the `modules` settings (the
          *     installation) and the `station_modules` settings of each station; a
@@ -10430,6 +10660,8 @@ export interface components {
             dedications: boolean;
             /** @default true */
             eq: boolean;
+            /** @default false */
+            featured_artist: boolean;
             /** @default true */
             labels: boolean;
             /** @default true */
@@ -10973,6 +11205,20 @@ export interface components {
             to: string;
             /** Format: int64 */
             track_id: number;
+        };
+        Planning: {
+            by: components["schemas"]["By"];
+            entries: components["schemas"]["PlanningEntry"][];
+        };
+        /** @description A week or a day of the planning. */
+        PlanningEntry: {
+            artist?: string | null;
+            /** Format: int64 */
+            artist_id?: number | null;
+            /** @description The week or day of today. */
+            current: boolean;
+            /** @description The Monday of the week, or the day (`YYYY-MM-DD`). */
+            date: string;
         };
         /** @description One play. */
         Play: {
@@ -13229,6 +13475,8 @@ export interface components {
          * @enum {string}
          */
         Theme: "system" | "light" | "dark";
+        /** @enum {string} */
+        TimeStatus: "planned" | "queued" | "played" | "passed_over" | "none";
         /** @description What there is to do on the library: the counts of the *To do* page. */
         TodoCounts: {
             /**
@@ -17548,6 +17796,188 @@ export interface operations {
             };
         };
     };
+    get_featured_day: {
+        parameters: {
+            query?: {
+                /** @description `YYYY-MM-DD`; today by default. */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_featured_planning: {
+        parameters: {
+            query?: {
+                /** @description The first date (`YYYY-MM-DD`): this week, or today, by default. */
+                from?: string;
+                /** @description The last date: 12 weeks, or 31 days, after the first by default. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Planning"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_featured_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Monday of the week, or the day (YYYY-MM-DD) */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEntry"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_featured_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Monday of the week, or the day (YYYY-MM-DD) */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_featured_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeaturedSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_featured_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeaturedSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeaturedSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     gateway_state: {
         parameters: {
             query?: never;
@@ -21695,7 +22125,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description dedications, match or likes */
+                /** @description dedications, match, featured_artist or likes */
                 module: string;
             };
             cookie?: never;
@@ -21725,7 +22155,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description dedications, match or likes */
+                /** @description dedications, match, featured_artist or likes */
                 module: string;
             };
             cookie?: never;
@@ -23463,6 +23893,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Recalculated"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_featured_day_on_station: {
+        parameters: {
+            query?: {
+                /** @description `YYYY-MM-DD`; today by default. */
+                date?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_featured_planning_on_station: {
+        parameters: {
+            query?: {
+                /** @description The first date (`YYYY-MM-DD`): this week, or today, by default. */
+                from?: string;
+                /** @description The last date: 12 weeks, or 31 days, after the first by default. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Planning"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_featured_entry_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The Monday of the week, or the day (YYYY-MM-DD) */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEntry"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_featured_entry_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+                /** @description The Monday of the week, or the day (YYYY-MM-DD) */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_featured_settings_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeaturedSettings"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_featured_settings_on_station: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station's ID */
+                station_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeaturedSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeaturedSettings"];
                 };
             };
             "4XX": {
@@ -25776,7 +26404,7 @@ export interface operations {
             path: {
                 /** @description The station's ID */
                 station_id: number;
-                /** @description dedications, match or likes */
+                /** @description dedications, match, featured_artist or likes */
                 module: string;
             };
             cookie?: never;
@@ -25808,7 +26436,7 @@ export interface operations {
             path: {
                 /** @description The station's ID */
                 station_id: number;
-                /** @description dedications, match or likes */
+                /** @description dedications, match, featured_artist or likes */
                 module: string;
             };
             cookie?: never;

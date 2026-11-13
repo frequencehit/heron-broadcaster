@@ -114,6 +114,11 @@ pub async fn public_shows(pool: &MySqlPool, station_id: u64) -> ApiResult<Vec<Sh
         if show.module == Module::Match {
             public.state = crate::matches::public_state(pool, station_id, &timezone).await?;
         }
+        if show.module == Module::FeaturedArtist {
+            public.state =
+                crate::featured_artist::public_state(pool, station_id, &settings, &timezone)
+                    .await?;
+        }
         shows.push(public);
     }
     Ok(shows)
@@ -156,7 +161,7 @@ async fn list_shows(
 
 /// A show's settings on the station, and whether it is open now.
 #[utoipa::path(get, path = "/shows/{module}", tag = "shows",
-    params(("module" = String, Path, description = "dedications, match or likes")),
+    params(("module" = String, Path, description = "dedications, match, featured_artist or likes")),
     responses((status = 200, body = ShowView), (status = "4XX", body = ErrorBody)))]
 async fn get_show(
     _user: CurrentUser,
@@ -171,7 +176,7 @@ async fn get_show(
 /// Replaces a show's settings on the station. Hours another show of the
 /// station has, or a top's show, are refused (`409`). Operators.
 #[utoipa::path(put, path = "/shows/{module}", tag = "shows",
-    params(("module" = String, Path, description = "dedications, match or likes")),
+    params(("module" = String, Path, description = "dedications, match, featured_artist or likes")),
     request_body = ShowSettings,
     responses((status = 200, body = ShowView), (status = "4XX", body = ErrorBody)))]
 async fn put_show(
@@ -374,6 +379,17 @@ pub(crate) async fn notify_station(
                 continue;
             };
             let times = end_and_next(&settings, &tz, change, at);
+            // The Featured artist names the artist of the week or the day
+            // it opens on.
+            let mut extra = Vec::new();
+            if show.module == Module::FeaturedArtist {
+                let opens = match change {
+                    Change::Upcoming { opens } => opens,
+                    _ => at,
+                };
+                let artist = crate::featured_artist::artist_at(pool, station_id, opens).await?;
+                extra.push(("artist", artist.map(|(_, name)| name).unwrap_or_default()));
+            }
             let payload = message(
                 &Notice::of(show, &settings),
                 &station,
@@ -381,7 +397,7 @@ pub(crate) async fn notify_station(
                 &tz,
                 times,
                 &wanted.message,
-                &[],
+                &extra,
             );
             let payload = Payload::show(event, payload.0, payload.1);
             let sent = webhooks

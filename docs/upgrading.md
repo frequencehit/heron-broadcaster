@@ -235,6 +235,10 @@ A new engine can only take over from an engine that speaks the same handover pro
 
 What each release asks of an upgrade, on top of the steps above. What it brings is in the [changelog](../CHANGELOG.md).
 
+### Edge
+
+The engines, the API and the web interface are upgraded as usual, with one more migration (the Featured artist's planning). The new show is off until an admin turns it on.
+
 ### 0.3.0 to 0.4.0
 
 The upgrade is done on air with `scripts/upgrade.sh 0.4.0` (or `--swarm <stack> 0.4.0`): the handover protocol has not changed, so the 0.4.0 engine of each station takes over from the 0.3.0 one without a gap.

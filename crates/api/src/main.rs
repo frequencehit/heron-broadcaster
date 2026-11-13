@@ -24,6 +24,7 @@ mod engine;
 mod eq;
 mod error;
 mod exact_times;
+mod featured_artist;
 mod gateway;
 mod history;
 mod import;
@@ -333,6 +334,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     tasks.push(tokio::spawn(users::purge_sessions(pool.clone())));
     tasks.push(tokio::spawn(likes::purge(pool.clone())));
     tasks.push(tokio::spawn(exact_times::purge(pool.clone())));
+    tasks.push(tokio::spawn(featured_artist::purge(pool.clone())));
     tasks.push(tokio::spawn(certification::run(
         pool.clone(),
         cli.access_logs_dir.clone(),
