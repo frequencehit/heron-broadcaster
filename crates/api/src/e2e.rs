@@ -10485,12 +10485,12 @@ async fn modules_are_turned_off_and_on_again() {
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
                         "dedications": false, "match": false, "top30": false, "likes": true,
-                        "certification": false, "status_bar": true});
+                        "certification": false, "status_bar": true, "featured_artist": false});
     let station_all_on = json!({"medleys": true, "cover_art": true, "listener_statistics": true,
                         "webhooks": true, "restrictions": true, "eq": true, "processing": true,
                         "trash": true, "review": true, "artists": true, "labels": true,
                         "dedications": true, "match": true, "top30": true, "likes": true,
-                        "certification": true, "status_bar": true});
+                        "certification": true, "status_bar": true, "featured_artist": true});
 
     // Everything is on after an upgrade, but the shows (likes are on).
     assert_eq!(viewer.get("/modules").await, all_on);
