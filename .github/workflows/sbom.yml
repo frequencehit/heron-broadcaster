@@ -16,6 +16,8 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+    # Not after pull requests: a tag's run has the tag as its branch.
+    branches: [main, 'v*']
   workflow_dispatch:
 
 permissions:
@@ -41,6 +43,10 @@ jobs:
 
       # Scans the checkout's lockfiles and manifests.
       - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        env:
+          # Names the BOM's subject instead of the checkout's path.
+          SYFT_SOURCE_NAME: ${{ github.event.repository.name }}
+          SYFT_SOURCE_VERSION: ${{ env.VERSION }}
         with:
           path: .
           format: cyclonedx-json
