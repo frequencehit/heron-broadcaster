@@ -239,6 +239,8 @@ What each release asks of an upgrade, on top of the steps above. What it brings 
 
 The services are upgraded as usual. Opus files whose analysis failed before are analysed again by themselves: a migration forgets their failed analysis jobs, so the next scan queues them (only those: the rest of the library is not analysed again).
 
+There are four new alert rules (`HeronQueueEmpty`, `HeronQueueFillFailing`, `HeronFallbackEmpty`, `HeronPausedTooLong`): load `monitoring/prometheus/alerts.yml` again ([Monitoring – Loading the alert rules](monitoring.md#loading-the-alert-rules)). The engine's `/healthz` now warns when the fallback directory has no playable track: a station without one gets the warning and, with the rules loaded, `HeronFallbackEmpty`. Put a few tracks in `HERON_FALLBACK_DIR`.
+
 ### 0.4.0 to 0.5.0
 
 The upgrade is done on air with `scripts/upgrade.sh 0.5.0` (or `--swarm <stack> 0.5.0`): the handover protocol has not changed, so the 0.5.0 engine of each station takes over from the 0.4.0 one without a gap. There is no migration, and the deployment files have not changed.

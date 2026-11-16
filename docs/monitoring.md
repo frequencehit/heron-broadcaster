@@ -154,6 +154,10 @@ Every rule works with pushed and scraped metrics, and alerts name the station.
 | `HeronSilenceOnAir` | critical | The master bus is silent for 45 s, not paused | The silence watchdog is off, or every queued and fallback track is silent. |
 | `HeronOutputDisconnected` | critical | An output is not connected for 2 min | Check the stream server and the output's host, mount and password (Outputs page). The engine keeps retrying. |
 | `HeronAudioDropped` | critical | The engine dropped audio in the last 10 min | The machine is too busy for the encoders: fewer or cheaper encoder profiles, or a faster machine. |
+| `HeronQueueEmpty` | warning | A station's queue has had nothing waiting for 1 min, autofill on | Rotation fills nothing: its warnings in heron-api's logs, restrictions forbidding every track, empty categories. The fallback directory plays meanwhile. |
+| `HeronQueueFillFailing` | warning | More than 10 queue fills failed in 10 min, or the queue loop restarted after a crash in the last hour | heron-api's logs give the error. The loop restarts by itself: the music goes on, but the queue may not get what the station expects. |
+| `HeronFallbackEmpty` | warning | The fallback directory has no playable track for 5 min | The last defence when the queue runs dry is gone: put tracks in `HERON_FALLBACK_DIR` (silent and undecodable files do not count). |
+| `HeronPausedTooLong` | warning | The engine has been paused for 10 min | A pause forgotten: the stream carries silence and the silence alerts ignore pauses. Resume on *On air*, or edit the threshold if long pauses are normal. |
 | `HeronFallbackPlaying` | warning | A fallback track started in the last 10 min | The queue ran dry: heron-api down or cut from the engine, autofill off, or restrictions forbid every track. |
 | `HeronSilenceSkips` | warning | The watchdog skipped a track in the last 30 min | The engine's logs name the track (`silence on air`): check its file and its analysis. |
 | `HeronUnderruns` | warning | More than 50 blocks without decoded audio in 10 min | The machine is overloaded, or the library is slow (network share). |
@@ -193,6 +197,8 @@ Every service also exports `heron_build_info{service, version}` (always 1), and,
 | `heron_engine_silent_seconds` | gauge | | How long the master bus has been below −50 dBFS (0 when there is sound) |
 | `heron_engine_queue_length` | gauge | | Tracks waiting after the cued one |
 | `heron_engine_dead_air` | gauge | | 1 when nothing is on air and there is nothing to play |
+| `heron_engine_paused_seconds` | gauge | | How long the engine has been paused (0 when it plays) |
+| `heron_engine_fallback_playable_tracks` | gauge | | Tracks of the fallback directory that can play (not found silent or undecodable); 0 without a fallback directory |
 | `heron_engine_fallback_tracks_total` | counter | | Tracks started from the fallback directory |
 | `heron_engine_silence_skips_total` | counter | | Tracks skipped by the silence watchdog |
 | `heron_engine_preload_failures_total` | counter | | Queued tracks whose file could not be read ahead of time |
@@ -214,6 +220,11 @@ Every service also exports `heron_build_info{service, version}` (always 1), and,
 | `heron_api_engine_disconnections_total` | counter | | Connections to the engine lost |
 | `heron_api_live_clients` | gauge | | Web clients on the live WebSocket |
 | `heron_api_autofill_tracks_total` | counter | | Tracks queued by autofill (rotation) |
+| `heron_api_queue_empty_seconds` | gauge | `station_id` | How long the station's queue has had nothing waiting with autofill on (0 otherwise) |
+| `heron_api_queue_fills_failed_total` | counter | `station_id` | Queue fills that failed (the error is logged) |
+| `heron_api_queue_last_fill_timestamp_seconds` | gauge | `station_id` | When the queue was last checked and filled without error |
+| `heron_api_queue_restarts_total` | counter | `station_id` | Times the station's queue loop restarted after a crash |
+| `heron_api_settings_left_out` | gauge | | Stored settings groups read with a part left out, because it could not be read ([Failure handling](audio-engine.md#failure-handling)) |
 | `heron_api_rotation_relaxed_total` | counter | | Picks that needed relaxed rules |
 | `heron_api_logins_total` | counter | `result` (`ok`, `failed`) | Sign-ins |
 | `heron_listeners` | gauge | `output` | Listeners of the output at the last minute, from its stream server; `NaN` while the server cannot be read ([Listener statistics](statistics.md)) |
@@ -268,7 +279,12 @@ Every service answers `GET /healthz` on its port (`heron-public` on its ops port
 - **503** with `"status": "unavailable"` and a `reason`: unhealthy (the engine's audio thread stopped rendering, the API lost its database…).
 - **`warnings`**: problems that need attention without making the service unhealthy. The engine lists:
   - `the server clock is not synchronized (is NTP running on the host?)` or `the server clock may be off by 2.5 s`;
-  - `nothing to play: the queue is empty and the fallback directory has no track`.
+  - `nothing to play: the queue is empty and the fallback directory has no track`;
+  - `the fallback directory has no playable track: nothing plays if the queue runs dry`, before it does (or `no fallback directory: …`);
+  - `paused for 12 min: the stream carries silence`, from 10 minutes.
+- The API lists:
+  - stored settings it read with a part left out (`queue settings of station 1: unknown_field left out`), until they are saved again;
+  - a station whose queue has had nothing waiting for a minute, autofill on, and a queue loop that restarted after a crash in the last hour.
 - `heron-public` warns while it cannot read the API's state (`the API has not answered for 12 s`): it serves what it last read.
 
 Every service restarts by itself (`restart: unless-stopped`). Docker does not restart a container only because it is unhealthy, so the engine exits on its own when its audio thread is stuck for 10 s: Docker then restarts it, and it resumes the queue it saved.
