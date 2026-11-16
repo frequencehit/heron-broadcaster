@@ -381,6 +381,11 @@ impl Player {
     }
 
     /// Plays tracks from the fallback directory when the queue runs dry.
+    /// Tracks of the fallback directory that can play; `None` without one.
+    pub fn fallback_playable(&self) -> Option<usize> {
+        self.fallback.as_ref().map(Fallback::playable)
+    }
+
     pub fn with_fallback(mut self, fallback: Fallback) -> Self {
         self.fallback = Some(fallback);
         self

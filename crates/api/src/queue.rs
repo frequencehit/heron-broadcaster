@@ -67,6 +67,53 @@ pub struct QueueManager {
     chain_tried: Mutex<Option<u64>>,
     /// Where the queue ends before the exact time, watched.
     watch: Mutex<Watch>,
+    /// Since when nothing waits in the queue with autofill on.
+    empty_since: Mutex<Option<Instant>>,
+    /// When the loop last restarted after a crash.
+    restarted_at: Mutex<Option<Instant>>,
+}
+
+/// How long the queue may stay empty, autofill on, before it warns.
+const EMPTY_WARNING: Duration = Duration::from_secs(60);
+/// How long a restart of the loop after a crash is reported.
+const RESTART_WARNING: Duration = Duration::from_secs(3_600);
+
+/// Runs the task `start` makes, and starts it again `pause` after it
+/// panics (`crashed` called first). Returns when it ends otherwise. The
+/// task goes with this future: dropped, it is aborted.
+async fn restart_after_crash<Fut>(
+    mut start: impl FnMut() -> Fut,
+    mut crashed: impl FnMut(),
+    pause: Duration,
+) where
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    loop {
+        let mut running = AbortOnDrop(tokio::spawn(start()));
+        match (&mut running.0).await {
+            Err(error) if error.is_panic() => {
+                crashed();
+                tokio::time::sleep(pause).await;
+            }
+            _ => return,
+        }
+    }
+}
+
+/// A task aborted when this is dropped: the queue loop goes with its
+/// supervisor when a station stops.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+fn unix_seconds() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64())
 }
 
 /// Where the waiting tracks before the exact time of the calculation kept
@@ -370,7 +417,99 @@ impl QueueManager {
             busy: tokio::sync::Mutex::new(()),
             chain_tried: Mutex::new(None),
             watch: Mutex::new(Watch::default()),
+            empty_since: Mutex::new(None),
+            restarted_at: Mutex::new(None),
         })
+    }
+
+    /// Runs the queue loop, and runs it again after a crash: a bug in a fill
+    /// must not stop autofill until the API restarts
+    /// (docs/audio-engine.md#failure-handling).
+    pub async fn supervise(self: Arc<Self>) {
+        let station = self.station_id.to_string();
+        metrics::counter!("heron_api_queue_restarts_total", "station_id" => station.clone())
+            .absolute(0);
+        metrics::counter!("heron_api_queue_fills_failed_total", "station_id" => station.clone())
+            .absolute(0);
+        let looped = Arc::clone(&self);
+        restart_after_crash(
+            move || Arc::clone(&looped).run(),
+            || {
+                tracing::error!(
+                    station = self.station_id,
+                    "the queue loop crashed: it starts again"
+                );
+                metrics::counter!("heron_api_queue_restarts_total", "station_id" => station.clone())
+                    .increment(1);
+                self.recover();
+            },
+            Duration::from_secs(1),
+        )
+        .await;
+    }
+
+    /// After a crash: the locks it held are taken again, what they hold
+    /// kept as it is.
+    fn recover(&self) {
+        self.idle_until.clear_poison();
+        self.kept.clear_poison();
+        self.chain_tried.clear_poison();
+        self.watch.clear_poison();
+        self.empty_since.clear_poison();
+        self.restarted_at.clear_poison();
+        if let Ok(mut at) = self.restarted_at.lock() {
+            *at = Some(Instant::now());
+        }
+    }
+
+    /// Records whether the queue has something waiting, autofill on.
+    fn observe(&self, waiting: usize, autofill: bool) {
+        let Ok(mut since) = self.empty_since.lock() else {
+            return;
+        };
+        if waiting > 0 || !autofill {
+            *since = None;
+        } else if since.is_none() {
+            *since = Some(Instant::now());
+        }
+        let empty = since.map_or(0.0, |since| since.elapsed().as_secs_f64());
+        metrics::gauge!("heron_api_queue_empty_seconds", "station_id" => self.station_id.to_string())
+            .set(empty);
+    }
+
+    /// What `/healthz` lists about this queue: empty for a while, autofill
+    /// on, or its loop restarted after a crash lately.
+    pub fn warnings(&self) -> Vec<String> {
+        let mut warnings = Vec::new();
+        let empty = self
+            .empty_since
+            .lock()
+            .ok()
+            .and_then(|since| *since)
+            .map(|since| since.elapsed())
+            .filter(|elapsed| *elapsed >= EMPTY_WARNING);
+        if let Some(elapsed) = empty {
+            warnings.push(format!(
+                "station {}: nothing has waited in the queue for {} s, autofill on",
+                self.station_id,
+                elapsed.as_secs()
+            ));
+        }
+        let restarted = self
+            .restarted_at
+            .lock()
+            .ok()
+            .and_then(|at| *at)
+            .map(|at| at.elapsed())
+            .filter(|elapsed| *elapsed < RESTART_WARNING);
+        if let Some(elapsed) = restarted {
+            warnings.push(format!(
+                "station {}: the queue loop restarted after a crash {} min ago",
+                self.station_id,
+                elapsed.as_secs() / 60
+            ));
+        }
+        warnings
     }
 
     /// Checks the queue now (settings, library or rotation changed).
@@ -475,8 +614,17 @@ impl QueueManager {
                 if let Err(error) = self.trim_before_exact(&state).await {
                     tracing::warn!(%error, "cannot check the queue against its exact time");
                 }
-                if let Err(error) = self.fill(&state).await {
-                    tracing::warn!(%error, "cannot fill the queue");
+                let station = self.station_id.to_string();
+                match self.fill(&state).await {
+                    Ok(()) => {
+                        metrics::gauge!("heron_api_queue_last_fill_timestamp_seconds", "station_id" => station)
+                            .set(unix_seconds());
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "cannot fill the queue");
+                        metrics::counter!("heron_api_queue_fills_failed_total", "station_id" => station)
+                            .increment(1);
+                    }
                 }
                 if last_follow.elapsed() >= FOLLOW_INTERVAL {
                     last_follow = Instant::now();
@@ -508,6 +656,7 @@ impl QueueManager {
             .waiting()
             .filter(|entry| entry.track.source != PlaySource::Fallback)
             .count();
+        self.observe(waiting, settings.autofill);
         let missing = (settings.min_queued as usize)
             .saturating_sub(waiting)
             .max(at_least);
@@ -1544,6 +1693,94 @@ impl QueueManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn the_loop_starts_again_after_a_crash() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let runs = Arc::new(AtomicUsize::new(0));
+        let crashes = AtomicUsize::new(0);
+        let counted = Arc::clone(&runs);
+        restart_after_crash(
+            move || {
+                let run = counted.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    // Crashes twice, then ends.
+                    assert!(run >= 2, "a bug in a fill");
+                }
+            },
+            || {
+                crashes.fetch_add(1, Ordering::SeqCst);
+            },
+            Duration::ZERO,
+        )
+        .await;
+        assert_eq!(runs.load(Ordering::SeqCst), 3);
+        assert_eq!(crashes.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn the_loop_goes_with_its_supervisor() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
+        let supervisor = tokio::spawn(restart_after_crash(
+            move || {
+                let tx = tx.clone();
+                async move {
+                    // Holds the sender until aborted.
+                    let _tx = tx;
+                    std::future::pending::<()>().await;
+                }
+            },
+            || {},
+            Duration::ZERO,
+        ));
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        supervisor.abort();
+        // The loop aborted with it: its sender dropped.
+        let closed = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await;
+        assert_eq!(closed, Ok(None));
+    }
+
+    fn manager() -> Arc<QueueManager> {
+        let pool = sqlx::mysql::MySqlPoolOptions::new()
+            .connect_lazy("mysql://nobody@127.0.0.1:1/none")
+            .unwrap();
+        let engine = EngineLink::new("http://127.0.0.1:1").unwrap();
+        QueueManager::new(pool, engine, 4, std::sync::Weak::new())
+    }
+
+    #[tokio::test]
+    async fn an_empty_queue_warns_after_a_minute_autofill_on() {
+        let queue = manager();
+        queue.observe(0, true);
+        assert!(queue.warnings().is_empty(), "not yet");
+        *queue.empty_since.lock().unwrap() = Instant::now().checked_sub(EMPTY_WARNING);
+        assert_eq!(
+            queue.warnings(),
+            vec!["station 4: nothing has waited in the queue for 60 s, autofill on".to_owned()]
+        );
+        // Still empty: the time runs on. Something waits: no warning.
+        queue.observe(0, true);
+        assert_eq!(queue.warnings().len(), 1);
+        queue.observe(2, true);
+        assert!(queue.warnings().is_empty());
+        // Autofill off: an empty queue is the operator's choice.
+        queue.observe(0, false);
+        *queue.empty_since.lock().unwrap() = Instant::now().checked_sub(EMPTY_WARNING);
+        queue.observe(0, false);
+        assert!(queue.warnings().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_restart_is_reported_for_an_hour() {
+        let queue = manager();
+        queue.recover();
+        assert_eq!(
+            queue.warnings(),
+            vec!["station 4: the queue loop restarted after a crash 0 min ago".to_owned()]
+        );
+        *queue.restarted_at.lock().unwrap() = Instant::now().checked_sub(RESTART_WARNING);
+        assert!(queue.warnings().is_empty());
+    }
 
     fn row() -> TrackRow {
         TrackRow {

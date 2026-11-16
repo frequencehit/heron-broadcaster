@@ -362,7 +362,7 @@ impl Stations {
         ));
         tasks.push(tokio::spawn(Arc::clone(&sync).run()));
         if info.enabled {
-            tasks.push(tokio::spawn(Arc::clone(&queue).run()));
+            tasks.push(tokio::spawn(Arc::clone(&queue).supervise()));
         }
         tracing::info!(station = %info.code, engine = %url, enabled = info.enabled, "station started");
         Ok(Some(Arc::new(StationRuntime {
