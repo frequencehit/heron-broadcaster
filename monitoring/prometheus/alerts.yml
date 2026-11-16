@@ -81,6 +81,57 @@ groups:
             heron-api may be down or unable to reach the engine, autofill may
             be off, or restrictions forbid every track.
 
+      # The API's queue loop keeps nothing waiting, autofill on.
+      - alert: HeronQueueEmpty
+        expr: max by (station, station_id) (heron_api_queue_empty_seconds) > 60
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.station }}: nothing has waited in the queue for a minute"
+          description: >-
+            Autofill is on but rotation queues nothing for station
+            {{ $labels.station_id }}: heron-api's logs give the reason (restrictions
+            forbidding every track, empty categories). The fallback
+            directory plays meanwhile.
+
+      - alert: HeronQueueFillFailing
+        expr: >-
+          sum by (station, station_id) (increase(heron_api_queue_fills_failed_total[10m])) > 10
+          or sum by (station, station_id) (increase(heron_api_queue_restarts_total[1h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.station }}: the queue fails to fill, or its loop crashed"
+          description: >-
+            Queue fills fail, or the queue loop of station
+            {{ $labels.station_id }} restarted after a crash. It restarts by
+            itself and the music goes on; heron-api's logs give the error.
+
+      # The last defence when the queue runs dry, gone.
+      - alert: HeronFallbackEmpty
+        expr: heron_engine_fallback_playable_tracks == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.station }}: the fallback directory has no playable track"
+          description: >-
+            Nothing would play if the queue ran dry. Put tracks in the
+            fallback directory (HERON_FALLBACK_DIR); silent and undecodable
+            files do not count.
+
+      # The silence alerts ignore pauses: a forgotten one is silence too.
+      - alert: HeronPausedTooLong
+        expr: heron_engine_paused_seconds >= 600
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.station }}: paused for 10 minutes"
+          description: >-
+            The engine has been paused for 10 minutes: the stream carries
+            silence. Resume on the On air page, or raise the threshold if
+            long pauses are normal for the station.
+
       - alert: HeronSilenceSkips
         expr: increase(heron_engine_silence_skips_total[30m]) > 0
         labels:

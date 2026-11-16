@@ -346,11 +346,53 @@ fn per_station(name: &str) {
     );
 }
 
-fn parse<T: DeserializeOwned + Default>(name: &str, value: Option<String>) -> ApiResult<T> {
+/// `key` names the settings group in warnings: its name, and its station.
+fn parse<T: DeserializeOwned + Default>(key: &str, value: Option<String>) -> ApiResult<T> {
     Ok(match value {
-        None => T::default(),
-        Some(json) => read_stored(name, &json),
+        None => {
+            record_left_out(key, None);
+            T::default()
+        }
+        Some(json) => read_stored(key, &json),
     })
+}
+
+/// The settings groups read with a part left out, and what: listed in
+/// `/healthz` until they read whole again (saved again, say).
+static LEFT_OUT: std::sync::Mutex<std::collections::BTreeMap<String, String>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// Records what was left out of `key` (`None`: nothing), and whether that
+/// is news: warned once, rather than at every read.
+fn record_left_out(key: &str, what: Option<String>) -> bool {
+    let Ok(mut left_out) = LEFT_OUT.lock() else {
+        return true;
+    };
+    let changed = match what {
+        Some(what) if left_out.get(key) != Some(&what) => {
+            left_out.insert(key.to_owned(), what);
+            true
+        }
+        Some(_) => false,
+        None => left_out.remove(key).is_some(),
+    };
+    if changed {
+        metrics::gauge!("heron_api_settings_left_out").set(left_out.len() as f64);
+    }
+    changed
+}
+
+/// What `/healthz` lists: each settings group read with a part left out.
+pub fn left_out() -> Vec<String> {
+    LEFT_OUT
+        .lock()
+        .map(|left_out| {
+            left_out
+                .iter()
+                .map(|(key, what)| format!("{key}: {what}"))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Parts of stored settings left out before giving up on them.
@@ -361,25 +403,24 @@ const MAX_REPAIRS: usize = 32;
 /// restore, an import, a downgrade) must not stop the music
 /// (docs/audio-engine.md#failure-handling). What cannot be read (an
 /// unknown field, a wrong value) is left out and takes its default; the
-/// rest is kept. A warning names what was left out.
-fn read_stored<T: DeserializeOwned + Default>(name: &str, json: &str) -> T {
+/// rest is kept. A warning names what was left out, and `/healthz` lists
+/// it until the group reads whole again.
+fn read_stored<T: DeserializeOwned + Default>(key: &str, json: &str) -> T {
     let mut value: serde_json::Value = match serde_json::from_str(json) {
         Ok(value) => value,
-        Err(error) => {
-            tracing::warn!(settings = name, %error, "stored settings are not JSON: using the defaults");
-            return T::default();
-        }
+        Err(error) => return unreadable(key, &format!("not JSON: {error}")),
     };
     let mut left_out = Vec::new();
     for _ in 0..MAX_REPAIRS {
         let error = match serde_path_to_error::deserialize::<_, T>(&value) {
             Ok(settings) => {
-                if !left_out.is_empty() {
-                    tracing::warn!(
-                        settings = name,
-                        left_out = %left_out.join(", "),
-                        "stored settings could not all be read: the rest is kept"
-                    );
+                if left_out.is_empty() {
+                    record_left_out(key, None);
+                } else {
+                    let what = format!("{} left out", left_out.join(", "));
+                    if record_left_out(key, Some(what.clone())) {
+                        tracing::warn!(settings = key, left_out = %what, "stored settings could not all be read: the rest is kept");
+                    }
                 }
                 return settings;
             }
@@ -394,17 +435,21 @@ fn read_stored<T: DeserializeOwned + Default>(name: &str, json: &str) -> T {
                 _ => None,
             })
             .collect();
-        let removed = !path.is_empty() && remove_at(&mut value, &path);
-        if !removed {
-            tracing::warn!(settings = name, error = %error, "stored settings cannot be read: using the defaults");
-            return T::default();
+        if path.is_empty() || !remove_at(&mut value, &path) {
+            return unreadable(key, &error.to_string());
         }
-        left_out.push(format!("{} ({})", path.join("."), error.inner()));
+        left_out.push(path.join("."));
     }
-    tracing::warn!(
-        settings = name,
-        "stored settings cannot be read: using the defaults"
-    );
+    unreadable(key, "too many parts that cannot be read")
+}
+
+/// Stored settings that cannot be read at all: the defaults, with a
+/// warning.
+fn unreadable<T: Default>(key: &str, why: &str) -> T {
+    let what = format!("cannot be read ({why}), the defaults are used");
+    if record_left_out(key, Some(what.clone())) {
+        tracing::warn!(settings = key, "stored settings {what}");
+    }
     T::default()
 }
 
@@ -439,7 +484,7 @@ pub async fn load_for<T: DeserializeOwned + Default>(
     .bind(name)
     .fetch_optional(executor)
     .await?;
-    parse(name, value)
+    parse(&format!("{name} settings of station {station_id}"), value)
 }
 
 /// Whether a station's settings group was ever saved.
@@ -487,7 +532,7 @@ pub async fn load<T: DeserializeOwned + Default>(
             .bind(name)
             .fetch_optional(executor)
             .await?;
-    parse(name, value)
+    parse(&format!("{name} settings"), value)
 }
 
 pub async fn save<T: Serialize>(
@@ -918,6 +963,35 @@ async fn put_statistics(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_left_out_are_listed_until_they_read_whole() {
+        let key = "queue settings of station 99";
+        let _: QueueSettings = read_stored(key, r#"{"autofill": true, "later": 1}"#);
+        assert!(
+            left_out().contains(&format!("{key}: later left out")),
+            "{:?}",
+            left_out()
+        );
+        // Read again the same: listed once.
+        let _: QueueSettings = read_stored(key, r#"{"autofill": true, "later": 1}"#);
+        assert_eq!(
+            left_out()
+                .iter()
+                .filter(|line| line.starts_with(key))
+                .count(),
+            1
+        );
+        let _: QueueSettings = read_stored(key, "[");
+        assert!(
+            left_out()
+                .iter()
+                .any(|line| line.starts_with(&format!("{key}: cannot be read (not JSON")))
+        );
+        // Saved again, read whole: no longer listed.
+        let _: QueueSettings = read_stored(key, r#"{"autofill": true}"#);
+        assert!(!left_out().iter().any(|line| line.starts_with(key)));
+    }
 
     #[test]
     fn stored_settings_keep_what_can_be_read() {

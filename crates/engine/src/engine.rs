@@ -83,6 +83,8 @@ pub struct Engine {
     takeover_outputs: Mutex<Option<OutputsConfig>>,
     started: Instant,
     started_at: SystemTime,
+    /// Since when the engine is paused, as last seen.
+    paused_since: Mutex<Option<Instant>>,
     #[cfg(feature = "monitor")]
     _monitor: Option<crate::monitor::Monitor>,
     /// The live monitor of the web UI.
@@ -201,6 +203,7 @@ impl Engine {
             takeover_outputs: Mutex::new(None),
             started: Instant::now(),
             started_at: SystemTime::now(),
+            paused_since: Mutex::new(None),
             #[cfg(feature = "monitor")]
             _monitor: monitor,
             live_monitor,
@@ -494,13 +497,34 @@ impl Engine {
         if let Some(warning) = heron_service::clock::status().warning {
             warnings.push(warning);
         }
-        if self.player().dead_air() {
+        let (dead_air, fallback) = {
+            let player = self.player();
+            (player.dead_air(), player.fallback_playable())
+        };
+        if dead_air {
             warnings.push(
                 "nothing to play: the queue is empty and the fallback directory has no track"
                     .to_owned(),
             );
         }
+        warnings.extend(fallback_warning(fallback));
+        warnings.extend(pause_warning(self.paused_for()));
         warnings
+    }
+
+    /// How long the engine has been paused; `None` while it plays.
+    pub fn paused_for(&self) -> Option<Duration> {
+        let paused = self.status.paused.load(Ordering::Relaxed);
+        let mut since = self
+            .paused_since
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match (paused, *since) {
+            (false, _) => *since = None,
+            (true, None) => *since = Some(Instant::now()),
+            (true, Some(_)) => {}
+        }
+        since.map(|since| since.elapsed())
     }
 
     fn record_metrics(&self) {
@@ -525,6 +549,10 @@ impl Engine {
             .absolute(status.overflows.load(Ordering::Relaxed));
         metrics::gauge!("heron_engine_paused")
             .set(f64::from(u8::from(status.paused.load(Ordering::Relaxed))));
+        metrics::gauge!("heron_engine_paused_seconds")
+            .set(self.paused_for().map_or(0.0, |paused| paused.as_secs_f64()));
+        let fallback = self.player().fallback_playable().unwrap_or(0);
+        metrics::gauge!("heron_engine_fallback_playable_tracks").set(fallback as f64);
         let (peak, _) = status.master.read();
         metrics::gauge!("heron_engine_master_peak").set(f64::from(peak[0].max(peak[1])));
         metrics::gauge!("heron_engine_queue_length")
@@ -533,6 +561,31 @@ impl Engine {
             .set(status.silent_frames.load(Ordering::Relaxed) as f64 / f64::from(SAMPLE_RATE));
         heron_service::clock::status().record_metrics();
     }
+}
+
+/// A pause this long is likely forgotten: `/healthz` warns.
+pub const PAUSE_WARNING: Duration = Duration::from_secs(600);
+
+/// The warning about the fallback directory (`playable`: its tracks that
+/// can play, `None` without one), before the queue runs dry.
+fn fallback_warning(playable: Option<usize>) -> Option<String> {
+    match playable {
+        None => Some("no fallback directory: nothing plays if the queue runs dry".to_owned()),
+        Some(0) => Some(
+            "the fallback directory has no playable track: nothing plays if the queue runs dry"
+                .to_owned(),
+        ),
+        Some(_) => None,
+    }
+}
+
+/// The warning about a pause, from [`PAUSE_WARNING`].
+fn pause_warning(paused: Option<Duration>) -> Option<String> {
+    let paused = paused.filter(|paused| *paused >= PAUSE_WARNING)?;
+    Some(format!(
+        "paused for {} min: the stream carries silence",
+        paused.as_secs() / 60
+    ))
 }
 
 fn load_config(dir: &std::path::Path) -> EngineConfig {
@@ -625,5 +678,35 @@ impl HealthCheck for EngineHealth {
             "active"
         };
         serde_json::Map::from_iter([("role".to_owned(), role.into())])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pause_warns_from_ten_minutes() {
+        assert_eq!(pause_warning(None), None);
+        assert_eq!(pause_warning(Some(Duration::from_secs(599))), None);
+        assert_eq!(
+            pause_warning(Some(Duration::from_secs(12 * 60 + 30))).as_deref(),
+            Some("paused for 12 min: the stream carries silence")
+        );
+    }
+
+    #[test]
+    fn the_fallback_directory_warns_with_nothing_to_play() {
+        assert!(fallback_warning(Some(3)).is_none());
+        assert!(
+            fallback_warning(Some(0))
+                .unwrap()
+                .starts_with("the fallback directory has no playable track")
+        );
+        assert!(
+            fallback_warning(None)
+                .unwrap()
+                .starts_with("no fallback directory")
+        );
     }
 }

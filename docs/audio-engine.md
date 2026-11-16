@@ -341,6 +341,7 @@ Every failure path ends with audio continuing, in this order:
 | A [match](listener-interaction.md#match) stops moving (its loop not running, its vote's track played without the vote opening or closing, both of its tracks gone) | The queue waits behind a match only while its vote's track and one of its two tracks are still in the queue or on a deck, and no longer than 2 minutes after its vote should have closed. Past that, the queue fills as without it: rotation picks after its tracks, and no new match is planned until it is closed or cancelled. |
 | The match table cannot be read | The queue fills as without a match, and an operator skips, clears, removes and queues tracks as if none were in progress; the error is logged as a warning. |
 | Stored data the queue reads cannot be read (a restore, an import, a downgrade): a settings group with an unknown field or a wrong value, a restriction rule | A settings group keeps what can be read: the part that cannot takes its default, and a warning names it. A restriction whose rule cannot be read **bans its target at all times**, rather than being ignored: a restriction can stand for rights. A warning names it. |
+| The queue manager crashes (a bug) | Its loop restarts at once, with the queue as the engine has it; the crash is logged as an error and counted (`heron_api_queue_restarts_total`). A fill that fails is logged and counted, and the next one tries again 2 seconds later. A queue that stays empty for a minute with autofill on warns in heron-api's `/healthz` and fires `HeronQueueEmpty`. |
 | The queue runs dry (the API is down or cannot reach the engine, autofill is off, restrictions forbid every track) | A track from the **fallback directory** is cued, 30 s before the track on air ends or at once when nothing plays, so it starts with the planned transition. Anything queued replaces a cued fallback track. |
 | A track stays silent | The **silence watchdog** skips it after `silence_watchdog.timeout_ms` of silence (below −50 dBFS) on the master bus, measured before the [AGC chain](#master-agc-chain) so its gain never hides one. If the next track is silent too, it skips to the fallback directory instead. Pauses do not count. |
 | Nothing to play at all | Silence is streamed (the outputs stay connected). After 5 s, the engine logs an error, sets `heron_engine_dead_air` and warns in `/healthz`. |
@@ -355,7 +356,7 @@ The chaos tests (`scripts/chaos-test.sh`) check each of these on a running stack
 
 ## Observability
 
-`/healthz` reports the engine's `role` (`active`, or `standby` while waiting to take over), fails when the audio thread of an active engine stops rendering, and lists `warnings` when the server clock is not synchronized (or off by more than about 1 s) or there is nothing to play. `/metrics`:
+`/healthz` reports the engine's `role` (`active`, or `standby` while waiting to take over), fails when the audio thread of an active engine stops rendering, and lists `warnings` when the server clock is not synchronized (or off by more than about 1 s), when there is nothing to play, when the fallback directory has no playable track (before the queue runs dry), and when the engine has been paused for 10 minutes. `/metrics`:
 
 | Metric | Meaning |
 |---|---|
@@ -367,6 +368,7 @@ The chaos tests (`scripts/chaos-test.sh`) check each of these on a running stack
 | `heron_engine_dropped_blocks_total` | Blocks the encoders did not take in time |
 | `heron_engine_silent_seconds` | How long the master bus has been silent (below −50 dBFS, before the AGC chain) |
 | `heron_engine_dead_air` | 1 when there is nothing to play |
+| `heron_engine_fallback_playable_tracks`, `heron_engine_paused_seconds` | Fallback tracks that can play; how long the engine has been paused |
 | `heron_engine_fallback_tracks_total`, `heron_engine_silence_skips_total` | Tracks started from the fallback directory, tracks skipped by the silence watchdog |
 | `heron_engine_preload_failures_total`, `heron_engine_stalled_tracks_total` | Queued tracks that could not be read ahead of time, cued tracks given up because they could not start |
 | `heron_clock_synchronized`, `heron_clock_offset_seconds`, `heron_clock_estimated_error_seconds` | The server clock's synchronization, from the kernel (read-only `adjtimex`) |

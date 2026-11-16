@@ -117,6 +117,16 @@ impl Fallback {
         self.lock().files.values().any(|file| !file.unplayable)
     }
 
+    /// Files that can play: not found silent or undecodable (a file not
+    /// analyzed yet counts: it plays whole).
+    pub fn playable(&self) -> usize {
+        self.lock()
+            .files
+            .values()
+            .filter(|file| !file.unplayable)
+            .count()
+    }
+
     /// Files found, playable or not.
     pub fn len(&self) -> usize {
         self.lock().files.len()

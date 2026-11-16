@@ -26,6 +26,7 @@ mod error;
 mod exact_times;
 mod featured_artist;
 mod gateway;
+mod health;
 mod history;
 mod import;
 mod labels;
@@ -403,7 +404,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         two_factor: Default::default(),
         gateway_token,
     };
-    let router = app::router(state).merge(heron_service::ops_router(SERVICE, metrics, health));
+    let ops_health = health::ApiHealth {
+        database: health,
+        stations: Arc::clone(&state.stations),
+    };
+    let router = app::router(state).merge(heron_service::ops_router(SERVICE, metrics, ops_health));
 
     let served = heron_service::serve(cli.http_addr, router).await;
     for task in tasks {
