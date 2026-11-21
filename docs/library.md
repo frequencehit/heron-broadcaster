@@ -22,7 +22,9 @@ Like iTunes' "Keep Music folder organized": new files, uploaded from the browser
 | Buffer zone | `HERON_STAGING_FOLDER` | `heron-api` (writes uploads) and `heron-librarian`, read-write |
 | Cover images | The `covers` volume (`HERON_COVERS_DIR` in the containers, `/var/lib/heron/covers`) | `heron-api` and `heron-librarian`, read-write ([Cover art](#cover-art)) |
 
-`heron-librarian` and `heron-api` run as `HERON_LIBRARIAN_USER` (`uid:gid`), which must own the three folders (the `covers` volume is created writable by any user): use the output of `id -u` and `id -g` for the owner of your music. The buffer zone is best on the library's file system, so imports are renames rather than copies.
+`heron-librarian` and `heron-api` run as `HERON_LIBRARIAN_USER` (`uid:gid`), which must own the three folders (the `covers` volume is created writable by any user): use the output of `id -u` and `id -g` for the owner of your music. Create the folders before the first `docker compose up` and give them to that user (`chown -R`): a folder Docker creates by itself, or one made by `root`, belongs to `root`, and the services can read it but not write to it.
+
+Each service checks the folders it writes to when it starts, and at every `/healthz`: `heron-api` the buffer zone, the backup folder and the covers, `heron-librarian` the library, the incoming folder, the buffer zone and the covers. A folder it cannot write to is logged as an error and listed in its `/healthz` warnings, with the user it runs as (`the buffer zone (/staging) is not writable by uid 997, gid 988: give it to HERON_LIBRARIAN_USER`); the warning goes as soon as the folder is fixed. The service still starts. An upload into a buffer zone the API cannot write to fails with that message, not with an internal error. The buffer zone is best on the library's file system, so imports are renames rather than copies.
 
 ## The incoming folder
 

@@ -283,8 +283,10 @@ Every service answers `GET /healthz` on its port (`heron-public` on its ops port
   - `the fallback directory has no playable track: nothing plays if the queue runs dry`, before it does (or `no fallback directory: …`);
   - `paused for 12 min: the stream carries silence`, from 10 minutes.
 - The API lists:
+  - a folder it writes to and cannot (the buffer zone, the backup folder, the covers), with the user it runs as ([Library – Folders and permissions](library.md#folders-and-permissions));
   - stored settings it read with a part left out (`queue settings of station 1: unknown_field left out`), until they are saved again;
   - a station whose queue has had nothing waiting for a minute, autofill on, and a queue loop that restarted after a crash in the last hour.
+- `heron-librarian` lists a folder it writes to and cannot (the library, the incoming folder, the buffer zone, the covers).
 - `heron-public` warns while it cannot read the API's state (`the API has not answered for 12 s`): it serves what it last read.
 
 Every service restarts by itself (`restart: unless-stopped`). Docker does not restart a container only because it is unhealthy, so the engine exits on its own when its audio thread is stuck for 10 s: Docker then restarts it, and it resumes the queue it saved.
