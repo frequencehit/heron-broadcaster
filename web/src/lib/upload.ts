@@ -32,9 +32,16 @@ export interface UploadOptions {
   onCreated?: (id: number) => void;
 }
 
-/** Errors worth trying again: the network, the server, a chunk out of place. */
+/**
+ * Errors worth trying again: the network, the server, a chunk out of place.
+ * Not the station's set-up (a buffer zone the API cannot write to): trying
+ * again changes nothing, and its message says what to fix.
+ */
 export function isTransient(error: unknown): boolean {
   if (error instanceof ApiError) {
+    if (error.code === "misconfigured") {
+      return false;
+    }
     return error.status >= 500 || error.status === 409 || error.status === 408 || error.status === 429;
   }
   return !(error instanceof DOMException && error.name === "AbortError");

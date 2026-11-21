@@ -10,6 +10,7 @@ pub mod about;
 pub mod clock;
 #[cfg(feature = "mysql")]
 pub mod db;
+pub mod folders;
 pub mod ops;
 pub mod priority;
 pub mod probe;

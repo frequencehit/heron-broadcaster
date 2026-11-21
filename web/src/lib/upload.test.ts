@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { describe, expect, it } from "vitest";
-import { ApiError } from "../api";
+import { ApiError, errorMessage } from "../api";
 import { AUDIO_EXTENSIONS, type Transport, groupName, isUploadable, uploadFile } from "./upload";
 
 /** A server that keeps what it receives, and a connection that drops. */
@@ -86,6 +86,23 @@ describe("uploadFile", () => {
     };
     await expect(uploadFile(transport, 1, new Blob([content]), "a.flac")).rejects.toThrow("too large");
     expect(sends).toBe(1);
+  });
+
+  it("does not retry a buffer zone the API cannot write to, and says why", async () => {
+    let sends = 0;
+    const message = "the buffer zone (/staging) is not writable by uid 997, gid 988: give it to HERON_LIBRARIAN_USER (chown -R) (Permission denied (os error 13))";
+    const transport: Transport = {
+      create: async () => 1,
+      send: async () => {
+        sends += 1;
+        throw new ApiError(503, "misconfigured", message);
+      },
+      received: async () => 0,
+    };
+    const upload = uploadFile(transport, 1, new Blob([content]), "a.flac", { backoff: () => 0 });
+    await expect(upload).rejects.toThrow(message);
+    expect(sends).toBe(1);
+    await upload.catch((error: unknown) => expect(errorMessage(error)).toBe(message));
   });
 });
 

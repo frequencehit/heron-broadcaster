@@ -544,7 +544,7 @@ async fn create_upload(
     let group_dir = state.staging.join(upload.group_id.to_string());
     tokio::fs::create_dir_all(&group_dir)
         .await
-        .map_err(|error| ApiError::Internal(format!("cannot write to the buffer zone: {error}")))?;
+        .map_err(|error| write_error(&state, "cannot write to the buffer zone", &error))?;
     // Bytes still to come for the uploads in progress count as used.
     let pending: Option<i64> = sqlx::query_scalar(
         "SELECT CAST(SUM(size) AS SIGNED) FROM staged_files WHERE status = 'receiving'",
@@ -583,12 +583,27 @@ async fn create_upload(
         .open(&part)
         .await
         .map_err(|error| {
-            ApiError::Internal(format!("cannot create {}: {error}", part.display()))
+            write_error(&state, &format!("cannot create {}", part.display()), &error)
         })?;
     if upload.size == 0 {
         complete(&state, id).await?;
     }
     Ok((StatusCode::CREATED, Json(find_file(&state, id).await?)))
+}
+
+/// An error writing in the buffer zone: a folder the API may not write to
+/// says so, with what to fix (docs/library.md#folders-and-permissions);
+/// anything else is internal.
+fn write_error(state: &AppState, what: &str, error: &std::io::Error) -> ApiError {
+    if heron_service::folders::is_permission(error) {
+        ApiError::Misconfigured(heron_service::folders::not_writable(
+            "the buffer zone",
+            &state.staging,
+            error,
+        ))
+    } else {
+        ApiError::Internal(format!("{what}: {error}"))
+    }
 }
 
 /// A path in the group's folder that no other file has, adding ` (2)`, ` (3)`, …
@@ -733,9 +748,7 @@ async fn send_chunk(
             return Err(ApiError::Conflict("the upload was discarded".to_owned()));
         }
         Err(error) => {
-            return Err(ApiError::Internal(format!(
-                "cannot write the upload: {error}"
-            )));
+            return Err(write_error(&state, "cannot write the upload", &error));
         }
     }
     // Progress keeps the librarian from identifying the group too early.
@@ -767,7 +780,7 @@ async fn complete(state: &AppState, id: u64) -> ApiResult<()> {
         if let Some(parent) = target.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
+                .map_err(|error| write_error(state, "cannot finish the upload", &error))?;
         }
         match rename_no_replace(&part, &target) {
             Ok(()) => break,
@@ -776,9 +789,7 @@ async fn complete(state: &AppState, id: u64) -> ApiResult<()> {
                 candidate = layout::with_suffix(&staged_path, suffix);
             }
             Err(error) => {
-                return Err(ApiError::Internal(format!(
-                    "cannot finish the upload: {error}"
-                )));
+                return Err(write_error(state, "cannot finish the upload", &error));
             }
         }
     }

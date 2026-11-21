@@ -44,6 +44,11 @@ pub enum ApiError {
     TooManyRequests,
     #[error("the engine cannot be reached")]
     EngineUnavailable,
+    /// The station's set-up keeps the API from doing it (a folder it cannot
+    /// write to): logged, and the client gets the message, which says what
+    /// to fix.
+    #[error("{0}")]
+    Misconfigured(String),
     /// Logged; the client only gets a generic message.
     #[error("internal error: {0}")]
     Internal(String),
@@ -68,6 +73,7 @@ impl ApiError {
             Self::Invalid(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid"),
             Self::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             Self::EngineUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "engine_unavailable"),
+            Self::Misconfigured(_) => (StatusCode::SERVICE_UNAVAILABLE, "misconfigured"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
         }
     }
@@ -80,6 +86,10 @@ impl IntoResponse for ApiError {
             Self::Internal(reason) => {
                 tracing::error!(%reason, "request failed");
                 "internal error, see the API logs".to_owned()
+            }
+            Self::Misconfigured(reason) => {
+                tracing::error!(%reason, "request failed");
+                reason.clone()
             }
             other => other.to_string(),
         };

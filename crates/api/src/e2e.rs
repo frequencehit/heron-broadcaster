@@ -3453,6 +3453,59 @@ async fn track_details_labels_programming_and_tags() {
     station.stop().await;
 }
 
+/// #254: a buffer zone the API cannot write to (its owner is not
+/// HERON_LIBRARIAN_USER) is said, not answered as an internal error.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_upload_into_a_buffer_zone_the_api_cannot_write_to_says_why() {
+    use std::os::unix::fs::PermissionsExt;
+    // Root writes anywhere: nothing to see as root.
+    if rustix::process::geteuid().is_root() {
+        return;
+    }
+    let Some(station) = Station::start().await else {
+        return;
+    };
+    let admin = station.signed_in("admin").await;
+    let (status, group) = admin
+        .send(Method::POST, "/staging/groups", json!({"name": "Drop"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{group}");
+    let group_id = group["id"].as_u64().unwrap();
+
+    let staging = station.staging.path();
+    std::fs::set_permissions(staging, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let (status, refused) = admin
+        .send(
+            Method::POST,
+            "/staging/uploads",
+            json!({"group_id": group_id, "name": "Drop/a.flac", "size": 10}),
+        )
+        .await;
+    std::fs::set_permissions(staging, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["error"], "misconfigured");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.starts_with(&format!(
+            "the buffer zone ({}) is not writable by uid ",
+            staging.display()
+        )),
+        "{message}"
+    );
+    assert!(message.contains("HERON_LIBRARIAN_USER"), "{message}");
+    assert!(!message.contains("internal error"), "{message}");
+
+    // Fixed: the upload goes through.
+    let (status, created) = admin
+        .send(
+            Method::POST,
+            "/staging/uploads",
+            json!({"group_id": group_id, "name": "Drop/a.flac", "size": 10}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn uploads_wait_in_the_buffer_zone_until_imported() {
     let Some(station) = Station::start().await else {
