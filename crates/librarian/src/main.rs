@@ -28,6 +28,7 @@ use heron_librarian::tasks::TaskRunner;
 use heron_library::LibraryLock;
 use heron_service::about::ConfigItem;
 use heron_service::db::{self, DatabaseHealth};
+use heron_service::folders::{Folder, Folders, WithFolders};
 use heron_service::{LogArgs, MetricsArgs};
 use sqlx::{MySqlPool, Row};
 
@@ -278,6 +279,15 @@ async fn serve(cli: &Cli, pool: MySqlPool, roots: Roots) -> anyhow::Result<()> {
         about,
         stopped.clone(),
     ));
+    // The folders it writes to, checked now and at every /healthz
+    // (docs/library.md#folders-and-permissions).
+    let folders = Folders::new(vec![
+        Folder::new("the music library", &roots.library),
+        Folder::new("the incoming folder", &roots.incoming),
+        Folder::new("the buffer zone", &roots.staging),
+        Folder::new("the cover images", roots.covers.root()),
+    ]);
+    folders.log_problems();
     let tasks = TaskRunner::new(pool.clone(), roots.clone(), endpoints.clone());
     let running_tasks = tokio::spawn(tasks.run(stopped.clone()));
     let stager = Stager::new(pool.clone(), roots.clone(), endpoints);
@@ -289,7 +299,11 @@ async fn serve(cli: &Cli, pool: MySqlPool, roots: Roots) -> anyhow::Result<()> {
         stopped,
     ));
 
-    let router = heron_service::ops_router(SERVICE, metrics, DatabaseHealth(pool));
+    let health = WithFolders {
+        inner: DatabaseHealth(pool),
+        folders,
+    };
+    let router = heron_service::ops_router(SERVICE, metrics, health);
     let served = heron_service::serve(cli.http_addr, router).await;
     // A file operation in progress finishes: the importer stops between files.
     let _ = stop.send(true);

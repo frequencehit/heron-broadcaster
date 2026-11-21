@@ -237,7 +237,7 @@ What each release asks of an upgrade, on top of the steps above. What it brings 
 
 ### Edge
 
-The services are upgraded as usual. Opus files whose analysis failed before are analysed again by themselves: a migration forgets their failed analysis jobs, so the next scan queues them (only those: the rest of the library is not analysed again).
+The services are upgraded as usual. `heron-api` and `heron-librarian` now check that they can write to their folders: once upgraded, look at their `/healthz` (or their logs) and give any folder they list to `HERON_LIBRARIAN_USER` with `chown -R` ([Library – Folders and permissions](library.md#folders-and-permissions)). The warning goes without a restart. Opus files whose analysis failed before are analysed again by themselves: a migration forgets their failed analysis jobs, so the next scan queues them (only those: the rest of the library is not analysed again).
 
 There are four new alert rules (`HeronQueueEmpty`, `HeronQueueFillFailing`, `HeronFallbackEmpty`, `HeronPausedTooLong`): load `monitoring/prometheus/alerts.yml` again ([Monitoring – Loading the alert rules](monitoring.md#loading-the-alert-rules)). The engine's `/healthz` now warns when the fallback directory has no playable track: a station without one gets the warning and, with the rules loaded, `HeronFallbackEmpty`. Put a few tracks in `HERON_FALLBACK_DIR`.
 

@@ -77,6 +77,7 @@ use auth::{Passwords, Role};
 use clap::{Parser, Subcommand};
 use heron_service::about::ConfigItem;
 use heron_service::db::{self, DatabaseHealth, MIGRATOR};
+use heron_service::folders::{Folder, Folders, WithFolders};
 use heron_service::{LogArgs, MetricsArgs};
 use library::{Library, ScanOptions};
 
@@ -404,9 +405,20 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         two_factor: Default::default(),
         gateway_token,
     };
-    let ops_health = health::ApiHealth {
-        database: health,
-        stations: Arc::clone(&state.stations),
+    // The folders it writes to, checked now and at every /healthz
+    // (docs/library.md#folders-and-permissions).
+    let folders = Folders::new(vec![
+        Folder::new("the buffer zone", &staging_dir),
+        Folder::new("the backup folder", &backup_dir),
+        Folder::new("the cover images", &cli.covers_dir),
+    ]);
+    folders.log_problems();
+    let ops_health = WithFolders {
+        inner: health::ApiHealth {
+            database: health,
+            stations: Arc::clone(&state.stations),
+        },
+        folders,
     };
     let router = app::router(state).merge(heron_service::ops_router(SERVICE, metrics, ops_health));
 

@@ -55,11 +55,14 @@ The screenshots show demo stations with generated music by fictional artists.
 Requirements: Docker with Compose v2.
 
 ```sh
-cp .env.example .env              # then change the passwords
+cp .env.example .env              # then change the passwords, and set HERON_LIBRARIAN_USER
 mkdir -p data/music data/fallback data/incoming data/staging data/backups # or point HERON_MUSIC_DIR, … elsewhere
+sudo chown -R "$(grep '^HERON_LIBRARIAN_USER=' .env | cut -d= -f2)" data/music data/incoming data/staging data/backups
 docker compose up -d --wait       # pulls the images from ghcr.io/dehy
 docker compose exec heron-api heron-api user add admin --role admin   # asks for a password
 ```
+
+`heron-api` and `heron-librarian` run as `HERON_LIBRARIAN_USER` (`uid:gid`, the owner of your music: `id -u` and `id -g`), so it must own the folders they write to; a folder Docker creates by itself belongs to `root`, and uploads would fail. Each service checks its folders when it starts: one it cannot write to is logged and listed in its `/healthz` warnings ([Library – Folders and permissions](docs/library.md#folders-and-permissions)).
 
 Open http://localhost:8000 and sign in. Database migrations run automatically when `heron-api` starts.
 
